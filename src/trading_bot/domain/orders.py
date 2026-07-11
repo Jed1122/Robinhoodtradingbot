@@ -87,9 +87,9 @@ class OrderIntent:
         _require_nonempty(self.strategy_version, "strategy_version")
         _require_sha256_hex(self.config_hash, "config_hash")
         _require_sha256_hex(self.data_hash, "data_hash")
-        if self.purpose is not OrderPurpose.ENTRY:
+        if self.purpose is OrderPurpose.ENTRY:
             if self.exit_policy_version is None:
-                raise DomainValidationError("exit orders require an exit_policy_version")
+                raise DomainValidationError("entry orders require an exit policy version")
             _require_nonempty(self.exit_policy_version, "exit_policy_version")
         elif self.exit_policy_version is not None:
             _require_nonempty(self.exit_policy_version, "exit_policy_version")

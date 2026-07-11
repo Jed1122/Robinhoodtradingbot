@@ -166,7 +166,7 @@ def _valid_records() -> dict[str, Any]:
         strategy_version="strategy-v1",
         config_hash=ConfigHash(HASH_B),
         data_hash=DataHash(HASH_A),
-        exit_policy_version=None,
+        exit_policy_version="exit-policy-v1",
     )
     review = BrokerOrderReview(
         normalized_order=intent,
@@ -690,6 +690,25 @@ def test_persisted_review_must_match_review_account_and_config() -> None:
         replace(persisted, account_id=AccountId("other"))
     with pytest.raises(DomainValidationError):
         replace(persisted, config_hash=ConfigHash(HASH_A))
+
+
+def test_entry_intent_requires_versioned_exit_policy() -> None:
+    intent = _valid_records()["intent"]
+
+    with pytest.raises(DomainValidationError, match="exit policy"):
+        replace(intent, purpose=OrderPurpose.ENTRY, exit_policy_version=None)
+
+
+@pytest.mark.parametrize(
+    "purpose",
+    [OrderPurpose.STRATEGY_EXIT, OrderPurpose.PROTECTIVE_EXIT],
+)
+def test_non_entry_intent_may_omit_exit_policy(purpose: OrderPurpose) -> None:
+    intent = _valid_records()["intent"]
+
+    updated = replace(intent, purpose=purpose, exit_policy_version=None)
+
+    assert updated.exit_policy_version is None
 
 
 @pytest.mark.parametrize(
