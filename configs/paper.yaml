@@ -1,0 +1,7 @@
+# Paper mode constructs a simulated broker and never enables live trading.
+mode: paper
+live_trading_enabled: false
+runtime:
+  start_paused: true
+prediction_markets:
+  live_enabled: false

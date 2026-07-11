@@ -1,0 +1,7 @@
+# Shadow mode may read current data but remains write-disabled and paused.
+mode: shadow
+live_trading_enabled: false
+runtime:
+  start_paused: true
+prediction_markets:
+  live_enabled: false

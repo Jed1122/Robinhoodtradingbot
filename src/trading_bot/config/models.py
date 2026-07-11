@@ -1,0 +1,393 @@
+"""Strict, immutable configuration models for every operating mode."""
+
+from decimal import Decimal
+from typing import Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from trading_bot.domain import BarInterval, ExecutionMode
+
+Pct = Decimal
+Seconds = Decimal
+
+
+class StrictModel(BaseModel):
+    """Base for the only canonical configuration graph."""
+
+    model_config = ConfigDict(allow_inf_nan=False, extra="forbid", frozen=True)
+
+
+class PortfolioSettings(StrictModel):
+    expected_starting_equity_usd: Decimal = Field(gt=0)
+    live_account_equity_ceiling_usd: Decimal = Field(gt=0)
+    max_total_gross_exposure_pct: Pct = Field(ge=0, le=100)
+    min_cash_reserve_pct: Pct = Field(ge=0, le=100)
+    max_open_positions: int = Field(ge=0)
+    max_gross_exposure_usd: Decimal = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_portfolio_bounds(self) -> Self:
+        if self.live_account_equity_ceiling_usd < self.expected_starting_equity_usd:
+            raise ValueError("live account equity ceiling must not be below expected equity")
+        if self.max_total_gross_exposure_pct + self.min_cash_reserve_pct > Decimal("100"):
+            raise ValueError(
+                "gross exposure plus cash reserve cannot exceed 100 whole-percent units"
+            )
+        return self
+
+
+class PositionRiskSettings(StrictModel):
+    max_risk_per_trade_pct: Pct = Field(ge=0, le=100)
+    max_position_notional_pct: Pct = Field(ge=0, le=100)
+    max_correlated_group_exposure_pct: Pct = Field(ge=0, le=100)
+    minimum_reward_to_initial_risk: Decimal = Field(gt=0)
+    averaging_down_allowed: Literal[False]
+    pyramiding_allowed: Literal[False]
+
+
+class LossLimitSettings(StrictModel):
+    max_daily_loss_pct: Pct = Field(ge=0, le=100)
+    max_weekly_loss_pct: Pct = Field(ge=0, le=100)
+    max_peak_to_trough_drawdown_pct: Pct = Field(ge=0, le=100)
+    consecutive_loss_pause_count: int = Field(ge=1)
+    consecutive_loss_pause_minutes: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_ordered_loss_limits(self) -> Self:
+        if not (
+            self.max_daily_loss_pct
+            <= self.max_weekly_loss_pct
+            <= self.max_peak_to_trough_drawdown_pct
+        ):
+            raise ValueError("daily, weekly, and drawdown limits must be ordered")
+        return self
+
+
+class ActivitySettings(StrictModel):
+    max_new_orders_per_day: int = Field(ge=0)
+    max_orders_per_symbol_per_day: int = Field(ge=0)
+    minimum_minutes_between_new_orders: int = Field(ge=0)
+    max_order_notional_usd: Decimal = Field(ge=0)
+
+
+class EquitySettings(StrictModel):
+    enabled: bool
+    long_only: Literal[True]
+    margin_allowed: Literal[False]
+    short_sales_allowed: Literal[False]
+    options_allowed: Literal[False]
+    leveraged_etfs_allowed: Literal[False]
+    inverse_etfs_allowed: Literal[False]
+    otc_allowed: Literal[False]
+    microcaps_allowed: Literal[False]
+    max_spread_pct: Pct = Field(ge=0, le=100)
+    minimum_price_usd: Decimal = Field(gt=0)
+    minimum_average_daily_dollar_volume_usd: Decimal = Field(gt=0)
+    avoid_new_entry_before_earnings_trading_days: int = Field(ge=0)
+    avoid_new_entry_after_earnings_trading_days: int = Field(ge=0)
+    reconciliation_quantity_tolerance: Decimal = Field(ge=0)
+
+
+class CryptoSettings(StrictModel):
+    enabled: bool
+    max_total_crypto_exposure_pct: Pct = Field(ge=0, le=100)
+    max_single_crypto_exposure_pct: Pct = Field(ge=0, le=100)
+    initial_symbol_allowlist: tuple[str, ...] = Field(min_length=1)
+    max_spread_pct: Pct = Field(ge=0, le=100)
+    leverage_allowed: Literal[False]
+    reconciliation_quantity_tolerance: Decimal = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_crypto_limits(self) -> Self:
+        if self.max_single_crypto_exposure_pct > self.max_total_crypto_exposure_pct:
+            raise ValueError("single-crypto exposure cannot exceed total crypto exposure")
+        if len(set(self.initial_symbol_allowlist)) != len(self.initial_symbol_allowlist):
+            raise ValueError("crypto symbol allowlist cannot contain duplicates")
+        return self
+
+
+class PredictionSettings(StrictModel):
+    simulation_enabled: bool
+    live_enabled: Literal[False]
+    future_max_single_contract_risk_pct: Pct = Field(ge=0, le=100)
+    future_max_total_exposure_pct: Pct = Field(ge=0, le=100)
+
+
+class FreshnessSettings(StrictModel):
+    max_executable_quote_age_seconds: Seconds = Field(gt=0)
+    max_account_snapshot_age_seconds: Seconds = Field(gt=0)
+    max_broker_health_age_seconds: Seconds = Field(gt=0)
+    max_broker_review_age_seconds: Seconds = Field(gt=0)
+    max_preflight_age_seconds: Seconds = Field(gt=0)
+    max_clock_drift_seconds: Seconds = Field(gt=0)
+
+
+class AuthorizationSettings(StrictModel):
+    activation_lifetime_seconds: int = Field(ge=1)
+    live_lease_lifetime_seconds: int = Field(ge=1)
+
+
+class RuntimeSettings(StrictModel):
+    start_paused: bool
+    broker_timeout_seconds: Seconds = Field(gt=0)
+    shutdown_deadline_seconds: int = Field(ge=1)
+    remainder_order_max_age_seconds: int = Field(ge=1)
+    automatic_live_activation_enabled: Literal[False]
+    automatic_liquidation_enabled: Literal[False]
+    normal_entry_market_orders_allowed: Literal[False]
+    emergency_market_orders_allowed: Literal[False]
+
+
+class MarketDataSettings(StrictModel):
+    canonical_bar_intervals: tuple[BarInterval, ...] = Field(min_length=1)
+    max_data_age_bars: int = Field(ge=0)
+    max_anomaly_change_pct: Pct = Field(ge=0, le=100)
+    max_cross_response_timestamp_skew_seconds: Seconds = Field(ge=0)
+    interpolated_bars_allowed: Literal[False]
+
+    @model_validator(mode="after")
+    def validate_unique_intervals(self) -> Self:
+        if len(set(self.canonical_bar_intervals)) != len(self.canonical_bar_intervals):
+            raise ValueError("canonical bar intervals cannot contain duplicates")
+        return self
+
+
+class ResearchSettings(StrictModel):
+    seed: int = Field(ge=0)
+    walk_forward_folds: int = Field(ge=2)
+    embargo_bars: int = Field(ge=0)
+    monte_carlo_iterations: int = Field(ge=1)
+    assumptions_validated: bool
+    evidence_promotable: bool
+
+    @model_validator(mode="after")
+    def unvalidated_research_is_not_promotable(self) -> Self:
+        if self.evidence_promotable and not self.assumptions_validated:
+            raise ValueError("research evidence cannot be promotable before assumptions validate")
+        return self
+
+
+class SimulationSettings(StrictModel):
+    rejection_probability_pct: Pct = Field(ge=0, le=100)
+    no_fill_probability_pct: Pct = Field(ge=0, le=100)
+    full_fill_probability_pct: Pct = Field(ge=0, le=100)
+    partial_fill_probability_pct: Pct = Field(ge=0, le=100)
+    partial_fill_min_pct: Pct = Field(gt=0, le=100)
+    partial_fill_max_pct: Pct = Field(gt=0, le=100)
+    latency_milliseconds: int = Field(ge=0)
+    cancel_race_probability_pct: Pct = Field(ge=0, le=100)
+    same_bar_fills_allowed: Literal[False]
+    market_session_rules_enforced: Literal[True]
+    assumptions_validated: bool
+    evidence_promotable: bool
+
+    @model_validator(mode="after")
+    def validate_simulation_assumptions(self) -> Self:
+        total = (
+            self.rejection_probability_pct
+            + self.no_fill_probability_pct
+            + self.full_fill_probability_pct
+            + self.partial_fill_probability_pct
+        )
+        if total != Decimal("100"):
+            raise ValueError("simulation outcome probabilities must total 100 whole-percent units")
+        if self.partial_fill_min_pct > self.partial_fill_max_pct:
+            raise ValueError("partial fill minimum cannot exceed maximum")
+        if self.evidence_promotable and not self.assumptions_validated:
+            raise ValueError("simulation evidence cannot be promotable before assumptions validate")
+        return self
+
+
+class CostSettings(StrictModel):
+    assumed_equity_spread_pct: Pct = Field(ge=0, le=100)
+    assumed_crypto_spread_pct: Pct = Field(ge=0, le=100)
+    assumed_prediction_spread_pct: Pct = Field(ge=0, le=100)
+    assumed_slippage_pct: Pct = Field(ge=0, le=100)
+    max_slippage_pct: Pct = Field(ge=0, le=100)
+    equity_commission_usd: Decimal = Field(ge=0)
+    crypto_fee_pct: Pct = Field(ge=0, le=100)
+    prediction_fee_pct: Pct = Field(ge=0, le=100)
+    stressed_cost_multiplier: Decimal = Field(ge=1)
+    stressed_fill_probability_pct: Pct = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_cost_bounds(self) -> Self:
+        if self.assumed_slippage_pct > self.max_slippage_pct:
+            raise ValueError("assumed slippage cannot exceed the configured maximum")
+        return self
+
+
+class RetrySettings(StrictModel):
+    read_attempts: int = Field(ge=1)
+    initial_backoff_seconds: Seconds = Field(ge=0)
+    max_backoff_seconds: Seconds = Field(ge=0)
+    write_attempts: Literal[1]
+
+    @model_validator(mode="after")
+    def validate_backoff(self) -> Self:
+        if self.initial_backoff_seconds > self.max_backoff_seconds:
+            raise ValueError("initial backoff cannot exceed maximum backoff")
+        return self
+
+
+class SchedulerSettings(StrictModel):
+    equity_reconciliation_cadence_seconds: int = Field(ge=1)
+    crypto_reconciliation_cadence_seconds: int = Field(ge=1)
+    broker_health_cadence_seconds: int = Field(ge=1)
+    heartbeat_cadence_seconds: int = Field(ge=1)
+    performance_report_cadence_seconds: int = Field(ge=1)
+    security_report_cadence_seconds: int = Field(ge=1)
+
+
+class MonitoringSettings(StrictModel):
+    host: str = Field(min_length=1)
+    port: int = Field(ge=1, le=65535)
+    container_loopback_publish: bool
+    webhook_attempts: int = Field(ge=1)
+    webhook_timeout_seconds: Seconds = Field(gt=0)
+    alert_deduplication_window_seconds: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_bind_policy(self) -> Self:
+        if self.host == "127.0.0.1":
+            return self
+        if self.host == "0.0.0.0" and self.container_loopback_publish:
+            return self
+        raise ValueError("monitoring must bind loopback or verified container loopback publish")
+
+
+class PromotionSettings(StrictModel):
+    paper_min_eligible_unique_cycles: int = Field(ge=1)
+    shadow_min_calendar_days: int = Field(ge=1)
+    micro_order_review_interval: int = Field(ge=1)
+    normal_min_combined_calendar_days: int = Field(ge=1)
+    normal_min_valid_observations: int = Field(ge=1)
+    clean_reconciliation_required: Literal[True]
+    no_critical_security_findings_required: Literal[True]
+    current_manual_acknowledgement_required: Literal[True]
+    pause_on_unknown_order_state: Literal[True]
+
+
+class LlmReportingSettings(StrictModel):
+    enabled: bool
+    daily_token_budget: int = Field(ge=0)
+    monthly_token_budget: int = Field(ge=0)
+    timeout_seconds: Seconds = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_token_budgets(self) -> Self:
+        if self.monthly_token_budget < self.daily_token_budget:
+            raise ValueError("monthly LLM budget cannot be below daily budget")
+        return self
+
+
+class BackupSettings(StrictModel):
+    destination: str = Field(min_length=1)
+    cadence_seconds: int = Field(ge=1)
+    retention_daily_archives: int = Field(ge=1)
+    restore_test_cadence_seconds: int = Field(ge=1)
+    encryption_required: Literal[True]
+
+
+class EquityStrategySettings(StrictModel):
+    short_windows: tuple[int, ...] = Field(min_length=1)
+    long_windows: tuple[int, ...] = Field(min_length=1)
+    regime_multipliers: tuple[Decimal, ...] = Field(min_length=1)
+    bar_interval: BarInterval
+    maximum_holding_bars: int = Field(ge=1)
+    stop_loss_atr_multiplier: Decimal = Field(gt=0)
+    exit_reward_to_initial_risk: Decimal = Field(gt=0)
+    exit_on_regime_change: bool
+    mean_reversion_enabled: Literal[False]
+
+    @model_validator(mode="after")
+    def validate_equity_grid(self) -> Self:
+        if tuple(sorted(set(self.short_windows))) != self.short_windows:
+            raise ValueError("equity short windows must be unique and increasing")
+        if tuple(sorted(set(self.long_windows))) != self.long_windows:
+            raise ValueError("equity long windows must be unique and increasing")
+        if max(self.short_windows) >= min(self.long_windows):
+            raise ValueError("equity short windows must remain below long windows")
+        return self
+
+
+class CryptoStrategySettings(StrictModel):
+    bar_intervals: tuple[BarInterval, ...] = Field(min_length=1)
+    fast_windows: tuple[int, ...] = Field(min_length=1)
+    slow_windows: tuple[int, ...] = Field(min_length=1)
+    breakout_windows: tuple[int, ...] = Field(min_length=1)
+    maximum_holding_bars: int = Field(ge=1)
+    stop_loss_atr_multiplier: Decimal = Field(gt=0)
+    exit_reward_to_initial_risk: Decimal = Field(gt=0)
+    cash_regime_for_negative_trend: Literal[True]
+
+
+class PredictionResearchSettings(StrictModel):
+    seed: int = Field(ge=0)
+    minimum_margin_of_safety_pct: Pct = Field(gt=0, le=100)
+    calibration_bins: int = Field(ge=2)
+    minimum_samples_per_bin: int = Field(ge=1)
+    maximum_holding_bars: int = Field(ge=1)
+    live_eligible: Literal[False]
+
+
+class AppConfig(StrictModel):
+    mode: ExecutionMode
+    live_trading_enabled: bool
+    portfolio: PortfolioSettings
+    position_risk: PositionRiskSettings
+    loss_limits: LossLimitSettings
+    activity: ActivitySettings
+    equities: EquitySettings
+    crypto: CryptoSettings
+    prediction_markets: PredictionSettings
+    freshness: FreshnessSettings
+    authorization: AuthorizationSettings
+    runtime: RuntimeSettings
+    market_data: MarketDataSettings
+    research: ResearchSettings
+    simulation: SimulationSettings
+    costs: CostSettings
+    retry: RetrySettings
+    scheduler: SchedulerSettings
+    monitoring: MonitoringSettings
+    promotion: PromotionSettings
+    llm_reporting: LlmReportingSettings
+    backup: BackupSettings
+    equity_strategies: EquityStrategySettings
+    crypto_strategies: CryptoStrategySettings
+    prediction_research: PredictionResearchSettings
+
+    @model_validator(mode="after")
+    def live_flag_never_unpauses_startup(self) -> Self:
+        if self.live_trading_enabled and not self.runtime.start_paused:
+            raise ValueError("live trading flag cannot unpause startup")
+        return self
+
+
+class SafetyEnvelope(StrictModel):
+    """Release-level bounds that mode and environment values can only tighten."""
+
+    allowed_modes: tuple[ExecutionMode, ...] = Field(min_length=1)
+    live_trading_permitted: bool
+    prediction_live_permitted: Literal[False]
+    portfolio: PortfolioSettings
+    position_risk: PositionRiskSettings
+    loss_limits: LossLimitSettings
+    activity: ActivitySettings
+    equities: EquitySettings
+    crypto: CryptoSettings
+    prediction_markets: PredictionSettings
+    freshness: FreshnessSettings
+    authorization: AuthorizationSettings
+    runtime: RuntimeSettings
+    market_data: MarketDataSettings
+    research: ResearchSettings
+    simulation: SimulationSettings
+    costs: CostSettings
+    retry: RetrySettings
+    promotion: PromotionSettings
+    llm_reporting: LlmReportingSettings
+    micro_max_order_notional_usd: Decimal = Field(ge=0)
+    micro_max_gross_exposure_usd: Decimal = Field(ge=0)
+    micro_max_new_orders_per_day: int = Field(ge=0)

@@ -1,0 +1,7 @@
+# Offline mode remains paused by default; an explicit one-shot command may construct it.
+mode: backtest
+live_trading_enabled: false
+runtime:
+  start_paused: true
+prediction_markets:
+  live_enabled: false

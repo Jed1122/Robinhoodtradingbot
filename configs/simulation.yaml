@@ -1,0 +1,7 @@
+# Recorded-replay mode has no live reads or writes and remains paused by default.
+mode: simulation
+live_trading_enabled: false
+runtime:
+  start_paused: true
+prediction_markets:
+  live_enabled: false

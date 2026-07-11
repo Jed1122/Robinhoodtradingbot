@@ -1,0 +1,12 @@
+# Micro-live is still locked and paused; this overlay can only tighten release caps.
+mode: micro_live
+live_trading_enabled: false
+portfolio:
+  max_gross_exposure_usd: 20
+activity:
+  max_new_orders_per_day: 2
+  max_order_notional_usd: 5
+runtime:
+  start_paused: true
+prediction_markets:
+  live_enabled: false

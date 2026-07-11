@@ -1,0 +1,230 @@
+# Safe baseline. Percentages are whole-percent units (0.50 means 0.50%).
+# Unspecified research, fill, cost, and operational numbers below are conservative
+# deterministic baseline assumptions; validation flags keep their evidence non-promotable.
+mode: backtest
+live_trading_enabled: false
+
+portfolio:
+  expected_starting_equity_usd: 100
+  live_account_equity_ceiling_usd: 150
+  max_total_gross_exposure_pct: 60
+  min_cash_reserve_pct: 40
+  max_open_positions: 5
+  max_gross_exposure_usd: 60
+
+position_risk:
+  max_risk_per_trade_pct: 0.50
+  max_position_notional_pct: 15
+  max_correlated_group_exposure_pct: 25
+  minimum_reward_to_initial_risk: 2.0
+  averaging_down_allowed: false
+  pyramiding_allowed: false
+
+loss_limits:
+  max_daily_loss_pct: 2
+  max_weekly_loss_pct: 5
+  max_peak_to_trough_drawdown_pct: 10
+  consecutive_loss_pause_count: 3
+  consecutive_loss_pause_minutes: 240
+
+activity:
+  max_new_orders_per_day: 3
+  max_orders_per_symbol_per_day: 1
+  minimum_minutes_between_new_orders: 30
+  max_order_notional_usd: 15
+
+equities:
+  enabled: true
+  long_only: true
+  margin_allowed: false
+  short_sales_allowed: false
+  options_allowed: false
+  leveraged_etfs_allowed: false
+  inverse_etfs_allowed: false
+  otc_allowed: false
+  microcaps_allowed: false
+  max_spread_pct: 0.35
+  minimum_price_usd: 5
+  minimum_average_daily_dollar_volume_usd: 50000000
+  avoid_new_entry_before_earnings_trading_days: 2
+  avoid_new_entry_after_earnings_trading_days: 1
+  reconciliation_quantity_tolerance: 0
+
+crypto:
+  enabled: true
+  max_total_crypto_exposure_pct: 20
+  max_single_crypto_exposure_pct: 10
+  initial_symbol_allowlist:
+    - BTC-USD
+    - ETH-USD
+  max_spread_pct: 0.60
+  leverage_allowed: false
+  reconciliation_quantity_tolerance: 0
+
+prediction_markets:
+  simulation_enabled: true
+  live_enabled: false
+  future_max_single_contract_risk_pct: 2
+  future_max_total_exposure_pct: 10
+
+freshness:
+  max_executable_quote_age_seconds: 5
+  max_account_snapshot_age_seconds: 30
+  max_broker_health_age_seconds: 30
+  max_broker_review_age_seconds: 30
+  max_preflight_age_seconds: 300
+  max_clock_drift_seconds: 2
+
+authorization:
+  activation_lifetime_seconds: 900
+  live_lease_lifetime_seconds: 28800
+
+runtime:
+  start_paused: true
+  broker_timeout_seconds: 10 # Baseline assumption pending provider response validation.
+  shutdown_deadline_seconds: 30 # Baseline assumption pending shutdown fault testing.
+  remainder_order_max_age_seconds: 300 # Baseline assumption pending fill-policy validation.
+  automatic_live_activation_enabled: false
+  automatic_liquidation_enabled: false
+  normal_entry_market_orders_allowed: false
+  emergency_market_orders_allowed: false
+
+market_data:
+  canonical_bar_intervals:
+    - one_minute
+    - five_minute
+    - one_hour
+    - four_hour
+    - one_day
+  max_data_age_bars: 1 # Baseline assumption; order-time quotes remain separately required.
+  max_anomaly_change_pct: 5 # Baseline assumption; unconfirmed larger changes are quarantined.
+  max_cross_response_timestamp_skew_seconds: 1 # Baseline assumption.
+  interpolated_bars_allowed: false
+
+research:
+  seed: 20260710
+  walk_forward_folds: 5 # Baseline assumption pending data-volume validation.
+  embargo_bars: 1 # Baseline assumption pending overlap analysis.
+  monte_carlo_iterations: 1000 # Baseline deterministic assumption.
+  assumptions_validated: false
+  evidence_promotable: false
+
+simulation:
+  # Baseline outcome assumptions; they sum to 100 and are not promotion evidence.
+  rejection_probability_pct: 5
+  no_fill_probability_pct: 35
+  full_fill_probability_pct: 40
+  partial_fill_probability_pct: 20
+  partial_fill_min_pct: 10
+  partial_fill_max_pct: 50
+  latency_milliseconds: 500
+  cancel_race_probability_pct: 5
+  same_bar_fills_allowed: false
+  market_session_rules_enforced: true
+  assumptions_validated: false
+  evidence_promotable: false
+
+costs:
+  # Conservative baseline assumptions pending instrument/provider evidence.
+  assumed_equity_spread_pct: 0.35
+  assumed_crypto_spread_pct: 0.60
+  assumed_prediction_spread_pct: 1.00
+  assumed_slippage_pct: 0.25
+  max_slippage_pct: 0.50
+  equity_commission_usd: 0
+  crypto_fee_pct: 0.50
+  prediction_fee_pct: 1.00
+  stressed_cost_multiplier: 2.0
+  stressed_fill_probability_pct: 25
+
+retry:
+  read_attempts: 3
+  initial_backoff_seconds: 0.25
+  max_backoff_seconds: 2
+  write_attempts: 1
+
+scheduler:
+  equity_reconciliation_cadence_seconds: 60
+  crypto_reconciliation_cadence_seconds: 60
+  broker_health_cadence_seconds: 30 # Baseline assumption matching health freshness.
+  heartbeat_cadence_seconds: 30 # Baseline assumption pending operations validation.
+  performance_report_cadence_seconds: 86400
+  security_report_cadence_seconds: 604800
+
+monitoring:
+  host: 127.0.0.1
+  port: 8080
+  container_loopback_publish: false
+  webhook_attempts: 3 # Alerts are idempotent and have no trading capability.
+  webhook_timeout_seconds: 5 # Baseline assumption pending sink validation.
+  alert_deduplication_window_seconds: 300 # Baseline assumption.
+
+promotion:
+  paper_min_eligible_unique_cycles: 100
+  shadow_min_calendar_days: 7
+  micro_order_review_interval: 10
+  normal_min_combined_calendar_days: 30
+  normal_min_valid_observations: 100
+  clean_reconciliation_required: true
+  no_critical_security_findings_required: true
+  current_manual_acknowledgement_required: true
+  pause_on_unknown_order_state: true
+
+llm_reporting:
+  enabled: false
+  daily_token_budget: 10000 # Baseline reporting-only budget; feature remains disabled.
+  monthly_token_budget: 100000 # Baseline reporting-only budget; feature remains disabled.
+  timeout_seconds: 30 # Baseline reporting-only timeout.
+
+backup:
+  destination: /var/lib/trading-bot/backups # Local encrypted staging; remote reference stays external.
+  cadence_seconds: 86400
+  retention_daily_archives: 30
+  restore_test_cadence_seconds: 604800 # Baseline weekly restore-test assumption.
+  encryption_required: true
+
+equity_strategies:
+  short_windows:
+    - 20
+    - 30
+    - 50
+  long_windows:
+    - 100
+    - 150
+    - 200
+  regime_multipliers:
+    - 1
+    - 0.5
+    - 0
+  bar_interval: one_day
+  maximum_holding_bars: 100 # Baseline assumption pending research validation.
+  stop_loss_atr_multiplier: 2.0 # Baseline assumption pending research validation.
+  exit_reward_to_initial_risk: 2.0 # Baseline assumption; not promotion evidence.
+  exit_on_regime_change: true
+  mean_reversion_enabled: false
+
+crypto_strategies:
+  bar_intervals:
+    - four_hour
+    - one_day
+  fast_windows:
+    - 20
+    - 50
+  slow_windows:
+    - 100
+    - 200
+  breakout_windows:
+    - 20
+    - 50
+  maximum_holding_bars: 180 # Baseline assumption pending research validation.
+  stop_loss_atr_multiplier: 2.5 # Baseline assumption pending research validation.
+  exit_reward_to_initial_risk: 2.0 # Baseline assumption; not promotion evidence.
+  cash_regime_for_negative_trend: true
+
+prediction_research:
+  seed: 20260710
+  minimum_margin_of_safety_pct: 5 # Baseline assumption pending calibration evidence.
+  calibration_bins: 10 # Baseline assumption pending sample-size validation.
+  minimum_samples_per_bin: 30 # Baseline assumption pending sample-size validation.
+  maximum_holding_bars: 1 # Baseline research-only assumption.
+  live_eligible: false

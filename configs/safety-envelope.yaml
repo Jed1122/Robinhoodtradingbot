@@ -1,0 +1,168 @@
+# Non-overridable release envelope. Percentages use whole-percent units.
+allowed_modes:
+  - backtest
+  - simulation
+  - paper
+  - shadow
+  - micro_live
+  - normal_live
+live_trading_permitted: true
+prediction_live_permitted: false
+
+portfolio:
+  expected_starting_equity_usd: 100
+  live_account_equity_ceiling_usd: 150
+  max_total_gross_exposure_pct: 60
+  min_cash_reserve_pct: 40
+  max_open_positions: 5
+  max_gross_exposure_usd: 60
+
+position_risk:
+  max_risk_per_trade_pct: 0.50
+  max_position_notional_pct: 15
+  max_correlated_group_exposure_pct: 25
+  minimum_reward_to_initial_risk: 2.0
+  averaging_down_allowed: false
+  pyramiding_allowed: false
+
+loss_limits:
+  max_daily_loss_pct: 2
+  max_weekly_loss_pct: 5
+  max_peak_to_trough_drawdown_pct: 10
+  consecutive_loss_pause_count: 3
+  consecutive_loss_pause_minutes: 240
+
+activity:
+  max_new_orders_per_day: 3
+  max_orders_per_symbol_per_day: 1
+  minimum_minutes_between_new_orders: 30
+  max_order_notional_usd: 15
+
+equities:
+  enabled: true
+  long_only: true
+  margin_allowed: false
+  short_sales_allowed: false
+  options_allowed: false
+  leveraged_etfs_allowed: false
+  inverse_etfs_allowed: false
+  otc_allowed: false
+  microcaps_allowed: false
+  max_spread_pct: 0.35
+  minimum_price_usd: 5
+  minimum_average_daily_dollar_volume_usd: 50000000
+  avoid_new_entry_before_earnings_trading_days: 2
+  avoid_new_entry_after_earnings_trading_days: 1
+  reconciliation_quantity_tolerance: 0
+
+crypto:
+  enabled: true
+  max_total_crypto_exposure_pct: 20
+  max_single_crypto_exposure_pct: 10
+  initial_symbol_allowlist:
+    - BTC-USD
+    - ETH-USD
+  max_spread_pct: 0.60
+  leverage_allowed: false
+  reconciliation_quantity_tolerance: 0
+
+prediction_markets:
+  simulation_enabled: true
+  live_enabled: false
+  future_max_single_contract_risk_pct: 2
+  future_max_total_exposure_pct: 10
+
+freshness:
+  max_executable_quote_age_seconds: 5
+  max_account_snapshot_age_seconds: 30
+  max_broker_health_age_seconds: 30
+  max_broker_review_age_seconds: 30
+  max_preflight_age_seconds: 300
+  max_clock_drift_seconds: 2
+
+authorization:
+  activation_lifetime_seconds: 900
+  live_lease_lifetime_seconds: 86400
+
+runtime:
+  start_paused: true
+  broker_timeout_seconds: 10
+  shutdown_deadline_seconds: 30
+  remainder_order_max_age_seconds: 300
+  automatic_live_activation_enabled: false
+  automatic_liquidation_enabled: false
+  normal_entry_market_orders_allowed: false
+  emergency_market_orders_allowed: false
+
+market_data:
+  canonical_bar_intervals:
+    - one_minute
+    - five_minute
+    - one_hour
+    - four_hour
+    - one_day
+  max_data_age_bars: 1
+  max_anomaly_change_pct: 5
+  max_cross_response_timestamp_skew_seconds: 1
+  interpolated_bars_allowed: false
+
+research:
+  seed: 20260710
+  walk_forward_folds: 5
+  embargo_bars: 1
+  monte_carlo_iterations: 1000
+  assumptions_validated: false
+  evidence_promotable: false
+
+simulation:
+  rejection_probability_pct: 5
+  no_fill_probability_pct: 35
+  full_fill_probability_pct: 40
+  partial_fill_probability_pct: 20
+  partial_fill_min_pct: 10
+  partial_fill_max_pct: 50
+  latency_milliseconds: 500
+  cancel_race_probability_pct: 5
+  same_bar_fills_allowed: false
+  market_session_rules_enforced: true
+  assumptions_validated: false
+  evidence_promotable: false
+
+costs:
+  assumed_equity_spread_pct: 0.35
+  assumed_crypto_spread_pct: 0.60
+  assumed_prediction_spread_pct: 1.00
+  assumed_slippage_pct: 0.25
+  max_slippage_pct: 0.50
+  equity_commission_usd: 0
+  crypto_fee_pct: 0.50
+  prediction_fee_pct: 1.00
+  stressed_cost_multiplier: 2.0
+  stressed_fill_probability_pct: 25
+
+retry:
+  read_attempts: 3
+  initial_backoff_seconds: 0.25
+  max_backoff_seconds: 2
+  write_attempts: 1
+
+promotion:
+  paper_min_eligible_unique_cycles: 100
+  shadow_min_calendar_days: 7
+  micro_order_review_interval: 10
+  normal_min_combined_calendar_days: 30
+  normal_min_valid_observations: 100
+  clean_reconciliation_required: true
+  no_critical_security_findings_required: true
+  current_manual_acknowledgement_required: true
+  pause_on_unknown_order_state: true
+
+llm_reporting:
+  enabled: false
+  daily_token_budget: 10000
+  monthly_token_budget: 100000
+  timeout_seconds: 30
+
+micro_max_order_notional_usd: 5
+micro_max_gross_exposure_usd: 20
+micro_max_new_orders_per_day: 2

@@ -1,0 +1,7 @@
+# Normal-live never auto-promotes, auto-activates, or starts unpaused.
+mode: normal_live
+live_trading_enabled: false
+runtime:
+  start_paused: true
+prediction_markets:
+  live_enabled: false
