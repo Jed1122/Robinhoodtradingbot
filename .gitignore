@@ -1,1 +1,59 @@
 .worktrees/
+
+# Local Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.cache/
+
+# Environment files (the safe template is committed)
+.env*
+!.env.example
+
+# Local databases and journals
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Authorization and credential artifacts
+.auth/
+.credentials/
+.oauth/
+.oauth-store/
+authorization-artifacts/
+oauth-store/
+*.token
+*.tokens.json
+
+# Generated reports and coverage
+reports/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Terraform state and local metadata
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Private keys and secret bundles
+*.key
+*.pem
+*.p8
+*.p12
+*.pfx
+*.agekey
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*

@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling==1.31.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "robinhood-multi-asset-trading-system"
+version = "0.1.0"
+description = "Fail-closed research and trading system for official Robinhood interfaces."
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "aiosqlite==0.22.1",
+  "alembic==1.18.5",
+  "fastapi==0.139.0",
+  "httpx==0.28.1",
+  "mcp==1.28.1",
+  "prometheus-client==0.25.0",
+  "pydantic==2.13.4",
+  "pydantic-settings==2.14.2",
+  "PyNaCl==1.6.2",
+  "PyYAML==6.0.3",
+  "SQLAlchemy==2.0.51",
+  "structlog==26.1.0",
+  "typer==0.26.8",
+  "uvicorn==0.51.0",
+]
+
+[project.scripts]
+trader = "trading_bot.cli.main:main"
+
+[dependency-groups]
+dev = [
+  "bandit[toml]==1.9.4",
+  "cyclonedx-bom==7.3.0",
+  "hypothesis==6.156.6",
+  "mypy==2.2.0",
+  "pip-audit==2.10.1",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov==7.1.0",
+  "respx==0.23.1",
+  "ruff==0.15.21",
+  "types-PyYAML==6.0.12.20260518",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trading_bot"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config -m 'not authenticated'"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "authenticated: operator-run test that may read an authenticated official interface; never selected by default or CI",
+  "external_capability_missing: verifies a capability remains explicitly locked when reproducible external evidence is absent",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["trading_bot"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
