@@ -1,11 +1,15 @@
 """Merge, environment, and canonical hash tests for configuration loading."""
 
+import traceback
+from collections.abc import Mapping, Sequence
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 import yaml
 
 from trading_bot.config import ConfigLoadError, load_config
+from trading_bot.config.loader import _environment_overlay, _load_yaml
 
 ROOT = Path(__file__).parents[3]
 CONFIGS = ROOT / "configs"
@@ -77,6 +81,22 @@ def test_nested_environment_values_are_applied() -> None:
 
     assert loaded.config.portfolio.max_open_positions == 4
     assert str(loaded.config.freshness.max_executable_quote_age_seconds) == "4.5"
+
+
+def test_native_environment_integer_boolean_enum_and_list_values_remain_accepted() -> None:
+    loaded = load(
+        environ={
+            "TRADING_BOT__MODE": "backtest",
+            "TRADING_BOT__LIVE_TRADING_ENABLED": "false",
+            "TRADING_BOT__PORTFOLIO__MAX_OPEN_POSITIONS": "4",
+            "TRADING_BOT__CRYPTO__INITIAL_SYMBOL_ALLOWLIST": '["BTC-USD"]',
+        }
+    )
+
+    assert loaded.config.mode.value == "backtest"
+    assert loaded.config.live_trading_enabled is False
+    assert loaded.config.portfolio.max_open_positions == 4
+    assert loaded.config.crypto.initial_symbol_allowlist == ("BTC-USD",)
 
 
 def test_lists_are_replaced_atomically_not_concatenated() -> None:
@@ -192,6 +212,117 @@ def test_unknown_yaml_key_fails(tmp_path: Path) -> None:
     path.write_text("mode: paper\nmystery: true\n", encoding="utf-8")
 
     with pytest.raises(ConfigLoadError):
+        load_config(
+            base_path=CONFIGS / "base.yaml",
+            mode_path=path,
+            safety_path=CONFIGS / "safety-envelope.yaml",
+            environ={},
+        )
+
+
+def _contains_float(value: object) -> bool:
+    if isinstance(value, float):
+        return True
+    if isinstance(value, Mapping):
+        return any(_contains_float(key) or _contains_float(item) for key, item in value.items())
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return any(_contains_float(item) for item in value)
+    return False
+
+
+def test_file_decimal_scalars_are_constructed_directly_as_decimal() -> None:
+    raw = _load_yaml(CONFIGS / "base.yaml")
+
+    assert raw["position_risk"]["max_risk_per_trade_pct"] == Decimal("0.50")
+    assert type(raw["position_risk"]["max_risk_per_trade_pct"]) is Decimal
+    assert not _contains_float(raw)
+
+
+def test_environment_decimal_scalars_are_constructed_directly_as_decimal() -> None:
+    raw = _load_yaml(CONFIGS / "base.yaml")
+    overlay = _environment_overlay(
+        {"TRADING_BOT__FRESHNESS__MAX_EXECUTABLE_QUOTE_AGE_SECONDS": "4.5"},
+        raw,
+    )
+
+    value = overlay["freshness"]["max_executable_quote_age_seconds"]
+    assert value == Decimal("4.5")
+    assert type(value) is Decimal
+    assert not _contains_float(overlay)
+
+
+@pytest.mark.parametrize("scalar", [".nan", ".inf", "-.inf"])
+def test_nonfinite_yaml_decimal_scalars_fail_during_construction(
+    tmp_path: Path, scalar: str
+) -> None:
+    path = tmp_path / "value.yaml"
+    path.write_text(f"value: {scalar}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigLoadError, match="decimal"):
+        _load_yaml(path)
+
+
+def _assert_secret_absent(exc: BaseException) -> None:
+    sentinel = "actual-secret-value"
+    rendered = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    assert sentinel not in str(exc)
+    assert sentinel not in repr(exc)
+    assert sentinel not in rendered
+
+
+def test_pydantic_validation_failure_never_echoes_invalid_value(tmp_path: Path) -> None:
+    path = tmp_path / "paper.yaml"
+    path.write_text("mode: paper\nmystery: actual-secret-value\n", encoding="utf-8")
+
+    with pytest.raises(ConfigLoadError) as captured:
+        load_config(
+            base_path=CONFIGS / "base.yaml",
+            mode_path=path,
+            safety_path=CONFIGS / "safety-envelope.yaml",
+            environ={},
+        )
+
+    _assert_secret_absent(captured.value)
+
+
+def test_malformed_yaml_never_echoes_source_value_in_exception_chain(tmp_path: Path) -> None:
+    path = tmp_path / "paper.yaml"
+    path.write_text("mode: paper\nmystery: [actual-secret-value\n", encoding="utf-8")
+
+    with pytest.raises(ConfigLoadError) as captured:
+        load_config(
+            base_path=CONFIGS / "base.yaml",
+            mode_path=path,
+            safety_path=CONFIGS / "safety-envelope.yaml",
+            environ={},
+        )
+
+    _assert_secret_absent(captured.value)
+
+
+def test_malformed_environment_yaml_never_echoes_source_value() -> None:
+    with pytest.raises(ConfigLoadError) as captured:
+        load(
+            environ={
+                "TRADING_BOT__CRYPTO__INITIAL_SYMBOL_ALLOWLIST": "[actual-secret-value"
+            }
+        )
+
+    _assert_secret_absent(captured.value)
+
+
+def test_unknown_environment_path_never_echoes_supplied_path_value() -> None:
+    with pytest.raises(ConfigLoadError) as captured:
+        load(environ={"TRADING_BOT__ACTUAL-SECRET-VALUE__FIELD": "1"})
+
+    _assert_secret_absent(captured.value)
+
+
+def test_nested_non_string_yaml_key_fails_as_config_error(tmp_path: Path) -> None:
+    path = tmp_path / "paper.yaml"
+    path.write_text("mode: paper\nportfolio:\n  1: 2\n", encoding="utf-8")
+
+    with pytest.raises(ConfigLoadError, match="key"):
         load_config(
             base_path=CONFIGS / "base.yaml",
             mode_path=path,

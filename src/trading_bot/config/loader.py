@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -47,22 +47,50 @@ def _construct_unique_mapping(
     result: dict[Any, Any] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=deep)
+        if not isinstance(key, str):
+            raise ConfigLoadError("configuration mapping key must be a string")
         if key in result:
-            raise ConfigLoadError(f"duplicate YAML key: {key!r}")
+            raise ConfigLoadError("duplicate YAML mapping key")
         result[key] = loader.construct_object(value_node, deep=deep)
     return result
+
+
+def _construct_decimal(
+    loader: _UniqueKeyLoader, node: yaml.ScalarNode
+) -> Decimal:
+    scalar = loader.construct_scalar(node)
+    try:
+        value = Decimal(scalar.replace("_", ""))
+    except InvalidOperation:
+        raise ConfigLoadError("invalid decimal scalar") from None
+    if not value.is_finite():
+        raise ConfigLoadError("nonfinite decimal scalar is not allowed")
+    return value
 
 
 _UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
     _construct_unique_mapping,
 )
+_UniqueKeyLoader.add_constructor("tag:yaml.org,2002:float", _construct_decimal)
+
+
+def _validate_mapping_keys(value: Any, depth: int = 0) -> None:
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            if not isinstance(key, str):
+                raise ConfigLoadError(
+                    f"configuration mapping key must be a string at depth {depth}"
+                )
+            _validate_mapping_keys(nested, depth + 1)
+    elif isinstance(value, list):
+        for nested in value:
+            _validate_mapping_keys(nested, depth + 1)
 
 
 def _reject_nulls(value: Any, path: tuple[str, ...] = ()) -> None:
     if value is None:
-        location = ".".join(path) or "<root>"
-        raise ConfigLoadError(f"null configuration value at {location}")
+        raise ConfigLoadError(f"null configuration value at depth {len(path)}")
     if isinstance(value, Mapping):
         for key, nested in value.items():
             _reject_nulls(nested, (*path, str(key)))
@@ -73,15 +101,32 @@ def _reject_nulls(value: Any, path: tuple[str, ...] = ()) -> None:
 
 def _load_yaml(path: Path) -> dict[str, Any]:
     try:
-        loaded = yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
-    except (OSError, yaml.YAMLError) as exc:
-        raise ConfigLoadError(f"cannot load YAML configuration {path}") from exc
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        raise ConfigLoadError("cannot read YAML configuration") from None
+    try:
+        loaded = yaml.load(source, Loader=_UniqueKeyLoader)
+    except ConfigLoadError:
+        raise
+    except yaml.YAMLError:
+        raise ConfigLoadError("malformed YAML configuration") from None
     if not isinstance(loaded, dict):
-        raise ConfigLoadError(f"configuration root must be a mapping: {path}")
-    if not all(isinstance(key, str) for key in loaded):
-        raise ConfigLoadError(f"configuration keys must be strings: {path}")
+        raise ConfigLoadError("configuration root must be a mapping")
+    _validate_mapping_keys(loaded)
     _reject_nulls(loaded)
     return loaded
+
+
+def _parse_environment_value(raw_value: str) -> Any:
+    try:
+        parsed = yaml.load(raw_value, Loader=_UniqueKeyLoader)
+    except ConfigLoadError:
+        raise
+    except yaml.YAMLError:
+        raise ConfigLoadError("malformed environment YAML value") from None
+    _validate_mapping_keys(parsed)
+    _reject_nulls(parsed)
+    return parsed
 
 
 def _value_kind(value: Any) -> str:
@@ -116,11 +161,7 @@ def _merge_mappings(
             merged[key] = _merge_mappings(current, incoming, location)
             continue
         if current_kind != incoming_kind:
-            dotted = ".".join(location)
-            raise ConfigLoadError(
-                f"conflicting configuration type at {dotted}: "
-                f"{current_kind} versus {incoming_kind}"
-            )
+            raise ConfigLoadError("conflicting configuration value types")
         # Lists are replaced atomically; scalars follow normal precedence.
         merged[key] = deepcopy(incoming)
     return merged
@@ -144,12 +185,12 @@ def _validate_environment_path(
     current: Any = config
     for index, segment in enumerate(path):
         if not isinstance(current, Mapping) or segment not in current:
-            raise ConfigLoadError(f"unknown nested environment path: {'.'.join(path)}")
+            raise ConfigLoadError("unknown nested environment path")
         current = current[segment]
         if index < len(path) - 1 and not isinstance(current, Mapping):
-            raise ConfigLoadError(f"unknown nested environment path: {'.'.join(path)}")
+            raise ConfigLoadError("unknown nested environment path")
     if isinstance(current, Mapping):
-        raise ConfigLoadError(f"environment path must identify one leaf: {'.'.join(path)}")
+        raise ConfigLoadError("nested environment path must identify one leaf")
 
 
 def _assign_nested(target: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
@@ -157,7 +198,7 @@ def _assign_nested(target: dict[str, Any], path: tuple[str, ...], value: Any) ->
     for segment in path[:-1]:
         nested = current.setdefault(segment, {})
         if not isinstance(nested, dict):
-            raise ConfigLoadError(f"duplicate environment representation: {'.'.join(path)}")
+            raise ConfigLoadError("duplicate environment representation")
         current = nested
     current[path[-1]] = value
 
@@ -175,27 +216,20 @@ def _environment_overlay(
             suffix = supplied_name[len(ENV_PREFIX) :]
             segments = suffix.split("__")
             if any(not segment for segment in segments):
-                raise ConfigLoadError(f"malformed nested environment path: {supplied_name}")
+                raise ConfigLoadError("malformed nested environment path")
             path = tuple(segment.lower() for segment in segments)
             _validate_environment_path(resolved_yaml, path)
         elif upper_name in ENV_ALIASES:
             path = ENV_ALIASES[upper_name]
         elif upper_name in known_unprefixed_leaves:
-            raise ConfigLoadError(f"unapproved unprefixed configuration alias: {supplied_name}")
+            raise ConfigLoadError("unapproved unprefixed configuration alias")
         else:
             continue
 
         if path in represented:
-            raise ConfigLoadError(
-                "duplicate environment representation for "
-                f"{'.'.join(path)}: {represented[path]} and {supplied_name}"
-            )
+            raise ConfigLoadError("duplicate environment representation")
         represented[path] = supplied_name
-        try:
-            parsed = yaml.safe_load(raw_value)
-        except yaml.YAMLError as exc:
-            raise ConfigLoadError(f"invalid environment value for {supplied_name}") from exc
-        _reject_nulls(parsed, path)
+        parsed = _parse_environment_value(raw_value)
         _assign_nested(overlay, path, parsed)
 
     return overlay
@@ -608,9 +642,7 @@ def load_config(
     selected_mode = mode_path.stem.replace("-", "_")
     declared_mode = mode.get("mode")
     if declared_mode != selected_mode:
-        raise ConfigLoadError(
-            f"mode overlay {mode_path.name} declares inconsistent mode {declared_mode!r}"
-        )
+        raise ConfigLoadError("mode overlay declares a mode inconsistent with its filename")
     merged = _merge_mappings(base, mode)
     environment = _environment_overlay(environ, merged)
     merged = _merge_mappings(merged, environment)
@@ -621,7 +653,18 @@ def load_config(
         config = AppConfig.model_validate(merged)
         envelope = SafetyEnvelope.model_validate(_load_yaml(safety_path))
     except ValidationError as exc:
-        raise ConfigLoadError(f"configuration validation failed: {exc}") from exc
+        error_types = sorted(
+            {
+                str(error["type"])
+                for error in exc.errors(
+                    include_context=False,
+                    include_input=False,
+                    include_url=False,
+                )
+            }
+        )
+        reason = ", ".join(error_types) or "invalid value"
+        raise ConfigLoadError(f"configuration validation failed: {reason}") from None
     enforce_safety_envelope(config, envelope)
     canonical, config_hash = hash_loaded_config(config, envelope)
     return LoadedConfig(

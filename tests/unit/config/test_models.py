@@ -2,13 +2,16 @@
 
 from decimal import Decimal
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
 
 from trading_bot.config import (
     AppConfig,
+    LoadedConfig,
     PredictionSettings,
+    RetrySettings,
     SafetyEnvelope,
     load_config,
 )
@@ -18,7 +21,7 @@ ROOT = Path(__file__).parents[3]
 CONFIGS = ROOT / "configs"
 
 
-def load_backtest():  # type: ignore[no-untyped-def]
+def load_backtest() -> LoadedConfig:
     return load_config(
         base_path=CONFIGS / "base.yaml",
         mode_path=CONFIGS / "backtest.yaml",
@@ -34,13 +37,14 @@ def test_all_models_are_frozen_and_forbid_unknown_keys() -> None:
         type(config).model_validate({**config.model_dump(), "mystery": True})
 
     with pytest.raises(ValidationError, match="frozen"):
-        config.portfolio.max_open_positions = 10  # type: ignore[misc]
+        config.portfolio.max_open_positions = 10
 
     for value in config.__dict__.values():
         if hasattr(value, "model_config"):
             assert value.model_config["extra"] == "forbid"
             assert value.model_config["frozen"] is True
             assert value.model_config["allow_inf_nan"] is False
+            assert value.model_config["hide_input_in_errors"] is True
 
 
 def test_every_graph_field_is_required_in_yaml() -> None:
@@ -175,10 +179,97 @@ def test_prediction_live_is_always_false() -> None:
     with pytest.raises(ValidationError):
         PredictionSettings(
             simulation_enabled=True,
-            live_enabled=True,
+            live_enabled=True,  # type: ignore[arg-type]
             future_max_single_contract_risk_pct=Decimal("2"),
             future_max_total_exposure_pct=Decimal("10"),
         )
+
+
+def _with_config_value(path: tuple[str, ...], value: Any) -> dict[str, Any]:
+    raw = load_backtest().config.model_dump()
+    target = raw
+    for part in path[:-1]:
+        nested = target[part]
+        assert isinstance(nested, dict)
+        target = cast(dict[str, Any], nested)
+    target[path[-1]] = value
+    return raw
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("portfolio", "max_open_positions"), True),
+        (("portfolio", "max_open_positions"), "5"),
+        (("live_trading_enabled",), 0),
+        (("live_trading_enabled",), 1),
+        (("live_trading_enabled",), "false"),
+        (("position_risk", "averaging_down_allowed"), 0),
+        (("position_risk", "averaging_down_allowed"), "false"),
+        (("equities", "long_only"), 1),
+        (("retry", "write_attempts"), True),
+        (("equity_strategies", "short_windows"), ("20", 30, 50)),
+    ],
+)
+def test_integer_boolean_and_literal_boundaries_reject_coercion(
+    path: tuple[str, ...], value: Any
+) -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(_with_config_value(path, value))
+
+
+def test_native_integer_and_boolean_values_remain_accepted() -> None:
+    raw = _with_config_value(("portfolio", "max_open_positions"), 4)
+    raw["live_trading_enabled"] = False
+    raw["position_risk"]["averaging_down_allowed"] = False
+    raw["equities"]["long_only"] = True
+
+    config = AppConfig.model_validate(raw)
+
+    assert config.portfolio.max_open_positions == 4
+    assert config.live_trading_enabled is False
+    assert config.position_risk.averaging_down_allowed is False
+    assert config.equities.long_only is True
+
+
+def test_integer_literal_rejects_boolean_equivalent() -> None:
+    with pytest.raises(ValidationError):
+        RetrySettings(
+            read_attempts=3,
+            initial_backoff_seconds=Decimal("0.25"),
+            max_backoff_seconds=Decimal("2"),
+            write_attempts=True,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("invalid", [0.5, "0.5", True])
+def test_decimal_boundary_rejects_float_string_and_bool(invalid: object) -> None:
+    raw = _with_config_value(("position_risk", "max_risk_per_trade_pct"), invalid)
+
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(raw)
+
+
+@pytest.mark.parametrize("valid", [Decimal("0.5"), 1])
+def test_decimal_boundary_accepts_decimal_and_exact_non_bool_integer(valid: object) -> None:
+    raw = _with_config_value(("position_risk", "max_risk_per_trade_pct"), valid)
+
+    config = AppConfig.model_validate(raw)
+
+    assert isinstance(valid, (Decimal, int))
+    assert type(config.position_risk.max_risk_per_trade_pct) is Decimal
+    assert config.position_risk.max_risk_per_trade_pct == Decimal(valid)
+
+
+@pytest.mark.parametrize("invalid", [0.5, "0.5", True])
+def test_decimal_tuple_members_reject_coercion(invalid: object) -> None:
+    raw = _with_config_value(
+        ("equity_strategies", "regime_multipliers"),
+        (Decimal("1"), invalid, Decimal("0")),
+    )
+
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(raw)
 
 
 def test_null_and_invalid_scalar_types_fail() -> None:
@@ -204,10 +295,5 @@ def test_nonfinite_decimal_in_tuple_is_rejected() -> None:
     raw = config.model_dump()
     raw["equity_strategies"]["regime_multipliers"] = [Decimal("1"), Decimal("NaN")]
 
-    with pytest.raises(ValidationError):
-        type(config).model_validate(raw)
-
-    raw = config.model_dump()
-    raw["runtime"]["start_paused"] = "sometimes"
     with pytest.raises(ValidationError):
         type(config).model_validate(raw)

@@ -1,29 +1,68 @@
 """Strict, immutable configuration models for every operating mode."""
 
 from decimal import Decimal
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    model_validator,
+)
 
 from trading_bot.domain import BarInterval, ExecutionMode
 
-Pct = Decimal
-Seconds = Decimal
+
+def _validate_config_decimal(value: object) -> Decimal:
+    if type(value) is Decimal:
+        return value
+    if type(value) is int:
+        return Decimal(value)
+    raise ValueError("decimal input must be Decimal or an exact integer")
+
+
+def _validate_strict_literal_bool(value: object) -> bool:
+    if type(value) is not bool:
+        raise ValueError("literal boolean input must be a boolean")
+    return value
+
+
+def _validate_strict_literal_int(value: object) -> int:
+    if type(value) is not int:
+        raise ValueError("literal integer input must be an integer")
+    return value
+
+
+ConfigDecimal = Annotated[Decimal, BeforeValidator(_validate_config_decimal)]
+StrictFalse = Annotated[Literal[False], BeforeValidator(_validate_strict_literal_bool)]
+StrictTrue = Annotated[Literal[True], BeforeValidator(_validate_strict_literal_bool)]
+StrictOne = Annotated[Literal[1], BeforeValidator(_validate_strict_literal_int)]
+Pct = ConfigDecimal
+Seconds = ConfigDecimal
 
 
 class StrictModel(BaseModel):
     """Base for the only canonical configuration graph."""
 
-    model_config = ConfigDict(allow_inf_nan=False, extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        allow_inf_nan=False,
+        extra="forbid",
+        frozen=True,
+        hide_input_in_errors=True,
+    )
 
 
 class PortfolioSettings(StrictModel):
-    expected_starting_equity_usd: Decimal = Field(gt=0)
-    live_account_equity_ceiling_usd: Decimal = Field(gt=0)
+    expected_starting_equity_usd: ConfigDecimal = Field(gt=0)
+    live_account_equity_ceiling_usd: ConfigDecimal = Field(gt=0)
     max_total_gross_exposure_pct: Pct = Field(ge=0, le=100)
     min_cash_reserve_pct: Pct = Field(ge=0, le=100)
-    max_open_positions: int = Field(ge=0)
-    max_gross_exposure_usd: Decimal = Field(ge=0)
+    max_open_positions: StrictInt = Field(ge=0)
+    max_gross_exposure_usd: ConfigDecimal = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_portfolio_bounds(self) -> Self:
@@ -40,17 +79,17 @@ class PositionRiskSettings(StrictModel):
     max_risk_per_trade_pct: Pct = Field(ge=0, le=100)
     max_position_notional_pct: Pct = Field(ge=0, le=100)
     max_correlated_group_exposure_pct: Pct = Field(ge=0, le=100)
-    minimum_reward_to_initial_risk: Decimal = Field(gt=0)
-    averaging_down_allowed: Literal[False]
-    pyramiding_allowed: Literal[False]
+    minimum_reward_to_initial_risk: ConfigDecimal = Field(gt=0)
+    averaging_down_allowed: StrictFalse
+    pyramiding_allowed: StrictFalse
 
 
 class LossLimitSettings(StrictModel):
     max_daily_loss_pct: Pct = Field(ge=0, le=100)
     max_weekly_loss_pct: Pct = Field(ge=0, le=100)
     max_peak_to_trough_drawdown_pct: Pct = Field(ge=0, le=100)
-    consecutive_loss_pause_count: int = Field(ge=1)
-    consecutive_loss_pause_minutes: int = Field(ge=1)
+    consecutive_loss_pause_count: StrictInt = Field(ge=1)
+    consecutive_loss_pause_minutes: StrictInt = Field(ge=1)
 
     @model_validator(mode="after")
     def validate_ordered_loss_limits(self) -> Self:
@@ -64,38 +103,38 @@ class LossLimitSettings(StrictModel):
 
 
 class ActivitySettings(StrictModel):
-    max_new_orders_per_day: int = Field(ge=0)
-    max_orders_per_symbol_per_day: int = Field(ge=0)
-    minimum_minutes_between_new_orders: int = Field(ge=0)
-    max_order_notional_usd: Decimal = Field(ge=0)
+    max_new_orders_per_day: StrictInt = Field(ge=0)
+    max_orders_per_symbol_per_day: StrictInt = Field(ge=0)
+    minimum_minutes_between_new_orders: StrictInt = Field(ge=0)
+    max_order_notional_usd: ConfigDecimal = Field(ge=0)
 
 
 class EquitySettings(StrictModel):
-    enabled: bool
-    long_only: Literal[True]
-    margin_allowed: Literal[False]
-    short_sales_allowed: Literal[False]
-    options_allowed: Literal[False]
-    leveraged_etfs_allowed: Literal[False]
-    inverse_etfs_allowed: Literal[False]
-    otc_allowed: Literal[False]
-    microcaps_allowed: Literal[False]
+    enabled: StrictBool
+    long_only: StrictTrue
+    margin_allowed: StrictFalse
+    short_sales_allowed: StrictFalse
+    options_allowed: StrictFalse
+    leveraged_etfs_allowed: StrictFalse
+    inverse_etfs_allowed: StrictFalse
+    otc_allowed: StrictFalse
+    microcaps_allowed: StrictFalse
     max_spread_pct: Pct = Field(ge=0, le=100)
-    minimum_price_usd: Decimal = Field(gt=0)
-    minimum_average_daily_dollar_volume_usd: Decimal = Field(gt=0)
-    avoid_new_entry_before_earnings_trading_days: int = Field(ge=0)
-    avoid_new_entry_after_earnings_trading_days: int = Field(ge=0)
-    reconciliation_quantity_tolerance: Decimal = Field(ge=0)
+    minimum_price_usd: ConfigDecimal = Field(gt=0)
+    minimum_average_daily_dollar_volume_usd: ConfigDecimal = Field(gt=0)
+    avoid_new_entry_before_earnings_trading_days: StrictInt = Field(ge=0)
+    avoid_new_entry_after_earnings_trading_days: StrictInt = Field(ge=0)
+    reconciliation_quantity_tolerance: ConfigDecimal = Field(ge=0)
 
 
 class CryptoSettings(StrictModel):
-    enabled: bool
+    enabled: StrictBool
     max_total_crypto_exposure_pct: Pct = Field(ge=0, le=100)
     max_single_crypto_exposure_pct: Pct = Field(ge=0, le=100)
-    initial_symbol_allowlist: tuple[str, ...] = Field(min_length=1)
+    initial_symbol_allowlist: tuple[StrictStr, ...] = Field(min_length=1)
     max_spread_pct: Pct = Field(ge=0, le=100)
-    leverage_allowed: Literal[False]
-    reconciliation_quantity_tolerance: Decimal = Field(ge=0)
+    leverage_allowed: StrictFalse
+    reconciliation_quantity_tolerance: ConfigDecimal = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_crypto_limits(self) -> Self:
@@ -107,8 +146,8 @@ class CryptoSettings(StrictModel):
 
 
 class PredictionSettings(StrictModel):
-    simulation_enabled: bool
-    live_enabled: Literal[False]
+    simulation_enabled: StrictBool
+    live_enabled: StrictFalse
     future_max_single_contract_risk_pct: Pct = Field(ge=0, le=100)
     future_max_total_exposure_pct: Pct = Field(ge=0, le=100)
 
@@ -123,27 +162,27 @@ class FreshnessSettings(StrictModel):
 
 
 class AuthorizationSettings(StrictModel):
-    activation_lifetime_seconds: int = Field(ge=1)
-    live_lease_lifetime_seconds: int = Field(ge=1)
+    activation_lifetime_seconds: StrictInt = Field(ge=1)
+    live_lease_lifetime_seconds: StrictInt = Field(ge=1)
 
 
 class RuntimeSettings(StrictModel):
-    start_paused: bool
+    start_paused: StrictBool
     broker_timeout_seconds: Seconds = Field(gt=0)
-    shutdown_deadline_seconds: int = Field(ge=1)
-    remainder_order_max_age_seconds: int = Field(ge=1)
-    automatic_live_activation_enabled: Literal[False]
-    automatic_liquidation_enabled: Literal[False]
-    normal_entry_market_orders_allowed: Literal[False]
-    emergency_market_orders_allowed: Literal[False]
+    shutdown_deadline_seconds: StrictInt = Field(ge=1)
+    remainder_order_max_age_seconds: StrictInt = Field(ge=1)
+    automatic_live_activation_enabled: StrictFalse
+    automatic_liquidation_enabled: StrictFalse
+    normal_entry_market_orders_allowed: StrictFalse
+    emergency_market_orders_allowed: StrictFalse
 
 
 class MarketDataSettings(StrictModel):
     canonical_bar_intervals: tuple[BarInterval, ...] = Field(min_length=1)
-    max_data_age_bars: int = Field(ge=0)
+    max_data_age_bars: StrictInt = Field(ge=0)
     max_anomaly_change_pct: Pct = Field(ge=0, le=100)
     max_cross_response_timestamp_skew_seconds: Seconds = Field(ge=0)
-    interpolated_bars_allowed: Literal[False]
+    interpolated_bars_allowed: StrictFalse
 
     @model_validator(mode="after")
     def validate_unique_intervals(self) -> Self:
@@ -153,12 +192,12 @@ class MarketDataSettings(StrictModel):
 
 
 class ResearchSettings(StrictModel):
-    seed: int = Field(ge=0)
-    walk_forward_folds: int = Field(ge=2)
-    embargo_bars: int = Field(ge=0)
-    monte_carlo_iterations: int = Field(ge=1)
-    assumptions_validated: bool
-    evidence_promotable: bool
+    seed: StrictInt = Field(ge=0)
+    walk_forward_folds: StrictInt = Field(ge=2)
+    embargo_bars: StrictInt = Field(ge=0)
+    monte_carlo_iterations: StrictInt = Field(ge=1)
+    assumptions_validated: StrictBool
+    evidence_promotable: StrictBool
 
     @model_validator(mode="after")
     def unvalidated_research_is_not_promotable(self) -> Self:
@@ -174,12 +213,12 @@ class SimulationSettings(StrictModel):
     partial_fill_probability_pct: Pct = Field(ge=0, le=100)
     partial_fill_min_pct: Pct = Field(gt=0, le=100)
     partial_fill_max_pct: Pct = Field(gt=0, le=100)
-    latency_milliseconds: int = Field(ge=0)
+    latency_milliseconds: StrictInt = Field(ge=0)
     cancel_race_probability_pct: Pct = Field(ge=0, le=100)
-    same_bar_fills_allowed: Literal[False]
-    market_session_rules_enforced: Literal[True]
-    assumptions_validated: bool
-    evidence_promotable: bool
+    same_bar_fills_allowed: StrictFalse
+    market_session_rules_enforced: StrictTrue
+    assumptions_validated: StrictBool
+    evidence_promotable: StrictBool
 
     @model_validator(mode="after")
     def validate_simulation_assumptions(self) -> Self:
@@ -204,10 +243,10 @@ class CostSettings(StrictModel):
     assumed_prediction_spread_pct: Pct = Field(ge=0, le=100)
     assumed_slippage_pct: Pct = Field(ge=0, le=100)
     max_slippage_pct: Pct = Field(ge=0, le=100)
-    equity_commission_usd: Decimal = Field(ge=0)
+    equity_commission_usd: ConfigDecimal = Field(ge=0)
     crypto_fee_pct: Pct = Field(ge=0, le=100)
     prediction_fee_pct: Pct = Field(ge=0, le=100)
-    stressed_cost_multiplier: Decimal = Field(ge=1)
+    stressed_cost_multiplier: ConfigDecimal = Field(ge=1)
     stressed_fill_probability_pct: Pct = Field(ge=0, le=100)
 
     @model_validator(mode="after")
@@ -218,10 +257,10 @@ class CostSettings(StrictModel):
 
 
 class RetrySettings(StrictModel):
-    read_attempts: int = Field(ge=1)
+    read_attempts: StrictInt = Field(ge=1)
     initial_backoff_seconds: Seconds = Field(ge=0)
     max_backoff_seconds: Seconds = Field(ge=0)
-    write_attempts: Literal[1]
+    write_attempts: StrictOne
 
     @model_validator(mode="after")
     def validate_backoff(self) -> Self:
@@ -231,21 +270,21 @@ class RetrySettings(StrictModel):
 
 
 class SchedulerSettings(StrictModel):
-    equity_reconciliation_cadence_seconds: int = Field(ge=1)
-    crypto_reconciliation_cadence_seconds: int = Field(ge=1)
-    broker_health_cadence_seconds: int = Field(ge=1)
-    heartbeat_cadence_seconds: int = Field(ge=1)
-    performance_report_cadence_seconds: int = Field(ge=1)
-    security_report_cadence_seconds: int = Field(ge=1)
+    equity_reconciliation_cadence_seconds: StrictInt = Field(ge=1)
+    crypto_reconciliation_cadence_seconds: StrictInt = Field(ge=1)
+    broker_health_cadence_seconds: StrictInt = Field(ge=1)
+    heartbeat_cadence_seconds: StrictInt = Field(ge=1)
+    performance_report_cadence_seconds: StrictInt = Field(ge=1)
+    security_report_cadence_seconds: StrictInt = Field(ge=1)
 
 
 class MonitoringSettings(StrictModel):
-    host: str = Field(min_length=1)
-    port: int = Field(ge=1, le=65535)
-    container_loopback_publish: bool
-    webhook_attempts: int = Field(ge=1)
+    host: StrictStr = Field(min_length=1)
+    port: StrictInt = Field(ge=1, le=65535)
+    container_loopback_publish: StrictBool
+    webhook_attempts: StrictInt = Field(ge=1)
     webhook_timeout_seconds: Seconds = Field(gt=0)
-    alert_deduplication_window_seconds: int = Field(ge=0)
+    alert_deduplication_window_seconds: StrictInt = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_bind_policy(self) -> Self:
@@ -257,21 +296,21 @@ class MonitoringSettings(StrictModel):
 
 
 class PromotionSettings(StrictModel):
-    paper_min_eligible_unique_cycles: int = Field(ge=1)
-    shadow_min_calendar_days: int = Field(ge=1)
-    micro_order_review_interval: int = Field(ge=1)
-    normal_min_combined_calendar_days: int = Field(ge=1)
-    normal_min_valid_observations: int = Field(ge=1)
-    clean_reconciliation_required: Literal[True]
-    no_critical_security_findings_required: Literal[True]
-    current_manual_acknowledgement_required: Literal[True]
-    pause_on_unknown_order_state: Literal[True]
+    paper_min_eligible_unique_cycles: StrictInt = Field(ge=1)
+    shadow_min_calendar_days: StrictInt = Field(ge=1)
+    micro_order_review_interval: StrictInt = Field(ge=1)
+    normal_min_combined_calendar_days: StrictInt = Field(ge=1)
+    normal_min_valid_observations: StrictInt = Field(ge=1)
+    clean_reconciliation_required: StrictTrue
+    no_critical_security_findings_required: StrictTrue
+    current_manual_acknowledgement_required: StrictTrue
+    pause_on_unknown_order_state: StrictTrue
 
 
 class LlmReportingSettings(StrictModel):
-    enabled: bool
-    daily_token_budget: int = Field(ge=0)
-    monthly_token_budget: int = Field(ge=0)
+    enabled: StrictBool
+    daily_token_budget: StrictInt = Field(ge=0)
+    monthly_token_budget: StrictInt = Field(ge=0)
     timeout_seconds: Seconds = Field(gt=0)
 
     @model_validator(mode="after")
@@ -282,23 +321,23 @@ class LlmReportingSettings(StrictModel):
 
 
 class BackupSettings(StrictModel):
-    destination: str = Field(min_length=1)
-    cadence_seconds: int = Field(ge=1)
-    retention_daily_archives: int = Field(ge=1)
-    restore_test_cadence_seconds: int = Field(ge=1)
-    encryption_required: Literal[True]
+    destination: StrictStr = Field(min_length=1)
+    cadence_seconds: StrictInt = Field(ge=1)
+    retention_daily_archives: StrictInt = Field(ge=1)
+    restore_test_cadence_seconds: StrictInt = Field(ge=1)
+    encryption_required: StrictTrue
 
 
 class EquityStrategySettings(StrictModel):
-    short_windows: tuple[int, ...] = Field(min_length=1)
-    long_windows: tuple[int, ...] = Field(min_length=1)
-    regime_multipliers: tuple[Decimal, ...] = Field(min_length=1)
+    short_windows: tuple[StrictInt, ...] = Field(min_length=1)
+    long_windows: tuple[StrictInt, ...] = Field(min_length=1)
+    regime_multipliers: tuple[ConfigDecimal, ...] = Field(min_length=1)
     bar_interval: BarInterval
-    maximum_holding_bars: int = Field(ge=1)
-    stop_loss_atr_multiplier: Decimal = Field(gt=0)
-    exit_reward_to_initial_risk: Decimal = Field(gt=0)
-    exit_on_regime_change: bool
-    mean_reversion_enabled: Literal[False]
+    maximum_holding_bars: StrictInt = Field(ge=1)
+    stop_loss_atr_multiplier: ConfigDecimal = Field(gt=0)
+    exit_reward_to_initial_risk: ConfigDecimal = Field(gt=0)
+    exit_on_regime_change: StrictBool
+    mean_reversion_enabled: StrictFalse
 
     @model_validator(mode="after")
     def validate_equity_grid(self) -> Self:
@@ -313,27 +352,27 @@ class EquityStrategySettings(StrictModel):
 
 class CryptoStrategySettings(StrictModel):
     bar_intervals: tuple[BarInterval, ...] = Field(min_length=1)
-    fast_windows: tuple[int, ...] = Field(min_length=1)
-    slow_windows: tuple[int, ...] = Field(min_length=1)
-    breakout_windows: tuple[int, ...] = Field(min_length=1)
-    maximum_holding_bars: int = Field(ge=1)
-    stop_loss_atr_multiplier: Decimal = Field(gt=0)
-    exit_reward_to_initial_risk: Decimal = Field(gt=0)
-    cash_regime_for_negative_trend: Literal[True]
+    fast_windows: tuple[StrictInt, ...] = Field(min_length=1)
+    slow_windows: tuple[StrictInt, ...] = Field(min_length=1)
+    breakout_windows: tuple[StrictInt, ...] = Field(min_length=1)
+    maximum_holding_bars: StrictInt = Field(ge=1)
+    stop_loss_atr_multiplier: ConfigDecimal = Field(gt=0)
+    exit_reward_to_initial_risk: ConfigDecimal = Field(gt=0)
+    cash_regime_for_negative_trend: StrictTrue
 
 
 class PredictionResearchSettings(StrictModel):
-    seed: int = Field(ge=0)
+    seed: StrictInt = Field(ge=0)
     minimum_margin_of_safety_pct: Pct = Field(gt=0, le=100)
-    calibration_bins: int = Field(ge=2)
-    minimum_samples_per_bin: int = Field(ge=1)
-    maximum_holding_bars: int = Field(ge=1)
-    live_eligible: Literal[False]
+    calibration_bins: StrictInt = Field(ge=2)
+    minimum_samples_per_bin: StrictInt = Field(ge=1)
+    maximum_holding_bars: StrictInt = Field(ge=1)
+    live_eligible: StrictFalse
 
 
 class AppConfig(StrictModel):
     mode: ExecutionMode
-    live_trading_enabled: bool
+    live_trading_enabled: StrictBool
     portfolio: PortfolioSettings
     position_risk: PositionRiskSettings
     loss_limits: LossLimitSettings
@@ -369,8 +408,8 @@ class SafetyEnvelope(StrictModel):
     """Release-level bounds that mode and environment values can only tighten."""
 
     allowed_modes: tuple[ExecutionMode, ...] = Field(min_length=1)
-    live_trading_permitted: bool
-    prediction_live_permitted: Literal[False]
+    live_trading_permitted: StrictBool
+    prediction_live_permitted: StrictFalse
     portfolio: PortfolioSettings
     position_risk: PositionRiskSettings
     loss_limits: LossLimitSettings
@@ -388,6 +427,6 @@ class SafetyEnvelope(StrictModel):
     retry: RetrySettings
     promotion: PromotionSettings
     llm_reporting: LlmReportingSettings
-    micro_max_order_notional_usd: Decimal = Field(ge=0)
-    micro_max_gross_exposure_usd: Decimal = Field(ge=0)
-    micro_max_new_orders_per_day: int = Field(ge=0)
+    micro_max_order_notional_usd: ConfigDecimal = Field(ge=0)
+    micro_max_gross_exposure_usd: ConfigDecimal = Field(ge=0)
+    micro_max_new_orders_per_day: StrictInt = Field(ge=0)
