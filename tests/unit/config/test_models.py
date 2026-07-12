@@ -299,6 +299,33 @@ def test_tuple_containers_accept_native_list_and_tuple() -> None:
     assert config.equity_strategies.short_windows == (20, 30, 50)
 
 
+def test_enum_tuple_members_reject_bytes_coercion() -> None:
+    config_raw = _with_config_value(
+        ("market_data", "canonical_bar_intervals"), [b"one_minute"]
+    )
+    envelope_raw = load_backtest().safety_envelope.model_dump()
+    envelope_raw["allowed_modes"] = [b"backtest"]
+
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(config_raw)
+    with pytest.raises(ValidationError):
+        SafetyEnvelope.model_validate(envelope_raw)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("mode",), b"backtest"),
+        (("equity_strategies", "bar_interval"), b"one_day"),
+    ],
+)
+def test_enum_scalar_members_reject_bytes_coercion(
+    path: tuple[str, ...], value: object
+) -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(_with_config_value(path, value))
+
+
 def test_null_and_invalid_scalar_types_fail() -> None:
     config = load_backtest().config
     raw = config.model_dump()

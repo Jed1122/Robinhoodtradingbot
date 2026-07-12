@@ -43,10 +43,28 @@ def _validate_strict_tuple_container(value: object) -> object:
     return value
 
 
+def _validate_strict_bar_interval(value: object) -> object:
+    if type(value) not in (str, BarInterval):
+        raise ValueError("bar interval input must be a string or BarInterval")
+    return value
+
+
+def _validate_strict_execution_mode(value: object) -> object:
+    if type(value) not in (str, ExecutionMode):
+        raise ValueError("execution mode input must be a string or ExecutionMode")
+    return value
+
+
 ConfigDecimal = Annotated[Decimal, BeforeValidator(_validate_config_decimal)]
 StrictFalse = Annotated[Literal[False], BeforeValidator(_validate_strict_literal_bool)]
 StrictTrue = Annotated[Literal[True], BeforeValidator(_validate_strict_literal_bool)]
 StrictOne = Annotated[Literal[1], BeforeValidator(_validate_strict_literal_int)]
+StrictBarInterval = Annotated[
+    BarInterval, BeforeValidator(_validate_strict_bar_interval)
+]
+StrictExecutionMode = Annotated[
+    ExecutionMode, BeforeValidator(_validate_strict_execution_mode)
+]
 StrictStringTuple = Annotated[
     tuple[StrictStr, ...], BeforeValidator(_validate_strict_tuple_container)
 ]
@@ -57,10 +75,10 @@ StrictDecimalTuple = Annotated[
     tuple[ConfigDecimal, ...], BeforeValidator(_validate_strict_tuple_container)
 ]
 StrictBarIntervalTuple = Annotated[
-    tuple[BarInterval, ...], BeforeValidator(_validate_strict_tuple_container)
+    tuple[StrictBarInterval, ...], BeforeValidator(_validate_strict_tuple_container)
 ]
 StrictExecutionModeTuple = Annotated[
-    tuple[ExecutionMode, ...], BeforeValidator(_validate_strict_tuple_container)
+    tuple[StrictExecutionMode, ...], BeforeValidator(_validate_strict_tuple_container)
 ]
 Pct = ConfigDecimal
 Seconds = ConfigDecimal
@@ -353,7 +371,7 @@ class EquityStrategySettings(StrictModel):
     short_windows: StrictIntegerTuple = Field(min_length=1)
     long_windows: StrictIntegerTuple = Field(min_length=1)
     regime_multipliers: StrictDecimalTuple = Field(min_length=1)
-    bar_interval: BarInterval
+    bar_interval: StrictBarInterval
     maximum_holding_bars: StrictInt = Field(ge=1)
     stop_loss_atr_multiplier: ConfigDecimal = Field(gt=0)
     exit_reward_to_initial_risk: ConfigDecimal = Field(gt=0)
@@ -392,7 +410,7 @@ class PredictionResearchSettings(StrictModel):
 
 
 class AppConfig(StrictModel):
-    mode: ExecutionMode
+    mode: StrictExecutionMode
     live_trading_enabled: StrictBool
     portfolio: PortfolioSettings
     position_risk: PositionRiskSettings

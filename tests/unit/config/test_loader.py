@@ -344,6 +344,17 @@ def test_explicit_environment_constructor_failure_never_echoes_source_value(
     _assert_secret_absent(captured.value)
 
 
+def test_environment_binary_values_cannot_coerce_enum_tuple_members() -> None:
+    with pytest.raises(ConfigLoadError):
+        load(
+            environ={
+                "TRADING_BOT__MARKET_DATA__CANONICAL_BAR_INTERVALS": (
+                    "[!!binary b25lX21pbnV0ZQ==]"
+                )
+            }
+        )
+
+
 def test_unknown_environment_path_never_echoes_supplied_path_value() -> None:
     with pytest.raises(ConfigLoadError) as captured:
         load(environ={"TRADING_BOT__ACTUAL-SECRET-VALUE__FIELD": "1"})
