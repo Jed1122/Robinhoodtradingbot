@@ -108,7 +108,9 @@ def _load_yaml(path: Path) -> dict[str, Any]:
         loaded = yaml.load(source, Loader=_UniqueKeyLoader)
     except ConfigLoadError:
         raise
-    except yaml.YAMLError:
+    except MemoryError:
+        raise
+    except Exception:
         raise ConfigLoadError("malformed YAML configuration") from None
     if not isinstance(loaded, dict):
         raise ConfigLoadError("configuration root must be a mapping")
@@ -122,7 +124,9 @@ def _parse_environment_value(raw_value: str) -> Any:
         parsed = yaml.load(raw_value, Loader=_UniqueKeyLoader)
     except ConfigLoadError:
         raise
-    except yaml.YAMLError:
+    except MemoryError:
+        raise
+    except Exception:
         raise ConfigLoadError("malformed environment YAML value") from None
     _validate_mapping_keys(parsed)
     _reject_nulls(parsed)

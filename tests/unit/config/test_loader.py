@@ -311,6 +311,39 @@ def test_malformed_environment_yaml_never_echoes_source_value() -> None:
     _assert_secret_absent(captured.value)
 
 
+@pytest.mark.parametrize(
+    "tagged_value",
+    ["!!int actual-secret-value", "!!timestamp actual-secret-value"],
+)
+def test_explicit_yaml_constructor_failure_never_echoes_source_value(
+    tmp_path: Path, tagged_value: str
+) -> None:
+    path = tmp_path / "tagged.yaml"
+    path.write_text(f"value: {tagged_value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigLoadError) as captured:
+        _load_yaml(path)
+
+    _assert_secret_absent(captured.value)
+
+
+@pytest.mark.parametrize(
+    "tagged_value",
+    ["!!int actual-secret-value", "!!timestamp actual-secret-value"],
+)
+def test_explicit_environment_constructor_failure_never_echoes_source_value(
+    tagged_value: str,
+) -> None:
+    with pytest.raises(ConfigLoadError) as captured:
+        load(
+            environ={
+                "TRADING_BOT__PORTFOLIO__MAX_OPEN_POSITIONS": tagged_value,
+            }
+        )
+
+    _assert_secret_absent(captured.value)
+
+
 def test_unknown_environment_path_never_echoes_supplied_path_value() -> None:
     with pytest.raises(ConfigLoadError) as captured:
         load(environ={"TRADING_BOT__ACTUAL-SECRET-VALUE__FIELD": "1"})

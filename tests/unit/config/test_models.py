@@ -272,6 +272,33 @@ def test_decimal_tuple_members_reject_coercion(invalid: object) -> None:
         AppConfig.model_validate(raw)
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"BTC-USD", "ETH-USD"},
+        frozenset({"BTC-USD", "ETH-USD"}),
+        iter(("BTC-USD", "ETH-USD")),
+    ],
+)
+def test_tuple_containers_reject_unordered_and_one_shot_iterables(invalid: object) -> None:
+    raw = _with_config_value(("crypto", "initial_symbol_allowlist"), invalid)
+
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(raw)
+
+
+def test_tuple_containers_accept_native_list_and_tuple() -> None:
+    raw = _with_config_value(
+        ("crypto", "initial_symbol_allowlist"), ["BTC-USD", "ETH-USD"]
+    )
+    raw["equity_strategies"]["short_windows"] = (20, 30, 50)
+
+    config = AppConfig.model_validate(raw)
+
+    assert config.crypto.initial_symbol_allowlist == ("BTC-USD", "ETH-USD")
+    assert config.equity_strategies.short_windows == (20, 30, 50)
+
+
 def test_null_and_invalid_scalar_types_fail() -> None:
     config = load_backtest().config
     raw = config.model_dump()

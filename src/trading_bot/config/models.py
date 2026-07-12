@@ -37,10 +37,31 @@ def _validate_strict_literal_int(value: object) -> int:
     return value
 
 
+def _validate_strict_tuple_container(value: object) -> object:
+    if type(value) not in (list, tuple):
+        raise ValueError("tuple input must be a YAML list or native tuple")
+    return value
+
+
 ConfigDecimal = Annotated[Decimal, BeforeValidator(_validate_config_decimal)]
 StrictFalse = Annotated[Literal[False], BeforeValidator(_validate_strict_literal_bool)]
 StrictTrue = Annotated[Literal[True], BeforeValidator(_validate_strict_literal_bool)]
 StrictOne = Annotated[Literal[1], BeforeValidator(_validate_strict_literal_int)]
+StrictStringTuple = Annotated[
+    tuple[StrictStr, ...], BeforeValidator(_validate_strict_tuple_container)
+]
+StrictIntegerTuple = Annotated[
+    tuple[StrictInt, ...], BeforeValidator(_validate_strict_tuple_container)
+]
+StrictDecimalTuple = Annotated[
+    tuple[ConfigDecimal, ...], BeforeValidator(_validate_strict_tuple_container)
+]
+StrictBarIntervalTuple = Annotated[
+    tuple[BarInterval, ...], BeforeValidator(_validate_strict_tuple_container)
+]
+StrictExecutionModeTuple = Annotated[
+    tuple[ExecutionMode, ...], BeforeValidator(_validate_strict_tuple_container)
+]
 Pct = ConfigDecimal
 Seconds = ConfigDecimal
 
@@ -131,7 +152,7 @@ class CryptoSettings(StrictModel):
     enabled: StrictBool
     max_total_crypto_exposure_pct: Pct = Field(ge=0, le=100)
     max_single_crypto_exposure_pct: Pct = Field(ge=0, le=100)
-    initial_symbol_allowlist: tuple[StrictStr, ...] = Field(min_length=1)
+    initial_symbol_allowlist: StrictStringTuple = Field(min_length=1)
     max_spread_pct: Pct = Field(ge=0, le=100)
     leverage_allowed: StrictFalse
     reconciliation_quantity_tolerance: ConfigDecimal = Field(ge=0)
@@ -178,7 +199,7 @@ class RuntimeSettings(StrictModel):
 
 
 class MarketDataSettings(StrictModel):
-    canonical_bar_intervals: tuple[BarInterval, ...] = Field(min_length=1)
+    canonical_bar_intervals: StrictBarIntervalTuple = Field(min_length=1)
     max_data_age_bars: StrictInt = Field(ge=0)
     max_anomaly_change_pct: Pct = Field(ge=0, le=100)
     max_cross_response_timestamp_skew_seconds: Seconds = Field(ge=0)
@@ -329,9 +350,9 @@ class BackupSettings(StrictModel):
 
 
 class EquityStrategySettings(StrictModel):
-    short_windows: tuple[StrictInt, ...] = Field(min_length=1)
-    long_windows: tuple[StrictInt, ...] = Field(min_length=1)
-    regime_multipliers: tuple[ConfigDecimal, ...] = Field(min_length=1)
+    short_windows: StrictIntegerTuple = Field(min_length=1)
+    long_windows: StrictIntegerTuple = Field(min_length=1)
+    regime_multipliers: StrictDecimalTuple = Field(min_length=1)
     bar_interval: BarInterval
     maximum_holding_bars: StrictInt = Field(ge=1)
     stop_loss_atr_multiplier: ConfigDecimal = Field(gt=0)
@@ -351,10 +372,10 @@ class EquityStrategySettings(StrictModel):
 
 
 class CryptoStrategySettings(StrictModel):
-    bar_intervals: tuple[BarInterval, ...] = Field(min_length=1)
-    fast_windows: tuple[StrictInt, ...] = Field(min_length=1)
-    slow_windows: tuple[StrictInt, ...] = Field(min_length=1)
-    breakout_windows: tuple[StrictInt, ...] = Field(min_length=1)
+    bar_intervals: StrictBarIntervalTuple = Field(min_length=1)
+    fast_windows: StrictIntegerTuple = Field(min_length=1)
+    slow_windows: StrictIntegerTuple = Field(min_length=1)
+    breakout_windows: StrictIntegerTuple = Field(min_length=1)
     maximum_holding_bars: StrictInt = Field(ge=1)
     stop_loss_atr_multiplier: ConfigDecimal = Field(gt=0)
     exit_reward_to_initial_risk: ConfigDecimal = Field(gt=0)
@@ -407,7 +428,7 @@ class AppConfig(StrictModel):
 class SafetyEnvelope(StrictModel):
     """Release-level bounds that mode and environment values can only tighten."""
 
-    allowed_modes: tuple[ExecutionMode, ...] = Field(min_length=1)
+    allowed_modes: StrictExecutionModeTuple = Field(min_length=1)
     live_trading_permitted: StrictBool
     prediction_live_permitted: StrictFalse
     portfolio: PortfolioSettings
