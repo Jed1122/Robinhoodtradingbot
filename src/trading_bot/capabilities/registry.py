@@ -145,7 +145,7 @@ def _parse_evidence(raw: object) -> CapabilityEvidence:
     observed_at = datetime.fromisoformat(_string(value["observed_at"]).replace("Z", "+00:00"))
     return CapabilityEvidence(
         level=EvidenceLevel(_string(value["level"])),
-        source_uri=_string(value["source_uri"]),
+        source_uri=_safe_source_uri_string(value["source_uri"]),
         observed_at=observed_at,
         schema_sha256=_optional_string(value["schema_sha256"]),
         authenticated=_boolean(value["authenticated"]),
@@ -224,6 +224,13 @@ def _optional_safe_freeform_string(value: object) -> str | None:
     if value is None:
         return None
     return _safe_freeform_string(value)
+
+
+def _safe_source_uri_string(value: object) -> str:
+    result = _string(value)
+    if text_contains_sensitive_material(result):
+        raise ValueError
+    return result
 
 
 def _manifest_freeform_is_safe(manifest: CapabilityManifest) -> bool:

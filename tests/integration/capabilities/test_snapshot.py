@@ -10,7 +10,7 @@ import traceback
 from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -109,6 +109,16 @@ class ExplodingListToolsResult(types.ListToolsResult):
         return super().__getattribute__(name)
 
 
+class SecretBearingDatetime(datetime):
+    """A hostile datetime subclass whose methods expose sensitive text."""
+
+    def utcoffset(self) -> timedelta | None:
+        raise RuntimeError("Authorization: Bearer tiny")
+
+    def isoformat(self, sep: str = "T", timespec: str = "auto") -> str:
+        raise RuntimeError("Authorization: Bearer tiny")
+
+
 def tool(
     name: str = "get_equity_quotes",
     *,
@@ -127,6 +137,19 @@ def tool(
         },
         outputSchema=output_schema,
         _meta=meta,
+    )
+
+
+def direct_sanitized_tool(input_schema: dict[str, object]) -> SanitizedToolSchema:
+    """Construct an exported schema with a valid digest for boundary tests."""
+    return SanitizedToolSchema(
+        name="get_equity_quotes",
+        description=None,
+        _input_schema_json=json.dumps(input_schema, separators=(",", ":")),
+        _output_schema_json=None,
+        schema_sha256=canonical_sha256(
+            {"inputSchema": input_schema, "outputSchema": None}  # type: ignore[dict-item]
+        ),
     )
 
 
@@ -426,6 +449,63 @@ async def test_direct_tools_snapshot_construction_enforces_all_invariants() -> N
             replace(snapshot, **changes)  # type: ignore[arg-type]
 
 
+@pytest.mark.asyncio
+async def test_capture_rejects_datetime_subclass_before_external_or_timestamp_methods() -> None:
+    hostile_timestamp = SecretBearingDatetime(2026, 7, 12, 12, tzinfo=UTC)
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        await capture_tools_snapshot(session, observed_at=hostile_timestamp)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "observed_at must be an exact aware UTC datetime"
+    assert "Authorization" not in rendered
+    assert "Bearer tiny" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+    assert session.list_tools_params == []
+
+
+@pytest.mark.asyncio
+async def test_direct_snapshot_rejects_datetime_subclass_without_method_access() -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+    hostile_timestamp = SecretBearingDatetime(2026, 7, 12, 12, tzinfo=UTC)
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        ToolsListSnapshot(
+            provider=snapshot.provider,
+            observed_at=hostile_timestamp,
+            tools=snapshot.tools,
+            manifest=snapshot.manifest,
+        )
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "snapshot timestamp must be an exact aware UTC datetime"
+    assert "Authorization" not in rendered
+    assert "Bearer tiny" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.asyncio
+async def test_capture_canonicalizes_exact_zero_offset_timestamp_to_utc() -> None:
+    zero_offset = datetime(
+        2026,
+        7,
+        12,
+        12,
+        tzinfo=timezone(timedelta(0), name="ZERO"),
+    )
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=zero_offset)
+
+    assert snapshot.observed_at.tzinfo is UTC
+    assert snapshot.manifest.records[0].evidence[0].observed_at.tzinfo is UTC
+    assert snapshot.as_json()["observedAt"] == "2026-07-12T12:00:00Z"
+
+
 def test_direct_tools_snapshot_rejects_manifest_with_wrong_observation() -> None:
     schema_json = '{"type":"object"}'
     digest = canonical_sha256({"inputSchema": {"type": "object"}, "outputSchema": None})
@@ -444,6 +524,91 @@ def test_direct_tools_snapshot_rejects_manifest_with_wrong_observation() -> None
             tools=(captured_tool,),
             manifest=CapabilityManifest(records=()),
         )
+
+
+@pytest.mark.parametrize("property_name", ("auth_token", "account_number"))
+@pytest.mark.parametrize(
+    "unsafe_declaration",
+    (
+        {"type": "tiny"},
+        {"format": "tiny"},
+        {"$ref": "tiny"},
+        {"required": ["tiny"]},
+        {"minLength": 123456},
+    ),
+)
+@pytest.mark.asyncio
+async def test_capture_rejects_unvalidated_structural_values_in_sensitive_schema_scope(
+    property_name: str,
+    unsafe_declaration: dict[str, object],
+) -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {property_name: unsafe_declaration},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize("property_name", ("auth_token", "account_number"))
+@pytest.mark.parametrize(
+    "unsafe_declaration",
+    (
+        {"type": "tiny"},
+        {"format": "tiny"},
+        {"$ref": "tiny"},
+        {"required": ["tiny"]},
+        {"minLength": 123456},
+    ),
+)
+def test_direct_schema_rejects_unvalidated_structural_values_in_sensitive_scope(
+    property_name: str,
+    unsafe_declaration: dict[str, object],
+) -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {property_name: unsafe_declaration},
+    }
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        direct_sanitized_tool(input_schema)
+
+
+@pytest.mark.parametrize(
+    "sensitive_declaration",
+    (
+        {"type": "string"},
+        {"type": "string", "format": "password"},
+        {"$ref": "#/$defs/SafeString"},
+        {
+            "$defs": {"NestedSafeString": {"type": "string"}},
+            "$ref": "#/$defs/NestedSafeString",
+        },
+        {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        {
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+            "required": ["value"],
+            "additionalProperties": False,
+        },
+    ),
+)
+@pytest.mark.asyncio
+async def test_capture_allows_exact_schema_only_shapes_under_sensitive_scope(
+    sensitive_declaration: dict[str, object],
+) -> None:
+    input_schema: dict[str, object] = {
+        "$defs": {"SafeString": {"type": "string"}},
+        "type": "object",
+        "properties": {"auth_token": sensitive_declaration},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].input_schema == input_schema
 
 
 @pytest.mark.parametrize(
@@ -660,6 +825,91 @@ async def test_sensitive_component_aliases_reject_short_defaults_but_allow_schem
     properties = snapshot.tools[0].input_schema["properties"]
     assert isinstance(properties, dict)
     assert alias in properties
+
+
+@pytest.mark.parametrize("alias", ("access_key", "client_key", "consumer_key"))
+@pytest.mark.parametrize(
+    "carrier",
+    ("property_default", "assignment", "query", "encoded_query", "path"),
+)
+@pytest.mark.asyncio
+async def test_key_aliases_are_rejected_across_schema_and_text_carriers(
+    alias: str,
+    carrier: str,
+) -> None:
+    if carrier == "property_default":
+        input_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {alias: {"type": "string", "default": "tiny"}},
+        }
+    else:
+        encoded_alias = alias.replace("_", "%5F")
+        sensitive_text = {
+            "assignment": f"{alias}=tiny",
+            "query": f"https://robinhood.com/path?{alias}=tiny",
+            "encoded_query": f"https://robinhood.com/path?{encoded_alias}=tiny",
+            "path": f"https://robinhood.com/{alias}/tiny",
+        }[carrier]
+        input_schema = {
+            "type": "object",
+            "properties": {"safe_value": {"type": "string", "description": sensitive_text}},
+        }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "encoded_property_name",
+    ("access%5Fkey", "client%5Fkey", "consumer%5Fkey"),
+)
+@pytest.mark.asyncio
+async def test_percent_encoded_sensitive_property_names_are_rejected(
+    encoded_property_name: str,
+) -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {encoded_property_name: {"type": "string", "default": "tiny"}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "benign_property_name",
+    (
+        "author",
+        "signal",
+        "signal_type",
+        "designation",
+        "assignment",
+        "accounting_period",
+        "session_duration",
+        "client_order_id",
+    ),
+)
+@pytest.mark.asyncio
+async def test_boundary_aware_name_matching_allows_benign_property_metadata(
+    benign_property_name: str,
+) -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {
+            benign_property_name: {
+                "type": "string",
+                "description": "Ordinary public request metadata.",
+                "default": "ordinary",
+            }
+        },
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].input_schema == input_schema
 
 
 @pytest.mark.parametrize(
@@ -980,6 +1230,45 @@ def test_fixture_loader_rejects_sensitive_free_form_values_generically(
 
     assert str(captured.value) == "capability fixture is invalid"
     assert sensitive_value not in str(captured.value)
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "sensitive_path",
+    (
+        "/secret/tiny",
+        "/token/tiny",
+        "/access_key/tiny",
+        "/auth/tiny",
+        "/cookie/tiny",
+        "/signature/tiny",
+        "/private_key/tiny",
+    ),
+)
+def test_fixture_loader_scans_official_source_uri_before_uri_validation(
+    tmp_path: Path,
+    sensitive_path: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    evidence_values = record["evidence"]
+    assert isinstance(evidence_values, list)
+    evidence = evidence_values[0]
+    assert isinstance(evidence, dict)
+    evidence["source_uri"] = f"https://robinhood.com{sensitive_path}"
+    path = tmp_path / "sensitive-source.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "capability fixture is invalid"
+    assert sensitive_path not in rendered
     assert captured.value.__cause__ is None
     assert captured.value.__context__ is None
 

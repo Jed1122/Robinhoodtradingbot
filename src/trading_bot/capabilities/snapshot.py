@@ -8,8 +8,10 @@ import math
 import os
 import re
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Protocol, cast
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -60,68 +62,89 @@ _NAMED_ASSIGNMENT = re.compile(
     r"(?P<name>[A-Za-z][A-Za-z0-9_.%~-]{0,127})\s*[:=]\s*(?P<value>[^\s&#]+)",
     re.IGNORECASE,
 )
-_SENSITIVE_COMPONENTS = (
-    "token",
-    "account",
-    "privatekey",
-    "signingkey",
-    "signature",
-    "sig",
-    "cookie",
-    "header",
-    "auth",
-    "apikey",
-    "session",
-    "credential",
-    "bearer",
-    "secret",
-    "password",
-    "passphrase",
-)
-_SENSITIVE_SCHEMA_STRUCTURAL_KEYS = frozenset(
+_CAMEL_NAME_TOKEN = re.compile(r"[A-Z]+(?=[A-Z][a-z]|[0-9]|\Z)|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
+_SENSITIVE_SINGLE_NAME_TOKENS = frozenset(
     {
-        "$defs",
-        "$ref",
-        "additionalProperties",
-        "allOf",
-        "anyOf",
-        "contains",
-        "definitions",
-        "dependentRequired",
-        "dependentSchemas",
-        "deprecated",
-        "else",
-        "exclusiveMaximum",
-        "exclusiveMinimum",
-        "format",
-        "if",
-        "items",
-        "maxContains",
-        "maxItems",
-        "maxLength",
-        "maxProperties",
-        "maximum",
-        "minContains",
-        "minItems",
-        "minLength",
-        "minProperties",
-        "minimum",
-        "multipleOf",
-        "not",
-        "nullable",
-        "oneOf",
-        "prefixItems",
-        "properties",
-        "propertyNames",
-        "readOnly",
-        "required",
-        "then",
-        "type",
-        "unevaluatedProperties",
-        "uniqueItems",
-        "writeOnly",
+        "account",
+        "accounts",
+        "acct",
+        "auth",
+        "authorization",
+        "bearer",
+        "cookie",
+        "cookies",
+        "credential",
+        "credentials",
+        "header",
+        "headers",
+        "oauth",
+        "passphrase",
+        "password",
+        "passwords",
+        "secret",
+        "secrets",
+        "sig",
+        "signature",
+        "signatures",
+        "token",
+        "tokens",
     }
 )
+_SENSITIVE_KEY_PREFIXES = frozenset(
+    {
+        "api",
+        "access",
+        "client",
+        "consumer",
+        "private",
+        "signing",
+    }
+)
+_SENSITIVE_SESSION_SUFFIXES = frozenset({"id", "key", "token", "cookie"})
+_JSON_SCHEMA_TYPES = frozenset(
+    {"array", "boolean", "integer", "null", "number", "object", "string"}
+)
+_JSON_SCHEMA_FORMATS = frozenset(
+    {
+        "date",
+        "date-time",
+        "duration",
+        "email",
+        "hostname",
+        "idn-email",
+        "idn-hostname",
+        "ipv4",
+        "ipv6",
+        "iri",
+        "iri-reference",
+        "json-pointer",
+        "password",
+        "regex",
+        "relative-json-pointer",
+        "time",
+        "uri",
+        "uri-reference",
+        "uri-template",
+        "uuid",
+    }
+)
+_LOCAL_JSON_POINTER = re.compile(r"#(?:/(?:[^~/%]|~[01]|%[0-9A-Fa-f]{2})*)*\Z")
+_SCHEMA_MAPPING_KEYS = frozenset({"$defs", "definitions", "dependentSchemas", "properties"})
+_SCHEMA_LIST_KEYS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
+_SCHEMA_CHILD_KEYS = frozenset(
+    {
+        "additionalProperties",
+        "contains",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedProperties",
+    }
+)
+_SCHEMA_BOOLEAN_KEYS = frozenset({"deprecated", "nullable", "readOnly", "uniqueItems", "writeOnly"})
 _MAX_INSPECTION_TEXT_LENGTH = 65_536
 _MAX_PERCENT_DECODE_ROUNDS = 3
 
@@ -242,10 +265,15 @@ class ToolsListSnapshot:
     def __post_init__(self) -> None:
         if type(self.provider) is not str or self.provider != _PROVIDER:
             raise CapabilitySnapshotError("snapshot provider is invalid")
-        try:
-            require_utc(self.observed_at)
-        except Exception:
-            raise CapabilitySnapshotError("snapshot timestamp must be aware UTC") from None
+        canonical_timestamp: datetime | None = None
+        if type(self.observed_at) is datetime:
+            with suppress(Exception):
+                canonical_timestamp = require_utc(self.observed_at)
+        if canonical_timestamp is None:
+            raise CapabilitySnapshotError(
+                "snapshot timestamp must be an exact aware UTC datetime"
+            ) from None
+        object.__setattr__(self, "observed_at", canonical_timestamp)
         if type(self.tools) is not tuple or any(
             type(item) is not SanitizedToolSchema for item in self.tools
         ):
@@ -299,11 +327,13 @@ async def capture_tools_snapshot(
     observed_at: datetime | None = None,
 ) -> ToolsListSnapshot:
     """Capture all tools/list pages without invoking any declared tool."""
-    timestamp = observed_at if observed_at is not None else datetime.now(UTC)
-    try:
-        require_utc(timestamp)
-    except Exception:
-        raise CapabilitySnapshotError("observed_at must be aware UTC") from None
+    supplied_timestamp = observed_at if observed_at is not None else datetime.now(UTC)
+    timestamp: datetime | None = None
+    if type(supplied_timestamp) is datetime:
+        with suppress(Exception):
+            timestamp = require_utc(supplied_timestamp)
+    if timestamp is None:
+        raise CapabilitySnapshotError("observed_at must be an exact aware UTC datetime") from None
 
     captured: list[SanitizedToolSchema] = []
     names: set[str] = set()
@@ -574,14 +604,20 @@ def _scan_sensitive(
     if type(value) is not dict:
         return
     assert isinstance(value, dict)
-    if sensitive_property and any(
-        key not in _SENSITIVE_SCHEMA_STRUCTURAL_KEYS and _contains_value(item)
-        for key, item in value.items()
-    ):
-        raise UnsafeCapabilitySnapshot("sensitive schema properties cannot embed metadata")
+    if sensitive_property:
+        _validate_sensitive_schema(value)
     for key, item in value.items():
         if text_contains_sensitive_material(key):
             raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
+        if sensitive_property and key in _SCHEMA_MAPPING_KEYS:
+            assert isinstance(item, dict)
+            for schema_name, schema in item.items():
+                if text_contains_sensitive_material(schema_name):
+                    raise UnsafeCapabilitySnapshot(
+                        "capability snapshot contains sensitive material"
+                    )
+                _scan_sensitive(schema, sensitive_property=True)
+            continue
         if key == "properties" and type(item) is dict:
             assert isinstance(item, dict)
             for property_name, property_schema in item.items():
@@ -610,6 +646,83 @@ def _scan_sensitive(
             item,
             sensitive_property=sensitive_property or sensitive_schema_alias,
         )
+
+
+def _validate_sensitive_schema(value: dict[str, JsonValue]) -> None:
+    """Accept only recursively validated, declaration-only JSON Schema shapes."""
+    for key, item in value.items():
+        if key == "type":
+            if not _schema_type_is_valid(item):
+                raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
+            continue
+        if key == "format":
+            if type(item) is not str or item not in _JSON_SCHEMA_FORMATS:
+                raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
+            continue
+        if key == "$ref":
+            if type(item) is not str or _LOCAL_JSON_POINTER.fullmatch(item) is None:
+                raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
+            continue
+        if key in _SCHEMA_MAPPING_KEYS:
+            if type(item) is not dict:
+                raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
+            assert isinstance(item, dict)
+            for schema in item.values():
+                _validate_schema_node(schema)
+            continue
+        if key in _SCHEMA_LIST_KEYS:
+            if type(item) is not list or not item:
+                raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
+            assert isinstance(item, list)
+            for schema in item:
+                _validate_schema_node(schema)
+            continue
+        if key in _SCHEMA_CHILD_KEYS:
+            _validate_schema_node(item)
+            continue
+        if key in _SCHEMA_BOOLEAN_KEYS:
+            if type(item) is not bool:
+                raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
+            continue
+        if key == "required":
+            if not _schema_required_is_valid(item, value.get("properties")):
+                raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
+            continue
+        if _contains_value(item):
+            raise UnsafeCapabilitySnapshot("sensitive schema properties cannot embed metadata")
+
+
+def _schema_type_is_valid(value: JsonValue) -> bool:
+    if type(value) is str:
+        return value in _JSON_SCHEMA_TYPES
+    if type(value) is not list or not value:
+        return False
+    assert isinstance(value, list)
+    return all(type(item) is str and item in _JSON_SCHEMA_TYPES for item in value) and len(
+        value
+    ) == len(set(value))
+
+
+def _schema_required_is_valid(
+    value: JsonValue,
+    properties: JsonValue | None,
+) -> bool:
+    if type(value) is not list or type(properties) is not dict:
+        return False
+    assert isinstance(value, list)
+    assert isinstance(properties, dict)
+    return all(type(item) is str and item in properties for item in value) and len(value) == len(
+        set(value)
+    )
+
+
+def _validate_schema_node(value: JsonValue) -> None:
+    if type(value) is bool:
+        return
+    if type(value) is not dict:
+        raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
+    assert isinstance(value, dict)
+    _validate_sensitive_schema(value)
 
 
 def text_contains_sensitive_material(value: str) -> bool:
@@ -674,18 +787,28 @@ def _decoded_candidates(value: str) -> tuple[str, ...]:
             break
         candidates.append(next_value)
         decoded = next_value
-    if _PERCENT_ESCAPE.search(decoded):
+    if _PERCENT_ESCAPE.search(decoded) or "%" in decoded:
         raise ValueError
     return tuple(candidates)
 
 
-def _normalize_name(value: str) -> str:
-    return "".join(character for character in value.casefold() if character.isalnum())
-
-
 def _name_is_sensitive(value: str) -> bool:
-    normalized = _normalize_name(value)
-    return any(component in normalized for component in _SENSITIVE_COMPONENTS)
+    try:
+        decoded = _decoded_candidates(value)[-1]
+    except (UnicodeError, ValueError):
+        return True
+    tokens = tuple(
+        token.casefold()
+        for component in re.split(r"[^A-Za-z0-9]+", decoded)
+        for token in _CAMEL_NAME_TOKEN.findall(component)
+    )
+    if any(token in _SENSITIVE_SINGLE_NAME_TOKENS for token in tokens):
+        return True
+    return any(
+        (left in _SENSITIVE_KEY_PREFIXES and right == "key")
+        or (left == "session" and right in _SENSITIVE_SESSION_SUFFIXES)
+        for left, right in pairwise(tokens)
+    )
 
 
 def _contains_value(value: JsonValue) -> bool:
