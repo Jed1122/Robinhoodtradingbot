@@ -82,13 +82,21 @@ plus an anchored, reviewed compound grammar. The grammar covers singular/plural 
 signing, access, client, consumer, and secret key forms; API/access/client/consumer secret
 forms; auth/OAuth/bearer/authorization token forms; session and account identifiers; and auth
 headers. It recognizes exact compact components and separators or punctuation such as array
-brackets, without raw substring matching. Thus `api_keys`, `clientsecret[]`, `oauthtoken`, and
-`accesskeyid` are sensitive, while author, signal, designation, assignment,
-accounting-period, session-duration, client-order, public-key, accessibility, and secretary
-names remain ordinary metadata. Candidate names containing non-ASCII, control, or format
-characters fail closed. Assignment inspection uses bounded overlapping boundaries, so a safe
-outer field cannot hide an inner assignment such as `safe=clientsecret=tiny`. Under sensitive
-scope, schema
+brackets, without raw substring matching. A compact strong credential base may have a bounded
+alphanumeric namespace. Any exact sensitive single-name lexeme may also have a bounded leading
+alphanumeric namespace when that lexeme is terminal; this detects compact carriers such as
+`verificationtoken` without classifying words where `token` is not terminal, such as
+`tokenization` or `tokenbucket`. One exact reviewed terminal carrier suffix from `value`,
+`values`, `data`, `bytes`, `material`, or `pem` may follow any already-sensitive base,
+including exact single-name lexemes. Thus `api_keys`, `clientsecret[]`, `oauthtoken`,
+`awssecretaccesskey`, `walletprivatekey`, `sessioncookievalue`, `apikeymaterial`, `authvalue`,
+`accountdata`, `headervalue`, `bearermaterial`, and `oauthvalue` are sensitive. Generic `key`
+is never a credential base: author, signal, designation, assignment, accounting-period,
+session-duration, client-order, public-key, key-value, monkey, tokenization, token-bucket,
+author-value, accounting-data, headerless-value, accessibility, and secretary names remain
+ordinary metadata. Candidate names containing non-ASCII, control, or format characters fail
+closed. Assignment inspection uses bounded overlapping boundaries, so a safe outer field
+cannot hide an inner assignment such as `safe=clientsecret=tiny`. Under sensitive scope, schema
 declarations are accepted only when their values have validated built-in shapes: known types
 and formats, safe local JSON pointers, exact booleans, matching required-property names, and
 recursive schema maps or combinators. Local pointer fragments are inspected as decoded path

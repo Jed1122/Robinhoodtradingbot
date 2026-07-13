@@ -36,6 +36,7 @@ from trading_bot.capabilities import (
     render_capability_matrix,
     write_tools_snapshot,
 )
+from trading_bot.capabilities.snapshot import text_contains_sensitive_material
 
 OBSERVED_AT = datetime(2026, 7, 12, 12, tzinfo=UTC)
 ROOT = Path(__file__).parents[3]
@@ -78,6 +79,61 @@ GRAMMAR_SENSITIVE_NAMES = (
     "accesssecret",
     "oauthclientsecret",
     "authorizationtoken",
+)
+COMPACT_CREDENTIAL_VALUE_NAMES = (
+    "secretaccesskey",
+    "awssecretaccesskey",
+    "privatekeyvalue",
+    "clientsecretvalue",
+    "apikeyvalue",
+    "clientsecretvalues",
+    "apikeydata",
+    "signingkeybytes",
+    "consumersecretmaterial",
+    "privatekeypem",
+    "passwordvalue",
+    "passphrasedata",
+    "credentialbytes",
+    "signaturematerial",
+    "cookiepem",
+    "walletprivatekey",
+    "webhooksecret",
+    "idtoken",
+    "csrftoken",
+    "sessioncookievalue",
+    "tradingapikey",
+    "webhooksignature",
+    "providerclientsecretdata",
+    "vaultsecret",
+    "custodysignature",
+    "browsercookie",
+    "operatorpassword",
+    "servicecredential",
+    "recoverypassphrase",
+    "authvalue",
+    "accountdata",
+    "headervalue",
+    "bearermaterial",
+    "oauthvalue",
+    "verificationtoken",
+    "resettoken",
+    "continuationtoken",
+)
+BENIGN_COMPACT_VALUE_NAMES = (
+    "publickeyvalue",
+    "keyvalue",
+    "secretaryvalue",
+    "authorvalue",
+    "marketdata",
+    "materiality",
+    "pembridge",
+    "tokenization",
+    "tokenizationdata",
+    "tokenbucket",
+    "monkey",
+    "monkeyvalue",
+    "accountingdata",
+    "headerlessvalue",
 )
 
 
@@ -1217,6 +1273,81 @@ async def test_sensitive_compound_grammar_rejects_plural_decorated_and_compact_a
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
 
+@pytest.mark.parametrize("alias", COMPACT_CREDENTIAL_VALUE_NAMES)
+def test_compact_credential_value_names_are_sensitive_in_direct_assignments(alias: str) -> None:
+    assert text_contains_sensitive_material(f"{alias}=tiny")
+
+
+@pytest.mark.parametrize("alias", COMPACT_CREDENTIAL_VALUE_NAMES)
+@pytest.mark.parametrize(
+    "carrier",
+    ("property_default", "assignment", "nested_assignment", "query", "fragment", "path"),
+)
+@pytest.mark.asyncio
+async def test_compact_credential_value_names_are_rejected_across_representative_carriers(
+    alias: str,
+    carrier: str,
+) -> None:
+    if carrier == "property_default":
+        input_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {alias: {"type": "string", "default": "tiny"}},
+        }
+    else:
+        sensitive_text = {
+            "assignment": f"{alias}=tiny",
+            "nested_assignment": f"safe={alias}=tiny",
+            "query": f"https://robinhood.com/path?{alias}=tiny",
+            "fragment": f"https://robinhood.com/path#{alias}=tiny",
+            "path": f"https://robinhood.com/{alias}/tiny",
+        }[carrier]
+        input_schema = {
+            "type": "object",
+            "properties": {"safe_value": {"type": "string", "description": sensitive_text}},
+        }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize("benign_name", BENIGN_COMPACT_VALUE_NAMES)
+def test_compact_credential_suffix_grammar_preserves_direct_benign_names(
+    benign_name: str,
+) -> None:
+    assert not text_contains_sensitive_material(f"{benign_name}=ordinary")
+
+
+@pytest.mark.parametrize("benign_name", BENIGN_COMPACT_VALUE_NAMES)
+@pytest.mark.parametrize("carrier", ("property_default", "assignment", "query", "fragment", "path"))
+@pytest.mark.asyncio
+async def test_compact_credential_suffix_grammar_preserves_benign_carriers(
+    benign_name: str,
+    carrier: str,
+) -> None:
+    if carrier == "property_default":
+        input_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {benign_name: {"type": "string", "default": "ordinary"}},
+        }
+    else:
+        benign_text = {
+            "assignment": f"{benign_name}=ordinary",
+            "query": f"https://robinhood.com/path?{benign_name}=ordinary",
+            "fragment": f"https://robinhood.com/path#{benign_name}=ordinary",
+            "path": f"https://robinhood.com/{benign_name}/ordinary",
+        }[carrier]
+        input_schema = {
+            "type": "object",
+            "properties": {"safe_value": {"type": "string", "description": benign_text}},
+        }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].input_schema == input_schema
+
+
 @pytest.mark.parametrize(
     "benign_name",
     (
@@ -1843,6 +1974,28 @@ def test_fixture_loader_rejects_nested_sensitive_compound_assignments(
     assert captured.value.__context__ is None
 
 
+@pytest.mark.parametrize("alias", COMPACT_CREDENTIAL_VALUE_NAMES)
+def test_fixture_loader_rejects_compact_credential_value_carriers(
+    tmp_path: Path,
+    alias: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    record["limitations"] = [f"safe={alias}=tiny"]
+    path = tmp_path / "compact-credential-value.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    assert str(captured.value) == "capability fixture is invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
 @pytest.mark.parametrize("alias", GRAMMAR_SENSITIVE_NAMES[:-1])
 def test_fixture_loader_rejects_sensitive_compound_source_uri_path_pairs(
     tmp_path: Path,
@@ -1929,6 +2082,19 @@ def test_matrix_renderer_never_emits_sensitive_free_form_record_values() -> None
 
 @pytest.mark.parametrize("alias", GRAMMAR_SENSITIVE_NAMES)
 def test_matrix_renderer_rejects_nested_sensitive_compound_assignments(alias: str) -> None:
+    record = load_capability_manifest(FIXTURE).records[0]
+    unsafe_record = replace(record, limitations=(f"safe={alias}=tiny",))
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        render_capability_matrix(CapabilityManifest(records=(unsafe_record,)))
+
+    assert str(captured.value) == "capability manifest contains unsafe text"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize("alias", COMPACT_CREDENTIAL_VALUE_NAMES)
+def test_matrix_renderer_rejects_compact_credential_value_carriers(alias: str) -> None:
     record = load_capability_manifest(FIXTURE).records[0]
     unsafe_record = replace(record, limitations=(f"safe={alias}=tiny",))
 

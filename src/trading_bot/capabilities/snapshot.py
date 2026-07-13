@@ -105,19 +105,35 @@ _SENSITIVE_KEY_PREFIXES = frozenset(
     }
 )
 _SENSITIVE_SESSION_SUFFIXES = frozenset({"id", "key", "token", "cookie"})
-_COMPACT_SENSITIVE_NAME_GRAMMAR = re.compile(
+_MAX_CANDIDATE_NAME_LENGTH = 256
+_COMPACT_SENSITIVE_BASE_GRAMMAR = (
     r"(?:"
     r"x?api(?:key|keys|secret|secrets)|"
     r"(?:private|signing|client|consumer|secret)(?:key|keys)|"
     r"access(?:key|keys)(?:id|ids)?|"
+    r"secretaccess(?:key|keys)|"
     r"(?:access|client|consumer)(?:secret|secrets)|"
     r"oauth(?:client|consumer)(?:secret|secrets)|"
     r"(?:access|refresh|auth|authorization|oauth|bearer)(?:token|tokens)|"
     r"session(?:id|ids|key|keys|token|tokens|cookie|cookies)|"
     r"account(?:id|ids|number|numbers|uuid|uuids)|"
     r"(?:auth|authorization)(?:header|headers)"
-    r")\Z",
+    r")"
+)
+_COMPACT_STRONG_NAME_GRAMMAR = re.compile(
+    rf"(?:[a-z][a-z0-9]{{0,{_MAX_CANDIDATE_NAME_LENGTH - 1}}})?"
+    rf"{_COMPACT_SENSITIVE_BASE_GRAMMAR}\Z",
     re.IGNORECASE,
+)
+# Compact trailing-lexeme recognition shares the exact sensitive-name taxonomy.
+_COMPACT_SENSITIVE_LEXEMES = _SENSITIVE_SINGLE_NAME_TOKENS
+_COMPACT_CREDENTIAL_VALUE_SUFFIXES = (
+    "material",
+    "values",
+    "value",
+    "bytes",
+    "data",
+    "pem",
 )
 _JSON_SCHEMA_TYPES = frozenset(
     {"array", "boolean", "integer", "null", "number", "object", "string"}
@@ -164,7 +180,6 @@ _SCHEMA_CHILD_KEYS = frozenset(
 )
 _SCHEMA_BOOLEAN_KEYS = frozenset({"deprecated", "nullable", "readOnly", "uniqueItems", "writeOnly"})
 _MAX_INSPECTION_TEXT_LENGTH = 65_536
-_MAX_CANDIDATE_NAME_LENGTH = 256
 _MAX_PERCENT_DECODE_ROUNDS = 3
 
 _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
@@ -861,7 +876,7 @@ def _name_is_sensitive(value: str) -> bool:
     if _candidate_name_has_unsafe_characters(value):
         return True
     components = tuple(component for component in re.split(r"[^A-Za-z0-9]+", decoded) if component)
-    if any(_COMPACT_SENSITIVE_NAME_GRAMMAR.fullmatch(component) for component in components):
+    if any(_compact_component_is_sensitive(component) for component in components):
         return True
     tokens = tuple(
         token.casefold()
@@ -875,6 +890,32 @@ def _name_is_sensitive(value: str) -> bool:
         or (left == "session" and right.removesuffix("s") in _SENSITIVE_SESSION_SUFFIXES)
         for left, right in pairwise(tokens)
     )
+
+
+def _compact_component_is_sensitive(value: str) -> bool:
+    normalized = value.casefold()
+    stems = [normalized]
+    stems.extend(
+        normalized[: -len(suffix)]
+        for suffix in _COMPACT_CREDENTIAL_VALUE_SUFFIXES
+        if normalized.endswith(suffix) and len(normalized) > len(suffix)
+    )
+    return any(_compact_stem_is_sensitive(stem) for stem in stems)
+
+
+def _compact_stem_is_sensitive(value: str) -> bool:
+    if _COMPACT_STRONG_NAME_GRAMMAR.fullmatch(value) is not None:
+        return True
+    if value in _COMPACT_SENSITIVE_LEXEMES:
+        return True
+    return any(
+        value.endswith(lexeme) and _is_bounded_compact_namespace(value[: -len(lexeme)])
+        for lexeme in _COMPACT_SENSITIVE_LEXEMES
+    )
+
+
+def _is_bounded_compact_namespace(value: str) -> bool:
+    return 0 < len(value) <= _MAX_CANDIDATE_NAME_LENGTH and value[0].isalpha() and value.isalnum()
 
 
 def _candidate_name_has_unsafe_characters(value: str) -> bool:
