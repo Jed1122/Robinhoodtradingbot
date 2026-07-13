@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 import unicodedata
 from itertools import pairwise
@@ -19,6 +21,9 @@ _UUID_LIKE = re.compile(
 )
 _BARE_LONG_NUMERIC_ID = re.compile(r"(?<![0-9])[0-9]{8,}(?![0-9])")
 _HIGH_ENTROPY_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])")
+_STANDARD_BASE64_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])"
+)
 _PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
 _PEM_PRIVATE_KEY = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)
 _BEARER_OR_HEADER_ASSIGNMENT = re.compile(
@@ -32,7 +37,7 @@ _SECRET_ASSIGNMENT = re.compile(
     r"account[_-]?(?:id|number|uuid))\s*[:=]\s*\S+",
     re.IGNORECASE,
 )
-_ASSIGNMENT_OPERATOR = re.compile(r"[:=]")
+_ASSIGNMENT_OPERATOR = re.compile(r"[:=\uFF1A\uFF1D]")
 _CAMEL_NAME_TOKEN = re.compile(r"[A-Z]+(?=[A-Z][a-z]|[0-9]|\Z)|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
 
 _SENSITIVE_SINGLE_NAME_TOKENS = frozenset(
@@ -65,7 +70,9 @@ _SENSITIVE_SINGLE_NAME_TOKENS = frozenset(
 _SENSITIVE_KEY_PREFIXES = frozenset(
     {"api", "access", "client", "consumer", "private", "secret", "signing"}
 )
-_SENSITIVE_SESSION_SUFFIXES = frozenset({"id", "key", "token", "cookie"})
+_SENSITIVE_SESSION_SUFFIXES = frozenset(
+    {"id", "identifier", "key", "token", "cookie", "reference", "number", "uuid", "no"}
+)
 _BENIGN_COMPOUND_NAMES = frozenset(
     {
         "accountingreference",
@@ -83,7 +90,9 @@ _MAX_INSPECTION_TEXT_LENGTH = 65_536
 _MAX_PERCENT_DECODE_ROUNDS = 3
 _MAX_CANDIDATE_NAME_LENGTH = 256
 _MAX_ASSIGNMENT_NAME_LENGTH = 128
+_MAX_ASSIGNMENT_NAME_WORDS = 4
 _MAX_QUERY_FIELDS = 128
+_MIN_STANDARD_BASE64_DISTINCT_CHARACTERS = 20
 
 _COMPACT_SENSITIVE_BASE_GRAMMAR = (
     r"(?:"
@@ -94,9 +103,12 @@ _COMPACT_SENSITIVE_BASE_GRAMMAR = (
     r"(?:access|client|consumer)(?:secret|secrets)|"
     r"oauth(?:client|consumer)(?:secret|secrets)|"
     r"(?:access|refresh|auth|authorization|oauth|bearer)(?:token|tokens)|"
-    r"session(?:id|ids|key|keys|token|tokens|cookie|cookies)|"
-    r"account(?:id|ids|identifier|identifiers|number|numbers|uuid|uuids|reference|references|no|nos)|"
-    r"acct(?:id|ids|identifier|identifiers|number|numbers|uuid|uuids|reference|references|no|nos)|"
+    r"session(?:id|ids|identifier|identifiers|key|keys|token|tokens|cookie|cookies|"
+    r"reference|references|number|numbers|uuid|uuids|no|nos)|"
+    r"account(?:id|ids|identifier|identifiers|number|numbers|num|nums|nbr|nbrs|uuid|uuids|"
+    r"reference|references|ref|refs|no|nos)|"
+    r"acct(?:id|ids|identifier|identifiers|number|numbers|num|nums|nbr|nbrs|uuid|uuids|"
+    r"reference|references|ref|refs|no|nos)|"
     r"(?:authorization|oauth|auth|verification|mfa|recovery|otp)(?:code|codes)|"
     r"(?:auth|authorization)(?:header|headers)"
     r")"
@@ -149,6 +161,7 @@ def text_contains_sensitive_material(value: str) -> bool:
             or _UUID_LIKE.search(candidate)
             or _BARE_LONG_NUMERIC_ID.search(candidate)
             or _HIGH_ENTROPY_TOKEN.search(candidate)
+            or _contains_standard_base64_token(candidate)
             or _BEARER_OR_HEADER_ASSIGNMENT.search(candidate)
             or _SECRET_ASSIGNMENT.search(candidate)
             or _has_sensitive_assignment(candidate)
@@ -310,12 +323,27 @@ def _assignment_name_before(value: str, operator_index: int) -> tuple[str | None
         return None, False
     end = index + 1
     inspected = 0
+    start = index
+    words = 0
     while index >= 0 and _is_assignment_name_character(value[index]):
-        inspected += 1
-        if inspected > _MAX_ASSIGNMENT_NAME_LENGTH:
-            return None, True
-        index -= 1
-    return value[index + 1 : end], False
+        words += 1
+        while index >= 0 and _is_assignment_name_character(value[index]):
+            inspected += 1
+            if inspected > _MAX_ASSIGNMENT_NAME_LENGTH:
+                return None, True
+            index -= 1
+        start = index + 1
+        if words >= _MAX_ASSIGNMENT_NAME_WORDS:
+            break
+        whitespace_end = index
+        while index >= 0 and value[index].isspace():
+            inspected += 1
+            if inspected > _MAX_ASSIGNMENT_NAME_LENGTH:
+                return None, True
+            index -= 1
+        if index == whitespace_end or index < 0 or not _is_assignment_name_character(value[index]):
+            break
+    return value[start:end], False
 
 
 def _assignment_has_value_after(value: str, operator_end: int) -> bool:
@@ -327,6 +355,25 @@ def _assignment_has_value_after(value: str, operator_end: int) -> bool:
 
 def _is_assignment_name_character(value: str) -> bool:
     return value.isalnum() or value in "_-.~%[]"
+
+
+def _contains_standard_base64_token(value: str) -> bool:
+    for match in _STANDARD_BASE64_TOKEN.finditer(value):
+        token = match.group(0)
+        if (
+            len(token) % 4 == 1
+            or ("+" not in token and "/" not in token)
+            or len(set(token.rstrip("="))) < _MIN_STANDARD_BASE64_DISTINCT_CHARACTERS
+        ):
+            continue
+        padded_token = token + "=" * (-len(token) % 4)
+        try:
+            decoded = base64.b64decode(padded_token, validate=True)
+        except (binascii.Error, ValueError):
+            continue
+        if len(decoded) >= 24:
+            return True
+    return False
 
 
 def _compact_component_is_sensitive(value: str) -> bool:

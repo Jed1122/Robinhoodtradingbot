@@ -187,6 +187,108 @@ def test_find_rejects_missing_or_empty_keys() -> None:
         manifest.find(provider=" ", operation="get_quote")
 
 
+@pytest.mark.parametrize(
+    ("provider", "operation", "expected_provider", "expected_operation"),
+    (
+        ("missing-provider", "get_quote", "missing-provider", "get_quote"),
+        (
+            AlwaysEqualString("wrong-provider"),
+            "get_quote",
+            "<invalid-provider>",
+            "get_quote",
+        ),
+        (
+            MatchAnything(),
+            "get_quote",
+            "<invalid-provider>",
+            "get_quote",
+        ),
+        (
+            ArmedEquality(),
+            "get_quote",
+            "<invalid-provider>",
+            "get_quote",
+        ),
+        (
+            "Authorization: Bearer actual-secret-value",
+            "get_quote",
+            "<invalid-provider>",
+            "get_quote",
+        ),
+        (
+            "robinhood-trading",
+            "clientsecret=actual-secret-value",
+            "robinhood-trading",
+            "<invalid-operation>",
+        ),
+    ),
+)
+def test_manifest_find_sanitizes_not_found_public_attributes(
+    provider: object,
+    operation: object,
+    expected_provider: str,
+    expected_operation: str,
+) -> None:
+    manifest = CapabilityManifest(records=(documented_record(),))
+
+    with pytest.raises(CapabilityNotFoundError) as captured:
+        manifest.find(
+            provider=provider,  # type: ignore[arg-type]
+            operation=operation,  # type: ignore[arg-type]
+        )
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert type(captured.value.provider) is str
+    assert type(captured.value.operation) is str
+    assert captured.value.provider == expected_provider
+    assert captured.value.operation == expected_operation
+    assert str(captured.value) == "requested capability is not present"
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_direct_capability_not_found_error_constructor_sanitizes_attributes() -> None:
+    safe = CapabilityNotFoundError("robinhood-trading", "missing")
+    unsafe = CapabilityNotFoundError(
+        ArmedEquality(),  # type: ignore[arg-type]
+        "private key = actual-secret-value",
+    )
+
+    assert safe.provider == "robinhood-trading"
+    assert safe.operation == "missing"
+    assert unsafe.provider == "<invalid-provider>"
+    assert unsafe.operation == "<invalid-operation>"
+    assert str(unsafe) == "requested capability is not present"
+    assert unsafe.__cause__ is None
+    assert unsafe.__context__ is None
+
+
+def test_direct_unsupported_capability_error_constructor_sanitizes_attributes() -> None:
+    safe = UnsupportedCapabilityError(
+        "robinhood-trading",
+        "place_order",
+        EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED,
+    )
+    unsafe = UnsupportedCapabilityError(
+        ArmedEquality(),  # type: ignore[arg-type]
+        "account number = actual-secret-value",
+        ArmedEquality(),  # type: ignore[arg-type]
+    )
+
+    rendered = "".join(traceback.format_exception(unsafe))
+    assert safe.provider == "robinhood-trading"
+    assert safe.operation == "place_order"
+    assert safe.minimum is EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED
+    assert unsafe.provider == "<invalid-provider>"
+    assert unsafe.operation == "<invalid-operation>"
+    assert unsafe.minimum is EvidenceLevel.UNSUPPORTED
+    assert str(unsafe) == "requested capability does not have the required exact evidence"
+    assert "actual-secret-value" not in rendered
+    assert unsafe.__cause__ is None
+    assert unsafe.__context__ is None
+
+
 def test_require_capability_returns_only_exact_unlocked_evidence() -> None:
     record = documented_record()
     manifest = CapabilityManifest(records=(record,))

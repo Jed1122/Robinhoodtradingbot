@@ -39,8 +39,8 @@ class CapabilityNotFoundError(LookupError):
     """Raised when an exact provider and operation key is absent."""
 
     def __init__(self, provider: str, operation: str) -> None:
-        self.provider = provider
-        self.operation = operation
+        self.provider = _safe_error_text(provider, "<invalid-provider>")
+        self.operation = _safe_error_text(operation, "<invalid-operation>")
         super().__init__("requested capability is not present")
 
 
@@ -53,9 +53,9 @@ class UnsupportedCapabilityError(RuntimeError):
         operation: str,
         minimum: "EvidenceLevel",
     ) -> None:
-        self.provider = provider
-        self.operation = operation
-        self.minimum = minimum
+        self.provider = _safe_error_text(provider, "<invalid-provider>")
+        self.operation = _safe_error_text(operation, "<invalid-operation>")
+        self.minimum = minimum if type(minimum) is EvidenceLevel else EvidenceLevel.UNSUPPORTED
         super().__init__("requested capability does not have the required exact evidence")
 
 
@@ -77,6 +77,12 @@ class OperationKind(StrEnum):
     REVIEW = "review"
     PLACE = "place"
     CANCEL = "cancel"
+
+
+def _safe_error_text(value: object, fallback: str) -> str:
+    if type(value) is str and not text_contains_sensitive_material(value):
+        return value
+    return fallback
 
 
 _AUTHENTICATED_LEVELS = frozenset(

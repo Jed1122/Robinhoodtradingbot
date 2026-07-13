@@ -81,8 +81,10 @@ Sensitive schema names are classified from percent-decoded separator and camel-c
 plus an anchored, reviewed compound grammar. The grammar covers singular/plural API, private,
 signing, access, client, consumer, and secret key forms; API/access/client/consumer secret
 forms; auth/OAuth/bearer/authorization token forms; session and account identifiers; and auth
-headers. Account identifier/reference/number/UUID/`no` variants, their `acct` abbreviations,
-and authorization/OAuth/auth/verification/MFA/recovery/OTP code variants use that same grammar.
+headers. Session identifier/reference/number/UUID/`no` variants and account
+identifier/reference/number/UUID/`no` variants use that same grammar. Reviewed compact account
+abbreviations include `acctNum`, `accountNbr`, and `acctRef`, with plural and terminal carrier
+variants. Authorization/OAuth/auth/verification/MFA/recovery/OTP code variants are also covered.
 It recognizes exact compact components and separators or punctuation such as array
 brackets, without raw substring matching. A compact strong credential base may have a bounded
 alphanumeric namespace. Any exact sensitive single-name lexeme may also have a bounded leading
@@ -99,10 +101,12 @@ author-value, accounting-data, headerless-value, accessibility, and secretary na
 ordinary metadata. Candidate names containing non-ASCII, control, or format characters fail
 closed. Explicit benign compounds include accounting reference, authorization status, OAuth
 scope, postal/ZIP code, code point, reference price, and identifier format. Assignment
-inspection walks each delimiter and extracts the immediate bounded name across unreserved name
-punctuation, so semicolons, slashes, quotes, and other carrier boundaries expose inner values.
-A safe outer field or a long padded value cannot hide an inner assignment such as
-`safe=clientsecret=tiny`; a continuous assignment-name span beyond 128 characters fails closed.
+inspection walks each ASCII or fullwidth colon/equal delimiter and extracts up to four immediate
+bounded name words across whitespace and unreserved name punctuation. Percent-encoded spaces
+and delimiters receive the same inspection, while semicolons, slashes, quotes, and other carrier
+boundaries expose inner values. A safe outer field or a long padded value cannot hide an inner
+assignment such as `safe=clientsecret=tiny`; a continuous assignment-name span beyond 128
+characters fails closed.
 Under sensitive scope, schema
 declarations are accepted only when their values have validated built-in shapes: known types
 and formats, safe local JSON pointers, exact booleans, matching required-property names, and
@@ -114,8 +118,11 @@ segment followed by another segment, including `access_token~1tiny`, is rejected
 value-bearing. Unvalidated
 numeric/list carriers, defaults, examples, descriptions, custom metadata, encoded
 assignments, userinfo, and identifier-bearing paths are rejected. Standalone bearer material
-is rejected regardless of length. Bare identifier-like runs of eight or more digits are also
-rejected from free-form evidence, while ISO dates and seven-digit public values remain valid.
+is rejected regardless of length. Valid padded or unpadded standard-Base64 opaque values with
+the standard `+` or `/` alphabet, a decoded length of at least 24 bytes, and a bounded diversity
+floor are rejected without classifying ordinary public API paths. Bare identifier-like runs of
+eight or more digits are also rejected from free-form evidence, while ISO dates and seven-digit
+public values remain valid.
 
 The documented fixture loader requires duplicate-free finite JSON, exact root/record/
 evidence fields, format version integer `1`, and an aware UTC `checked_at`. Invalid
@@ -141,14 +148,20 @@ equality, forged model fields, and missing fields therefore cannot satisfy consi
 capability gates. Every standalone schema accessor and every tool/snapshot JSON serializer
 reconstructs its complete object immediately before export, so post-construction mutation and
 exact `object.__new__` forgery cannot emit stale state. Exact capability lookup validates its
-query keys before comparison and never invokes subclass or non-string equality. Provider
-identity and deterministic tool ordering are also revalidated at construction. Only exact MCP
-SDK result and tool model types cross the external-result boundary.
+query keys before comparison and never invokes subclass or non-string equality. Both exported
+lookup-error constructors independently retain only exact safe strings, replace hostile or
+sensitive provider/operation attributes with generic placeholders, and replace an invalid
+minimum evidence attribute with `unsupported`. Provider identity and deterministic tool
+ordering are also revalidated at construction. Only exact MCP SDK result and tool model types
+cross the external-result boundary.
 
-Schema discovery accepts at most 32 `tools/list` pages and applies a 10-second timeout to each
-individual page call. A continuation cursor on page 32 is rejected before a page-33 request or
-artifact write. Empty and repeated cursors still fail closed, timeout/session failures remain
-generic, and caller cancellation propagates without being converted into a capture error.
+Schema discovery accepts at most 32 `tools/list` pages and applies a 10-second cooperative
+async timeout to each individual page call. A continuation cursor on page 32 is rejected before
+a page-33 request or artifact write. Empty and repeated cursors still fail closed,
+timeout/session failures remain generic, and caller cancellation propagates without being
+converted into a capture error. The async timeout can cancel a session implementation that
+yields to the event loop; it cannot preempt an implementation that blocks the event loop or
+never reaches a cancellation point. No background thread or process workaround is used.
 
 When no proven configured session is injected, the CLI exits with status 2, writes
 nothing, and prints:

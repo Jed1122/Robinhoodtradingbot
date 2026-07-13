@@ -70,21 +70,10 @@ def require_capability(
     except Exception:
         record = None
     if record is None:
-        safe_provider = (
-            provider
-            if type(provider) is str and not text_contains_sensitive_material(provider)
-            else "<invalid-provider>"
-        )
-        safe_operation = (
-            operation
-            if type(operation) is str and not text_contains_sensitive_material(operation)
-            else "<invalid-operation>"
-        )
-        safe_minimum = minimum if type(minimum) is EvidenceLevel else EvidenceLevel.UNSUPPORTED
         raise UnsupportedCapabilityError(
-            safe_provider,
-            safe_operation,
-            safe_minimum,
+            provider,
+            operation,
+            minimum,
         ) from None
     return record
 

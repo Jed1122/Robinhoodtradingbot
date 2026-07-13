@@ -33,6 +33,7 @@ DIGEST_LEVELS = frozenset(
         EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED,
     }
 )
+STANDARD_BASE64_TEST_VALUE = "xQoZprzZRMK3vuPuR0K8f8gA+GK+8DFUeXQ3diC/qpg="
 
 
 class HostileTimezone(tzinfo):
@@ -294,6 +295,47 @@ def test_direct_model_freeform_boundary_preserves_public_dates_and_short_values(
 
     assert evidence.notes == ("checked on 2026-07-13 with public value 1234567",)
     assert record.limitations == ("checked on 2026-07-13 with public value 1234567",)
+
+
+@pytest.mark.parametrize(
+    "source_uri",
+    (
+        "https://robinhood.com/sessionReference/tiny",
+        "https://robinhood.com/sessionNoValue/tiny",
+    ),
+)
+def test_direct_source_uri_rejects_extended_session_identifier_grammar(
+    source_uri: str,
+) -> None:
+    with pytest.raises(InvalidCapabilityEvidence) as captured:
+        replace(evidence_for(), source_uri=source_uri)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "tiny" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("notes", ("sessionNumberData=tiny",)),
+        ("limitations", ("sessionUuidBytes=tiny",)),
+        ("notes", (STANDARD_BASE64_TEST_VALUE,)),
+        ("limitations", (STANDARD_BASE64_TEST_VALUE,)),
+    ),
+)
+def test_direct_models_reject_extended_session_and_standard_base64_material(
+    field: str,
+    value: tuple[str, ...],
+) -> None:
+    factory = evidence_for if field == "notes" else record_for
+
+    with pytest.raises((InvalidCapabilityEvidence, InvalidCapabilityRecord)) as captured:
+        replace(factory(), **{field: value})  # type: ignore[arg-type]
+
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 @pytest.mark.parametrize(

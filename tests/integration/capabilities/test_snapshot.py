@@ -188,6 +188,35 @@ BENIGN_ACCOUNT_AUTH_CONTROLS = (
     "identifierformat",
     "identifier_format",
 )
+ACCOUNT_ABBREVIATION_ALIASES = (
+    "acctNum",
+    "acctNums",
+    "acctNumValue",
+    "accountNbr",
+    "accountNbrs",
+    "accountNbrData",
+    "acctRef",
+    "acctRefs",
+    "acctRefBytes",
+)
+SESSION_IDENTIFIER_ALIASES = (
+    "sessionIdentifier",
+    "sessionIdentifiers",
+    "sessionIdentifierValue",
+    "sessionReference",
+    "sessionReferences",
+    "sessionReferenceValues",
+    "sessionNumber",
+    "sessionNumbers",
+    "sessionNumberData",
+    "sessionUuid",
+    "sessionUuids",
+    "sessionUuidBytes",
+    "sessionNo",
+    "sessionNos",
+    "sessionNoValue",
+)
+STANDARD_BASE64_TEST_VALUE = "xQoZprzZRMK3vuPuR0K8f8gA+GK+8DFUeXQ3diC/qpg="
 
 
 class FakeToolsListSession:
@@ -2853,6 +2882,211 @@ async def test_safe_percent_encoded_public_text_remains_supported() -> None:
     snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
     assert snapshot.tools[0].description == description
+
+
+@pytest.mark.parametrize(
+    "sensitive_text",
+    (
+        "api key=tiny",
+        "private key : tiny",
+        "account number = tiny",
+        "authorization code\uff1atiny",
+        "session reference\uff1dtiny",
+        "api%20key%EF%BC%9Dtiny",
+        "safe=ordinary; private%20key%EF%BC%9Atiny",
+    ),
+)
+def test_assignment_scanner_rejects_spaced_names_and_wide_delimiters(
+    sensitive_text: str,
+) -> None:
+    assert text_contains_sensitive_material(sensitive_text)
+
+
+@pytest.mark.parametrize(
+    "benign_text",
+    (
+        "public key = ordinary",
+        "reference price: 12.34",
+        "authorization status = pending",
+        "accounting reference\uff1apublic",
+        "session duration\uff1d30",
+        "api version = v2",
+    ),
+)
+def test_assignment_scanner_preserves_spaced_public_controls(benign_text: str) -> None:
+    assert not text_contains_sensitive_material(benign_text)
+
+
+@pytest.mark.asyncio
+async def test_capture_rejects_spaced_assignment_from_schema_description() -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {"safe": {"type": "string", "description": "account number = tiny"}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize("alias", ACCOUNT_ABBREVIATION_ALIASES)
+@pytest.mark.asyncio
+async def test_account_abbreviation_alias_defaults_are_rejected(alias: str) -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {alias: {"type": "string", "default": "tiny"}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "sensitive_text",
+    (
+        "acctNum=tiny",
+        "https://robinhood.com/path?accountNbr=tiny",
+        "https://robinhood.com/path#acctRef=tiny",
+        "https://robinhood.com/accountNbrData/tiny",
+    ),
+)
+def test_account_abbreviation_aliases_cross_representative_text_carriers(
+    sensitive_text: str,
+) -> None:
+    assert text_contains_sensitive_material(sensitive_text)
+
+
+@pytest.mark.asyncio
+async def test_account_abbreviation_grammar_preserves_benign_names() -> None:
+    benign_names = (
+        "accountingNumber",
+        "accountingNbr",
+        "accountingReference",
+        "referencePrice",
+        "accountNotification",
+    )
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {name: {"type": "string", "default": "ordinary"} for name in benign_names},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].input_schema == input_schema
+
+
+@pytest.mark.parametrize("alias", SESSION_IDENTIFIER_ALIASES)
+@pytest.mark.asyncio
+async def test_session_identifier_alias_defaults_are_rejected(alias: str) -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {alias: {"type": "string", "default": "tiny"}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "sensitive_text",
+    (
+        "sessionIdentifier=tiny",
+        "https://robinhood.com/path?sessionReference=tiny",
+        "https://robinhood.com/path#sessionNumber=tiny",
+        "https://robinhood.com/sessionUuid/tiny",
+        "https://robinhood.com/path?sessionNoValue=tiny",
+    ),
+)
+def test_session_identifier_grammar_crosses_representative_text_carriers(
+    sensitive_text: str,
+) -> None:
+    assert text_contains_sensitive_material(sensitive_text)
+
+
+@pytest.mark.parametrize(
+    "sensitive_text",
+    (
+        STANDARD_BASE64_TEST_VALUE,
+        STANDARD_BASE64_TEST_VALUE.rstrip("="),
+        STANDARD_BASE64_TEST_VALUE.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D"),
+    ),
+)
+def test_standard_base64_high_entropy_material_is_rejected_standalone(
+    sensitive_text: str,
+) -> None:
+    assert text_contains_sensitive_material(sensitive_text)
+
+
+@pytest.mark.parametrize(
+    "benign_text",
+    (
+        "UHVibGlj",
+        "C++ / public = format",
+        "https://robinhood.com/us/en/support/articles/trading-with-your-agent/",
+    ),
+)
+def test_standard_base64_scanner_preserves_public_controls(benign_text: str) -> None:
+    assert not text_contains_sensitive_material(benign_text)
+
+
+@pytest.mark.asyncio
+async def test_capture_rejects_standalone_standard_base64_in_schema_text() -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {"safe": {"type": "string", "description": STANDARD_BASE64_TEST_VALUE}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    ("sessionReferenceValues=tiny", STANDARD_BASE64_TEST_VALUE),
+)
+def test_fixture_loader_rejects_new_sensitive_text_boundaries(
+    tmp_path: Path,
+    unsafe_text: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    record["limitations"] = [unsafe_text]
+    path = tmp_path / "new-sensitive-boundary.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    assert str(captured.value) == "capability fixture is invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    ("sessionNos=tiny", STANDARD_BASE64_TEST_VALUE),
+)
+def test_matrix_renderer_rejects_new_sensitive_text_boundaries(unsafe_text: str) -> None:
+    source = load_capability_manifest(FIXTURE).records[0]
+    forged_manifest = forged_manifest_with_unsafe_freeform(
+        source,
+        field="limitations",
+        value=unsafe_text,
+    )
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        render_capability_matrix(forged_manifest)
+
+    assert str(captured.value) == "capability manifest contains unsafe text"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 def _pagination_pages(count: int, *, terminate: bool) -> list[types.ListToolsResult]:
