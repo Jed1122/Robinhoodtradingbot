@@ -171,6 +171,7 @@ def _forbidden_layer_import_violations(package_root: Path) -> list[str]:
                 _format_import_use(use, package_root)
                 for use in _broker_imports_in_file(path, package_root)
             )
+            violations.extend(_dynamic_broker_import_violations(path, package_root))
             violations.extend(_forbidden_reference_violations(path, package_root, PROTOCOL_NAMES))
     return sorted(violations)
 
@@ -191,24 +192,27 @@ def _restricted_import_violations(
         allowed_names = allowed_by_module.get(use.module, frozenset())
         if use.whole_module or use.name not in allowed_names:
             violations.append(_format_import_use(use, package_root))
+    violations.extend(_dynamic_broker_import_violations(path, package_root))
     return violations
 
 
-def _constant_string(node: ast.AST) -> str | None:
+def _constant_string(node: ast.AST, constants: dict[str, str] | None = None) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
+    if isinstance(node, ast.Name) and constants is not None:
+        return constants.get(node.id)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = _constant_string(node.left)
-        right = _constant_string(node.right)
+        left = _constant_string(node.left, constants)
+        right = _constant_string(node.right, constants)
         if left is not None and right is not None:
             return left + right
     if isinstance(node, ast.JoinedStr):
         parts: list[str] = []
         for value in node.values:
             if isinstance(value, ast.FormattedValue):
-                rendered = _constant_string(value.value)
+                rendered = _constant_string(value.value, constants)
             else:
-                rendered = _constant_string(value)
+                rendered = _constant_string(value, constants)
             if rendered is None:
                 return None
             parts.append(rendered)
@@ -216,23 +220,124 @@ def _constant_string(node: ast.AST) -> str | None:
     return None
 
 
-def _dynamic_lookup_name(node: ast.Call) -> str | None:
+def _constant_bindings(tree: ast.Module) -> dict[str, str]:
+    assignments: dict[str, list[ast.AST | None]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assignments.setdefault(target.id, []).append(node.value)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            assignments.setdefault(node.target.id, []).append(node.value)
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            assignments.setdefault(node.target.id, []).append(None)
+        elif isinstance(node, ast.arg) and node.arg in assignments:
+            assignments[node.arg].append(None)
+
+    constants: dict[str, str] = {}
+    changed = True
+    while changed:
+        changed = False
+        for name, values in assignments.items():
+            if name in constants or len(values) != 1 or values[0] is None:
+                continue
+            value = _constant_string(values[0], constants)
+            if value is not None:
+                constants[name] = value
+                changed = True
+    return constants
+
+
+def _dynamic_import_aliases(
+    tree: ast.Module,
+) -> tuple[set[str], set[str], set[str]]:
+    importlib_modules: set[str] = set()
+    builtins_modules: set[str] = set()
+    import_functions = {"__import__"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "importlib":
+                    importlib_modules.add(alias.asname or alias.name)
+                elif alias.name == "builtins":
+                    builtins_modules.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            for alias in node.names:
+                if (node.module == "importlib" and alias.name == "import_module") or (
+                    node.module == "builtins" and alias.name == "__import__"
+                ):
+                    import_functions.add(alias.asname or alias.name)
+    return importlib_modules, builtins_modules, import_functions
+
+
+def _is_dynamic_import_call(
+    node: ast.Call,
+    importlib_modules: set[str],
+    builtins_modules: set[str],
+    import_functions: set[str],
+) -> bool:
+    if isinstance(node.func, ast.Name):
+        return node.func.id in import_functions
+    if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
+        return False
+    if node.func.attr == "import_module":
+        return node.func.value.id in importlib_modules
+    if node.func.attr == "__import__":
+        return node.func.value.id in builtins_modules
+    return False
+
+
+def _dynamic_broker_import_violations(path: Path, package_root: Path) -> list[str]:
+    tree = _parse(path)
+    constants = _constant_bindings(tree)
+    import_aliases = _dynamic_import_aliases(tree)
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        if not _is_dynamic_import_call(node, *import_aliases):
+            continue
+        module = _constant_string(node.args[0], constants)
+        if module is not None and _is_broker_module(module):
+            relative = _relative_path(path, package_root)
+            violations.append(f"{relative}:{node.lineno}: dynamic broker import {module}")
+    return violations
+
+
+def _dynamic_lookup_name(node: ast.Call, constants: dict[str, str] | None = None) -> str | None:
     if isinstance(node.func, ast.Name) and node.func.id == "getattr" and len(node.args) >= 2:
-        return _constant_string(node.args[1])
+        return _constant_string(node.args[1], constants)
     if isinstance(node.func, ast.Attribute) and node.func.attr == "getattr" and len(node.args) >= 2:
-        return _constant_string(node.args[1])
+        return _constant_string(node.args[1], constants)
     if isinstance(node.func, ast.Attribute) and node.func.attr == "__getattribute__":
         for argument in node.args:
-            value = _constant_string(argument)
+            value = _constant_string(argument, constants)
             if value is not None:
                 return value
     return None
 
 
-def _annotation_values(tree: ast.Module) -> tuple[ast.AST, ...]:
-    values: list[ast.AST] = []
+def _reflective_subscript_name(
+    node: ast.Subscript,
+    constants: dict[str, str] | None = None,
+) -> str | None:
+    source = node.value
+    is_vars_lookup = (
+        isinstance(source, ast.Call)
+        and isinstance(source.func, ast.Name)
+        and source.func.id == "vars"
+        and len(source.args) == 1
+    )
+    is_dict_lookup = isinstance(source, ast.Attribute) and source.attr == "__dict__"
+    if not is_vars_lookup and not is_dict_lookup:
+        return None
+    return _constant_string(node.slice, constants)
+
+
+def _annotation_values(tree: ast.Module) -> tuple[ast.expr, ...]:
+    values: list[ast.expr] = []
     for node in ast.walk(tree):
-        annotation: ast.AST | None = None
+        annotation: ast.expr | None = None
         if isinstance(node, (ast.arg, ast.AnnAssign)):
             annotation = node.annotation
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None:
@@ -263,14 +368,23 @@ def _forbidden_reference_violations(
     forbidden_names: frozenset[str],
 ) -> list[str]:
     tree = _parse(path)
+    constants = _constant_bindings(tree)
     lines: set[int] = set()
     for node in ast.walk(tree):
         forbidden_reference = (
             (isinstance(node, ast.Name) and node.id in forbidden_names)
             or (isinstance(node, ast.Attribute) and node.attr in forbidden_names)
-            or (isinstance(node, ast.Call) and _dynamic_lookup_name(node) in forbidden_names)
+            or (
+                isinstance(node, ast.Call)
+                and _dynamic_lookup_name(node, constants) in forbidden_names
+            )
+            or (
+                isinstance(node, ast.Subscript)
+                and _reflective_subscript_name(node, constants) in forbidden_names
+            )
         )
         if forbidden_reference:
+            assert isinstance(node, (ast.Name, ast.Attribute, ast.Call, ast.Subscript))
             lines.add(node.lineno)
     for annotation in _annotation_values(tree):
         if _annotation_mentions(annotation, forbidden_names):
@@ -327,24 +441,93 @@ def _recovery_violations(package_root: Path) -> list[str]:
     return sorted(set(violations))
 
 
-def _place_order_definition_sites(package_root: Path) -> set[tuple[Path, str]]:
-    sites: set[tuple[Path, str]] = set()
+def _assignment_defines_place_order(node: ast.Assign | ast.AnnAssign) -> bool:
+    if isinstance(node, ast.AnnAssign):
+        return (
+            node.value is not None
+            and isinstance(node.target, ast.Name)
+            and (node.target.id == "place_order")
+        )
+    return any(
+        isinstance(target, ast.Name) and target.id == "place_order" for target in node.targets
+    )
+
+
+def _class_directly_exposes_place_order(node: ast.ClassDef) -> bool:
+    return any(
+        (
+            isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and statement.name == "place_order"
+        )
+        or (
+            isinstance(statement, (ast.Assign, ast.AnnAssign))
+            and _assignment_defines_place_order(statement)
+        )
+        for statement in node.body
+    )
+
+
+def _base_class_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _place_order_definition_sites(package_root: Path) -> tuple[tuple[Path, str], ...]:
+    sites: list[tuple[Path, int, str]] = []
     for path in _python_files(package_root):
-        for node in ast.walk(_parse(path)):
+        relative = _relative_path(path, package_root)
+        tree = _parse(path)
+        class_nodes = tuple(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
+        for node in ast.walk(tree):
             if isinstance(node, ast.AsyncFunctionDef) and node.name == "place_order":
-                sites.add((_relative_path(path, package_root), "async"))
+                sites.append((relative, node.lineno, "async"))
             elif isinstance(node, ast.FunctionDef) and node.name == "place_order":
-                sites.add((_relative_path(path, package_root), "sync"))
-    return sites
+                sites.append((relative, node.lineno, "sync"))
+        for class_node in class_nodes:
+            for statement in class_node.body:
+                if isinstance(statement, (ast.Assign, ast.AnnAssign)) and (
+                    _assignment_defines_place_order(statement)
+                ):
+                    sites.append((relative, statement.lineno, "assignment"))
+
+        capable_class_names = {
+            node.name for node in class_nodes if _class_directly_exposes_place_order(node)
+        }
+        changed = True
+        while changed:
+            changed = False
+            for class_node in class_nodes:
+                if class_node.name in capable_class_names:
+                    continue
+                if any(_base_class_name(base) in capable_class_names for base in class_node.bases):
+                    capable_class_names.add(class_node.name)
+                    changed = True
+        for class_node in class_nodes:
+            if _class_directly_exposes_place_order(class_node):
+                continue
+            if any(_base_class_name(base) in capable_class_names for base in class_node.bases):
+                sites.append((relative, class_node.lineno, "inherited"))
+    return tuple((path, kind) for path, _lineno, kind in sorted(sites))
 
 
 def _place_order_use_sites(package_root: Path) -> set[Path]:
     sites: set[Path] = set()
     for path in _python_files(package_root):
         tree = _parse(path)
+        constants = _constant_bindings(tree)
         unsafe = any(
             (isinstance(node, ast.Attribute) and node.attr == "place_order")
-            or (isinstance(node, ast.Call) and _dynamic_lookup_name(node) == "place_order")
+            or (
+                isinstance(node, ast.Call)
+                and _dynamic_lookup_name(node, constants) == "place_order"
+            )
+            or (
+                isinstance(node, ast.Subscript)
+                and _reflective_subscript_name(node, constants) == "place_order"
+            )
             for node in ast.walk(tree)
         )
         if unsafe:
@@ -374,6 +557,16 @@ def _fixture_package(tmp_path: Path) -> Path:
     package_root = tmp_path / "trading_bot"
     _write_module(package_root, "__init__.py", "")
     return package_root
+
+
+def _fixture_boundary_violations(package_root: Path, area: str) -> list[str]:
+    if area == "forbidden":
+        return _forbidden_layer_import_violations(package_root)
+    if area == "cli":
+        return _cli_violations(package_root)
+    if area == "recovery":
+        return _recovery_violations(package_root)
+    raise AssertionError(f"unknown fixture area: {area}")
 
 
 def test_production_paths_are_derived_from_this_test_file() -> None:
@@ -475,6 +668,94 @@ def test_exact_broker_module_boundary_does_not_match_brokersafe(tmp_path: Path) 
     assert _forbidden_layer_import_violations(package_root) == []
 
 
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/dynamic_import.py"),
+        ("cli", "cli/dynamic_import.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import importlib\nmodule = importlib.import_module('trading_bot.' + 'brokers')\n",
+        "from importlib import import_module\n"
+        "module = import_module('trading_bot.brokers.protocols')\n",
+        "module = __import__('trading_bot.' + 'brokers')\n",
+    ),
+)
+def test_constant_dynamic_broker_imports_are_rejected(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+    source: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(package_root, relative, source)
+    assert _fixture_boundary_violations(package_root, area)
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/dynamic_import.py"),
+        ("cli", "cli/dynamic_import.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import importlib\nmodule = importlib.import_module('trading_bot.brokersafe')\n",
+        "from importlib import import_module\n"
+        "module = import_module('trading_bot.brokersafe.tools')\n",
+        "module = __import__('trading_bot.' + 'brokersafe')\n",
+    ),
+)
+def test_constant_dynamic_imports_respect_exact_broker_boundary(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+    source: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(package_root, relative, source)
+    assert _fixture_boundary_violations(package_root, area) == []
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/reflection.py"),
+        ("cli", "cli/reflection.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+def test_reflective_constant_broker_place_subscript_is_rejected(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        relative,
+        "capability = vars(module)['Broker' + 'Place']\n",
+    )
+    assert _fixture_boundary_violations(package_root, area)
+
+
+def test_ordinary_mapping_subscript_is_not_a_capability_lookup(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        "cli/labels.py",
+        "labels = {'BrokerPlace': 'disabled'}\nlabel = labels['BrokerPlace']\n",
+    )
+    assert _cli_violations(package_root) == []
+
+
 def test_production_cli_has_no_place_provider_or_whole_broker_import() -> None:
     assert _cli_violations(PACKAGE_ROOT) == []
 
@@ -571,7 +852,7 @@ def test_protocol_module_imports_only_canonical_broker_neutral_types() -> None:
 
 def test_current_production_has_one_protocol_definition_and_no_place_use() -> None:
     definitions = _place_order_definition_sites(PACKAGE_ROOT)
-    assert definitions == {(Path("brokers/protocols.py"), "async")}
+    assert definitions == ((Path("brokers/protocols.py"), "async"),)
     assert (
         _definition_allowlist_violations(
             PACKAGE_ROOT,
@@ -596,7 +877,7 @@ def test_reviewed_adapter_declaration_is_not_mistaken_for_invocation(tmp_path: P
         "    async def place_order(self, submission: object) -> object:\n"
         "        return submission\n",
     )
-    assert _place_order_definition_sites(package_root) == {(adapter, "async")}
+    assert _place_order_definition_sites(package_root) == ((adapter, "async"),)
     assert _definition_allowlist_violations(package_root, frozenset({adapter})) == set()
     assert _place_order_use_sites(package_root) == set()
 
@@ -611,8 +892,54 @@ def test_allowlisted_adapter_path_still_rejects_sync_place_definition(tmp_path: 
         "    def place_order(self, submission: object) -> object:\n"
         "        return submission\n",
     )
-    assert _place_order_definition_sites(package_root) == {(adapter, "sync")}
+    assert _place_order_definition_sites(package_root) == ((adapter, "sync"),)
     assert _definition_allowlist_violations(package_root, frozenset({adapter})) == {adapter}
+
+
+def test_allowlisted_adapter_rejects_class_callable_place_assignment(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "async def provider_submit(submission: object) -> object:\n"
+        "    return submission\n"
+        "class ReviewedAdapter:\n"
+        "    place_order = provider_submit\n",
+    )
+    assert (adapter, "assignment") in _place_order_definition_sites(package_root)
+    assert _definition_allowlist_violations(package_root, frozenset({adapter})) == {adapter}
+
+
+def test_allowlisted_adapter_rejects_inherited_place_exposure(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "class PlacementMixin:\n"
+        "    async def place_order(self, submission: object) -> object:\n"
+        "        return submission\n"
+        "class ReviewedAdapter(PlacementMixin):\n"
+        "    pass\n",
+    )
+    assert _definition_allowlist_violations(package_root, frozenset({adapter})) == {adapter}
+
+
+def test_definition_inventory_preserves_multiple_same_file_declarations(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "class FirstAdapter:\n"
+        "    async def place_order(self, submission: object) -> object:\n"
+        "        return submission\n"
+        "class SecondAdapter:\n"
+        "    async def place_order(self, submission: object) -> object:\n"
+        "        return submission\n",
+    )
+    assert len(_place_order_definition_sites(package_root)) == 2
 
 
 @pytest.mark.parametrize(
@@ -628,6 +955,13 @@ def test_allowlisted_adapter_path_still_rejects_sync_place_definition(tmp_path: 
         "async def invoke(broker, order):\n"
         "    submit = broker.__getattribute__('place_' + 'order')\n"
         "    return await submit(order)\n",
+        "NAME = 'place_' + 'order'\n"
+        "async def invoke(broker, order):\n"
+        "    submit = getattr(broker, NAME)\n"
+        "    return await submit(order)\n",
+        "async def invoke(broker, order):\n"
+        "    submit = vars(broker)['place_' + 'order']\n"
+        "    return await submit(order)\n",
     ),
 )
 def test_adapter_place_invocation_and_alias_bypasses_are_denied(
@@ -639,6 +973,22 @@ def test_adapter_place_invocation_and_alias_bypasses_are_denied(
     _write_module(package_root, str(adapter), source)
     assert _place_order_use_sites(package_root) == {adapter}
     assert _place_order_use_sites(package_root) - PLACE_ORDER_USE_ALLOWLIST == {adapter}
+
+
+def test_unresolved_dynamic_and_ordinary_subscript_access_are_not_place_uses(
+    tmp_path: Path,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "NAME = resolve_operation_name()\n"
+        "callback = getattr(broker, NAME)\n"
+        "labels = {'place_order': 'disabled'}\n"
+        "label = labels['place_order']\n",
+    )
+    assert _place_order_use_sites(package_root) == set()
 
 
 def test_only_future_execution_service_is_reserved_for_place_invocation(tmp_path: Path) -> None:
