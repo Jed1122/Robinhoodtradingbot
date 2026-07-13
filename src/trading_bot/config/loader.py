@@ -73,6 +73,14 @@ _UniqueKeyLoader.add_constructor(
 _UniqueKeyLoader.add_constructor("tag:yaml.org,2002:float", _construct_decimal)
 
 
+def _load_yaml_document(source: str) -> Any:
+    loader = _UniqueKeyLoader(source)
+    try:
+        return loader.get_single_data()
+    finally:
+        loader.dispose()  # type: ignore[no-untyped-call]  # PyYAML has no typed stub.
+
+
 def _validate_mapping_keys(value: Any, depth: int = 0) -> None:
     if isinstance(value, Mapping):
         for key, nested in value.items():
@@ -103,7 +111,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     except OSError:
         raise ConfigLoadError("cannot read YAML configuration") from None
     try:
-        loaded = yaml.load(source, Loader=_UniqueKeyLoader)
+        loaded = _load_yaml_document(source)
     except ConfigLoadError:
         raise
     except MemoryError:
@@ -119,7 +127,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _parse_environment_value(raw_value: str) -> Any:
     try:
-        parsed = yaml.load(raw_value, Loader=_UniqueKeyLoader)
+        parsed = _load_yaml_document(raw_value)
     except ConfigLoadError:
         raise
     except MemoryError:

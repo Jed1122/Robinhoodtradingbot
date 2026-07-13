@@ -114,7 +114,7 @@ def render_capability_matrix(manifest: CapabilityManifest) -> str:
     except MemoryError:
         raise
     except Exception:
-        pass
+        validated = None
     if validated is None or not _manifest_freeform_is_safe(validated):
         raise InvalidCapabilityManifest("capability manifest contains unsafe text") from None
     lines = [

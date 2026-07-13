@@ -235,7 +235,7 @@ class ToolsListSnapshot:
         except MemoryError:
             raise
         except Exception:
-            pass
+            validated_manifest = None
         if validated_manifest is None:
             raise CapabilitySnapshotError("snapshot manifest is invalid") from None
         expected = CapabilityManifest(
@@ -467,7 +467,7 @@ def _validated_tool_copy(value: object) -> SanitizedToolSchema:
     except MemoryError:
         raise
     except Exception:
-        pass
+        validated = None
     if validated is None:
         raise CapabilitySnapshotError("snapshot tool is invalid") from None
     return validated
@@ -488,7 +488,7 @@ def _validated_snapshot_copy(value: object) -> ToolsListSnapshot:
     except MemoryError:
         raise
     except Exception:
-        pass
+        validated = None
     if validated is None:
         raise CapabilitySnapshotError("snapshot is invalid") from None
     return validated
@@ -523,17 +523,16 @@ def _copy_json(value: object) -> JsonValue:
     if value is None or type(value) in {bool, int, str}:
         return cast(JsonScalar, value)
     if type(value) is float:
-        assert isinstance(value, float)
         if not math.isfinite(value):
             raise CapabilitySnapshotError("schema contains a nonfinite number")
         return value
     if type(value) is list:
-        assert isinstance(value, list)
-        return [_copy_json(item) for item in value]
+        list_value = cast(list[object], value)
+        return [_copy_json(item) for item in list_value]
     if type(value) is dict:
-        assert isinstance(value, dict)
+        mapping = cast(dict[object, object], value)
         copied: dict[str, JsonValue] = {}
-        for key, item in value.items():
+        for key, item in mapping.items():
             if type(key) is not str:
                 raise CapabilitySnapshotError("schema object keys must be strings")
             copied[key] = _copy_json(item)
@@ -617,26 +616,23 @@ def _scan_sensitive(
     sensitive_property: bool = False,
 ) -> None:
     if type(value) is str:
-        assert isinstance(value, str)
         if text_contains_sensitive_material(value):
             raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
         return
     if type(value) is list:
-        assert isinstance(value, list)
         for item in value:
             _scan_sensitive(item, sensitive_property=sensitive_property)
         return
     if type(value) is not dict:
         return
-    assert isinstance(value, dict)
     if sensitive_property:
         _validate_sensitive_schema(value)
     for key, item in value.items():
         if _candidate_name_has_unsafe_characters(key) or text_contains_sensitive_material(key):
             raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
         if sensitive_property and key in _SCHEMA_MAPPING_KEYS:
-            assert isinstance(item, dict)
-            for schema_name, schema in item.items():
+            schema_mapping = cast(dict[str, JsonValue], item)
+            for schema_name, schema in schema_mapping.items():
                 if _candidate_name_has_unsafe_characters(
                     schema_name
                 ) or text_contains_sensitive_material(schema_name):
@@ -646,7 +642,6 @@ def _scan_sensitive(
                 _scan_sensitive(schema, sensitive_property=True)
             continue
         if key == "properties" and type(item) is dict:
-            assert isinstance(item, dict)
             for property_name, property_schema in item.items():
                 if _candidate_name_has_unsafe_characters(
                     property_name
@@ -695,14 +690,12 @@ def _validate_sensitive_schema(value: dict[str, JsonValue]) -> None:
         if key in _SCHEMA_MAPPING_KEYS:
             if type(item) is not dict:
                 raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
-            assert isinstance(item, dict)
             for schema in item.values():
                 _validate_schema_node(schema)
             continue
         if key in _SCHEMA_LIST_KEYS:
             if type(item) is not list or not item:
                 raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
-            assert isinstance(item, list)
             for schema in item:
                 _validate_schema_node(schema)
             continue
@@ -726,7 +719,6 @@ def _schema_type_is_valid(value: JsonValue) -> bool:
         return value in _JSON_SCHEMA_TYPES
     if type(value) is not list or not value:
         return False
-    assert isinstance(value, list)
     return all(type(item) is str and item in _JSON_SCHEMA_TYPES for item in value) and len(
         value
     ) == len(set(value))
@@ -738,8 +730,6 @@ def _schema_required_is_valid(
 ) -> bool:
     if type(value) is not list or type(properties) is not dict:
         return False
-    assert isinstance(value, list)
-    assert isinstance(properties, dict)
     return all(type(item) is str and item in properties for item in value) and len(value) == len(
         set(value)
     )
@@ -750,7 +740,6 @@ def _validate_schema_node(value: JsonValue) -> None:
         return
     if type(value) is not dict:
         raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
-    assert isinstance(value, dict)
     _validate_sensitive_schema(value)
 
 
@@ -795,10 +784,8 @@ def _contains_value(value: JsonValue) -> bool:
     if type(value) in {bool, int, float}:
         return True
     if type(value) is list:
-        assert isinstance(value, list)
         return bool(value)
     if type(value) is dict:
-        assert isinstance(value, dict)
         return bool(value)
     return False
 

@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from trading_bot.config import (
     AppConfig,
     LoadedConfig,
+    MonitoringSettings,
     PredictionSettings,
     RetrySettings,
     SafetyEnvelope,
@@ -90,6 +91,36 @@ def test_logging_event_bound_is_required_strict_and_owned_by_the_release_envelop
     weaker = config.model_copy(update={"logging": type(config.logging)(max_event_bytes=65537)})
     with pytest.raises(UnsafeConfiguration, match=r"logging\.max_event_bytes"):
         enforce_safety_envelope(weaker, envelope)
+
+
+@pytest.mark.parametrize(
+    ("host", "container_loopback_publish", "accepted"),
+    (
+        ("127.0.0.1", False, True),
+        ("0.0.0.0", True, True),
+        ("0.0.0.0", False, False),
+        ("192.0.2.1", True, False),
+    ),
+)
+def test_monitoring_bind_policy_requires_verified_loopback_publication(
+    host: str,
+    container_loopback_publish: bool,
+    accepted: bool,
+) -> None:
+    values = {
+        "host": host,
+        "port": 8080,
+        "container_loopback_publish": container_loopback_publish,
+        "webhook_attempts": 1,
+        "webhook_timeout_seconds": Decimal("1"),
+        "alert_deduplication_window_seconds": 0,
+    }
+
+    if accepted:
+        assert MonitoringSettings.model_validate(values).host == host
+    else:
+        with pytest.raises(ValidationError, match="monitoring must bind loopback"):
+            MonitoringSettings.model_validate(values)
 
 
 def test_approved_portfolio_risk_activity_and_asset_values_are_exact() -> None:

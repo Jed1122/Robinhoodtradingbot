@@ -5,6 +5,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import cast
 from urllib.parse import urlsplit
 
 from trading_bot.capabilities.sanitization import text_contains_sensitive_material
@@ -283,7 +284,7 @@ def _rebuild_evidence(value: object) -> CapabilityEvidence | None:
     except MemoryError:
         raise
     except Exception:
-        pass
+        rebuilt = None
     return rebuilt
 
 
@@ -304,7 +305,7 @@ def _rebuild_record(value: object) -> CapabilityRecord | None:
     except MemoryError:
         raise
     except Exception:
-        pass
+        rebuilt = None
     return rebuilt
 
 
@@ -319,7 +320,7 @@ def _rebuild_manifest(value: object) -> CapabilityManifest | None:
     except MemoryError:
         raise
     except Exception:
-        pass
+        rebuilt = None
     return rebuilt
 
 
@@ -409,8 +410,7 @@ def _require_exact_tuple(
 ) -> tuple[object, ...]:
     if type(value) is not tuple:
         raise error_type(f"{field_name} must be an exact immutable tuple")
-    assert isinstance(value, tuple)
-    return value
+    return cast(tuple[object, ...], value)
 
 
 def _require_string_tuple(

@@ -325,7 +325,8 @@ class MonitoringSettings(StrictModel):
     def validate_bind_policy(self) -> Self:
         if self.host == "127.0.0.1":
             return self
-        if self.host == "0.0.0.0" and self.container_loopback_publish:
+        # This validates a configured address string; no socket bind occurs in this model.
+        if self.host == "0.0.0.0" and self.container_loopback_publish:  # nosec B104
             return self
         raise ValueError("monitoring must bind loopback or verified container loopback publish")
 

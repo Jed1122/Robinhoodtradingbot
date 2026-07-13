@@ -9,7 +9,11 @@ import pytest
 import yaml
 
 from trading_bot.config import ConfigLoadError, UnsafeConfiguration, load_config
-from trading_bot.config.loader import _environment_overlay, _load_yaml
+from trading_bot.config.loader import (
+    _environment_overlay,
+    _load_yaml,
+    _parse_environment_value,
+)
 
 ROOT = Path(__file__).parents[3]
 CONFIGS = ROOT / "configs"
@@ -225,6 +229,42 @@ def test_unknown_yaml_key_fails(tmp_path: Path) -> None:
             safety_path=CONFIGS / "safety-envelope.yaml",
             environ={},
         )
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "value: 1\nvalue: 2\n",
+        "outer:\n  value: 1\n  value: 2\n",
+    ),
+)
+def test_file_yaml_rejects_duplicate_keys_at_every_depth(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "duplicate.yaml"
+    path.write_text(source, encoding="utf-8")
+
+    with pytest.raises(ConfigLoadError, match="duplicate"):
+        _load_yaml(path)
+
+
+def test_environment_yaml_rejects_duplicate_mapping_keys() -> None:
+    with pytest.raises(ConfigLoadError, match="duplicate"):
+        _parse_environment_value("{value: 1, value: 2}")
+
+
+def test_file_yaml_rejects_python_object_construction_tags(tmp_path: Path) -> None:
+    path = tmp_path / "unsafe-tag.yaml"
+    path.write_text(
+        "value: !!python/object/new:builtins.str [ordinary]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigLoadError, match="malformed"):
+        _load_yaml(path)
+
+
+def test_environment_yaml_rejects_python_object_construction_tags() -> None:
+    with pytest.raises(ConfigLoadError, match="malformed"):
+        _parse_environment_value("!!python/object/new:builtins.str [ordinary]")
 
 
 def _contains_float(value: object) -> bool:

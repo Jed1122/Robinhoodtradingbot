@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import trading_bot.code_identity as code_identity
 from trading_bot.code_identity import (
     CodeIdentity,
     CodeIdentityError,
@@ -38,6 +39,32 @@ def _commit_all(repo: Path, message: str = "fixture") -> str:
     _git(repo, "add", "--all")
     _git(repo, "commit", "--quiet", "-m", message)
     return _git(repo, "rev-parse", "HEAD")
+
+
+def test_git_runner_uses_fixed_argv_without_a_shell(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(
+        command: tuple[str, ...],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[bytes]:
+        captured["command"] = command
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, stdout=b"ok")
+
+    monkeypatch.setattr(code_identity.subprocess, "run", fake_run)
+
+    assert code_identity._run_git(tmp_path, "status", "--porcelain=v1") == b"ok"
+    assert captured == {
+        "command": ("git", "status", "--porcelain=v1"),
+        "cwd": tmp_path,
+        "check": False,
+        "capture_output": True,
+        "shell": False,
+    }
 
 
 @pytest.fixture

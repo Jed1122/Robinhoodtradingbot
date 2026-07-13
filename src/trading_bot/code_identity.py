@@ -4,7 +4,7 @@ import hashlib
 import os
 import re
 import stat
-import subprocess
+import subprocess  # nosec B404
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -139,11 +139,13 @@ def _resolve_repo_root(repo_root: str | Path) -> Path:
 
 def _run_git(root: Path, *arguments: str) -> bytes:
     try:
-        result = subprocess.run(
+        # The executable and arguments are module-owned literals; root is used only as cwd.
+        result = subprocess.run(  # nosec B603
             ("git", *arguments),
             cwd=root,
             check=False,
             capture_output=True,
+            shell=False,
         )
     except OSError as exc:
         raise CodeIdentityError("Git is unavailable for code identity resolution") from exc
@@ -173,9 +175,7 @@ def _is_relevant_untracked(relative_path: bytes) -> bool:
     path_parts = relative_path.split(b"/")
     if any(part in _NON_SOURCE_PATH_PARTS for part in path_parts):
         return False
-    return path_parts[-1] != b".DS_Store" and not relative_path.endswith(
-        (b".pyc", b".pyo")
-    )
+    return path_parts[-1] != b".DS_Store" and not relative_path.endswith((b".pyc", b".pyo"))
 
 
 def _read_worktree_content(root: Path, relative_path: bytes) -> tuple[bytes, bytes]:
