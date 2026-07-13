@@ -56,6 +56,18 @@ HASH_B = "b" * 64
 HASH_C = "c" * 64
 
 
+class DecimalSubclass(Decimal):
+    pass
+
+
+class IntegerSubclass(int):
+    pass
+
+
+class StringSubclass(str):
+    pass
+
+
 def _valid_records() -> dict[str, Any]:
     instrument = Instrument(
         id=InstrumentId("btc-usd"),
@@ -603,6 +615,106 @@ def test_collection_fields_reject_mutable_lists(record_name: str, field_name: st
 @pytest.mark.parametrize(
     ("record_name", "field_name"),
     [
+        ("account", "buying_power"),
+        ("portfolio", "positions"),
+        ("broker_health", "reason_codes"),
+        ("risk_evaluation", "checks"),
+        ("audit_event", "details"),
+    ],
+)
+def test_collection_fields_reject_tuple_subclasses(
+    record_name: str,
+    field_name: str,
+) -> None:
+    class TupleSubclass(tuple[Any, ...]):
+        pass
+
+    record = _valid_records()[record_name]
+    subclass_value = TupleSubclass(getattr(record, field_name))
+
+    with pytest.raises(DomainValidationError):
+        replace(record, **{field_name: subclass_value})
+
+
+@pytest.mark.parametrize(
+    ("record_name", "field_name", "subclass_value"),
+    [
+        ("account", "equity", DecimalSubclass("100")),
+        ("account", "account_id", StringSubclass("account-1")),
+        ("account", "data_hash", StringSubclass(HASH_A)),
+        ("persisted_review", "fencing_token", IntegerSubclass(1)),
+    ],
+)
+def test_scalar_fields_reject_builtin_subclasses(
+    record_name: str,
+    field_name: str,
+    subclass_value: object,
+) -> None:
+    record = _valid_records()[record_name]
+
+    with pytest.raises(DomainValidationError):
+        replace(record, **{field_name: subclass_value})
+
+
+@pytest.mark.parametrize(
+    ("record_name", "field_name"),
+    [
+        ("account", "restricted"),
+        ("instrument", "tradable"),
+        ("instrument", "fractional_eligible"),
+        ("quote", "freshness_verified"),
+        ("bar", "interpolated"),
+        ("market_clock", "is_open"),
+        ("market_clock", "halted"),
+        ("market_clock", "trading_disabled"),
+        ("market_clock", "cancel_only"),
+        ("cancel_receipt", "accepted"),
+        ("cancel_receipt", "ambiguous"),
+        ("broker_health", "healthy"),
+        ("check", "allowed"),
+        ("risk_evaluation", "allowed"),
+    ],
+)
+def test_boolean_fields_require_exact_boolean_values(record_name: str, field_name: str) -> None:
+    record = _valid_records()[record_name]
+
+    with pytest.raises(DomainValidationError):
+        replace(record, **{field_name: 1})
+
+
+@pytest.mark.parametrize(
+    ("record_name", "field_name"),
+    [
+        ("buying_power", "asset_class"),
+        ("position", "asset_class"),
+        ("instrument", "asset_class"),
+        ("quote", "timestamp_source"),
+        ("bar", "interval"),
+        ("market_clock", "asset_class"),
+        ("intent", "asset_class"),
+        ("intent", "side"),
+        ("intent", "purpose"),
+        ("intent", "order_type"),
+        ("intent", "time_in_force"),
+        ("broker_order", "side"),
+        ("broker_order", "purpose"),
+        ("broker_order", "order_type"),
+        ("broker_order", "time_in_force"),
+        ("broker_order", "state"),
+        ("fill", "side"),
+    ],
+)
+def test_enum_fields_reject_raw_string_values(record_name: str, field_name: str) -> None:
+    record = _valid_records()[record_name]
+    enum_value = getattr(record, field_name)
+
+    with pytest.raises(DomainValidationError):
+        replace(record, **{field_name: enum_value.value})
+
+
+@pytest.mark.parametrize(
+    ("record_name", "field_name"),
+    [
         ("account", "data_hash"),
         ("position", "data_hash"),
         ("portfolio", "data_hash"),
@@ -683,6 +795,13 @@ def test_portfolio_position_account_must_match_snapshot_account() -> None:
         replace(records["portfolio"], positions=(mismatched_position,))
 
 
+def test_risk_evaluation_requires_at_least_one_check() -> None:
+    evaluation = _valid_records()["risk_evaluation"]
+
+    with pytest.raises(DomainValidationError, match="at least one check"):
+        replace(evaluation, checks=())
+
+
 def test_persisted_review_must_match_review_account_and_config() -> None:
     persisted = _valid_records()["persisted_review"]
 
@@ -699,6 +818,26 @@ def test_entry_intent_requires_versioned_exit_policy() -> None:
         replace(intent, purpose=OrderPurpose.ENTRY, exit_policy_version=None)
 
 
+@pytest.mark.parametrize("record_name", ["intent", "broker_order"])
+@pytest.mark.parametrize(
+    ("purpose", "side"),
+    [
+        (OrderPurpose.ENTRY, Side.SELL),
+        (OrderPurpose.STRATEGY_EXIT, Side.BUY),
+        (OrderPurpose.PROTECTIVE_EXIT, Side.BUY),
+    ],
+)
+def test_long_only_order_side_must_match_purpose(
+    record_name: str,
+    purpose: OrderPurpose,
+    side: Side,
+) -> None:
+    record = _valid_records()[record_name]
+
+    with pytest.raises(DomainValidationError, match=r"side.*purpose"):
+        replace(record, purpose=purpose, side=side)
+
+
 @pytest.mark.parametrize(
     "purpose",
     [OrderPurpose.STRATEGY_EXIT, OrderPurpose.PROTECTIVE_EXIT],
@@ -706,7 +845,12 @@ def test_entry_intent_requires_versioned_exit_policy() -> None:
 def test_non_entry_intent_may_omit_exit_policy(purpose: OrderPurpose) -> None:
     intent = _valid_records()["intent"]
 
-    updated = replace(intent, purpose=purpose, exit_policy_version=None)
+    updated = replace(
+        intent,
+        purpose=purpose,
+        side=Side.SELL,
+        exit_policy_version=None,
+    )
 
     assert updated.exit_policy_version is None
 

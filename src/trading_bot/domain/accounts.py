@@ -8,6 +8,8 @@ from trading_bot.clock import require_utc
 from trading_bot.domain.decimal_utils import (
     DomainValidationError,
     _require_decimal,
+    _require_exact_bool,
+    _require_exact_enum,
     _require_nonempty,
     _require_sha256_hex,
     _require_tuple,
@@ -22,6 +24,7 @@ class AssetBuyingPower:
     amount: Decimal
 
     def __post_init__(self) -> None:
+        _require_exact_enum(self.asset_class, AssetClass, "asset_class")
         _require_decimal(self.amount, "amount", nonnegative=True)
 
 
@@ -42,8 +45,9 @@ class AccountSnapshot:
         _require_decimal(self.equity, "equity", nonnegative=True)
         _require_decimal(self.cash, "cash", nonnegative=True)
         _require_tuple(self.buying_power, "buying_power")
-        if any(not isinstance(item, AssetBuyingPower) for item in self.buying_power):
+        if any(type(item) is not AssetBuyingPower for item in self.buying_power):
             raise DomainValidationError("buying_power must contain AssetBuyingPower records")
+        _require_exact_bool(self.restricted, "restricted")
         require_utc(self.observed_at)
         _require_sha256_hex(self.data_hash, "data_hash")
 
@@ -52,9 +56,7 @@ class AccountSnapshot:
             item.amount for item in self.buying_power if item.asset_class is asset_class
         )
         if len(matches) != 1:
-            raise DomainValidationError(
-                "exactly one asset-class buying-power value is required"
-            )
+            raise DomainValidationError("exactly one asset-class buying-power value is required")
         return matches[0]
 
 
@@ -72,6 +74,7 @@ class Position:
     def __post_init__(self) -> None:
         _require_nonempty(self.account_id, "account_id")
         _require_nonempty(self.instrument_id, "instrument_id")
+        _require_exact_enum(self.asset_class, AssetClass, "asset_class")
         _require_decimal(self.quantity, "quantity", nonnegative=True)
         if self.average_price is not None:
             _require_decimal(self.average_price, "average_price", positive=True)
@@ -97,7 +100,7 @@ class PortfolioSnapshot:
     def __post_init__(self) -> None:
         _require_nonempty(self.account_id, "account_id")
         _require_tuple(self.positions, "positions")
-        if any(not isinstance(position, Position) for position in self.positions):
+        if any(type(position) is not Position for position in self.positions):
             raise DomainValidationError("positions must contain Position records")
         if any(position.account_id != self.account_id for position in self.positions):
             raise DomainValidationError("every position must match the portfolio account")

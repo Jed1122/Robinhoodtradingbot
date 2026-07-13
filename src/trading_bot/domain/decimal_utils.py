@@ -2,6 +2,7 @@
 
 import re
 from decimal import Decimal, DecimalException, getcontext, localcontext
+from enum import Enum
 
 from trading_bot.clock import DomainValidationError as DomainValidationError
 
@@ -46,7 +47,7 @@ def _require_decimal(
     nonnegative: bool = False,
     positive: bool = False,
 ) -> Decimal:
-    if not isinstance(value, Decimal) or not value.is_finite():
+    if type(value) is not Decimal or not value.is_finite():
         raise InvalidDecimal(f"{field_name} must be a finite Decimal")
     if positive and value <= 0:
         raise InvalidDecimal(f"{field_name} must be positive")
@@ -56,17 +57,36 @@ def _require_decimal(
 
 
 def _require_sha256_hex(value: str, field_name: str) -> str:
-    if not isinstance(value, str) or _SHA256_HEX.fullmatch(value) is None:
+    if type(value) is not str or _SHA256_HEX.fullmatch(value) is None:
         raise DomainValidationError(f"{field_name} must be a lowercase SHA-256 hex digest")
     return value
 
 
 def _require_nonempty(value: str, field_name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
+    if type(value) is not str or not value.strip():
         raise DomainValidationError(f"{field_name} must be a nonempty string")
     return value
 
 
+def _require_exact_bool(value: object, field_name: str) -> None:
+    if type(value) is not bool:
+        raise DomainValidationError(f"{field_name} must be a boolean")
+
+
+def _require_exact_enum(
+    value: object,
+    enum_type: type[Enum],
+    field_name: str,
+) -> None:
+    if type(value) is not enum_type:
+        raise DomainValidationError(f"{field_name} must be a {enum_type.__name__}")
+
+
+def _require_nonnegative_int(value: object, field_name: str) -> None:
+    if type(value) is not int or value < 0:
+        raise DomainValidationError(f"{field_name} must be a nonnegative integer")
+
+
 def _require_tuple(value: object, field_name: str) -> None:
-    if not isinstance(value, tuple):
-        raise DomainValidationError(f"{field_name} must be an immutable tuple")
+    if type(value) is not tuple:
+        raise DomainValidationError(f"{field_name} must be an exact immutable tuple")

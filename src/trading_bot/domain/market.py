@@ -8,6 +8,8 @@ from trading_bot.clock import require_utc
 from trading_bot.domain.decimal_utils import (
     DomainValidationError,
     _require_decimal,
+    _require_exact_bool,
+    _require_exact_enum,
     _require_nonempty,
     _require_sha256_hex,
 )
@@ -38,6 +40,8 @@ class Quote:
             raise DomainValidationError("bid cannot exceed ask")
         _require_nonempty(self.source, "source")
         _require_sha256_hex(self.data_hash, "data_hash")
+        _require_exact_bool(self.freshness_verified, "freshness_verified")
+        _require_exact_enum(self.timestamp_source, TimestampSource, "timestamp_source")
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +77,7 @@ class Bar:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.instrument_id, "instrument_id")
+        _require_exact_enum(self.interval, BarInterval, "interval")
         require_utc(self.starts_at)
         require_utc(self.ends_at)
         if self.starts_at >= self.ends_at:
@@ -87,6 +92,7 @@ class Bar:
             raise DomainValidationError("bar low and high must bound all OHLC prices")
         _require_nonempty(self.source, "source")
         _require_sha256_hex(self.data_hash, "data_hash")
+        _require_exact_bool(self.interpolated, "interpolated")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +115,10 @@ class Instrument:
     def __post_init__(self) -> None:
         _require_nonempty(self.id, "id")
         _require_nonempty(self.symbol, "symbol")
+        _require_exact_enum(self.asset_class, AssetClass, "asset_class")
         _require_nonempty(self.provider_status, "provider_status")
+        _require_exact_bool(self.tradable, "tradable")
+        _require_exact_bool(self.fractional_eligible, "fractional_eligible")
         _require_decimal(self.price_increment, "price_increment", positive=True)
         _require_decimal(self.quantity_increment, "quantity_increment", positive=True)
         _require_decimal(self.minimum_quantity, "minimum_quantity", positive=True)
@@ -117,9 +126,7 @@ class Instrument:
         if self.maximum_quantity is not None:
             _require_decimal(self.maximum_quantity, "maximum_quantity", positive=True)
             if self.maximum_quantity < self.minimum_quantity:
-                raise DomainValidationError(
-                    "maximum_quantity cannot be less than minimum_quantity"
-                )
+                raise DomainValidationError("maximum_quantity cannot be less than minimum_quantity")
         _require_nonempty(self.correlation_group, "correlation_group")
         require_utc(self.observed_at)
         _require_sha256_hex(self.data_hash, "data_hash")
@@ -138,8 +145,13 @@ class MarketClock:
     next_close_at: datetime | None
 
     def __post_init__(self) -> None:
+        _require_exact_enum(self.asset_class, AssetClass, "asset_class")
         _require_nonempty(self.venue, "venue")
         require_utc(self.observed_at)
+        _require_exact_bool(self.is_open, "is_open")
+        _require_exact_bool(self.halted, "halted")
+        _require_exact_bool(self.trading_disabled, "trading_disabled")
+        _require_exact_bool(self.cancel_only, "cancel_only")
         if self.next_open_at is not None:
             require_utc(self.next_open_at)
         if self.next_close_at is not None:

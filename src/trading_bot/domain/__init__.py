@@ -12,7 +12,15 @@ from trading_bot.domain.decimal_utils import (
     parse_decimal,
     quantize_down,
 )
-from trading_bot.domain.decisions import AuditEvent, CheckResult, RiskEvaluation
+from trading_bot.domain.decisions import (
+    AlertAttestation,
+    CheckResult,
+    LiveLeaseAttestation,
+    PromotionAttestation,
+    ReconciliationAttestation,
+    RiskEvaluation,
+    StrategyEligibilityAttestation,
+)
 from trading_bot.domain.enums import (
     AssetClass,
     BarInterval,
@@ -26,6 +34,7 @@ from trading_bot.domain.enums import (
     TimeInForce,
     TimestampSource,
 )
+from trading_bot.domain.events import AuditEvent
 from trading_bot.domain.identifiers import (
     AccountId,
     AuditEventId,
@@ -63,6 +72,7 @@ from trading_bot.domain.orders import (
 __all__ = [
     "AccountId",
     "AccountSnapshot",
+    "AlertAttestation",
     "AssetBuyingPower",
     "AssetClass",
     "AuditEvent",
@@ -91,6 +101,7 @@ __all__ = [
     "InstrumentId",
     "InvalidDecimal",
     "LeaseId",
+    "LiveLeaseAttestation",
     "MarketClock",
     "OrderEvent",
     "OrderIntent",
@@ -102,7 +113,9 @@ __all__ = [
     "PersistedReviewedOrder",
     "PortfolioSnapshot",
     "Position",
+    "PromotionAttestation",
     "Quote",
+    "ReconciliationAttestation",
     "ReconciliationId",
     "ReviewId",
     "RiskEvaluation",
@@ -110,6 +123,7 @@ __all__ = [
     "RuntimeState",
     "Side",
     "SpreadEstimate",
+    "StrategyEligibilityAttestation",
     "SubmissionAttemptId",
     "TimeInForce",
     "TimestampSource",

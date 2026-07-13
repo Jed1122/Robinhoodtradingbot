@@ -8,7 +8,10 @@ from trading_bot.clock import require_utc
 from trading_bot.domain.decimal_utils import (
     DomainValidationError,
     _require_decimal,
+    _require_exact_bool,
+    _require_exact_enum,
     _require_nonempty,
+    _require_nonnegative_int,
     _require_sha256_hex,
     _require_tuple,
 )
@@ -39,6 +42,7 @@ def _validate_order_prices(
     limit_price: Decimal | None,
     stop_price: Decimal | None,
 ) -> None:
+    _require_exact_enum(order_type, OrderType, "order_type")
     if limit_price is not None:
         _require_decimal(limit_price, "limit_price", positive=True)
     if stop_price is not None:
@@ -52,6 +56,14 @@ def _validate_order_prices(
     }
     if not valid_shape.get(order_type, False):
         raise DomainValidationError("limit and stop prices must match the order type")
+
+
+def _validate_order_direction(side: Side, purpose: OrderPurpose) -> None:
+    _require_exact_enum(side, Side, "side")
+    _require_exact_enum(purpose, OrderPurpose, "purpose")
+    expected_side = Side.BUY if purpose is OrderPurpose.ENTRY else Side.SELL
+    if side is not expected_side:
+        raise DomainValidationError("order side must match the long-only order purpose")
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +90,9 @@ class OrderIntent:
         _require_nonempty(self.id, "id")
         _require_nonempty(self.account_id, "account_id")
         _require_nonempty(self.instrument_id, "instrument_id")
+        _require_exact_enum(self.asset_class, AssetClass, "asset_class")
+        _validate_order_direction(self.side, self.purpose)
+        _require_exact_enum(self.time_in_force, TimeInForce, "time_in_force")
         _require_decimal(self.quantity, "quantity", positive=True)
         _validate_order_prices(self.order_type, self.limit_price, self.stop_price)
         require_utc(self.created_at)
@@ -108,7 +123,7 @@ class BrokerOrderReview:
     broker_review_id: str | None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.normalized_order, OrderIntent):
+        if type(self.normalized_order) is not OrderIntent:
             raise DomainValidationError("normalized_order must be an OrderIntent")
         _require_nonempty(self.source, "source")
         require_utc(self.reviewed_at)
@@ -154,6 +169,9 @@ class BrokerOrder:
         if self.client_order_id is not None:
             _require_nonempty(self.client_order_id, "client_order_id")
         _require_nonempty(self.instrument_id, "instrument_id")
+        _validate_order_direction(self.side, self.purpose)
+        _require_exact_enum(self.time_in_force, TimeInForce, "time_in_force")
+        _require_exact_enum(self.state, OrderState, "state")
         _require_decimal(self.requested_quantity, "requested_quantity", positive=True)
         _require_decimal(self.filled_quantity, "filled_quantity", nonnegative=True)
         if self.filled_quantity > self.requested_quantity:
@@ -192,6 +210,7 @@ class Fill:
         _require_nonempty(self.broker_order_id, "broker_order_id")
         _require_nonempty(self.account_id, "account_id")
         _require_nonempty(self.instrument_id, "instrument_id")
+        _require_exact_enum(self.side, Side, "side")
         _require_decimal(self.quantity, "quantity", positive=True)
         _require_decimal(self.price, "price", positive=True)
         _require_decimal(self.fee, "fee", nonnegative=True)
@@ -209,6 +228,8 @@ class CancelReceipt:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.broker_order_id, "broker_order_id")
+        _require_exact_bool(self.accepted, "accepted")
+        _require_exact_bool(self.ambiguous, "ambiguous")
         if self.accepted and self.ambiguous:
             raise DomainValidationError("a cancel receipt cannot be accepted and ambiguous")
         require_utc(self.observed_at)
@@ -223,6 +244,7 @@ class BrokerHealth:
     reason_codes: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        _require_exact_bool(self.healthy, "healthy")
         require_utc(self.observed_at)
         if self.latency_ms is not None:
             _require_decimal(self.latency_ms, "latency_ms", nonnegative=True)
@@ -245,13 +267,10 @@ class PersistedReviewedOrder:
     def __post_init__(self) -> None:
         _require_nonempty(self.review_id, "review_id")
         _require_nonempty(self.submission_attempt_id, "submission_attempt_id")
-        if not isinstance(self.review, BrokerOrderReview):
+        if type(self.review) is not BrokerOrderReview:
             raise DomainValidationError("review must be a BrokerOrderReview")
         _require_nonempty(self.deduplication_key, "deduplication_key")
-        if isinstance(self.fencing_token, bool) or not isinstance(self.fencing_token, int):
-            raise DomainValidationError("fencing_token must be an integer")
-        if self.fencing_token < 0:
-            raise DomainValidationError("fencing_token must be nonnegative")
+        _require_nonnegative_int(self.fencing_token, "fencing_token")
         _require_sha256_hex(self.live_lease_evidence_hash, "live_lease_evidence_hash")
         _require_nonempty(self.account_id, "account_id")
         _require_sha256_hex(self.config_hash, "config_hash")

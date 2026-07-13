@@ -15,7 +15,7 @@ class InvalidTimestamp(DomainValidationError):
 
 def require_utc(value: datetime) -> datetime:
     """Validate an aware UTC datetime and return it with the canonical UTC timezone."""
-    if not isinstance(value, datetime) or value.tzinfo is None:
+    if type(value) is not datetime or value.tzinfo is None:
         raise InvalidTimestamp("timestamp must be timezone-aware UTC")
     try:
         offset = value.utcoffset()

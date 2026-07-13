@@ -3,10 +3,10 @@
 ## Implemented boundary
 
 The repository is a paper-safe, fail-closed foundation, not a running trading system.
-Implemented code is limited to canonical domain primitives, strict configuration and
-hashing, capability evidence and sanitized schema capture, least-privilege broker protocols,
-code identity, clocks, and structured logging with pre-serialization
-redaction.
+Implemented code is limited to canonical domain primitives and immutable cross-layer
+safety attestations, strict configuration and hashing, capability evidence and sanitized
+schema capture, least-privilege broker protocols, code identity, clocks, and structured
+logging with pre-serialization redaction.
 
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. Trader CLI is not implemented. Broker adapters are not implemented.
@@ -20,6 +20,11 @@ kind and source of evidence without turning documentation or a schema into behav
 proof. The broker package currently contains only independent read, review, place, and
 cancel-only protocols plus safe broker-neutral errors; it contains no transport or
 implementation.
+
+Domain safety attestations carry only validated status, identity, UTC time, and evidence
+hashes. They do not import or implement reconciliation, authorization, monitoring,
+promotion, or research services. Audit events have one canonical domain class while the
+prior decision-module import remains a compatibility alias.
 
 Shared capability sanitization owns the reviewed sensitive-name and sensitive-text
 taxonomy. Structured logging reuses that taxonomy, adds only the process-local exact
