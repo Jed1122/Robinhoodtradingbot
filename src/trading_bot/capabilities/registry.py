@@ -15,6 +15,7 @@ from trading_bot.capabilities.models import (
     OperationKind,
     UnsupportedCapabilityError,
 )
+from trading_bot.capabilities.snapshot import text_contains_sensitive_material
 from trading_bot.clock import require_utc
 from trading_bot.domain import AssetClass
 
@@ -97,6 +98,8 @@ def load_capability_manifest(path: Path) -> CapabilityManifest:
 
 def render_capability_matrix(manifest: CapabilityManifest) -> str:
     """Render a stable Markdown view without implying adapter implementation."""
+    if not _manifest_freeform_is_safe(manifest):
+        raise InvalidCapabilityManifest("capability manifest contains unsafe text") from None
     lines = [
         "| Provider | Operation | Asset | Kind | Evidence | State | Limitations |",
         "|---|---|---|---|---|---|---|",
@@ -126,13 +129,13 @@ def _parse_record(raw: object) -> CapabilityRecord:
     value = _mapping(raw)
     _require_exact_fields(value, _RECORD_FIELDS)
     return CapabilityRecord(
-        provider=_string(value["provider"]),
-        operation=_string(value["operation"]),
+        provider=_safe_freeform_string(value["provider"]),
+        operation=_safe_freeform_string(value["operation"]),
         asset_class=AssetClass(_string(value["asset_class"])),
         operation_kind=OperationKind(_string(value["operation_kind"])),
         evidence=tuple(_parse_evidence(item) for item in _list(value["evidence"])),
-        limitations=tuple(_string(item) for item in _list(value["limitations"])),
-        locked_reason=_optional_string(value["locked_reason"]),
+        limitations=tuple(_safe_freeform_string(item) for item in _list(value["limitations"])),
+        locked_reason=_optional_safe_freeform_string(value["locked_reason"]),
     )
 
 
@@ -147,7 +150,7 @@ def _parse_evidence(raw: object) -> CapabilityEvidence:
         schema_sha256=_optional_string(value["schema_sha256"]),
         authenticated=_boolean(value["authenticated"]),
         contains_account_data=_boolean(value["contains_account_data"]),
-        notes=tuple(_string(item) for item in _list(value["notes"])),
+        notes=tuple(_safe_freeform_string(item) for item in _list(value["notes"])),
     )
 
 
@@ -208,6 +211,36 @@ def _optional_string(value: object) -> str | None:
     if value is None:
         return None
     return _string(value)
+
+
+def _safe_freeform_string(value: object) -> str:
+    result = _string(value)
+    if text_contains_sensitive_material(result):
+        raise ValueError
+    return result
+
+
+def _optional_safe_freeform_string(value: object) -> str | None:
+    if value is None:
+        return None
+    return _safe_freeform_string(value)
+
+
+def _manifest_freeform_is_safe(manifest: CapabilityManifest) -> bool:
+    try:
+        for record in manifest.records:
+            values = (
+                record.provider,
+                record.operation,
+                *record.limitations,
+                *((record.locked_reason,) if record.locked_reason is not None else ()),
+                *(note for evidence in record.evidence for note in evidence.notes),
+            )
+            if any(text_contains_sensitive_material(value) for value in values):
+                return False
+    except Exception:
+        return False
+    return True
 
 
 def _boolean(value: object) -> bool:

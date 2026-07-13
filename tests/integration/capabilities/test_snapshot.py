@@ -9,6 +9,7 @@ import stat
 import traceback
 from collections.abc import Sequence
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,6 +24,8 @@ from trading_bot.capabilities import (
     InvalidCapabilityManifest,
     OperationKind,
     PaginationCycleError,
+    SanitizedToolSchema,
+    ToolsListSnapshot,
     UnsafeCapabilitySnapshot,
     canonical_sha256,
     capture_tools_list,
@@ -80,6 +83,30 @@ class PydanticFailingSession:
     ) -> types.ListToolsResult:
         types.Tool.model_validate({"name": ["actual-secret-value"], "inputSchema": {}})
         raise AssertionError("invalid MCP tool unexpectedly validated")
+
+
+class StaticResultSession:
+    """Return one preconstructed result, including deliberately malformed models."""
+
+    def __init__(self, result: types.ListToolsResult) -> None:
+        self.result = result
+
+    async def list_tools(
+        self,
+        cursor: str | None = None,
+        *,
+        params: types.PaginatedRequestParams | None = None,
+    ) -> types.ListToolsResult:
+        return self.result
+
+
+class ExplodingListToolsResult(types.ListToolsResult):
+    """An untrusted SDK-model subclass with secret-bearing property access."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name in {"tools", "nextCursor"}:
+            raise RuntimeError("actual-secret-value")
+        return super().__getattribute__(name)
 
 
 def tool(
@@ -183,6 +210,40 @@ async def test_capture_rejects_repeated_pagination_cursor() -> None:
 async def test_session_and_sdk_errors_are_generic_and_suppress_secret_tracebacks(
     session: SecretFailingSession | PydanticFailingSession,
 ) -> None:
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "MCP tools/list failed safely"
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.asyncio
+async def test_result_subclass_property_errors_are_rejected_before_field_access() -> None:
+    result = ExplodingListToolsResult(tools=[])
+    session = StaticResultSession(result)
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "MCP tools/list failed safely"
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.asyncio
+async def test_model_construct_malformed_tool_fields_fail_generically() -> None:
+    malformed = types.Tool.model_construct(
+        name=["actual-secret-value"],
+        inputSchema={},
+    )
+    result = types.ListToolsResult.model_construct(tools=[malformed], nextCursor=None)
+    session = StaticResultSession(result)
+
     with pytest.raises(CapabilitySnapshotError) as captured:
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
@@ -317,6 +378,72 @@ async def test_captured_schema_and_artifact_views_are_detached_and_digest_stable
             "outputSchema": captured.output_schema,
         }
     )
+
+
+def test_direct_sanitized_tool_construction_rejects_secret_json_and_false_digest() -> None:
+    with pytest.raises(CapabilitySnapshotError):
+        SanitizedToolSchema(
+            name="get_equity_quotes",
+            description=None,
+            _input_schema_json=json.dumps(
+                {
+                    "type": "object",
+                    "properties": {"auth_token": {"type": "string", "default": "tiny"}},
+                },
+                separators=(",", ":"),
+            ),
+            _output_schema_json=None,
+            schema_sha256="0" * 64,
+        )
+
+    with pytest.raises(CapabilitySnapshotError):
+        SanitizedToolSchema(
+            name="get_equity_quotes",
+            description=None,
+            _input_schema_json='{"type":"object"}',
+            _output_schema_json=None,
+            schema_sha256="0" * 64,
+        )
+
+
+@pytest.mark.asyncio
+async def test_direct_tools_snapshot_construction_enforces_all_invariants() -> None:
+    session = FakeToolsListSession(
+        [types.ListToolsResult(tools=[tool("review_equity_order"), tool("get_equity_quotes")])]
+    )
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    invalid_values: tuple[dict[str, object], ...] = (
+        {"provider": "other-provider"},
+        {"observed_at": datetime(2026, 7, 12, 12)},
+        {"tools": list(snapshot.tools)},
+        {"tools": tuple(reversed(snapshot.tools))},
+        {"tools": ("not-a-tool",)},
+        {"manifest": CapabilityManifest(records=())},
+    )
+    for changes in invalid_values:
+        with pytest.raises(CapabilitySnapshotError):
+            replace(snapshot, **changes)  # type: ignore[arg-type]
+
+
+def test_direct_tools_snapshot_rejects_manifest_with_wrong_observation() -> None:
+    schema_json = '{"type":"object"}'
+    digest = canonical_sha256({"inputSchema": {"type": "object"}, "outputSchema": None})
+    captured_tool = SanitizedToolSchema(
+        name="get_equity_quotes",
+        description=None,
+        _input_schema_json=schema_json,
+        _output_schema_json=None,
+        schema_sha256=digest,
+    )
+
+    with pytest.raises(CapabilitySnapshotError):
+        ToolsListSnapshot(
+            provider="robinhood-trading",
+            observed_at=OBSERVED_AT,
+            tools=(captured_tool,),
+            manifest=CapabilityManifest(records=()),
+        )
 
 
 @pytest.mark.parametrize(
@@ -472,6 +599,103 @@ async def test_sensitive_alias_defaults_nested_under_defs_are_rejected(
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
 
+@pytest.mark.parametrize(
+    "alias",
+    (
+        "auth_token",
+        "oauth_token",
+        "id_token",
+        "bearer_token",
+        "csrf_token",
+        "brokerage_account_id",
+        "brokerage_account_number",
+        "originating_account_id",
+        "credential",
+        "client_credential",
+        "oauth_access_token",
+        "signing_private_key",
+        "order_sig",
+        "csrf_cookie",
+        "x_auth_header",
+        "provider_api_key",
+        "oauth_session_id",
+    ),
+)
+@pytest.mark.asyncio
+async def test_sensitive_component_aliases_reject_short_defaults_but_allow_schema_only(
+    alias: str,
+) -> None:
+    unsafe = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "type": "object",
+                            "properties": {alias: {"type": "string", "default": "tiny"}},
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(unsafe, observed_at=OBSERVED_AT)
+
+    schema_only = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "type": "object",
+                            "properties": {alias: {"type": "string"}},
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+    snapshot = await capture_tools_snapshot(schema_only, observed_at=OBSERVED_AT)
+    properties = snapshot.tools[0].input_schema["properties"]
+    assert isinstance(properties, dict)
+    assert alias in properties
+
+
+@pytest.mark.parametrize(
+    "sensitive_schema",
+    (
+        {
+            "type": "object",
+            "properties": {"auth_token": {"type": "string", "x-current": "tiny"}},
+        },
+        {
+            "type": "object",
+            "properties": {"auth_token": {"allOf": [{"type": "string", "x-current": "tiny"}]}},
+        },
+        {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "string",
+                    "description": "current value tiny",
+                }
+            },
+        },
+    ),
+)
+@pytest.mark.asyncio
+async def test_sensitive_schema_scope_rejects_custom_and_metadata_values(
+    sensitive_schema: dict[str, object],
+) -> None:
+    session = FakeToolsListSession(
+        [types.ListToolsResult(tools=[tool(input_schema=sensitive_schema)])]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
 @pytest.mark.parametrize("definition_name", ("client_secret", "account_number"))
 @pytest.mark.asyncio
 async def test_sensitive_named_definition_default_is_rejected(
@@ -559,6 +783,12 @@ async def test_sensitive_property_label_with_direct_scalar_value_is_rejected() -
         "%61ccess_token%3Dactual-secret-value",
         "%2561ccess_token%253Dactual-secret-value",
         "%FFsession_id=short-secret",
+        "https://robinhood.com/path?oauth_token=tiny",
+        "https://robinhood.com/path#brokerage_account_id=tiny",
+        "%63srf_token%3Dtiny",
+        "access_%ZZtoken=short-secret",
+        "https://robinhood.com/account_id/short-secret",
+        "Bearer tiny",
     ),
 )
 @pytest.mark.asyncio
@@ -710,6 +940,70 @@ def test_fixture_loader_rejects_missing_invalid_or_non_utc_checked_at(
 
     with pytest.raises(InvalidCapabilityManifest, match="fixture is invalid"):
         load_capability_manifest(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "sensitive_value"),
+    (
+        ("provider", "brokerage_account_id=short-secret"),
+        ("operation", "csrf_token=short-secret"),
+        ("limitations", "Authorization: Bearer short-secret"),
+        ("locked_reason", "oauth_session_id=short-secret"),
+        ("notes", "client_credential=short-secret"),
+    ),
+)
+def test_fixture_loader_rejects_sensitive_free_form_values_generically(
+    tmp_path: Path,
+    field: str,
+    sensitive_value: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    evidence_values = record["evidence"]
+    assert isinstance(evidence_values, list)
+    evidence = evidence_values[0]
+    assert isinstance(evidence, dict)
+    if field == "limitations":
+        record[field] = [sensitive_value]
+    elif field == "notes":
+        evidence[field] = [sensitive_value]
+    else:
+        record[field] = sensitive_value
+    path = tmp_path / "sensitive.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    assert str(captured.value) == "capability fixture is invalid"
+    assert sensitive_value not in str(captured.value)
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_matrix_renderer_never_emits_sensitive_free_form_record_values() -> None:
+    record = load_capability_manifest(FIXTURE).records[0]
+    unsafe_evidence = replace(
+        record.evidence[0],
+        notes=("csrf_token=short-secret",),
+    )
+    unsafe_records = (
+        replace(record, provider="brokerage_account_id=short-secret"),
+        replace(record, operation="csrf_token=short-secret"),
+        replace(record, limitations=("Authorization: Bearer short-secret",)),
+        replace(record, locked_reason="oauth_session_id=short-secret"),
+        replace(record, evidence=(unsafe_evidence,)),
+    )
+
+    for unsafe_record in unsafe_records:
+        with pytest.raises(InvalidCapabilityManifest) as captured:
+            render_capability_matrix(CapabilityManifest(records=(unsafe_record,)))
+        assert str(captured.value) == "capability manifest contains unsafe text"
+        assert captured.value.__cause__ is None
+        assert captured.value.__context__ is None
 
 
 def test_documented_fixture_uses_only_public_evidence_and_locked_states() -> None:

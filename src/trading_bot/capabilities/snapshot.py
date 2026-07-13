@@ -23,7 +23,7 @@ from trading_bot.capabilities.models import (
     EvidenceLevel,
     OperationKind,
 )
-from trading_bot.clock import InvalidTimestamp, require_utc
+from trading_bot.clock import require_utc
 from trading_bot.domain import AssetClass
 
 type JsonScalar = None | bool | int | float | str
@@ -43,58 +43,85 @@ _UUID_LIKE = re.compile(
 )
 _HIGH_ENTROPY_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])")
 _PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _PEM_PRIVATE_KEY = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)
 _BEARER_OR_HEADER_ASSIGNMENT = re.compile(
     r"(?:authorization|proxy-authorization|[a-z0-9-]*header|cookie|set-cookie)\s*[:=]"
     r"\s*(?:bearer\s+)?\S+",
     re.IGNORECASE,
 )
-_BEARER_MATERIAL = re.compile(r"\bbearer\s+[A-Za-z0-9._~-]{16,}", re.IGNORECASE)
+_BEARER_MATERIAL = re.compile(r"\bbearer\s+[A-Za-z0-9._~-]+", re.IGNORECASE)
 _SECRET_ASSIGNMENT = re.compile(
     r"(?:x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|signature|signatures|sig|"
     r"account[_-]?(?:id|number|uuid))\s*[:=]\s*\S+",
     re.IGNORECASE,
 )
-_ALIAS_ASSIGNMENT = re.compile(
-    r"(?:client[_-]?secret|password|passphrase|secret(?:[_-]?(?:value|key))?|"
-    r"session(?:[_-]?(?:id|key|token))?|acct(?:[_-]?id)?|"
-    r"account[_-]?(?:id|number|uuid|reference))\s*[:=]\s*\S+",
+_NAMED_ASSIGNMENT = re.compile(
+    r"(?P<name>[A-Za-z][A-Za-z0-9_.%~-]{0,127})\s*[:=]\s*(?P<value>[^\s&#]+)",
     re.IGNORECASE,
 )
-_SENSITIVE_NAMES = frozenset(
+_SENSITIVE_COMPONENTS = (
+    "token",
+    "account",
+    "privatekey",
+    "signingkey",
+    "signature",
+    "sig",
+    "cookie",
+    "header",
+    "auth",
+    "apikey",
+    "session",
+    "credential",
+    "bearer",
+    "secret",
+    "password",
+    "passphrase",
+)
+_SENSITIVE_SCHEMA_STRUCTURAL_KEYS = frozenset(
     {
-        "account",
-        "accountid",
-        "accountnumber",
-        "accountreference",
-        "accountuuid",
-        "accesstoken",
-        "acct",
-        "acctid",
-        "apikey",
-        "authorization",
-        "clientsecret",
-        "cookie",
-        "password",
-        "passphrase",
-        "privatekey",
-        "refreshtoken",
-        "secret",
-        "secretkey",
-        "secretvalue",
-        "setcookie",
-        "sig",
-        "signature",
-        "signatures",
-        "session",
-        "sessionid",
-        "sessionkey",
-        "sessiontoken",
-        "token",
-        "xapikey",
+        "$defs",
+        "$ref",
+        "additionalProperties",
+        "allOf",
+        "anyOf",
+        "contains",
+        "definitions",
+        "dependentRequired",
+        "dependentSchemas",
+        "deprecated",
+        "else",
+        "exclusiveMaximum",
+        "exclusiveMinimum",
+        "format",
+        "if",
+        "items",
+        "maxContains",
+        "maxItems",
+        "maxLength",
+        "maxProperties",
+        "maximum",
+        "minContains",
+        "minItems",
+        "minLength",
+        "minProperties",
+        "minimum",
+        "multipleOf",
+        "not",
+        "nullable",
+        "oneOf",
+        "prefixItems",
+        "properties",
+        "propertyNames",
+        "readOnly",
+        "required",
+        "then",
+        "type",
+        "unevaluatedProperties",
+        "uniqueItems",
+        "writeOnly",
     }
 )
-_VALUE_KEYWORDS = frozenset({"const", "default", "enum", "example", "examples"})
 _MAX_INSPECTION_TEXT_LENGTH = 65_536
 _MAX_PERCENT_DECODE_ROUNDS = 3
 
@@ -149,6 +176,37 @@ class SanitizedToolSchema:
     _output_schema_json: str | None
     schema_sha256: str
 
+    def __post_init__(self) -> None:
+        if type(self.name) is not str or _TOOL_NAME.fullmatch(self.name) is None:
+            raise CapabilitySnapshotError("sanitized tool name is invalid")
+        if self.description is not None and type(self.description) is not str:
+            raise CapabilitySnapshotError("sanitized tool description is invalid")
+        input_schema = _decode_schema_object(self._input_schema_json)
+        output_schema = (
+            None
+            if self._output_schema_json is None
+            else _decode_schema_object(self._output_schema_json)
+        )
+        selected: dict[str, JsonValue] = {
+            "name": self.name,
+            "description": self.description,
+            "inputSchema": input_schema,
+            "outputSchema": output_schema,
+        }
+        _scan_sensitive(selected)
+        expected_digest = canonical_sha256(
+            {
+                "inputSchema": input_schema,
+                "outputSchema": output_schema,
+            }
+        )
+        if (
+            type(self.schema_sha256) is not str
+            or _SHA256_HEX.fullmatch(self.schema_sha256) is None
+            or self.schema_sha256 != expected_digest
+        ):
+            raise CapabilitySnapshotError("sanitized tool digest is invalid")
+
     @property
     def input_schema(self) -> dict[str, JsonValue]:
         """Return a detached input-schema view."""
@@ -180,6 +238,28 @@ class ToolsListSnapshot:
     observed_at: datetime
     tools: tuple[SanitizedToolSchema, ...]
     manifest: CapabilityManifest
+
+    def __post_init__(self) -> None:
+        if type(self.provider) is not str or self.provider != _PROVIDER:
+            raise CapabilitySnapshotError("snapshot provider is invalid")
+        try:
+            require_utc(self.observed_at)
+        except Exception:
+            raise CapabilitySnapshotError("snapshot timestamp must be aware UTC") from None
+        if type(self.tools) is not tuple or any(
+            type(item) is not SanitizedToolSchema for item in self.tools
+        ):
+            raise CapabilitySnapshotError("snapshot tools must be immutable sanitized values")
+        names = tuple(item.name for item in self.tools)
+        if names != tuple(sorted(names)) or len(names) != len(set(names)):
+            raise CapabilitySnapshotError("snapshot tools must be unique and deterministic")
+        if type(self.manifest) is not CapabilityManifest:
+            raise CapabilitySnapshotError("snapshot manifest is invalid")
+        expected = CapabilityManifest(
+            records=tuple(_record_from_schema(item, self.observed_at) for item in self.tools)
+        )
+        if self.manifest != expected:
+            raise CapabilitySnapshotError("snapshot manifest does not match captured schemas")
 
     def as_json(self) -> dict[str, JsonValue]:
         """Render the deterministic committed artifact without SDK extras."""
@@ -222,8 +302,8 @@ async def capture_tools_snapshot(
     timestamp = observed_at if observed_at is not None else datetime.now(UTC)
     try:
         require_utc(timestamp)
-    except InvalidTimestamp as exc:
-        raise CapabilitySnapshotError("observed_at must be aware UTC") from exc
+    except Exception:
+        raise CapabilitySnapshotError("observed_at must be aware UTC") from None
 
     captured: list[SanitizedToolSchema] = []
     names: set[str] = set()
@@ -232,20 +312,14 @@ async def capture_tools_snapshot(
 
     while True:
         result = await _request_tools_page(session, params)
-        if type(result.tools) is not list:
-            raise CapabilitySnapshotError("MCP tools/list failed safely")
-        for declared in result.tools:
-            if not isinstance(declared, types.Tool):
-                raise CapabilitySnapshotError("MCP tools/list failed safely")
+        page_tools, cursor = _sanitize_tools_page(result)
+        for declared in page_tools:
             if declared.name in names:
                 raise DuplicateToolNameError("tools/list contains a duplicate tool name")
             names.add(declared.name)
-            captured.append(_sanitize_tool(declared))
-        cursor = result.nextCursor
+            captured.append(declared)
         if cursor is None:
             break
-        if type(cursor) is not str:
-            raise CapabilitySnapshotError("MCP tools/list failed safely")
         if not cursor or cursor in seen_cursors:
             raise PaginationCycleError("tools/list returned an invalid or repeated cursor")
         seen_cursors.add(cursor)
@@ -275,9 +349,36 @@ async def _request_tools_page(
         )
     except Exception:
         failed = True
-    if failed or not isinstance(result, types.ListToolsResult):
+    if failed or type(result) is not types.ListToolsResult:
         raise CapabilitySnapshotError("MCP tools/list failed safely") from None
     return result
+
+
+def _sanitize_tools_page(
+    result: types.ListToolsResult,
+) -> tuple[tuple[SanitizedToolSchema, ...], str | None]:
+    sanitized: tuple[SanitizedToolSchema, ...] | None = None
+    cursor: str | None = None
+    failed = False
+    try:
+        raw_tools = result.tools
+        raw_cursor = result.nextCursor
+        if type(raw_tools) is not list or (raw_cursor is not None and type(raw_cursor) is not str):
+            raise TypeError
+        converted: list[SanitizedToolSchema] = []
+        for declared in raw_tools:
+            if type(declared) is not types.Tool:
+                raise TypeError
+            converted.append(_sanitize_tool(declared))
+        sanitized = tuple(converted)
+        cursor = raw_cursor
+    except CapabilitySnapshotError:
+        raise
+    except Exception:
+        failed = True
+    if failed or sanitized is None:
+        raise CapabilitySnapshotError("MCP tools/list failed safely") from None
+    return sanitized, cursor
 
 
 async def write_tools_snapshot(
@@ -395,10 +496,36 @@ def _encode_json(value: JsonValue) -> str:
 
 
 def _decode_schema_object(value: str) -> dict[str, JsonValue]:
-    decoded: object = json.loads(value)
-    if type(decoded) is not dict:
-        raise RuntimeError("stored schema invariant failed")
+    decoded: object | None = None
+    invalid = False
+    try:
+        if type(value) is not str:
+            raise TypeError
+        decoded = json.loads(
+            value,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+        if type(decoded) is not dict or _encode_json(decoded) != value:
+            raise ValueError
+    except Exception:
+        invalid = True
+    if invalid or type(decoded) is not dict:
+        raise CapabilitySnapshotError("stored schema JSON is invalid") from None
     return decoded
+
+
+def _unique_json_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
+    result: dict[str, JsonValue] = {}
+    for key, item in pairs:
+        if key in result:
+            raise ValueError
+        result[key] = item
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError
 
 
 def _atomic_private_write(output: Path, payload: str) -> None:
@@ -436,7 +563,7 @@ def _scan_sensitive(
 ) -> None:
     if type(value) is str:
         assert isinstance(value, str)
-        if _string_is_sensitive(value):
+        if text_contains_sensitive_material(value):
             raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
         return
     if type(value) is list:
@@ -447,16 +574,18 @@ def _scan_sensitive(
     if type(value) is not dict:
         return
     assert isinstance(value, dict)
+    if sensitive_property and any(
+        key not in _SENSITIVE_SCHEMA_STRUCTURAL_KEYS and _contains_value(item)
+        for key, item in value.items()
+    ):
+        raise UnsafeCapabilitySnapshot("sensitive schema properties cannot embed metadata")
     for key, item in value.items():
-        if _string_is_sensitive(key):
+        if text_contains_sensitive_material(key):
             raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
-        normalized = _normalize_name(key)
-        if sensitive_property and normalized in _VALUE_KEYWORDS and _contains_value(item):
-            raise UnsafeCapabilitySnapshot("sensitive schema properties cannot embed values")
         if key == "properties" and type(item) is dict:
             assert isinstance(item, dict)
             for property_name, property_schema in item.items():
-                if _string_is_sensitive(property_name):
+                if text_contains_sensitive_material(property_name):
                     raise UnsafeCapabilitySnapshot(
                         "capability snapshot contains sensitive material"
                     )
@@ -471,7 +600,7 @@ def _scan_sensitive(
                     )
                 _scan_sensitive(
                     property_schema,
-                    sensitive_property=sensitive_label,
+                    sensitive_property=sensitive_property or sensitive_label,
                 )
             continue
         sensitive_schema_alias = _name_is_sensitive(key) and _looks_like_schema(item)
@@ -483,7 +612,7 @@ def _scan_sensitive(
         )
 
 
-def _string_is_sensitive(value: str) -> bool:
+def text_contains_sensitive_material(value: str) -> bool:
     if len(value) > _MAX_INSPECTION_TEXT_LENGTH:
         return True
     try:
@@ -501,7 +630,11 @@ def _string_is_sensitive(value: str) -> bool:
             or _HIGH_ENTROPY_TOKEN.search(candidate)
             or _BEARER_OR_HEADER_ASSIGNMENT.search(candidate)
             or _SECRET_ASSIGNMENT.search(candidate)
-            or _ALIAS_ASSIGNMENT.search(candidate)
+        ):
+            return True
+        if any(
+            _name_is_sensitive(match.group("name")) and bool(match.group("value"))
+            for match in _NAMED_ASSIGNMENT.finditer(candidate)
         ):
             return True
         try:
@@ -523,6 +656,12 @@ def _string_is_sensitive(value: str) -> bool:
                 return True
             if any(_name_is_sensitive(name) and bool(item) for name, item in pairs):
                 return True
+        segments = tuple(segment for segment in parsed.path.split("/") if segment)
+        if any(
+            _name_is_sensitive(segment) and bool(segments[index + 1])
+            for index, segment in enumerate(segments[:-1])
+        ):
+            return True
     return False
 
 
@@ -546,13 +685,7 @@ def _normalize_name(value: str) -> str:
 
 def _name_is_sensitive(value: str) -> bool:
     normalized = _normalize_name(value)
-    return (
-        normalized in _SENSITIVE_NAMES
-        or "secret" in normalized
-        or "password" in normalized
-        or "passphrase" in normalized
-        or normalized.startswith(("account", "acct", "session"))
-    )
+    return any(component in normalized for component in _SENSITIVE_COMPONENTS)
 
 
 def _contains_value(value: JsonValue) -> bool:
@@ -609,5 +742,6 @@ __all__ = [
     "canonical_sha256",
     "capture_tools_list",
     "capture_tools_snapshot",
+    "text_contains_sensitive_material",
     "write_tools_snapshot",
 ]

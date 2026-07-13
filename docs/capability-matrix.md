@@ -77,10 +77,21 @@ declared tool. Captured schema views are detached from immutable stored JSON so 
 cannot mutate a schema away from its digest. Snapshot writes use a private `0600` sibling
 temporary file and atomic replacement; destination symlinks are rejected.
 
+Sensitive schema names are classified by conservative components such as token, account,
+auth, credential, key/signature, cookie/header, session, bearer, and secret/password.
+Schema-only declarations remain recordable, while defaults, examples, descriptions,
+custom metadata, encoded assignments, userinfo, and identifier-bearing paths are rejected
+under sensitive scope. Standalone bearer material is rejected regardless of length.
+
 The documented fixture loader requires duplicate-free finite JSON, exact root/record/
 evidence fields, format version integer `1`, and an aware UTC `checked_at`. Invalid
 fixtures and external MCP parser/session failures cross the boundary only as generic
-errors without including provider payload text.
+errors without including provider payload text. The same text predicate scans fixture and
+matrix free-form provider, operation, limitation, lock-reason, and evidence-note values;
+timestamps, digests, enums, and validated official source paths retain their dedicated
+validators. Exported snapshot records revalidate canonical JSON, schema digests, UTC,
+provider identity, tool order/type, and manifest consistency at construction. Only exact
+MCP SDK result and tool model types cross the external-result boundary.
 
 When no proven configured session is injected, the CLI exits with status 2, writes
 nothing, and prints:
