@@ -80,6 +80,56 @@ def forged_authenticated_write_manifest() -> tuple[CapabilityManifest, Capabilit
     return manifest, record
 
 
+class AlwaysEqualString(str):
+    """A string subclass that tries to redirect an exact capability lookup."""
+
+    def __eq__(self, other: object) -> bool:
+        return True
+
+    __hash__ = str.__hash__
+
+
+class MatchAnything:
+    """A non-string lookup key whose equality must never be invoked."""
+
+    def __eq__(self, other: object) -> bool:
+        return True
+
+
+class ArmedEquality:
+    """A lookup key that leaks sensitive text if equality is attempted."""
+
+    def __eq__(self, other: object) -> bool:
+        raise RuntimeError("Authorization: Bearer actual-secret-value")
+
+
+def authenticated_write_record(
+    *,
+    provider: str = "robinhood-trading",
+    operation: str = "place_order",
+) -> CapabilityRecord:
+    """Return valid reviewed-write evidence for lookup-boundary tests."""
+    return CapabilityRecord(
+        provider=provider,
+        operation=operation,
+        asset_class=AssetClass.EQUITY,
+        operation_kind=OperationKind.PLACE,
+        evidence=(
+            CapabilityEvidence(
+                level=EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED,
+                source_uri="https://robinhood.com/support/official-api",
+                observed_at=NOW,
+                schema_sha256=DIGEST,
+                authenticated=True,
+                contains_account_data=False,
+                notes=("sanitized non-submitting order review",),
+            ),
+        ),
+        limitations=(),
+        locked_reason=None,
+    )
+
+
 @pytest.mark.parametrize("records", ([], {"record"}, iter(())))
 def test_manifest_requires_exact_immutable_record_tuple(records: object) -> None:
     with pytest.raises(InvalidCapabilityManifest, match="immutable tuple"):
@@ -151,6 +201,102 @@ def test_require_capability_returns_only_exact_unlocked_evidence() -> None:
     assert result == record
     assert result is not record
     assert result is not manifest.records[0]
+
+
+@pytest.mark.parametrize(
+    ("provider", "operation"),
+    (
+        (AlwaysEqualString("wrong-provider"), "place_order"),
+        ("robinhood-trading", AlwaysEqualString("wrong-operation")),
+        (MatchAnything(), "place_order"),
+        ("robinhood-trading", MatchAnything()),
+        ("wrong-provider", "place_order"),
+        ("robinhood-trading", "wrong-operation"),
+    ),
+)
+def test_require_capability_never_uses_coercive_lookup_equality(
+    provider: object,
+    operation: object,
+) -> None:
+    manifest = CapabilityManifest(records=(authenticated_write_record(),))
+
+    with pytest.raises(UnsupportedCapabilityError) as captured:
+        require_capability(
+            manifest,
+            provider=provider,  # type: ignore[arg-type]
+            operation=operation,  # type: ignore[arg-type]
+            minimum=EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED,
+        )
+
+    assert str(captured.value) == "requested capability does not have the required exact evidence"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    ("provider", "operation"),
+    ((ArmedEquality(), "place_order"), ("robinhood-trading", ArmedEquality())),
+)
+def test_require_capability_rejects_armed_lookup_keys_without_equality_or_leakage(
+    provider: object,
+    operation: object,
+) -> None:
+    manifest = CapabilityManifest(records=(authenticated_write_record(),))
+
+    with pytest.raises(UnsupportedCapabilityError) as captured:
+        require_capability(
+            manifest,
+            provider=provider,  # type: ignore[arg-type]
+            operation=operation,  # type: ignore[arg-type]
+            minimum=EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED,
+        )
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "Authorization" not in rendered
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    ("provider", "operation", "expected_provider", "expected_operation"),
+    (
+        (
+            "Authorization: Bearer actual-secret-value",
+            "place_order",
+            "<invalid-provider>",
+            "place_order",
+        ),
+        (
+            "robinhood-trading",
+            "clientsecret=actual-secret-value",
+            "robinhood-trading",
+            "<invalid-operation>",
+        ),
+    ),
+)
+def test_require_capability_does_not_retain_sensitive_exact_lookup_strings(
+    provider: str,
+    operation: str,
+    expected_provider: str,
+    expected_operation: str,
+) -> None:
+    manifest = CapabilityManifest(records=(authenticated_write_record(),))
+
+    with pytest.raises(UnsupportedCapabilityError) as captured:
+        require_capability(
+            manifest,
+            provider=provider,
+            operation=operation,
+            minimum=EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED,
+        )
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert captured.value.provider == expected_provider
+    assert captured.value.operation == expected_operation
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 def test_forged_exact_nested_write_evidence_cannot_satisfy_capability_gate() -> None:

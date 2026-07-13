@@ -1,13 +1,13 @@
 """Immutable, fail-closed capability evidence models."""
 
 import re
-import unicodedata
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from urllib.parse import urlsplit
 
+from trading_bot.capabilities.sanitization import text_contains_sensitive_material
 from trading_bot.clock import require_utc
 from trading_bot.domain import AssetClass
 
@@ -17,17 +17,6 @@ _ALLOWED_HTTPS_HOSTS = frozenset({"robinhood.com", "docs.robinhood.com"})
 _ALLOWED_MCP_HOST = "robinhood-trading"
 _HOST_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\Z")
 _PATH_SEGMENT = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,127})?\Z")
-_UUID_LIKE = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
-    re.IGNORECASE,
-)
-_LONG_NUMERIC_ID = re.compile(r"[0-9]{8,}")
-_JWT_LIKE = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
-_API_TOKEN_LIKE = re.compile(
-    r"(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}",
-    re.IGNORECASE,
-)
-_ACCOUNT_ID_LIKE = re.compile(r"RHC[A-Z0-9]{8,}", re.IGNORECASE)
 
 
 class CapabilityValidationError(ValueError):
@@ -358,7 +347,7 @@ def _require_safe_source_uri(value: str) -> None:
         raise InvalidCapabilityEvidence("source_uri must use an approved evidence scheme")
     if not parsed.netloc or hostname is None:
         raise InvalidCapabilityEvidence("source_uri must be an absolute URI")
-    if not _hostname_is_valid(hostname) or _text_looks_sensitive(hostname):
+    if not _hostname_is_valid(hostname):
         raise InvalidCapabilityEvidence("source_uri must use a sanitized hostname")
     if username is not None or password is not None:
         raise InvalidCapabilityEvidence("source_uri cannot contain user information")
@@ -370,7 +359,7 @@ def _require_safe_source_uri(value: str) -> None:
         raise InvalidCapabilityEvidence("source_uri must use the approved MCP authority")
     if parsed.query or parsed.fragment:
         raise InvalidCapabilityEvidence("source_uri cannot contain a query or fragment")
-    if not _path_is_valid(parsed.path) or _text_looks_sensitive(parsed.path):
+    if not _path_is_valid(parsed.path):
         raise InvalidCapabilityEvidence("source_uri must use a sanitized canonical path")
 
 
@@ -389,34 +378,13 @@ def _path_is_valid(value: str) -> bool:
     segments = value.split("/")[1:]
     if segments and segments[-1] == "":
         segments.pop()
-    if not all(_PATH_SEGMENT.fullmatch(segment) is not None for segment in segments):
-        return False
-    if any(segment.casefold().startswith(("account", "acct", "session")) for segment in segments):
-        return False
-    return _UUID_LIKE.search(value) is None and _LONG_NUMERIC_ID.search(value) is None
-
-
-def _text_looks_sensitive(value: str) -> bool:
-    return (
-        _JWT_LIKE.search(value) is not None
-        or _API_TOKEN_LIKE.search(value) is not None
-        or _ACCOUNT_ID_LIKE.search(value) is not None
-    )
-
-
-def has_unsafe_freeform_characters(value: str) -> bool:
-    """Reject invisible formatting and unsafe controls while allowing ordinary prose."""
-    return type(value) is not str or any(
-        (unicodedata.category(character) == "Cc" and character not in {"\t", "\n", "\r"})
-        or unicodedata.category(character) == "Cf"
-        or unicodedata.bidirectional(character)
-        in {"LRE", "RLE", "LRO", "RLO", "PDF", "LRI", "RLI", "FSI", "PDI"}
-        for character in value
-    )
+    return all(_PATH_SEGMENT.fullmatch(segment) is not None for segment in segments)
 
 
 def _is_nonempty_string(value: object) -> bool:
-    return type(value) is str and not has_unsafe_freeform_characters(value) and bool(value.strip())
+    return (
+        type(value) is str and bool(value.strip()) and not text_contains_sensitive_material(value)
+    )
 
 
 def _require_nonempty_string(

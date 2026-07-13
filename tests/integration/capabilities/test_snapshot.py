@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import runpy
@@ -36,6 +37,7 @@ from trading_bot.capabilities import (
     render_capability_matrix,
     write_tools_snapshot,
 )
+from trading_bot.capabilities import snapshot as snapshot_module
 from trading_bot.capabilities.snapshot import text_contains_sensitive_material
 
 OBSERVED_AT = datetime(2026, 7, 12, 12, tzinfo=UTC)
@@ -135,6 +137,57 @@ BENIGN_COMPACT_VALUE_NAMES = (
     "accountingdata",
     "headerlessvalue",
 )
+SENSITIVE_ACCOUNT_AUTH_ALIASES = (
+    "accountidentifier",
+    "accountidentifiers",
+    "accountidentifiervalue",
+    "accountidentifiervalues",
+    "accountreference",
+    "accountreferences",
+    "accountreferencevalue",
+    "accountreferencevalues",
+    "acctid",
+    "acctidentifier",
+    "acctnumber",
+    "acctuuid",
+    "acctreference",
+    "acctno",
+    "accountno",
+    "authorizationcode",
+    "authorizationcodes",
+    "authorizationcodevalue",
+    "authorization_code",
+    "oauthcode",
+    "oauth_code",
+    "authcode",
+    "auth_code",
+    "verificationcode",
+    "verification_code",
+    "mfacode",
+    "mfa_code",
+    "recoverycode",
+    "recovery_code",
+    "otpcode",
+    "otp_code",
+)
+BENIGN_ACCOUNT_AUTH_CONTROLS = (
+    "accountingreference",
+    "accounting_reference",
+    "authorizationstatus",
+    "authorization_status",
+    "oauthscope",
+    "oauth_scope",
+    "postcode",
+    "post_code",
+    "zipcode",
+    "zip_code",
+    "codepoint",
+    "code_point",
+    "referenceprice",
+    "reference_price",
+    "identifierformat",
+    "identifier_format",
+)
 
 
 class FakeToolsListSession:
@@ -194,6 +247,51 @@ class StaticResultSession:
         params: types.PaginatedRequestParams | None = None,
     ) -> types.ListToolsResult:
         return self.result
+
+
+class EndlessCursorSession:
+    """Return unique cursors forever unless the finite page gate stops capture."""
+
+    def __init__(self) -> None:
+        self.list_tools_params: list[types.PaginatedRequestParams | None] = []
+        self.call_tool_calls: list[object] = []
+
+    async def list_tools(
+        self,
+        cursor: str | None = None,
+        *,
+        params: types.PaginatedRequestParams | None = None,
+    ) -> types.ListToolsResult:
+        assert cursor is None
+        self.list_tools_params.append(params)
+        # Yield without wall-clock delay so the external RED timeout can fire.
+        await asyncio.sleep(0)
+        return types.ListToolsResult(
+            tools=[],
+            nextCursor=f"page-{len(self.list_tools_params) + 1}",
+        )
+
+
+class HangingToolsListSession:
+    """Never return a page; the per-call timeout must cancel the await."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.cancelled = False
+
+    async def list_tools(
+        self,
+        cursor: str | None = None,
+        *,
+        params: types.PaginatedRequestParams | None = None,
+    ) -> types.ListToolsResult:
+        self.calls += 1
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        raise AssertionError("unreachable")
 
 
 class ExplodingListToolsResult(types.ListToolsResult):
@@ -284,6 +382,52 @@ def forged_sanitized_tool(
     for field_name, field_value in values.items():
         object.__setattr__(forged, field_name, field_value)
     return forged
+
+
+def forged_manifest_with_unsafe_freeform(
+    source: CapabilityRecord,
+    *,
+    field: str,
+    value: str,
+) -> CapabilityManifest:
+    """Bypass direct-model validation to exercise the renderer's own boundary."""
+    forged_record = object.__new__(CapabilityRecord)
+    for field_name in (
+        "provider",
+        "operation",
+        "asset_class",
+        "operation_kind",
+        "evidence",
+        "limitations",
+        "locked_reason",
+    ):
+        object.__setattr__(forged_record, field_name, getattr(source, field_name))
+    if field == "notes":
+        source_evidence = source.evidence[0]
+        forged_evidence = object.__new__(CapabilityEvidence)
+        for evidence_field in (
+            "level",
+            "source_uri",
+            "observed_at",
+            "schema_sha256",
+            "authenticated",
+            "contains_account_data",
+            "notes",
+        ):
+            object.__setattr__(
+                forged_evidence,
+                evidence_field,
+                getattr(source_evidence, evidence_field),
+            )
+        object.__setattr__(forged_evidence, "notes", (value,))
+        object.__setattr__(forged_record, "evidence", (forged_evidence,))
+    elif field == "limitations":
+        object.__setattr__(forged_record, field, (value,))
+    else:
+        object.__setattr__(forged_record, field, value)
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
+    return forged_manifest
 
 
 @pytest.mark.asyncio
@@ -2060,21 +2204,37 @@ def test_fixture_loader_rejects_control_and_bidi_freeform_text(
 
 def test_matrix_renderer_never_emits_sensitive_free_form_record_values() -> None:
     record = load_capability_manifest(FIXTURE).records[0]
-    unsafe_evidence = replace(
-        record.evidence[0],
-        notes=("csrf_token=short-secret",),
-    )
-    unsafe_records = (
-        replace(record, provider="brokerage_account_id=short-secret"),
-        replace(record, operation="csrf_token=short-secret"),
-        replace(record, limitations=("Authorization: Bearer short-secret",)),
-        replace(record, locked_reason="oauth_session_id=short-secret"),
-        replace(record, evidence=(unsafe_evidence,)),
+    unsafe_manifests = (
+        forged_manifest_with_unsafe_freeform(
+            record,
+            field="provider",
+            value="brokerage_account_id=short-secret",
+        ),
+        forged_manifest_with_unsafe_freeform(
+            record,
+            field="operation",
+            value="csrf_token=short-secret",
+        ),
+        forged_manifest_with_unsafe_freeform(
+            record,
+            field="limitations",
+            value="Authorization: Bearer short-secret",
+        ),
+        forged_manifest_with_unsafe_freeform(
+            record,
+            field="locked_reason",
+            value="oauth_session_id=short-secret",
+        ),
+        forged_manifest_with_unsafe_freeform(
+            record,
+            field="notes",
+            value="csrf_token=short-secret",
+        ),
     )
 
-    for unsafe_record in unsafe_records:
+    for unsafe_manifest in unsafe_manifests:
         with pytest.raises(InvalidCapabilityManifest) as captured:
-            render_capability_matrix(CapabilityManifest(records=(unsafe_record,)))
+            render_capability_matrix(unsafe_manifest)
         assert str(captured.value) == "capability manifest contains unsafe text"
         assert captured.value.__cause__ is None
         assert captured.value.__context__ is None
@@ -2083,10 +2243,14 @@ def test_matrix_renderer_never_emits_sensitive_free_form_record_values() -> None
 @pytest.mark.parametrize("alias", GRAMMAR_SENSITIVE_NAMES)
 def test_matrix_renderer_rejects_nested_sensitive_compound_assignments(alias: str) -> None:
     record = load_capability_manifest(FIXTURE).records[0]
-    unsafe_record = replace(record, limitations=(f"safe={alias}=tiny",))
+    unsafe_manifest = forged_manifest_with_unsafe_freeform(
+        record,
+        field="limitations",
+        value=f"safe={alias}=tiny",
+    )
 
     with pytest.raises(InvalidCapabilityManifest) as captured:
-        render_capability_matrix(CapabilityManifest(records=(unsafe_record,)))
+        render_capability_matrix(unsafe_manifest)
 
     assert str(captured.value) == "capability manifest contains unsafe text"
     assert captured.value.__cause__ is None
@@ -2096,10 +2260,14 @@ def test_matrix_renderer_rejects_nested_sensitive_compound_assignments(alias: st
 @pytest.mark.parametrize("alias", COMPACT_CREDENTIAL_VALUE_NAMES)
 def test_matrix_renderer_rejects_compact_credential_value_carriers(alias: str) -> None:
     record = load_capability_manifest(FIXTURE).records[0]
-    unsafe_record = replace(record, limitations=(f"safe={alias}=tiny",))
+    unsafe_manifest = forged_manifest_with_unsafe_freeform(
+        record,
+        field="limitations",
+        value=f"safe={alias}=tiny",
+    )
 
     with pytest.raises(InvalidCapabilityManifest) as captured:
-        render_capability_matrix(CapabilityManifest(records=(unsafe_record,)))
+        render_capability_matrix(unsafe_manifest)
 
     assert str(captured.value) == "capability manifest contains unsafe text"
     assert captured.value.__cause__ is None
@@ -2285,3 +2453,503 @@ def test_configured_cli_capture_failure_is_generic_and_writes_nothing(
     assert captured.err.strip() == "capability capture failed safely"
     assert "actual-secret-value" not in captured.err
     assert not (tmp_path / "snapshot.json").exists()
+
+
+def _read_tool_accessor(tool_value: SanitizedToolSchema, accessor: str) -> object:
+    if accessor == "input_schema":
+        return tool_value.input_schema
+    if accessor == "output_schema":
+        return tool_value.output_schema
+    return tool_value.as_json()
+
+
+@pytest.mark.parametrize("accessor", ("input_schema", "output_schema", "as_json"))
+@pytest.mark.parametrize(
+    "forgery",
+    ("unsafe_description", "unsafe_schema", "false_digest", "wrong_field", "missing_field"),
+)
+def test_standalone_tool_accessors_revalidate_mutated_normal_objects(
+    accessor: str,
+    forgery: str,
+) -> None:
+    value = direct_sanitized_tool({"type": "object", "properties": {"symbol": {"type": "string"}}})
+    if forgery == "unsafe_description":
+        object.__setattr__(value, "description", "Authorization: Bearer actual-secret-value")
+    elif forgery == "unsafe_schema":
+        object.__setattr__(
+            value,
+            "_input_schema_json",
+            '{"type":"object","properties":{"clientsecret":{"default":"tiny"}}}',
+        )
+    elif forgery == "false_digest":
+        object.__setattr__(value, "schema_sha256", "0" * 64)
+    elif forgery == "wrong_field":
+        object.__setattr__(value, "description", 123)
+    else:
+        object.__delattr__(value, "_input_schema_json")
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        _read_tool_accessor(value, accessor)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize("accessor", ("input_schema", "output_schema", "as_json"))
+def test_standalone_tool_accessors_revalidate_exact_object_new_forgery(accessor: str) -> None:
+    original = direct_sanitized_tool({"type": "object"})
+    forged = forged_sanitized_tool(
+        original,
+        description="safe=clientsecret=actual-secret-value",
+    )
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        _read_tool_accessor(forged, accessor)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize("forgery", ("provider", "nested_description", "nested_digest"))
+@pytest.mark.asyncio
+async def test_snapshot_as_json_revalidates_mutated_normal_state(forgery: str) -> None:
+    snapshot = await capture_tools_snapshot(
+        FakeToolsListSession([types.ListToolsResult(tools=[tool()])]),
+        observed_at=OBSERVED_AT,
+    )
+    if forgery == "provider":
+        object.__setattr__(snapshot, "provider", "other-provider")
+    elif forgery == "nested_description":
+        object.__setattr__(
+            snapshot.tools[0],
+            "description",
+            "Authorization: Bearer actual-secret-value",
+        )
+    else:
+        object.__setattr__(snapshot.tools[0], "schema_sha256", "0" * 64)
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        snapshot.as_json()
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.asyncio
+async def test_snapshot_as_json_revalidates_missing_exact_forged_fields() -> None:
+    source = await capture_tools_snapshot(
+        FakeToolsListSession([types.ListToolsResult(tools=[tool()])]),
+        observed_at=OBSERVED_AT,
+    )
+    forged = object.__new__(ToolsListSnapshot)
+    object.__setattr__(forged, "provider", source.provider)
+    object.__setattr__(forged, "observed_at", source.observed_at)
+    object.__setattr__(forged, "manifest", source.manifest)
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        forged.as_json()
+
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "sensitive_text",
+    (
+        "clientsecret=tiny",
+        "safe=clientsecret=tiny",
+        "safe=" + "a." * 80 + ";clientsecret=tiny",
+        "'clientsecret'='tiny'",
+        "/clientsecret=tiny",
+        "api~key=tiny",
+        "safe%3D" + "a." * 80 + "%3Bclientsecret%3Dtiny",
+    ),
+)
+def test_assignment_scanner_finds_direct_nested_padded_and_encoded_credentials(
+    sensitive_text: str,
+) -> None:
+    assert text_contains_sensitive_material(sensitive_text)
+
+
+def test_assignment_scanner_fails_closed_on_overlong_continuous_name_span() -> None:
+    assert text_contains_sensitive_material("a" * 129 + "=ordinary")
+
+
+def test_assignment_scanner_preserves_benign_long_prose() -> None:
+    value = "ordinary public market description without assignments. " * 500
+
+    assert not text_contains_sensitive_material(value)
+
+
+@pytest.mark.asyncio
+async def test_padded_assignment_is_rejected_from_property_description() -> None:
+    sensitive_text = "safe=" + "a." * 80 + ";clientsecret=tiny"
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "type": "object",
+                            "properties": {
+                                "safe": {"type": "string", "description": sensitive_text}
+                            },
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+def test_fixture_loader_rejects_padded_assignment(tmp_path: Path) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    record["limitations"] = ["safe=" + "a." * 80 + ";clientsecret=tiny"]
+    path = tmp_path / "padded-assignment.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    assert str(captured.value) == "capability fixture is invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_matrix_renderer_rejects_padded_assignment_from_forged_manifest() -> None:
+    source = load_capability_manifest(FIXTURE).records[0]
+    forged_record = object.__new__(CapabilityRecord)
+    for field_name in (
+        "provider",
+        "operation",
+        "asset_class",
+        "operation_kind",
+        "evidence",
+        "locked_reason",
+    ):
+        object.__setattr__(forged_record, field_name, getattr(source, field_name))
+    object.__setattr__(
+        forged_record,
+        "limitations",
+        ("safe=" + "a." * 80 + ";clientsecret=tiny",),
+    )
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
+
+    with pytest.raises(InvalidCapabilityManifest):
+        render_capability_matrix(forged_manifest)
+
+
+@pytest.mark.parametrize("alias", SENSITIVE_ACCOUNT_AUTH_ALIASES)
+@pytest.mark.asyncio
+async def test_account_identifier_and_auth_code_alias_defaults_are_rejected(alias: str) -> None:
+    default: object = 12345678 if alias == "acctnumber" else "tiny"
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "type": "object",
+                            "properties": {alias: {"type": "string", "default": default}},
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "alias",
+    ("accountidentifier", "accountreferencevalues", "acctno", "authorizationcode", "mfacode"),
+)
+@pytest.mark.parametrize("carrier", ("assignment", "query", "path"))
+def test_account_identifier_and_auth_code_aliases_cross_text_carriers(
+    alias: str,
+    carrier: str,
+) -> None:
+    value = {
+        "assignment": f"{alias}=tiny",
+        "query": f"https://robinhood.com/path?{alias}=tiny",
+        "path": f"https://robinhood.com/{alias}/tiny",
+    }[carrier]
+
+    assert text_contains_sensitive_material(value)
+
+
+@pytest.mark.parametrize("benign_name", BENIGN_ACCOUNT_AUTH_CONTROLS)
+@pytest.mark.asyncio
+async def test_account_auth_alias_grammar_preserves_reviewed_benign_names(
+    benign_name: str,
+) -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {benign_name: {"type": "string", "default": "ordinary"}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].input_schema == input_schema
+    assert not text_contains_sensitive_material(f"{benign_name}=ordinary")
+
+
+@pytest.mark.parametrize("alias", ("accountidentifier", "acctreference", "authorizationcode"))
+def test_fixture_loader_rejects_account_and_auth_aliases(
+    tmp_path: Path,
+    alias: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    record["limitations"] = [f"{alias}=tiny"]
+    path = tmp_path / "account-auth-alias.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest):
+        load_capability_manifest(path)
+
+
+@pytest.mark.parametrize("alias", ("accountreference", "acctno", "oauthcode"))
+def test_matrix_renderer_rejects_account_and_auth_aliases_from_forged_manifest(
+    alias: str,
+) -> None:
+    source = load_capability_manifest(FIXTURE).records[0]
+    forged_record = object.__new__(CapabilityRecord)
+    for field_name in (
+        "provider",
+        "operation",
+        "asset_class",
+        "operation_kind",
+        "evidence",
+        "locked_reason",
+    ):
+        object.__setattr__(forged_record, field_name, getattr(source, field_name))
+    object.__setattr__(forged_record, "limitations", (f"{alias}=tiny",))
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
+
+    with pytest.raises(InvalidCapabilityManifest):
+        render_capability_matrix(forged_manifest)
+
+
+def test_bare_eight_digit_identifier_text_is_sensitive_but_public_controls_remain_safe() -> None:
+    assert text_contains_sensitive_material("public identifier 12345678")
+    assert not text_contains_sensitive_material(
+        "checked on ISO date 2026-07-13 with public value 1234567"
+    )
+
+
+def test_matrix_renderer_rejects_bare_eight_digit_identifier_from_forged_manifest() -> None:
+    source = load_capability_manifest(FIXTURE).records[0]
+    forged_record = object.__new__(CapabilityRecord)
+    for field_name in (
+        "provider",
+        "operation",
+        "asset_class",
+        "operation_kind",
+        "evidence",
+        "locked_reason",
+    ):
+        object.__setattr__(forged_record, field_name, getattr(source, field_name))
+    object.__setattr__(forged_record, "limitations", ("public identifier 12345678",))
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
+
+    with pytest.raises(InvalidCapabilityManifest):
+        render_capability_matrix(forged_manifest)
+
+
+@pytest.mark.parametrize("encoded_control", ("%00", "%1B", "%7F", "%E2%80%AE"))
+def test_percent_decoded_controls_are_sensitive(encoded_control: str) -> None:
+    assert text_contains_sensitive_material(f"ordinary{encoded_control}public")
+
+
+@pytest.mark.parametrize("encoded_control", ("%00", "%1B", "%7F", "%E2%80%AE"))
+@pytest.mark.asyncio
+async def test_percent_decoded_controls_are_rejected_from_descriptions(
+    encoded_control: str,
+) -> None:
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "type": "object",
+                            "description": f"ordinary{encoded_control}public",
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize("encoded_control", ("%00", "%1B", "%7F", "%E2%80%AE"))
+def test_fixture_and_matrix_reject_percent_decoded_controls(
+    tmp_path: Path,
+    encoded_control: str,
+) -> None:
+    unsafe_text = f"ordinary{encoded_control}public"
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    record["limitations"] = [unsafe_text]
+    path = tmp_path / "encoded-control.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest):
+        load_capability_manifest(path)
+
+    source = load_capability_manifest(FIXTURE).records[0]
+    forged_record = object.__new__(CapabilityRecord)
+    for field_name in (
+        "provider",
+        "operation",
+        "asset_class",
+        "operation_kind",
+        "evidence",
+        "locked_reason",
+    ):
+        object.__setattr__(forged_record, field_name, getattr(source, field_name))
+    object.__setattr__(forged_record, "limitations", (unsafe_text,))
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
+
+    with pytest.raises(InvalidCapabilityManifest):
+        render_capability_matrix(forged_manifest)
+
+
+@pytest.mark.asyncio
+async def test_safe_percent_encoded_public_text_remains_supported() -> None:
+    description = "ordinary%20public%20market%20metadata"
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(description=description)])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].description == description
+
+
+def _pagination_pages(count: int, *, terminate: bool) -> list[types.ListToolsResult]:
+    pages: list[types.ListToolsResult] = []
+    for index in range(count):
+        is_last = index == count - 1
+        cursor = None if terminate and is_last else f"page-{index + 2}"
+        pages.append(
+            types.ListToolsResult(
+                tools=[tool(f"public_tool_{index:02d}")],
+                nextCursor=cursor,
+            )
+        )
+    return pages
+
+
+@pytest.mark.asyncio
+async def test_capture_allows_exact_finite_page_limit() -> None:
+    session = FakeToolsListSession(_pagination_pages(32, terminate=True))
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert len(snapshot.tools) == 32
+    assert len(session.list_tools_params) == 32
+
+
+@pytest.mark.asyncio
+async def test_capture_rejects_one_page_over_limit_without_extra_call_or_write(
+    tmp_path: Path,
+) -> None:
+    session = FakeToolsListSession(_pagination_pages(33, terminate=True))
+    output = tmp_path / "snapshot.json"
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        await write_tools_snapshot(session, output, observed_at=OBSERVED_AT)
+
+    assert str(captured.value) == "MCP tools/list pagination limit exceeded"
+    assert len(session.list_tools_params) == 32
+    assert session.call_tool_calls == []
+    assert not output.exists()
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.asyncio
+async def test_unique_endless_cursors_fail_at_monkeypatched_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = EndlessCursorSession()
+    monkeypatch.setattr(snapshot_module, "_MAX_TOOLS_LIST_PAGES", 3, raising=False)
+    monkeypatch.setattr(
+        snapshot_module,
+        "_TOOLS_LIST_PAGE_TIMEOUT_SECONDS",
+        0.05,
+        raising=False,
+    )
+
+    with pytest.raises(CapabilitySnapshotError, match="pagination limit"):
+        async with asyncio.timeout(0.1):
+            await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert len(session.list_tools_params) == 3
+    assert session.call_tool_calls == []
+
+
+@pytest.mark.asyncio
+async def test_hanging_tools_page_fails_with_generic_per_call_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = HangingToolsListSession()
+    monkeypatch.setattr(
+        snapshot_module,
+        "_TOOLS_LIST_PAGE_TIMEOUT_SECONDS",
+        0.0,
+        raising=False,
+    )
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        async with asyncio.timeout(0.1):
+            await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert str(captured.value) == "MCP tools/list failed safely"
+    assert session.calls == 1
+    assert session.cancelled
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.asyncio
+async def test_caller_cancellation_propagates_through_tools_page_timeout() -> None:
+    session = HangingToolsListSession()
+    task = asyncio.create_task(capture_tools_snapshot(session, observed_at=OBSERVED_AT))
+    await asyncio.sleep(0)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert session.calls == 1
+    assert session.cancelled

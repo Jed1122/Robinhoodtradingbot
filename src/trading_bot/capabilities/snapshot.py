@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
@@ -11,10 +12,8 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from itertools import pairwise
 from pathlib import Path
 from typing import Protocol, cast
-from urllib.parse import parse_qsl, unquote, urlsplit
 
 from mcp import types
 
@@ -24,8 +23,22 @@ from trading_bot.capabilities.models import (
     CapabilityRecord,
     EvidenceLevel,
     OperationKind,
-    has_unsafe_freeform_characters,
     validated_manifest_copy,
+)
+from trading_bot.capabilities.sanitization import (
+    candidate_name_has_unsafe_characters as _candidate_name_has_unsafe_characters,
+)
+from trading_bot.capabilities.sanitization import (
+    decoded_candidates as _decoded_candidates,
+)
+from trading_bot.capabilities.sanitization import (
+    name_is_sensitive as _name_is_sensitive,
+)
+from trading_bot.capabilities.sanitization import (
+    segments_have_sensitive_value_pair as _segments_have_sensitive_value_pair,
+)
+from trading_bot.capabilities.sanitization import (
+    text_contains_sensitive_material,
 )
 from trading_bot.clock import require_utc
 from trading_bot.domain import AssetClass
@@ -35,106 +48,7 @@ type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 
 _PROVIDER = "robinhood-trading"
 _TOOL_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,127})?\Z")
-_JWT_LIKE = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
-_API_TOKEN_LIKE = re.compile(
-    r"(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}",
-    re.IGNORECASE,
-)
-_ACCOUNT_ID_LIKE = re.compile(r"RHC[A-Z0-9]{8,}", re.IGNORECASE)
-_UUID_LIKE = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
-    re.IGNORECASE,
-)
-_HIGH_ENTROPY_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])")
-_PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
-_PEM_PRIVATE_KEY = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)
-_BEARER_OR_HEADER_ASSIGNMENT = re.compile(
-    r"(?:authorization|proxy-authorization|[a-z0-9-]*header|cookie|set-cookie)\s*[:=]"
-    r"\s*(?:bearer\s+)?\S+",
-    re.IGNORECASE,
-)
-_BEARER_MATERIAL = re.compile(r"\bbearer\s+[A-Za-z0-9._~-]+", re.IGNORECASE)
-_SECRET_ASSIGNMENT = re.compile(
-    r"(?:x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|signature|signatures|sig|"
-    r"account[_-]?(?:id|number|uuid))\s*[:=]\s*\S+",
-    re.IGNORECASE,
-)
-_NAMED_ASSIGNMENT = re.compile(
-    r"(?=(?:\A|(?<=[\s&#:=]))(?P<name>[^\s&#:=]{1,128})\s*[:=]\s*"
-    r"(?P<value>[^\s&#:=]+))",
-    re.IGNORECASE,
-)
-_CAMEL_NAME_TOKEN = re.compile(r"[A-Z]+(?=[A-Z][a-z]|[0-9]|\Z)|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
-_SENSITIVE_SINGLE_NAME_TOKENS = frozenset(
-    {
-        "account",
-        "accounts",
-        "acct",
-        "auth",
-        "authorization",
-        "bearer",
-        "cookie",
-        "cookies",
-        "credential",
-        "credentials",
-        "header",
-        "headers",
-        "oauth",
-        "passphrase",
-        "password",
-        "passwords",
-        "secret",
-        "secrets",
-        "sig",
-        "signature",
-        "signatures",
-        "token",
-        "tokens",
-    }
-)
-_SENSITIVE_KEY_PREFIXES = frozenset(
-    {
-        "api",
-        "access",
-        "client",
-        "consumer",
-        "private",
-        "secret",
-        "signing",
-    }
-)
-_SENSITIVE_SESSION_SUFFIXES = frozenset({"id", "key", "token", "cookie"})
-_MAX_CANDIDATE_NAME_LENGTH = 256
-_COMPACT_SENSITIVE_BASE_GRAMMAR = (
-    r"(?:"
-    r"x?api(?:key|keys|secret|secrets)|"
-    r"(?:private|signing|client|consumer|secret)(?:key|keys)|"
-    r"access(?:key|keys)(?:id|ids)?|"
-    r"secretaccess(?:key|keys)|"
-    r"(?:access|client|consumer)(?:secret|secrets)|"
-    r"oauth(?:client|consumer)(?:secret|secrets)|"
-    r"(?:access|refresh|auth|authorization|oauth|bearer)(?:token|tokens)|"
-    r"session(?:id|ids|key|keys|token|tokens|cookie|cookies)|"
-    r"account(?:id|ids|number|numbers|uuid|uuids)|"
-    r"(?:auth|authorization)(?:header|headers)"
-    r")"
-)
-_COMPACT_STRONG_NAME_GRAMMAR = re.compile(
-    rf"(?:[a-z][a-z0-9]{{0,{_MAX_CANDIDATE_NAME_LENGTH - 1}}})?"
-    rf"{_COMPACT_SENSITIVE_BASE_GRAMMAR}\Z",
-    re.IGNORECASE,
-)
-# Compact trailing-lexeme recognition shares the exact sensitive-name taxonomy.
-_COMPACT_SENSITIVE_LEXEMES = _SENSITIVE_SINGLE_NAME_TOKENS
-_COMPACT_CREDENTIAL_VALUE_SUFFIXES = (
-    "material",
-    "values",
-    "value",
-    "bytes",
-    "data",
-    "pem",
-)
 _JSON_SCHEMA_TYPES = frozenset(
     {"array", "boolean", "integer", "null", "number", "object", "string"}
 )
@@ -179,8 +93,9 @@ _SCHEMA_CHILD_KEYS = frozenset(
     }
 )
 _SCHEMA_BOOLEAN_KEYS = frozenset({"deprecated", "nullable", "readOnly", "uniqueItems", "writeOnly"})
-_MAX_INSPECTION_TEXT_LENGTH = 65_536
-_MAX_PERCENT_DECODE_ROUNDS = 3
+_MAX_TOOLS_LIST_PAGES = 32
+_TOOLS_LIST_PAGE_TIMEOUT_SECONDS = 10.0
+_MAX_LOCAL_JSON_POINTER_LENGTH = 65_536
 
 _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
     "cancel_equity_order": (AssetClass.EQUITY, OperationKind.CANCEL),
@@ -267,24 +182,20 @@ class SanitizedToolSchema:
     @property
     def input_schema(self) -> dict[str, JsonValue]:
         """Return a detached input-schema view."""
-        return _decode_schema_object(self._input_schema_json)
+        validated = _validated_tool_copy(self)
+        return _decode_schema_object(validated._input_schema_json)
 
     @property
     def output_schema(self) -> dict[str, JsonValue] | None:
         """Return a detached output-schema view, preserving explicit null."""
-        if self._output_schema_json is None:
+        validated = _validated_tool_copy(self)
+        if validated._output_schema_json is None:
             return None
-        return _decode_schema_object(self._output_schema_json)
+        return _decode_schema_object(validated._output_schema_json)
 
     def as_json(self) -> dict[str, JsonValue]:
         """Return a detached exact-schema representation suitable for JSON."""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "inputSchema": _copy_json(self.input_schema),
-            "outputSchema": _copy_json(self.output_schema),
-            "schemaSha256": self.schema_sha256,
-        }
+        return _validated_tool_as_json(_validated_tool_copy(self))
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,12 +248,7 @@ class ToolsListSnapshot:
 
     def as_json(self) -> dict[str, JsonValue]:
         """Render the deterministic committed artifact without SDK extras."""
-        return {
-            "provider": self.provider,
-            "observedAt": self.observed_at.isoformat().replace("+00:00", "Z"),
-            "method": "tools/list",
-            "tools": [item.as_json() for item in self.tools],
-        }
+        return _validated_snapshot_as_json(_validated_snapshot_copy(self))
 
 
 def canonical_sha256(value: JsonValue) -> str:
@@ -385,9 +291,11 @@ async def capture_tools_snapshot(
     names: set[str] = set()
     seen_cursors: set[str] = set()
     params: types.PaginatedRequestParams | None = None
+    page_count = 0
 
     while True:
         result = await _request_tools_page(session, params)
+        page_count += 1
         page_tools, cursor = _sanitize_tools_page(result)
         for declared in page_tools:
             if declared.name in names:
@@ -398,6 +306,8 @@ async def capture_tools_snapshot(
             break
         if not cursor or cursor in seen_cursors:
             raise PaginationCycleError("tools/list returned an invalid or repeated cursor")
+        if page_count >= _MAX_TOOLS_LIST_PAGES:
+            raise CapabilitySnapshotError("MCP tools/list pagination limit exceeded") from None
         seen_cursors.add(cursor)
         params = types.PaginatedRequestParams(cursor=cursor)
 
@@ -418,11 +328,12 @@ async def _request_tools_page(
     result: types.ListToolsResult | None = None
     failed = False
     try:
-        result = (
-            await session.list_tools(params=params)
-            if params is not None
-            else await session.list_tools()
-        )
+        async with asyncio.timeout(_TOOLS_LIST_PAGE_TIMEOUT_SECONDS):
+            result = (
+                await session.list_tools(params=params)
+                if params is not None
+                else await session.list_tools()
+            )
     except Exception:
         failed = True
     if failed or type(result) is not types.ListToolsResult:
@@ -540,7 +451,7 @@ def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> Cap
     )
 
 
-def _validated_tool_copy(value: SanitizedToolSchema) -> SanitizedToolSchema:
+def _validated_tool_copy(value: object) -> SanitizedToolSchema:
     """Rebuild one exact stored tool before using any of its declared values."""
     validated: SanitizedToolSchema | None = None
     try:
@@ -560,6 +471,52 @@ def _validated_tool_copy(value: SanitizedToolSchema) -> SanitizedToolSchema:
     if validated is None:
         raise CapabilitySnapshotError("snapshot tool is invalid") from None
     return validated
+
+
+def _validated_snapshot_copy(value: object) -> ToolsListSnapshot:
+    """Rebuild a complete exact snapshot before any public serialization."""
+    validated: ToolsListSnapshot | None = None
+    try:
+        if type(value) is not ToolsListSnapshot:
+            raise TypeError
+        validated = ToolsListSnapshot(
+            provider=value.provider,
+            observed_at=value.observed_at,
+            tools=value.tools,
+            manifest=value.manifest,
+        )
+    except MemoryError:
+        raise
+    except Exception:
+        pass
+    if validated is None:
+        raise CapabilitySnapshotError("snapshot is invalid") from None
+    return validated
+
+
+def _validated_tool_as_json(value: SanitizedToolSchema) -> dict[str, JsonValue]:
+    input_schema = _decode_schema_object(value._input_schema_json)
+    output_schema = (
+        None
+        if value._output_schema_json is None
+        else _decode_schema_object(value._output_schema_json)
+    )
+    return {
+        "name": value.name,
+        "description": value.description,
+        "inputSchema": _copy_json(input_schema),
+        "outputSchema": _copy_json(output_schema),
+        "schemaSha256": value.schema_sha256,
+    }
+
+
+def _validated_snapshot_as_json(value: ToolsListSnapshot) -> dict[str, JsonValue]:
+    return {
+        "provider": value.provider,
+        "observedAt": value.observed_at.isoformat().replace("+00:00", "Z"),
+        "method": "tools/list",
+        "tools": [_validated_tool_as_json(item) for item in value.tools],
+    }
 
 
 def _copy_json(value: object) -> JsonValue:
@@ -797,139 +754,6 @@ def _validate_schema_node(value: JsonValue) -> None:
     _validate_sensitive_schema(value)
 
 
-def text_contains_sensitive_material(value: str) -> bool:
-    if (
-        type(value) is not str
-        or len(value) > _MAX_INSPECTION_TEXT_LENGTH
-        or has_unsafe_freeform_characters(value)
-    ):
-        return True
-    try:
-        candidates = _decoded_candidates(value)
-    except (UnicodeError, ValueError):
-        return True
-    for candidate in candidates:
-        if (
-            _PEM_PRIVATE_KEY.search(candidate)
-            or _BEARER_MATERIAL.search(candidate)
-            or _JWT_LIKE.search(candidate)
-            or _API_TOKEN_LIKE.search(candidate)
-            or _ACCOUNT_ID_LIKE.search(candidate)
-            or _UUID_LIKE.search(candidate)
-            or _HIGH_ENTROPY_TOKEN.search(candidate)
-            or _BEARER_OR_HEADER_ASSIGNMENT.search(candidate)
-            or _SECRET_ASSIGNMENT.search(candidate)
-        ):
-            return True
-        if any(
-            _name_is_sensitive(match.group("name")) and bool(match.group("value"))
-            for match in _NAMED_ASSIGNMENT.finditer(candidate)
-        ):
-            return True
-        try:
-            parsed = urlsplit(candidate)
-        except ValueError:
-            return True
-        if parsed.username is not None or parsed.password is not None:
-            return True
-        for component in (parsed.query, parsed.fragment):
-            if not component:
-                continue
-            try:
-                pairs = parse_qsl(
-                    component,
-                    keep_blank_values=True,
-                    max_num_fields=128,
-                )
-            except ValueError:
-                return True
-            if any(_name_is_sensitive(name) and bool(item) for name, item in pairs):
-                return True
-        if _path_has_sensitive_value_pair(parsed.path) or _path_has_sensitive_value_pair(
-            parsed.fragment
-        ):
-            return True
-    return False
-
-
-def _decoded_candidates(value: str) -> tuple[str, ...]:
-    candidates = [value]
-    decoded = value
-    for _ in range(_MAX_PERCENT_DECODE_ROUNDS):
-        next_value = unquote(decoded, errors="strict")
-        if next_value == decoded:
-            break
-        candidates.append(next_value)
-        decoded = next_value
-    if _PERCENT_ESCAPE.search(decoded) or "%" in decoded:
-        raise ValueError
-    return tuple(candidates)
-
-
-def _name_is_sensitive(value: str) -> bool:
-    if type(value) is not str or len(value) > _MAX_CANDIDATE_NAME_LENGTH:
-        return True
-    try:
-        decoded = _decoded_candidates(value)[-1]
-    except (UnicodeError, ValueError):
-        return True
-    if _candidate_name_has_unsafe_characters(value):
-        return True
-    components = tuple(component for component in re.split(r"[^A-Za-z0-9]+", decoded) if component)
-    if any(_compact_component_is_sensitive(component) for component in components):
-        return True
-    tokens = tuple(
-        token.casefold()
-        for component in components
-        for token in _CAMEL_NAME_TOKEN.findall(component)
-    )
-    if any(token in _SENSITIVE_SINGLE_NAME_TOKENS for token in tokens):
-        return True
-    return any(
-        (left in _SENSITIVE_KEY_PREFIXES and right in {"key", "keys"})
-        or (left == "session" and right.removesuffix("s") in _SENSITIVE_SESSION_SUFFIXES)
-        for left, right in pairwise(tokens)
-    )
-
-
-def _compact_component_is_sensitive(value: str) -> bool:
-    normalized = value.casefold()
-    stems = [normalized]
-    stems.extend(
-        normalized[: -len(suffix)]
-        for suffix in _COMPACT_CREDENTIAL_VALUE_SUFFIXES
-        if normalized.endswith(suffix) and len(normalized) > len(suffix)
-    )
-    return any(_compact_stem_is_sensitive(stem) for stem in stems)
-
-
-def _compact_stem_is_sensitive(value: str) -> bool:
-    if _COMPACT_STRONG_NAME_GRAMMAR.fullmatch(value) is not None:
-        return True
-    if value in _COMPACT_SENSITIVE_LEXEMES:
-        return True
-    return any(
-        value.endswith(lexeme) and _is_bounded_compact_namespace(value[: -len(lexeme)])
-        for lexeme in _COMPACT_SENSITIVE_LEXEMES
-    )
-
-
-def _is_bounded_compact_namespace(value: str) -> bool:
-    return 0 < len(value) <= _MAX_CANDIDATE_NAME_LENGTH and value[0].isalpha() and value.isalnum()
-
-
-def _candidate_name_has_unsafe_characters(value: str) -> bool:
-    if type(value) is not str or len(value) > _MAX_CANDIDATE_NAME_LENGTH:
-        return True
-    try:
-        decoded = _decoded_candidates(value)[-1]
-    except (UnicodeError, ValueError):
-        return True
-    return not decoded.isascii() or any(
-        ord(character) < 32 or ord(character) == 127 for character in decoded
-    )
-
-
 def _local_json_pointer_is_safe(value: str) -> bool:
     segments = _decoded_local_pointer_segments(value)
     return segments is not None and not _segments_have_sensitive_value_pair(segments)
@@ -938,7 +762,7 @@ def _local_json_pointer_is_safe(value: str) -> bool:
 def _decoded_local_pointer_segments(value: str) -> tuple[str, ...] | None:
     if (
         type(value) is not str
-        or len(value) > _MAX_INSPECTION_TEXT_LENGTH
+        or len(value) > _MAX_LOCAL_JSON_POINTER_LENGTH
         or _LOCAL_JSON_POINTER.fullmatch(value) is None
     ):
         return None
@@ -961,21 +785,6 @@ def _decoded_local_pointer_segments(value: str) -> tuple[str, ...] | None:
             return None
         segments.append(segment)
     return tuple(segments)
-
-
-def _path_has_sensitive_value_pair(value: str) -> bool:
-    segments = tuple(
-        part
-        for segment in value.split("/")
-        for part in segment.replace("~1", "/").replace("~0", "~").split("/")
-        if part
-    )
-    return _segments_have_sensitive_value_pair(segments)
-
-
-def _segments_have_sensitive_value_pair(segments: tuple[str, ...]) -> bool:
-    flattened = tuple(part for segment in segments for part in segment.split("/") if part)
-    return any(_name_is_sensitive(left) and bool(right) for left, right in pairwise(flattened))
 
 
 def _contains_value(value: JsonValue) -> bool:

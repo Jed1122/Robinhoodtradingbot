@@ -233,6 +233,70 @@ def test_committed_evidence_rejects_account_data() -> None:
 
 
 @pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("source_uri", "https://robinhood.com/api/clientsecret/tiny"),
+        ("notes", ("account_id=RHC123456789",)),
+        ("notes", ("Authorization: Bearer tiny",)),
+        ("notes", ("public identifier 12345678",)),
+    ),
+)
+def test_direct_authenticated_write_evidence_uses_shared_sensitive_text_boundary(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(InvalidCapabilityEvidence) as captured:
+        replace(
+            evidence_for(EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED),
+            contains_account_data=False,
+            **{field: value},  # type: ignore[arg-type]
+        )
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "RHC123456789" not in rendered
+    assert "Bearer tiny" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("provider", "safe=clientsecret=tiny"),
+        ("operation", "accountidentifier=RHC123456789"),
+        ("limitations", ("Authorization: Bearer tiny",)),
+        ("locked_reason", "oauthcode=tiny"),
+    ),
+)
+def test_direct_capability_record_freeform_fields_share_capture_sanitization(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(InvalidCapabilityRecord) as captured:
+        replace(record_for(), **{field: value})  # type: ignore[arg-type]
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "RHC123456789" not in rendered
+    assert "Bearer tiny" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_direct_model_freeform_boundary_preserves_public_dates_and_short_values() -> None:
+    evidence = replace(
+        evidence_for(),
+        notes=("checked on 2026-07-13 with public value 1234567",),
+    )
+    record = replace(
+        record_for(),
+        limitations=("checked on 2026-07-13 with public value 1234567",),
+    )
+
+    assert evidence.notes == ("checked on 2026-07-13 with public value 1234567",)
+    assert record.limitations == ("checked on 2026-07-13 with public value 1234567",)
+
+
+@pytest.mark.parametrize(
     "observed_at",
     (
         datetime(2026, 7, 12, 12),

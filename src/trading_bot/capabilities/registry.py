@@ -15,7 +15,7 @@ from trading_bot.capabilities.models import (
     UnsupportedCapabilityError,
     validated_manifest_copy,
 )
-from trading_bot.capabilities.snapshot import text_contains_sensitive_material
+from trading_bot.capabilities.sanitization import text_contains_sensitive_material
 from trading_bot.clock import require_utc
 from trading_bot.domain import AssetClass
 
@@ -59,27 +59,33 @@ def require_capability(
     minimum: EvidenceLevel,
 ) -> CapabilityRecord:
     """Require an exact unlocked evidence category for a provider operation."""
-    validated: CapabilityManifest | None = None
+    record: CapabilityRecord | None = None
     try:
         validated = validated_manifest_copy(manifest)
+        record = validated.find(provider=provider, operation=operation)
+        if not record.satisfies(minimum):
+            record = None
     except MemoryError:
         raise
     except Exception:
-        pass
-    if validated is None:
-        raise UnsupportedCapabilityError(provider, operation, minimum) from None
-    record = next(
-        (
-            item
-            for item in validated.records
-            if item.provider == provider and item.operation == operation
-        ),
-        None,
-    )
+        record = None
     if record is None:
-        raise UnsupportedCapabilityError(provider, operation, minimum) from None
-    if not record.satisfies(minimum):
-        raise UnsupportedCapabilityError(provider, operation, minimum) from None
+        safe_provider = (
+            provider
+            if type(provider) is str and not text_contains_sensitive_material(provider)
+            else "<invalid-provider>"
+        )
+        safe_operation = (
+            operation
+            if type(operation) is str and not text_contains_sensitive_material(operation)
+            else "<invalid-operation>"
+        )
+        safe_minimum = minimum if type(minimum) is EvidenceLevel else EvidenceLevel.UNSUPPORTED
+        raise UnsupportedCapabilityError(
+            safe_provider,
+            safe_operation,
+            safe_minimum,
+        ) from None
     return record
 
 

@@ -81,7 +81,9 @@ Sensitive schema names are classified from percent-decoded separator and camel-c
 plus an anchored, reviewed compound grammar. The grammar covers singular/plural API, private,
 signing, access, client, consumer, and secret key forms; API/access/client/consumer secret
 forms; auth/OAuth/bearer/authorization token forms; session and account identifiers; and auth
-headers. It recognizes exact compact components and separators or punctuation such as array
+headers. Account identifier/reference/number/UUID/`no` variants, their `acct` abbreviations,
+and authorization/OAuth/auth/verification/MFA/recovery/OTP code variants use that same grammar.
+It recognizes exact compact components and separators or punctuation such as array
 brackets, without raw substring matching. A compact strong credential base may have a bounded
 alphanumeric namespace. Any exact sensitive single-name lexeme may also have a bounded leading
 alphanumeric namespace when that lexeme is terminal; this detects compact carriers such as
@@ -95,8 +97,13 @@ is never a credential base: author, signal, designation, assignment, accounting-
 session-duration, client-order, public-key, key-value, monkey, tokenization, token-bucket,
 author-value, accounting-data, headerless-value, accessibility, and secretary names remain
 ordinary metadata. Candidate names containing non-ASCII, control, or format characters fail
-closed. Assignment inspection uses bounded overlapping boundaries, so a safe outer field
-cannot hide an inner assignment such as `safe=clientsecret=tiny`. Under sensitive scope, schema
+closed. Explicit benign compounds include accounting reference, authorization status, OAuth
+scope, postal/ZIP code, code point, reference price, and identifier format. Assignment
+inspection walks each delimiter and extracts the immediate bounded name across unreserved name
+punctuation, so semicolons, slashes, quotes, and other carrier boundaries expose inner values.
+A safe outer field or a long padded value cannot hide an inner assignment such as
+`safe=clientsecret=tiny`; a continuous assignment-name span beyond 128 characters fails closed.
+Under sensitive scope, schema
 declarations are accepted only when their values have validated built-in shapes: known types
 and formats, safe local JSON pointers, exact booleans, matching required-property names, and
 recursive schema maps or combinators. Local pointer fragments are inspected as decoded path
@@ -107,29 +114,41 @@ segment followed by another segment, including `access_token~1tiny`, is rejected
 value-bearing. Unvalidated
 numeric/list carriers, defaults, examples, descriptions, custom metadata, encoded
 assignments, userinfo, and identifier-bearing paths are rejected. Standalone bearer material
-is rejected regardless of length.
+is rejected regardless of length. Bare identifier-like runs of eight or more digits are also
+rejected from free-form evidence, while ISO dates and seven-digit public values remain valid.
 
 The documented fixture loader requires duplicate-free finite JSON, exact root/record/
 evidence fields, format version integer `1`, and an aware UTC `checked_at`. Invalid
 fixtures and external MCP parser/session failures cross the boundary only as generic
-errors without including provider payload text. The same text predicate scans fixture and
-matrix free-form provider, operation, limitation, lock-reason, and evidence-note values.
+errors without including provider payload text. One dependency-neutral text predicate scans
+direct evidence models, captured schemas, fixtures, and matrix free-form provider, operation,
+limitation, lock-reason, source-URI, and evidence-note values; no model imports the MCP capture
+layer and no competing credential-name taxonomy is maintained.
 Fixture source URIs pass through that predicate before the official-scheme/host/path URI
 validator; digests and enums retain their dedicated validators. Snapshot timestamps must be
 exact built-in datetimes and are stored as the canonical UTC value returned by validation,
 so subclass methods cannot cross the serialization boundary. Capability evidence timestamps
 have the same exact-type and canonical-UTC rule, and model string fields require exact
 built-in strings before any string operation. NUL, escape, invisible format, and bidirectional
-override characters are rejected from model and matrix free-form text; ordinary documented
-prose remains supported. Capability records reconstruct every exact nested evidence value,
+override characters are rejected after every bounded percent-decoding stage as well as from
+raw model and matrix free-form text; ordinary percent-encoded public text and documented
+prose remain supported. Capability records reconstruct every exact nested evidence value,
 and manifests reconstruct every exact nested record and evidence value, before safety
 decisions or storage. Exported snapshots likewise rebuild every nested sanitized tool schema
 and the full manifest before deriving names, comparing schema evidence, or storing copies.
 Unsafe descriptions, malformed canonical JSON, stale or false schema digests, subclass
 equality, forged model fields, and missing fields therefore cannot satisfy consistency or
-capability gates. Provider identity and deterministic tool ordering are also revalidated at
-construction. Only exact MCP SDK result and tool model types cross the external-result
-boundary.
+capability gates. Every standalone schema accessor and every tool/snapshot JSON serializer
+reconstructs its complete object immediately before export, so post-construction mutation and
+exact `object.__new__` forgery cannot emit stale state. Exact capability lookup validates its
+query keys before comparison and never invokes subclass or non-string equality. Provider
+identity and deterministic tool ordering are also revalidated at construction. Only exact MCP
+SDK result and tool model types cross the external-result boundary.
+
+Schema discovery accepts at most 32 `tools/list` pages and applies a 10-second timeout to each
+individual page call. A continuation cursor on page 32 is rejected before a page-33 request or
+artifact write. Empty and repeated cursors still fail closed, timeout/session failures remain
+generic, and caller cancellation propagates without being converted into a capture error.
 
 When no proven configured session is injected, the CLI exits with status 2, writes
 nothing, and prints:
