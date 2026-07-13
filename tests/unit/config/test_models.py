@@ -13,6 +13,8 @@ from trading_bot.config import (
     PredictionSettings,
     RetrySettings,
     SafetyEnvelope,
+    UnsafeConfiguration,
+    enforce_safety_envelope,
     load_config,
 )
 from trading_bot.config.models import StrictModel
@@ -61,6 +63,33 @@ def test_every_graph_field_is_required_in_yaml() -> None:
             annotation = field.annotation
             if isinstance(annotation, type) and issubclass(annotation, StrictModel):
                 pending.append(annotation)
+
+
+def test_logging_event_bound_is_required_strict_and_owned_by_the_release_envelope() -> None:
+    loaded = load_backtest()
+    config = loaded.config
+    envelope = loaded.safety_envelope
+
+    assert config.logging.max_event_bytes == 65536
+    assert envelope.logging.max_event_bytes == 65536
+
+    raw = config.model_dump()
+    del raw["logging"]
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(raw)
+
+    for invalid in (True, "65536", 1):
+        raw = config.model_dump()
+        raw["logging"]["max_event_bytes"] = invalid
+        with pytest.raises(ValidationError):
+            AppConfig.model_validate(raw)
+
+    tighter = config.model_copy(update={"logging": type(config.logging)(max_event_bytes=32768)})
+    enforce_safety_envelope(tighter, envelope)
+
+    weaker = config.model_copy(update={"logging": type(config.logging)(max_event_bytes=65537)})
+    with pytest.raises(UnsafeConfiguration, match=r"logging\.max_event_bytes"):
+        enforce_safety_envelope(weaker, envelope)
 
 
 def test_approved_portfolio_risk_activity_and_asset_values_are_exact() -> None:
@@ -288,9 +317,7 @@ def test_tuple_containers_reject_unordered_and_one_shot_iterables(invalid: objec
 
 
 def test_tuple_containers_accept_native_list_and_tuple() -> None:
-    raw = _with_config_value(
-        ("crypto", "initial_symbol_allowlist"), ["BTC-USD", "ETH-USD"]
-    )
+    raw = _with_config_value(("crypto", "initial_symbol_allowlist"), ["BTC-USD", "ETH-USD"])
     raw["equity_strategies"]["short_windows"] = (20, 30, 50)
 
     config = AppConfig.model_validate(raw)
@@ -300,9 +327,7 @@ def test_tuple_containers_accept_native_list_and_tuple() -> None:
 
 
 def test_enum_tuple_members_reject_bytes_coercion() -> None:
-    config_raw = _with_config_value(
-        ("market_data", "canonical_bar_intervals"), [b"one_minute"]
-    )
+    config_raw = _with_config_value(("market_data", "canonical_bar_intervals"), [b"one_minute"])
     envelope_raw = load_backtest().safety_envelope.model_dump()
     envelope_raw["allowed_modes"] = [b"backtest"]
 
@@ -319,9 +344,7 @@ def test_enum_tuple_members_reject_bytes_coercion() -> None:
         (("equity_strategies", "bar_interval"), b"one_day"),
     ],
 )
-def test_enum_scalar_members_reject_bytes_coercion(
-    path: tuple[str, ...], value: object
-) -> None:
+def test_enum_scalar_members_reject_bytes_coercion(path: tuple[str, ...], value: object) -> None:
     with pytest.raises(ValidationError):
         AppConfig.model_validate(_with_config_value(path, value))
 

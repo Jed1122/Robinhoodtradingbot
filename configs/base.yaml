@@ -159,6 +159,9 @@ monitoring:
   webhook_timeout_seconds: 5 # Baseline assumption pending sink validation.
   alert_deduplication_window_seconds: 300 # Baseline assumption.
 
+logging:
+  max_event_bytes: 65536 # Validated serialized-event bound before the final JSON sink.
+
 promotion:
   paper_min_eligible_unique_cycles: 100
   shadow_min_calendar_days: 7

@@ -146,6 +146,9 @@ retry:
   max_backoff_seconds: 2
   write_attempts: 1
 
+logging:
+  max_event_bytes: 65536
+
 promotion:
   paper_min_eligible_unique_cycles: 100
   shadow_min_calendar_days: 7

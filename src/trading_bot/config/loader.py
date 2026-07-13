@@ -55,9 +55,7 @@ def _construct_unique_mapping(
     return result
 
 
-def _construct_decimal(
-    loader: _UniqueKeyLoader, node: yaml.ScalarNode
-) -> Decimal:
+def _construct_decimal(loader: _UniqueKeyLoader, node: yaml.ScalarNode) -> Decimal:
     scalar = loader.construct_scalar(node)
     try:
         value = Decimal(scalar.replace("_", ""))
@@ -181,9 +179,7 @@ def _leaf_names(value: Mapping[str, Any]) -> set[str]:
     return names
 
 
-def _validate_environment_path(
-    config: Mapping[str, Any], path: tuple[str, ...]
-) -> None:
+def _validate_environment_path(config: Mapping[str, Any], path: tuple[str, ...]) -> None:
     if not path:
         raise ConfigLoadError("empty nested environment path")
     current: Any = config
@@ -390,6 +386,11 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
             "promotion.micro_order_review_interval",
             config.promotion.micro_order_review_interval,
             envelope.promotion.micro_order_review_interval,
+        ),
+        (
+            "logging.max_event_bytes",
+            config.logging.max_event_bytes,
+            envelope.logging.max_event_bytes,
         ),
     )
     for name, actual, maximum in max_pairs:

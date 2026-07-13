@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from trading_bot.config import ConfigLoadError, load_config
+from trading_bot.config import ConfigLoadError, UnsafeConfiguration, load_config
 from trading_bot.config.loader import _environment_overlay, _load_yaml
 
 ROOT = Path(__file__).parents[3]
@@ -83,6 +83,15 @@ def test_nested_environment_values_are_applied() -> None:
     assert str(loaded.config.freshness.max_executable_quote_age_seconds) == "4.5"
 
 
+def test_logging_event_bound_environment_override_can_only_tighten() -> None:
+    loaded = load(environ={"TRADING_BOT__LOGGING__MAX_EVENT_BYTES": "32768"})
+
+    assert loaded.config.logging.max_event_bytes == 32768
+
+    with pytest.raises(UnsafeConfiguration, match=r"logging\.max_event_bytes"):
+        load(environ={"TRADING_BOT__LOGGING__MAX_EVENT_BYTES": "65537"})
+
+
 def test_native_environment_integer_boolean_enum_and_list_values_remain_accepted() -> None:
     loaded = load(
         environ={
@@ -100,9 +109,7 @@ def test_native_environment_integer_boolean_enum_and_list_values_remain_accepted
 
 
 def test_lists_are_replaced_atomically_not_concatenated() -> None:
-    loaded = load(
-        environ={"TRADING_BOT__CRYPTO__INITIAL_SYMBOL_ALLOWLIST": '["BTC-USD"]'}
-    )
+    loaded = load(environ={"TRADING_BOT__CRYPTO__INITIAL_SYMBOL_ALLOWLIST": '["BTC-USD"]'})
 
     assert loaded.config.crypto.initial_symbol_allowlist == ("BTC-USD",)
 
@@ -302,11 +309,14 @@ def test_malformed_yaml_never_echoes_source_value_in_exception_chain(tmp_path: P
 
 def test_malformed_environment_yaml_never_echoes_source_value() -> None:
     with pytest.raises(ConfigLoadError) as captured:
+        # Keep the fake secret off the active call-site line inspected by the assertion.
+        # fmt: off
         load(
             environ={
                 "TRADING_BOT__CRYPTO__INITIAL_SYMBOL_ALLOWLIST": "[actual-secret-value"
             }
         )
+        # fmt: on
 
     _assert_secret_absent(captured.value)
 
@@ -348,9 +358,7 @@ def test_environment_binary_values_cannot_coerce_enum_tuple_members() -> None:
     with pytest.raises(ConfigLoadError):
         load(
             environ={
-                "TRADING_BOT__MARKET_DATA__CANONICAL_BAR_INTERVALS": (
-                    "[!!binary b25lX21pbnV0ZQ==]"
-                )
+                "TRADING_BOT__MARKET_DATA__CANONICAL_BAR_INTERVALS": ("[!!binary b25lX21pbnV0ZQ==]")
             }
         )
 

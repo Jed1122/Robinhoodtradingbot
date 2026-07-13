@@ -59,12 +59,8 @@ ConfigDecimal = Annotated[Decimal, BeforeValidator(_validate_config_decimal)]
 StrictFalse = Annotated[Literal[False], BeforeValidator(_validate_strict_literal_bool)]
 StrictTrue = Annotated[Literal[True], BeforeValidator(_validate_strict_literal_bool)]
 StrictOne = Annotated[Literal[1], BeforeValidator(_validate_strict_literal_int)]
-StrictBarInterval = Annotated[
-    BarInterval, BeforeValidator(_validate_strict_bar_interval)
-]
-StrictExecutionMode = Annotated[
-    ExecutionMode, BeforeValidator(_validate_strict_execution_mode)
-]
+StrictBarInterval = Annotated[BarInterval, BeforeValidator(_validate_strict_bar_interval)]
+StrictExecutionMode = Annotated[ExecutionMode, BeforeValidator(_validate_strict_execution_mode)]
 StrictStringTuple = Annotated[
     tuple[StrictStr, ...], BeforeValidator(_validate_strict_tuple_container)
 ]
@@ -334,6 +330,10 @@ class MonitoringSettings(StrictModel):
         raise ValueError("monitoring must bind loopback or verified container loopback publish")
 
 
+class LoggingSettings(StrictModel):
+    max_event_bytes: StrictInt = Field(ge=2)
+
+
 class PromotionSettings(StrictModel):
     paper_min_eligible_unique_cycles: StrictInt = Field(ge=1)
     shadow_min_calendar_days: StrictInt = Field(ge=1)
@@ -429,6 +429,7 @@ class AppConfig(StrictModel):
     retry: RetrySettings
     scheduler: SchedulerSettings
     monitoring: MonitoringSettings
+    logging: LoggingSettings
     promotion: PromotionSettings
     llm_reporting: LlmReportingSettings
     backup: BackupSettings
@@ -464,6 +465,7 @@ class SafetyEnvelope(StrictModel):
     simulation: SimulationSettings
     costs: CostSettings
     retry: RetrySettings
+    logging: LoggingSettings
     promotion: PromotionSettings
     llm_reporting: LlmReportingSettings
     micro_max_order_notional_usd: ConfigDecimal = Field(ge=0)

@@ -22,6 +22,16 @@ implemented local foundations, publicly documented operations, operations locked
 external evidence is pending, externally pending verification, and explicitly unsupported
 operations. A documented operation is not an implemented or usable operation.
 
+Structured logging also fails closed: future application bootstrap must install the
+canonical validated `logging.max_event_bytes` setting before configuring a logger. The release
+safety envelope caps that value, and oversized events are replaced only after recursive
+secret redaction and before the final JSON renderer. Stdlib formatting arguments,
+exceptions, filters, record factories, and last-resort output are also normalized behind
+the fail-closed sink. Bootstrap must finish this configuration in the single-threaded
+entry point before importing any module that materializes or binds a Structlog logger and
+before starting workers; pre-bound Structlog objects are unsupported trusted pre-bootstrap
+code because Structlog does not expose a registry through which they can be revoked.
+
 ## Local foundation checks
 
 Python 3.12, 3.13, or 3.14 and `uv` 0.11.28 are required. These commands exercise local

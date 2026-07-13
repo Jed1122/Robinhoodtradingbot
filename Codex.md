@@ -24,6 +24,14 @@ elapsed evidence, authentication, review, or execution as completed.
   account identifiers, or provider payloads in logs, fixtures, errors, reports, or Git.
 - Redact structured event data before JSON serialization and fail closed on unknown
   objects or redaction errors.
+- Install logging limits only from the canonical validated config graph. Sanitize stdlib
+  formatting inputs and exception arguments before interpolation, normalize existing
+  handlers and filters to the single redacting sink, replace raw record-factory and
+  last-resort paths, suppress formatting-error diagnostics, and apply the configured
+  event-size bound only after redaction.
+- Configure logging in the single-threaded entry point before importing modules that
+  materialize or bind Structlog loggers and before starting workers. Treat pre-bound or
+  custom-processor Structlog objects as unsupported trusted pre-bootstrap code.
 - Preserve the capability matrix distinction between implemented, documented, locked,
   externally pending, and unsupported.
 - Keep tests deterministic, local, and selected by the default non-authenticated Pytest
