@@ -1,7 +1,8 @@
 """Fail-closed tests for immutable capability evidence records."""
 
+import traceback
 from dataclasses import FrozenInstanceError, replace
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 
 import pytest
 
@@ -32,6 +33,55 @@ DIGEST_LEVELS = frozenset(
         EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED,
     }
 )
+
+
+class HostileTimezone(tzinfo):
+    """Exact-datetime timezone whose offset lookup carries sensitive text."""
+
+    def __init__(self, error_type: type[Exception]) -> None:
+        self._error_type = error_type
+
+    def utcoffset(self, value: datetime | None) -> timedelta | None:
+        raise self._error_type("Authorization: Bearer actual-secret-value")
+
+    def dst(self, value: datetime | None) -> timedelta | None:
+        return None
+
+    def tzname(self, value: datetime | None) -> str | None:
+        return "HOSTILE"
+
+
+class DatetimeSubclass(datetime):
+    """Semantically UTC but not an exact built-in datetime."""
+
+
+class ArmedString(str):
+    """String subclass that exposes sensitive text if string methods run."""
+
+    def strip(self, chars: str | None = None) -> str:
+        raise RuntimeError("Authorization: Bearer actual-secret-value")
+
+
+class ArmedCapabilityEvidence(CapabilityEvidence):
+    """Evidence subclass that explodes only after construction is complete."""
+
+    armed = False
+
+    def __getattribute__(self, name: str) -> object:
+        if name == "level" and object.__getattribute__(self, "armed"):
+            raise RuntimeError("Authorization: Bearer actual-secret-value")
+        return super().__getattribute__(name)
+
+
+class ArmedCapabilityRecord(CapabilityRecord):
+    """Record subclass that explodes only after construction is complete."""
+
+    armed = False
+
+    def __getattribute__(self, name: str) -> object:
+        if name in {"provider", "operation"} and object.__getattribute__(self, "armed"):
+            raise RuntimeError("Authorization: Bearer actual-secret-value")
+        return super().__getattribute__(name)
 
 
 def evidence_for(level: EvidenceLevel = EvidenceLevel.DOCUMENTED) -> CapabilityEvidence:
@@ -135,6 +185,48 @@ def test_committed_evidence_rejects_account_data() -> None:
 def test_evidence_rejects_non_utc_or_naive_timestamps(observed_at: datetime) -> None:
     with pytest.raises(InvalidCapabilityEvidence, match="UTC"):
         replace(evidence_for(), observed_at=observed_at)
+
+
+@pytest.mark.parametrize("error_type", (ValueError, RuntimeError))
+def test_evidence_rejects_hostile_exact_datetime_without_leaking_external_error(
+    error_type: type[Exception],
+) -> None:
+    observed_at = datetime(2026, 7, 12, 12, tzinfo=HostileTimezone(error_type))
+
+    with pytest.raises(InvalidCapabilityEvidence) as captured:
+        replace(evidence_for(), observed_at=observed_at)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "observed_at must be aware UTC"
+    assert "Authorization" not in rendered
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_evidence_rejects_datetime_subclass_before_overridable_method_access() -> None:
+    observed_at = DatetimeSubclass(2026, 7, 12, 12, tzinfo=UTC)
+
+    with pytest.raises(InvalidCapabilityEvidence) as captured:
+        replace(evidence_for(), observed_at=observed_at)
+
+    assert str(captured.value) == "observed_at must be aware UTC"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_evidence_stores_exact_zero_offset_datetime_in_canonical_utc() -> None:
+    zero_offset = datetime(
+        2026,
+        7,
+        12,
+        12,
+        tzinfo=timezone(timedelta(0), name="ZERO"),
+    )
+
+    evidence = replace(evidence_for(), observed_at=zero_offset)
+
+    assert evidence.observed_at.tzinfo is UTC
 
 
 @pytest.mark.parametrize("level", tuple(DIGEST_LEVELS))
@@ -291,6 +383,31 @@ def test_evidence_rejects_empty_note_and_coercive_scalar_types() -> None:
         replace(evidence_for(), contains_account_data=0)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        (
+            "source_uri",
+            ArmedString("https://robinhood.com/support/articles/official-interface"),
+        ),
+        ("schema_sha256", ArmedString(DIGEST)),
+        ("notes", (ArmedString("sanitized committed evidence"),)),
+    ),
+)
+def test_evidence_requires_exact_builtin_strings_without_subclass_method_access(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(InvalidCapabilityEvidence) as captured:
+        replace(evidence_for(), **{field: value})  # type: ignore[arg-type]
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "Authorization" not in rendered
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
 @pytest.mark.parametrize("evidence", ([], {"value"}, iter(())))
 def test_record_requires_exact_immutable_evidence_tuple(evidence: object) -> None:
     with pytest.raises(InvalidCapabilityRecord, match="immutable tuple"):
@@ -342,6 +459,76 @@ def test_record_rejects_coercive_enum_inputs_and_non_evidence_members() -> None:
         replace(record_for(), operation_kind="read")  # type: ignore[arg-type]
     with pytest.raises(InvalidCapabilityRecord, match="CapabilityEvidence"):
         replace(record_for(), evidence=("documented",))  # type: ignore[arg-type]
+
+
+def test_record_rejects_capability_evidence_subclass_before_field_access() -> None:
+    evidence = ArmedCapabilityEvidence(
+        level=EvidenceLevel.DOCUMENTED,
+        source_uri="https://robinhood.com/support/articles/official-interface",
+        observed_at=NOW,
+        schema_sha256=None,
+        authenticated=False,
+        contains_account_data=False,
+        notes=("sanitized committed evidence",),
+    )
+    object.__setattr__(evidence, "armed", True)
+
+    with pytest.raises(InvalidCapabilityRecord) as captured:
+        replace(record_for(), evidence=(evidence,))
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "evidence must contain CapabilityEvidence records"
+    assert "Authorization" not in rendered
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_manifest_rejects_capability_record_subclass_before_key_access() -> None:
+    base = record_for()
+    record = ArmedCapabilityRecord(
+        provider=base.provider,
+        operation=base.operation,
+        asset_class=base.asset_class,
+        operation_kind=base.operation_kind,
+        evidence=base.evidence,
+        limitations=base.limitations,
+        locked_reason=base.locked_reason,
+    )
+    object.__setattr__(record, "armed", True)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        CapabilityManifest(records=(record,))
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "records must contain CapabilityRecord values"
+    assert "Authorization" not in rendered
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("provider", ArmedString("robinhood-trading")),
+        ("operation", ArmedString("get_quote")),
+        ("limitations", (ArmedString("evidence is limited to the recorded category"),)),
+        ("locked_reason", ArmedString("operation remains locked")),
+    ),
+)
+def test_record_requires_exact_builtin_strings_without_subclass_method_access(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(InvalidCapabilityRecord) as captured:
+        replace(record_for(), **{field: value})  # type: ignore[arg-type]
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert "Authorization" not in rendered
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 @pytest.mark.parametrize("available", tuple(EvidenceLevel))

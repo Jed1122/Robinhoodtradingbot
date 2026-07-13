@@ -79,13 +79,20 @@ temporary file and atomic replacement; destination symlinks are rejected.
 
 Sensitive schema names are classified from percent-decoded separator and camel-case tokens,
 including exact token/account/auth/credential/signature/cookie/bearer/secret/password names,
-reviewed key compounds, and session ID/key/token/cookie compounds. Substrings inside benign
-names are not classifications. Under sensitive scope, schema declarations are accepted only
-when their values have validated built-in shapes: known types and formats, safe local JSON
-pointers, exact booleans, matching required-property names, and recursive schema maps or
-combinators. Unvalidated numeric/list carriers, defaults, examples, descriptions, custom
-metadata, encoded assignments, userinfo, and identifier-bearing paths are rejected.
-Standalone bearer material is rejected regardless of length.
+reviewed key compounds, session ID/key/token/cookie compounds, and a closed set of reviewed
+compact spellings such as `apikey`, `clientsecret`, `accesstoken`, `accountid`, and
+`authorizationheader`. Compact spellings are exact names after bounded percent decoding, not
+raw substring matches; benign author, signal, designation, assignment, accounting-period,
+session-duration, and client-order names remain ordinary metadata. Candidate names containing
+non-ASCII, control, or format characters fail closed. Under sensitive scope, schema
+declarations are accepted only when their values have validated built-in shapes: known types
+and formats, safe local JSON pointers, exact booleans, matching required-property names, and
+recursive schema maps or combinators. Local pointer fragments are inspected as decoded path
+pairs: a terminal schema name such as `#/$defs/AuthToken` is declaration-only, while a
+sensitive segment followed by another segment is rejected as value-bearing. Unvalidated
+numeric/list carriers, defaults, examples, descriptions, custom metadata, encoded
+assignments, userinfo, and identifier-bearing paths are rejected. Standalone bearer material
+is rejected regardless of length.
 
 The documented fixture loader requires duplicate-free finite JSON, exact root/record/
 evidence fields, format version integer `1`, and an aware UTC `checked_at`. Invalid
@@ -95,10 +102,14 @@ matrix free-form provider, operation, limitation, lock-reason, and evidence-note
 Fixture source URIs pass through that predicate before the official-scheme/host/path URI
 validator; digests and enums retain their dedicated validators. Snapshot timestamps must be
 exact built-in datetimes and are stored as the canonical UTC value returned by validation,
-so subclass methods cannot cross the serialization boundary. Exported snapshot records also
-revalidate canonical JSON, schema digests, provider identity, tool order/type, and manifest
-consistency at construction. Only exact MCP SDK result and tool model types cross the
-external-result boundary.
+so subclass methods cannot cross the serialization boundary. Capability evidence timestamps
+have the same exact-type and canonical-UTC rule, and model string fields require exact
+built-in strings before any string operation. Capability records and manifests accept only
+exact nested evidence/record types. Exported snapshots rebuild and validate the full nested
+manifest before comparing it with the schema-derived manifest, so subclass equality and
+forged nested timestamps cannot satisfy consistency checks. They also revalidate canonical
+JSON, schema digests, provider identity, and tool order/type at construction. Only exact MCP
+SDK result and tool model types cross the external-result boundary.
 
 When no proven configured session is injected, the CLI exits with status 2, writes
 nothing, and prints:

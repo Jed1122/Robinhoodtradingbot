@@ -1,12 +1,13 @@
 """Immutable, fail-closed capability evidence models."""
 
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from urllib.parse import urlsplit
 
-from trading_bot.clock import InvalidTimestamp, require_utc
+from trading_bot.clock import require_utc
 from trading_bot.domain import AssetClass
 
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
@@ -116,16 +117,18 @@ class CapabilityEvidence:
     notes: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if not isinstance(self.level, EvidenceLevel):
+        if type(self.level) is not EvidenceLevel:
             raise InvalidCapabilityEvidence("level must be an EvidenceLevel")
         _require_safe_source_uri(self.source_uri)
-        try:
-            require_utc(self.observed_at)
-        except InvalidTimestamp as exc:
-            raise InvalidCapabilityEvidence("observed_at must be aware UTC") from exc
+        canonical_timestamp: datetime | None = None
+        if type(self.observed_at) is datetime:
+            with suppress(Exception):
+                canonical_timestamp = require_utc(self.observed_at)
+        if canonical_timestamp is None:
+            raise InvalidCapabilityEvidence("observed_at must be aware UTC") from None
+        object.__setattr__(self, "observed_at", canonical_timestamp)
         if self.schema_sha256 is not None and (
-            not isinstance(self.schema_sha256, str)
-            or _SHA256_HEX.fullmatch(self.schema_sha256) is None
+            type(self.schema_sha256) is not str or _SHA256_HEX.fullmatch(self.schema_sha256) is None
         ):
             raise InvalidCapabilityEvidence("schema_sha256 must be a lowercase SHA-256 hex digest")
         if self.level in _DIGEST_LEVELS and self.schema_sha256 is None:
@@ -161,14 +164,14 @@ class CapabilityRecord:
     def __post_init__(self) -> None:
         _require_nonempty_string(self.provider, "provider", InvalidCapabilityRecord)
         _require_nonempty_string(self.operation, "operation", InvalidCapabilityRecord)
-        if not isinstance(self.asset_class, AssetClass):
+        if type(self.asset_class) is not AssetClass:
             raise InvalidCapabilityRecord("asset_class must be an AssetClass")
-        if not isinstance(self.operation_kind, OperationKind):
+        if type(self.operation_kind) is not OperationKind:
             raise InvalidCapabilityRecord("operation_kind must be an OperationKind")
         _require_exact_tuple(self.evidence, "evidence", InvalidCapabilityRecord)
         if not self.evidence:
             raise InvalidCapabilityRecord("evidence must contain at least one observation")
-        if any(not isinstance(item, CapabilityEvidence) for item in self.evidence):
+        if any(type(item) is not CapabilityEvidence for item in self.evidence):
             raise InvalidCapabilityRecord("evidence must contain CapabilityEvidence records")
         _require_string_tuple(self.limitations, "limitations", InvalidCapabilityRecord)
         if self.locked_reason is not None:
@@ -185,7 +188,7 @@ class CapabilityRecord:
 
     def satisfies(self, required: EvidenceLevel) -> bool:
         """Return whether this unlocked record contains the exact category requested."""
-        if not isinstance(required, EvidenceLevel):
+        if type(required) is not EvidenceLevel:
             return False
         levels = frozenset(item.level for item in self.evidence)
         if required is EvidenceLevel.UNSUPPORTED:
@@ -201,7 +204,7 @@ class CapabilityManifest:
 
     def __post_init__(self) -> None:
         _require_exact_tuple(self.records, "records", InvalidCapabilityManifest)
-        if any(not isinstance(item, CapabilityRecord) for item in self.records):
+        if any(type(item) is not CapabilityRecord for item in self.records):
             raise InvalidCapabilityManifest("records must contain CapabilityRecord values")
         keys = tuple((item.provider, item.operation) for item in self.records)
         if len(keys) != len(set(keys)):
@@ -312,7 +315,7 @@ def _text_looks_sensitive(value: str) -> bool:
 
 
 def _is_nonempty_string(value: object) -> bool:
-    return isinstance(value, str) and bool(value.strip())
+    return type(value) is str and bool(value.strip())
 
 
 def _require_nonempty_string(

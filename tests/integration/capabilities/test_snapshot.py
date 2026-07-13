@@ -17,7 +17,9 @@ import pytest
 from mcp import types
 
 from trading_bot.capabilities import (
+    CapabilityEvidence,
     CapabilityManifest,
+    CapabilityRecord,
     CapabilitySnapshotError,
     DuplicateToolNameError,
     EvidenceLevel,
@@ -39,6 +41,27 @@ OBSERVED_AT = datetime(2026, 7, 12, 12, tzinfo=UTC)
 ROOT = Path(__file__).parents[3]
 FIXTURE = ROOT / "tests/fixtures/capabilities/documented_robinhood.json"
 SCRIPT = ROOT / "scripts/capture_mcp_capabilities.py"
+COMPACT_SENSITIVE_NAMES = (
+    "apikey",
+    "xapikey",
+    "privatekey",
+    "signingkey",
+    "accesskey",
+    "clientkey",
+    "consumerkey",
+    "clientsecret",
+    "accesstoken",
+    "refreshtoken",
+    "sessionid",
+    "sessionkey",
+    "sessiontoken",
+    "sessioncookie",
+    "accountid",
+    "accountnumber",
+    "accountuuid",
+    "authheader",
+    "authorizationheader",
+)
 
 
 class FakeToolsListSession:
@@ -117,6 +140,24 @@ class SecretBearingDatetime(datetime):
 
     def isoformat(self, sep: str = "T", timespec: str = "auto") -> str:
         raise RuntimeError("Authorization: Bearer tiny")
+
+
+class DatetimeSubclass(datetime):
+    """Semantically UTC but outside the exact timestamp boundary."""
+
+
+class AlwaysEqualCapabilityRecord(CapabilityRecord):
+    """Nested model subclass that attempts to bypass manifest comparison."""
+
+    def __eq__(self, other: object) -> bool:
+        return True
+
+
+class AlwaysEqualCapabilityEvidence(CapabilityEvidence):
+    """Evidence subclass that attempts to bypass nested model comparison."""
+
+    def __eq__(self, other: object) -> bool:
+        return True
 
 
 def tool(
@@ -447,6 +488,113 @@ async def test_direct_tools_snapshot_construction_enforces_all_invariants() -> N
     for changes in invalid_values:
         with pytest.raises(CapabilitySnapshotError):
             replace(snapshot, **changes)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_direct_snapshot_rejects_equality_overriding_nested_record_forgery() -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+    expected = snapshot.manifest.records[0]
+    forged_record = AlwaysEqualCapabilityRecord(
+        provider=expected.provider,
+        operation=expected.operation,
+        asset_class=expected.asset_class,
+        operation_kind=expected.operation_kind,
+        evidence=expected.evidence,
+        limitations=expected.limitations,
+        locked_reason=expected.locked_reason,
+    )
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        ToolsListSnapshot(
+            provider=snapshot.provider,
+            observed_at=snapshot.observed_at,
+            tools=snapshot.tools,
+            manifest=forged_manifest,
+        )
+
+    assert str(captured.value) == "snapshot manifest is invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.asyncio
+async def test_direct_snapshot_rejects_equality_overriding_nested_evidence_forgery() -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+    expected_record = snapshot.manifest.records[0]
+    expected_evidence = expected_record.evidence[0]
+    forged_evidence = AlwaysEqualCapabilityEvidence(
+        level=expected_evidence.level,
+        source_uri=expected_evidence.source_uri,
+        observed_at=expected_evidence.observed_at,
+        schema_sha256=expected_evidence.schema_sha256,
+        authenticated=expected_evidence.authenticated,
+        contains_account_data=expected_evidence.contains_account_data,
+        notes=expected_evidence.notes,
+    )
+    forged_record = object.__new__(CapabilityRecord)
+    object.__setattr__(forged_record, "provider", expected_record.provider)
+    object.__setattr__(forged_record, "operation", expected_record.operation)
+    object.__setattr__(forged_record, "asset_class", expected_record.asset_class)
+    object.__setattr__(forged_record, "operation_kind", expected_record.operation_kind)
+    object.__setattr__(forged_record, "evidence", (forged_evidence,))
+    object.__setattr__(forged_record, "limitations", expected_record.limitations)
+    object.__setattr__(forged_record, "locked_reason", expected_record.locked_reason)
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        ToolsListSnapshot(
+            provider=snapshot.provider,
+            observed_at=snapshot.observed_at,
+            tools=snapshot.tools,
+            manifest=forged_manifest,
+        )
+
+    assert str(captured.value) == "snapshot manifest is invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.asyncio
+async def test_direct_snapshot_revalidates_nested_evidence_timestamp() -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+    expected_record = snapshot.manifest.records[0]
+    expected_evidence = expected_record.evidence[0]
+    forged_evidence = object.__new__(CapabilityEvidence)
+    object.__setattr__(forged_evidence, "level", expected_evidence.level)
+    object.__setattr__(forged_evidence, "source_uri", expected_evidence.source_uri)
+    object.__setattr__(
+        forged_evidence,
+        "observed_at",
+        DatetimeSubclass(2026, 7, 12, 12, tzinfo=UTC),
+    )
+    object.__setattr__(forged_evidence, "schema_sha256", expected_evidence.schema_sha256)
+    object.__setattr__(forged_evidence, "authenticated", expected_evidence.authenticated)
+    object.__setattr__(
+        forged_evidence,
+        "contains_account_data",
+        expected_evidence.contains_account_data,
+    )
+    object.__setattr__(forged_evidence, "notes", expected_evidence.notes)
+    forged_record = replace(expected_record, evidence=(forged_evidence,))
+    forged_manifest = CapabilityManifest(records=(forged_record,))
+
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        ToolsListSnapshot(
+            provider=snapshot.provider,
+            observed_at=snapshot.observed_at,
+            tools=snapshot.tools,
+            manifest=forged_manifest,
+        )
+
+    assert str(captured.value) == "snapshot manifest is invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 @pytest.mark.asyncio
@@ -860,6 +1008,67 @@ async def test_key_aliases_are_rejected_across_schema_and_text_carriers(
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
 
+@pytest.mark.parametrize("alias", COMPACT_SENSITIVE_NAMES)
+@pytest.mark.parametrize(
+    "carrier",
+    ("property_default", "assignment", "query", "encoded_query", "path"),
+)
+@pytest.mark.asyncio
+async def test_compact_sensitive_names_are_rejected_across_schema_and_text_carriers(
+    alias: str,
+    carrier: str,
+) -> None:
+    if carrier == "property_default":
+        input_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {alias: {"type": "string", "default": "tiny"}},
+        }
+    else:
+        encoded_alias = "".join(f"%{ord(character):02X}" for character in alias)
+        sensitive_text = {
+            "assignment": f"{alias}=tiny",
+            "query": f"https://robinhood.com/path?{alias}=tiny",
+            "encoded_query": f"https://robinhood.com/path?{encoded_alias}=tiny",
+            "path": f"https://robinhood.com/{alias}/tiny",
+        }[carrier]
+        input_schema = {
+            "type": "object",
+            "properties": {"safe_value": {"type": "string", "description": sensitive_text}},
+        }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize("candidate_name", ("api\u200bkey", "tökén", "safe\x01name"))
+@pytest.mark.parametrize("carrier", ("property", "assignment", "query", "path"))
+@pytest.mark.asyncio
+async def test_candidate_names_fail_closed_for_non_ascii_control_and_format_characters(
+    candidate_name: str,
+    carrier: str,
+) -> None:
+    if carrier == "property":
+        input_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {candidate_name: {"type": "string"}},
+        }
+    else:
+        sensitive_text = {
+            "assignment": f"{candidate_name}=tiny",
+            "query": f"https://robinhood.com/path?{candidate_name}=tiny",
+            "path": f"https://robinhood.com/{candidate_name}/tiny",
+        }[carrier]
+        input_schema = {
+            "type": "object",
+            "properties": {"safe_value": {"type": "string", "description": sensitive_text}},
+        }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
 @pytest.mark.parametrize(
     "encoded_property_name",
     ("access%5Fkey", "client%5Fkey", "consumer%5Fkey"),
@@ -876,6 +1085,46 @@ async def test_percent_encoded_sensitive_property_names_are_rejected(
 
     with pytest.raises(UnsafeCapabilitySnapshot):
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "unsafe_ref",
+    (
+        "#/$defs/token/tiny",
+        "#/$defs/account/private_key/session_id",
+        "#/token/tiny",
+        "#/$defs/%74oken/tiny",
+        "#/$defs/token%2Ftiny",
+        "#/$defs/access%5Fkey/tiny",
+        "#/$defs/access_key%2Ftiny",
+        "#/$defs/AuthToken/tiny",
+    ),
+)
+@pytest.mark.asyncio
+async def test_sensitive_local_ref_rejects_value_bearing_pointer_pairs(unsafe_ref: str) -> None:
+    input_schema: dict[str, object] = {
+        "$defs": {"AuthToken": {"type": "string"}},
+        "type": "object",
+        "properties": {"auth_token": {"$ref": unsafe_ref}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.asyncio
+async def test_sensitive_local_ref_allows_schema_only_terminal_definition_name() -> None:
+    input_schema: dict[str, object] = {
+        "$defs": {"AuthToken": {"type": "string"}},
+        "type": "object",
+        "properties": {"auth_token": {"$ref": "#/$defs/AuthToken"}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].input_schema == input_schema
 
 
 @pytest.mark.parametrize(
@@ -1269,6 +1518,34 @@ def test_fixture_loader_scans_official_source_uri_before_uri_validation(
     rendered = "".join(traceback.format_exception(captured.value))
     assert str(captured.value) == "capability fixture is invalid"
     assert sensitive_path not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize("alias", COMPACT_SENSITIVE_NAMES)
+def test_fixture_loader_rejects_compact_sensitive_source_uri_path_pairs(
+    tmp_path: Path,
+    alias: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    evidence_values = record["evidence"]
+    assert isinstance(evidence_values, list)
+    evidence = evidence_values[0]
+    assert isinstance(evidence, dict)
+    evidence["source_uri"] = f"https://robinhood.com/{alias}/tiny"
+    path = tmp_path / "compact-sensitive-source.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "capability fixture is invalid"
+    assert alias not in rendered
     assert captured.value.__cause__ is None
     assert captured.value.__context__ is None
 

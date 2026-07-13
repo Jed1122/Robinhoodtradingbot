@@ -59,7 +59,7 @@ _SECRET_ASSIGNMENT = re.compile(
     re.IGNORECASE,
 )
 _NAMED_ASSIGNMENT = re.compile(
-    r"(?P<name>[A-Za-z][A-Za-z0-9_.%~-]{0,127})\s*[:=]\s*(?P<value>[^\s&#]+)",
+    r"(?P<name>[^\s&#:=]{1,128})\s*[:=]\s*(?P<value>[^\s&#]+)",
     re.IGNORECASE,
 )
 _CAMEL_NAME_TOKEN = re.compile(r"[A-Z]+(?=[A-Z][a-z]|[0-9]|\Z)|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
@@ -101,6 +101,29 @@ _SENSITIVE_KEY_PREFIXES = frozenset(
     }
 )
 _SENSITIVE_SESSION_SUFFIXES = frozenset({"id", "key", "token", "cookie"})
+_COMPACT_SENSITIVE_NAMES = frozenset(
+    {
+        "apikey",
+        "xapikey",
+        "privatekey",
+        "signingkey",
+        "accesskey",
+        "clientkey",
+        "consumerkey",
+        "clientsecret",
+        "accesstoken",
+        "refreshtoken",
+        "sessionid",
+        "sessionkey",
+        "sessiontoken",
+        "sessioncookie",
+        "accountid",
+        "accountnumber",
+        "accountuuid",
+        "authheader",
+        "authorizationheader",
+    }
+)
 _JSON_SCHEMA_TYPES = frozenset(
     {"array", "boolean", "integer", "null", "number", "object", "string"}
 )
@@ -283,11 +306,13 @@ class ToolsListSnapshot:
             raise CapabilitySnapshotError("snapshot tools must be unique and deterministic")
         if type(self.manifest) is not CapabilityManifest:
             raise CapabilitySnapshotError("snapshot manifest is invalid")
+        validated_manifest = _validated_manifest_copy(self.manifest)
         expected = CapabilityManifest(
             records=tuple(_record_from_schema(item, self.observed_at) for item in self.tools)
         )
-        if self.manifest != expected:
+        if validated_manifest != expected:
             raise CapabilitySnapshotError("snapshot manifest does not match captured schemas")
+        object.__setattr__(self, "manifest", validated_manifest)
 
     def as_json(self) -> dict[str, JsonValue]:
         """Render the deterministic committed artifact without SDK extras."""
@@ -494,6 +519,52 @@ def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> Cap
     )
 
 
+def _validated_manifest_copy(value: CapabilityManifest) -> CapabilityManifest:
+    """Rebuild an exact manifest so nested equality cannot bypass model validation."""
+    validated: CapabilityManifest | None = None
+    try:
+        if type(value) is not CapabilityManifest or type(value.records) is not tuple:
+            raise TypeError
+        records: list[CapabilityRecord] = []
+        for record in value.records:
+            if type(record) is not CapabilityRecord or type(record.evidence) is not tuple:
+                raise TypeError
+            evidence: list[CapabilityEvidence] = []
+            for item in record.evidence:
+                if type(item) is not CapabilityEvidence:
+                    raise TypeError
+                evidence.append(
+                    CapabilityEvidence(
+                        level=item.level,
+                        source_uri=item.source_uri,
+                        observed_at=item.observed_at,
+                        schema_sha256=item.schema_sha256,
+                        authenticated=item.authenticated,
+                        contains_account_data=item.contains_account_data,
+                        notes=item.notes,
+                    )
+                )
+            records.append(
+                CapabilityRecord(
+                    provider=record.provider,
+                    operation=record.operation,
+                    asset_class=record.asset_class,
+                    operation_kind=record.operation_kind,
+                    evidence=tuple(evidence),
+                    limitations=record.limitations,
+                    locked_reason=record.locked_reason,
+                )
+            )
+        validated = CapabilityManifest(records=tuple(records))
+    except MemoryError:
+        raise
+    except Exception:
+        pass
+    if validated is None:
+        raise CapabilitySnapshotError("snapshot manifest is invalid") from None
+    return validated
+
+
 def _copy_json(value: object) -> JsonValue:
     if value is None or type(value) in {bool, int, str}:
         return cast(JsonScalar, value)
@@ -607,12 +678,14 @@ def _scan_sensitive(
     if sensitive_property:
         _validate_sensitive_schema(value)
     for key, item in value.items():
-        if text_contains_sensitive_material(key):
+        if _candidate_name_has_unsafe_characters(key) or text_contains_sensitive_material(key):
             raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
         if sensitive_property and key in _SCHEMA_MAPPING_KEYS:
             assert isinstance(item, dict)
             for schema_name, schema in item.items():
-                if text_contains_sensitive_material(schema_name):
+                if _candidate_name_has_unsafe_characters(
+                    schema_name
+                ) or text_contains_sensitive_material(schema_name):
                     raise UnsafeCapabilitySnapshot(
                         "capability snapshot contains sensitive material"
                     )
@@ -621,7 +694,9 @@ def _scan_sensitive(
         if key == "properties" and type(item) is dict:
             assert isinstance(item, dict)
             for property_name, property_schema in item.items():
-                if text_contains_sensitive_material(property_name):
+                if _candidate_name_has_unsafe_characters(
+                    property_name
+                ) or text_contains_sensitive_material(property_name):
                     raise UnsafeCapabilitySnapshot(
                         "capability snapshot contains sensitive material"
                     )
@@ -660,7 +735,7 @@ def _validate_sensitive_schema(value: dict[str, JsonValue]) -> None:
                 raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
             continue
         if key == "$ref":
-            if type(item) is not str or _LOCAL_JSON_POINTER.fullmatch(item) is None:
+            if type(item) is not str or not _local_json_pointer_is_safe(item):
                 raise UnsafeCapabilitySnapshot("sensitive schema declaration is invalid")
             continue
         if key in _SCHEMA_MAPPING_KEYS:
@@ -769,10 +844,8 @@ def text_contains_sensitive_material(value: str) -> bool:
                 return True
             if any(_name_is_sensitive(name) and bool(item) for name, item in pairs):
                 return True
-        segments = tuple(segment for segment in parsed.path.split("/") if segment)
-        if any(
-            _name_is_sensitive(segment) and bool(segments[index + 1])
-            for index, segment in enumerate(segments[:-1])
+        if _path_has_sensitive_value_pair(parsed.path) or _path_has_sensitive_value_pair(
+            parsed.fragment
         ):
             return True
     return False
@@ -797,6 +870,10 @@ def _name_is_sensitive(value: str) -> bool:
         decoded = _decoded_candidates(value)[-1]
     except (UnicodeError, ValueError):
         return True
+    if _candidate_name_has_unsafe_characters(value):
+        return True
+    if decoded.casefold() in _COMPACT_SENSITIVE_NAMES:
+        return True
     tokens = tuple(
         token.casefold()
         for component in re.split(r"[^A-Za-z0-9]+", decoded)
@@ -809,6 +886,39 @@ def _name_is_sensitive(value: str) -> bool:
         or (left == "session" and right in _SENSITIVE_SESSION_SUFFIXES)
         for left, right in pairwise(tokens)
     )
+
+
+def _candidate_name_has_unsafe_characters(value: str) -> bool:
+    try:
+        decoded = _decoded_candidates(value)[-1]
+    except (UnicodeError, ValueError):
+        return True
+    return not decoded.isascii() or any(
+        ord(character) < 32 or ord(character) == 127 for character in decoded
+    )
+
+
+def _local_json_pointer_is_safe(value: str) -> bool:
+    if _LOCAL_JSON_POINTER.fullmatch(value) is None:
+        return False
+    try:
+        decoded = _decoded_candidates(value)[-1]
+        parsed = urlsplit(decoded)
+    except (UnicodeError, ValueError):
+        return False
+    return (
+        _LOCAL_JSON_POINTER.fullmatch(decoded) is not None
+        and not parsed.scheme
+        and not parsed.netloc
+        and not parsed.path
+        and not parsed.query
+        and not _path_has_sensitive_value_pair(parsed.fragment)
+    )
+
+
+def _path_has_sensitive_value_pair(value: str) -> bool:
+    segments = tuple(segment for segment in value.split("/") if segment)
+    return any(_name_is_sensitive(left) and bool(right) for left, right in pairwise(segments))
 
 
 def _contains_value(value: JsonValue) -> bool:
