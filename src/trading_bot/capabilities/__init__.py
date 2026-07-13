@@ -13,22 +13,51 @@ from trading_bot.capabilities.models import (
     OperationKind,
     UnsupportedCapabilityError,
 )
-from trading_bot.capabilities.registry import require_capability
-from trading_bot.capabilities.snapshot import JsonValue, canonical_sha256
+from trading_bot.capabilities.registry import (
+    load_capability_manifest,
+    render_capability_matrix,
+    require_capability,
+)
+from trading_bot.capabilities.snapshot import (
+    CapabilitySnapshotError,
+    DuplicateToolNameError,
+    JsonValue,
+    PaginationCycleError,
+    SanitizedToolSchema,
+    ToolsListSession,
+    ToolsListSnapshot,
+    UnsafeCapabilitySnapshot,
+    canonical_sha256,
+    capture_tools_list,
+    capture_tools_snapshot,
+    write_tools_snapshot,
+)
 
 __all__ = [
     "CapabilityEvidence",
     "CapabilityManifest",
     "CapabilityNotFoundError",
     "CapabilityRecord",
+    "CapabilitySnapshotError",
     "CapabilityValidationError",
+    "DuplicateToolNameError",
     "EvidenceLevel",
     "InvalidCapabilityEvidence",
     "InvalidCapabilityManifest",
     "InvalidCapabilityRecord",
     "JsonValue",
     "OperationKind",
+    "PaginationCycleError",
+    "SanitizedToolSchema",
+    "ToolsListSession",
+    "ToolsListSnapshot",
+    "UnsafeCapabilitySnapshot",
     "UnsupportedCapabilityError",
     "canonical_sha256",
+    "capture_tools_list",
+    "capture_tools_snapshot",
+    "load_capability_manifest",
+    "render_capability_matrix",
     "require_capability",
+    "write_tools_snapshot",
 ]

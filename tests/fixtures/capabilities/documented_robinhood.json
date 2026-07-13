@@ -1,0 +1,120 @@
+{
+  "format_version": 1,
+  "checked_at": "2026-07-12T00:00:00Z",
+  "records": [
+    {
+      "provider": "robinhood-trading", "operation": "get_equity_positions", "asset_class": "equity", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "No sanitized schema or authenticated behavior is committed"],
+      "locked_reason": "schema and authenticated evidence remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "get_equity_quotes", "asset_class": "equity", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "No sanitized schema or authenticated behavior is committed"],
+      "locked_reason": "schema and authenticated evidence remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "get_equity_orders", "asset_class": "equity", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "No sanitized schema or authenticated behavior is committed"],
+      "locked_reason": "schema and authenticated evidence remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "get_equity_tradability", "asset_class": "equity", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "No sanitized schema or authenticated behavior is committed"],
+      "locked_reason": "schema and authenticated evidence remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "get_equity_historicals", "asset_class": "equity", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "No sanitized schema or authenticated behavior is committed"],
+      "locked_reason": "schema and authenticated evidence remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "get_equity_fundamentals", "asset_class": "equity", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "No sanitized schema or authenticated behavior is committed"],
+      "locked_reason": "schema and authenticated evidence remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "get_equity_technical_indicators", "asset_class": "equity", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "No sanitized schema or authenticated behavior is committed"],
+      "locked_reason": "schema and authenticated evidence remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "review_equity_order", "asset_class": "equity", "operation_kind": "review",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "No sanitized schema or non-submitting review behavior is committed"],
+      "locked_reason": "schema and authenticated review evidence remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "place_equity_order", "asset_class": "equity", "operation_kind": "place",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["Live submission is not implemented or enabled", "No sanitized schema or authenticated write behavior is committed"],
+      "locked_reason": "live write evidence and later safety gates remain externally pending"
+    },
+    {
+      "provider": "robinhood-trading", "operation": "cancel_equity_order", "asset_class": "equity", "operation_kind": "cancel",
+      "evidence": [{"level": "documented", "source_uri": "https://robinhood.com/us/en/support/articles/trading-with-your-agent/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation names this equity MCP operation"]}],
+      "limitations": ["Live cancellation is not implemented or enabled", "No sanitized schema or authenticated write behavior is committed"],
+      "locked_reason": "live write evidence and later safety gates remain externally pending"
+    },
+    {
+      "provider": "robinhood-crypto-v2", "operation": "GET /api/v2/crypto/trading/accounts/", "asset_class": "crypto", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://docs.robinhood.com/crypto/trading/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official Crypto Trading API v2 documentation names this path"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "Signed REST authentication uses x-api-key, x-signature, and x-timestamp labels only; no values are committed", "Account-scoped calls require an account number at runtime", "No streaming transport is recorded for this custodial API"],
+      "locked_reason": "authenticated schema and behavior remain externally pending"
+    },
+    {
+      "provider": "robinhood-crypto-v2", "operation": "GET /api/v2/crypto/trading/trading_pairs/", "asset_class": "crypto", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://docs.robinhood.com/crypto/trading/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official Crypto Trading API v2 documentation names this path"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "Only USD pairs with is_api_tradable=true are eligible according to public documentation", "Jurisdiction and permission limits remain external runtime constraints", "No streaming transport is recorded for this custodial API"],
+      "locked_reason": "authenticated schema and behavior remain externally pending"
+    },
+    {
+      "provider": "robinhood-crypto-v2", "operation": "GET /api/v2/crypto/trading/holdings/", "asset_class": "crypto", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://docs.robinhood.com/crypto/trading/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official Crypto Trading API v2 documentation names this path"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "Signed REST authentication uses x-api-key, x-signature, and x-timestamp labels only; no values are committed", "Account-scoped calls require an account number at runtime", "No streaming transport is recorded for this custodial API"],
+      "locked_reason": "authenticated schema and behavior remain externally pending"
+    },
+    {
+      "provider": "robinhood-crypto-v2", "operation": "GET /api/v2/crypto/marketdata/best_bid_ask/", "asset_class": "crypto", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://docs.robinhood.com/crypto/trading/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official Crypto Trading API v2 documentation names this path"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "Only USD pairs with is_api_tradable=true are eligible according to public documentation", "No streaming transport is recorded for this custodial API"],
+      "locked_reason": "authenticated schema and behavior remain externally pending"
+    },
+    {
+      "provider": "robinhood-crypto-v2", "operation": "GET /api/v2/crypto/trading/estimated_price/", "asset_class": "crypto", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://docs.robinhood.com/crypto/trading/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official Crypto Trading API v2 documentation names this path"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "Only USD pairs with is_api_tradable=true are eligible according to public documentation", "No streaming transport is recorded for this custodial API"],
+      "locked_reason": "authenticated schema and behavior remain externally pending"
+    },
+    {
+      "provider": "robinhood-crypto-v2", "operation": "GET /api/v2/crypto/trading/orders/", "asset_class": "crypto", "operation_kind": "read",
+      "evidence": [{"level": "documented", "source_uri": "https://docs.robinhood.com/crypto/trading/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official Crypto Trading API v2 documentation names this path"]}],
+      "limitations": ["No adapter is implemented in this foundation slice", "Signed REST authentication and account scope remain external", "No streaming transport is recorded for this custodial API"],
+      "locked_reason": "authenticated schema and behavior remain externally pending"
+    },
+    {
+      "provider": "robinhood-crypto-v2", "operation": "POST /api/v2/crypto/trading/orders/", "asset_class": "crypto", "operation_kind": "place",
+      "evidence": [{"level": "documented", "source_uri": "https://docs.robinhood.com/crypto/trading/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official Crypto Trading API v2 documentation names this path"]}],
+      "limitations": ["Live submission is not implemented or enabled", "A UUID client_order_id and runtime account number are documented constraints", "Jurisdiction and permission limits remain external runtime constraints", "No streaming transport is recorded for this custodial API"],
+      "locked_reason": "live write evidence and later safety gates remain externally pending"
+    },
+    {
+      "provider": "robinhood-crypto-v2", "operation": "POST /api/v2/crypto/trading/orders/{id}/cancel/", "asset_class": "crypto", "operation_kind": "cancel",
+      "evidence": [{"level": "documented", "source_uri": "https://docs.robinhood.com/crypto/trading/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official Crypto Trading API v2 documentation names this path"]}],
+      "limitations": ["Live cancellation is not implemented or enabled", "Signed REST authentication and account scope remain external", "No streaming transport is recorded for this custodial API"],
+      "locked_reason": "live write evidence and later safety gates remain externally pending"
+    },
+    {
+      "provider": "robinhood-prediction", "operation": "place_prediction_order", "asset_class": "prediction", "operation_kind": "place",
+      "evidence": [{"level": "unsupported", "source_uri": "https://robinhood.com/us/en/support/articles/trading-event-contracts/", "observed_at": "2026-07-12T00:00:00Z", "schema_sha256": null, "authenticated": false, "contains_account_data": false, "notes": ["Official public documentation describes event-contract trading as mobile-app-only"]}],
+      "limitations": ["No official public REST, streaming, or Trading MCP prediction-order interface is recorded"],
+      "locked_reason": "prediction placement has no supported official programmatic interface"
+    }
+  ]
+}
