@@ -160,6 +160,16 @@ def test_any_supplied_digest_must_be_lowercase_sha256(digest: str) -> None:
         "https://robinhood.com/support?x-api-key=actual-secret-value",
         "https://robinhood.com/support?account_number=RHC123456789",
         "https://robinhood.com/support?q=Bearer%20actual-secret-value",
+        (
+            "https://robinhood.com/support?session="
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhY2NvdW50In0.signaturevalue"
+        ),
+        "https://robinhood.com/support?session=sk-testtokenvalue1234",
+        "https://robinhood.com/support?session=RHC123456789",
+        "https://robinhood.com/support#access_token=fake-oauth-token",
+        "data:text/plain,Bearer%20fake-token",
+        "http://robinhood.com/support",
+        "https://robinhood.com:not-a-port/support",
         " https://robinhood.com/support",
         "not-a-uri",
     ),
@@ -178,6 +188,15 @@ def test_source_uri_allows_safe_query_metadata() -> None:
     )
 
     assert evidence.source_uri.endswith("section=tools&page=2")
+
+
+def test_source_uri_allows_sanitized_mcp_schema_reference() -> None:
+    evidence = replace(
+        evidence_for(EvidenceLevel.SCHEMA_DECLARED),
+        source_uri="mcp://robinhood-trading/tools/get_equity_quotes",
+    )
+
+    assert evidence.source_uri == "mcp://robinhood-trading/tools/get_equity_quotes"
 
 
 def test_malformed_source_uri_does_not_chain_parser_input() -> None:

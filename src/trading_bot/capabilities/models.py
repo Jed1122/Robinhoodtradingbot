@@ -4,12 +4,13 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, unquote_plus, urlsplit
 
 from trading_bot.clock import InvalidTimestamp, require_utc
 from trading_bot.domain import AssetClass
 
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
+_ALLOWED_SOURCE_URI_SCHEMES = frozenset({"https", "mcp"})
 _SENSITIVE_QUERY_NAMES = frozenset({"auth", "bearer", "key", "oauth"})
 _SENSITIVE_QUERY_SUFFIXES = (
     "accountid",
@@ -23,6 +24,18 @@ _SENSITIVE_QUERY_SUFFIXES = (
     "signature",
     "token",
 )
+_JWT_LIKE = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
+_SENSITIVE_ASSIGNMENT = re.compile(
+    r"(?:access[-_\s]?token|refresh[-_\s]?token|api[-_\s]?key|x[-_\s]?api[-_\s]?key|"
+    r"authorization|bearer|cookie|password|private[-_\s]?key|client[-_\s]?secret|"
+    r"secret|signature|account[-_\s]?(?:id|number))\s*[:=]",
+    re.IGNORECASE,
+)
+_API_TOKEN_LIKE = re.compile(
+    r"\b(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}\b",
+    re.IGNORECASE,
+)
+_ACCOUNT_ID_LIKE = re.compile(r"\bRHC[A-Z0-9]{8,}\b", re.IGNORECASE)
 
 
 class CapabilityValidationError(ValueError):
@@ -238,13 +251,16 @@ def _require_safe_source_uri(value: str) -> None:
         raise InvalidCapabilityEvidence("source_uri must be a sanitized URI")
     try:
         parsed = urlsplit(value)
+        port = parsed.port
         query = parse_qsl(parsed.query, keep_blank_values=True)
     except (TypeError, ValueError):
         raise InvalidCapabilityEvidence("source_uri must be a sanitized URI") from None
-    if not parsed.scheme:
+    if parsed.scheme not in _ALLOWED_SOURCE_URI_SCHEMES:
+        raise InvalidCapabilityEvidence("source_uri must use an approved evidence scheme")
+    if not parsed.netloc or parsed.hostname is None:
         raise InvalidCapabilityEvidence("source_uri must be an absolute URI")
-    if parsed.scheme in {"http", "https"} and not parsed.netloc:
-        raise InvalidCapabilityEvidence("source_uri must be an absolute URI")
+    if port is not None and not 1 <= port <= 65535:
+        raise InvalidCapabilityEvidence("source_uri must use a valid port")
     if parsed.username is not None or parsed.password is not None:
         raise InvalidCapabilityEvidence("source_uri cannot contain user information")
     for name, query_value in query:
@@ -257,18 +273,34 @@ def _require_safe_source_uri(value: str) -> None:
             raise InvalidCapabilityEvidence(
                 "source_uri cannot contain secret-bearing query parameters"
             )
+    if _uri_text_looks_sensitive(parsed.path) or _uri_text_looks_sensitive(parsed.fragment):
+        raise InvalidCapabilityEvidence(
+            "source_uri cannot contain secret-bearing path or fragment material"
+        )
 
 
 def _query_value_looks_sensitive(value: str) -> bool:
-    normalized = value.casefold()
-    return any(
-        marker in normalized
-        for marker in (
-            "authorization:",
-            "bearer ",
-            "-----begin private key-----",
-            "-----begin encrypted private key-----",
-        )
+    return _uri_text_looks_sensitive(value)
+
+
+def _uri_text_looks_sensitive(value: str) -> bool:
+    decoded = value
+    for _ in range(2):
+        expanded = unquote_plus(decoded)
+        if expanded == decoded:
+            break
+        decoded = expanded
+    normalized = decoded.casefold()
+    return (
+        any(character in decoded for character in "\r\n\t")
+        or "authorization:" in normalized
+        or "bearer " in normalized
+        or "-----begin private key-----" in normalized
+        or "-----begin encrypted private key-----" in normalized
+        or _JWT_LIKE.search(decoded) is not None
+        or _SENSITIVE_ASSIGNMENT.search(decoded) is not None
+        or _API_TOKEN_LIKE.search(decoded) is not None
+        or _ACCOUNT_ID_LIKE.search(decoded) is not None
     )
 
 
