@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from urllib.parse import parse_qsl, unquote_plus, urlsplit
+from urllib.parse import urlsplit
 
 from trading_bot.clock import InvalidTimestamp, require_utc
 from trading_bot.domain import AssetClass
@@ -12,47 +12,8 @@ from trading_bot.domain import AssetClass
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ALLOWED_SOURCE_URI_SCHEMES = frozenset({"https", "mcp"})
 _HOST_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\Z")
-_INVALID_PERCENT_ENCODING = re.compile(r"%(?![0-9A-Fa-f]{2})")
-_MAX_URI_DECODE_PASSES = 8
-_SENSITIVE_QUERY_TOKENS = frozenset(
-    {
-        "account",
-        "auth",
-        "authorization",
-        "bearer",
-        "cookie",
-        "credential",
-        "credentials",
-        "key",
-        "oauth",
-        "password",
-        "secret",
-        "sig",
-        "signature",
-        "signatures",
-        "token",
-        "tokens",
-    }
-)
-_SENSITIVE_QUERY_SUFFIXES = (
-    "accountid",
-    "accountnumber",
-    "apikey",
-    "authorization",
-    "cookie",
-    "password",
-    "privatekey",
-    "secret",
-    "signature",
-    "token",
-)
+_PATH_SEGMENT = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,127})?\Z")
 _JWT_LIKE = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
-_SENSITIVE_ASSIGNMENT = re.compile(
-    r"(?:access[-_\s]?token|refresh[-_\s]?token|api[-_\s]?key|x[-_\s]?api[-_\s]?key|"
-    r"authorization|bearer|cookie|password|private[-_\s]?key|client[-_\s]?secret|"
-    r"secret|signature|account[-_\s]?(?:id|number))\s*[:=]",
-    re.IGNORECASE,
-)
 _API_TOKEN_LIKE = re.compile(
     r"\b(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}\b",
     re.IGNORECASE,
@@ -271,8 +232,9 @@ def _require_safe_source_uri(value: str) -> None:
     _require_nonempty_string(value, "source_uri", InvalidCapabilityEvidence)
     if (
         value != value.strip()
-        or any(character in value for character in "\r\n\t")
-        or _INVALID_PERCENT_ENCODING.search(value) is not None
+        or any(character.isspace() for character in value)
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        or "%" in value
     ):
         raise InvalidCapabilityEvidence("source_uri must be a sanitized URI")
     try:
@@ -281,50 +243,22 @@ def _require_safe_source_uri(value: str) -> None:
         hostname = parsed.hostname
         username = parsed.username
         password = parsed.password
-        query = parse_qsl(parsed.query, keep_blank_values=True)
     except (TypeError, ValueError):
         raise InvalidCapabilityEvidence("source_uri must be a sanitized URI") from None
     if parsed.scheme not in _ALLOWED_SOURCE_URI_SCHEMES:
         raise InvalidCapabilityEvidence("source_uri must use an approved evidence scheme")
     if not parsed.netloc or hostname is None:
         raise InvalidCapabilityEvidence("source_uri must be an absolute URI")
-    if not _hostname_is_valid(hostname) or _uri_text_looks_sensitive(hostname):
+    if not _hostname_is_valid(hostname) or _text_looks_sensitive(hostname):
         raise InvalidCapabilityEvidence("source_uri must use a sanitized hostname")
     if port is not None and not 1 <= port <= 65535:
         raise InvalidCapabilityEvidence("source_uri must use a valid port")
     if username is not None or password is not None:
         raise InvalidCapabilityEvidence("source_uri cannot contain user information")
-    for name, query_value in query:
-        if _query_name_looks_sensitive(name) or _query_value_looks_sensitive(query_value):
-            raise InvalidCapabilityEvidence(
-                "source_uri cannot contain secret-bearing query parameters"
-            )
-    if _uri_text_looks_sensitive(parsed.path) or _uri_text_looks_sensitive(parsed.fragment):
-        raise InvalidCapabilityEvidence(
-            "source_uri cannot contain secret-bearing path or fragment material"
-        )
-
-
-def _query_value_looks_sensitive(value: str) -> bool:
-    return _uri_text_looks_sensitive(value)
-
-
-def _query_name_looks_sensitive(value: str) -> bool:
-    decoded = value
-    for _ in range(_MAX_URI_DECODE_PASSES):
-        if _decoded_query_name_looks_sensitive(decoded):
-            return True
-        expanded = unquote_plus(decoded)
-        if expanded == decoded:
-            return False
-        decoded = expanded
-    return True
-
-
-def _decoded_query_name_looks_sensitive(value: str) -> bool:
-    normalized = re.sub(r"[^a-z0-9]", "", value.casefold())
-    tokens = frozenset(re.findall(r"[a-z0-9]+", value.casefold()))
-    return bool(tokens & _SENSITIVE_QUERY_TOKENS) or normalized.endswith(_SENSITIVE_QUERY_SUFFIXES)
+    if parsed.query or parsed.fragment:
+        raise InvalidCapabilityEvidence("source_uri cannot contain a query or fragment")
+    if not _path_is_valid(parsed.path) or _text_looks_sensitive(parsed.path):
+        raise InvalidCapabilityEvidence("source_uri must use a sanitized canonical path")
 
 
 def _hostname_is_valid(value: str) -> bool:
@@ -334,30 +268,22 @@ def _hostname_is_valid(value: str) -> bool:
     return all(_HOST_LABEL.fullmatch(label) is not None for label in labels)
 
 
-def _uri_text_looks_sensitive(value: str) -> bool:
-    decoded = value
-    for _ in range(_MAX_URI_DECODE_PASSES):
-        if _decoded_uri_text_looks_sensitive(decoded):
-            return True
-        expanded = unquote_plus(decoded)
-        if expanded == decoded:
-            return False
-        decoded = expanded
-    return True
+def _path_is_valid(value: str) -> bool:
+    if value == "":
+        return True
+    if not value.startswith("/") or len(value) > 2048:
+        return False
+    segments = value.split("/")[1:]
+    if segments and segments[-1] == "":
+        segments.pop()
+    return all(_PATH_SEGMENT.fullmatch(segment) is not None for segment in segments)
 
 
-def _decoded_uri_text_looks_sensitive(decoded: str) -> bool:
-    normalized = decoded.casefold()
+def _text_looks_sensitive(value: str) -> bool:
     return (
-        any(ord(character) < 32 or ord(character) == 127 for character in decoded)
-        or "authorization:" in normalized
-        or "bearer " in normalized
-        or "-----begin private key-----" in normalized
-        or "-----begin encrypted private key-----" in normalized
-        or _JWT_LIKE.search(decoded) is not None
-        or _SENSITIVE_ASSIGNMENT.search(decoded) is not None
-        or _API_TOKEN_LIKE.search(decoded) is not None
-        or _ACCOUNT_ID_LIKE.search(decoded) is not None
+        _JWT_LIKE.search(value) is not None
+        or _API_TOKEN_LIKE.search(value) is not None
+        or _ACCOUNT_ID_LIKE.search(value) is not None
     )
 
 

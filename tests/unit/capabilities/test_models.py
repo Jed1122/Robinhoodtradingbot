@@ -171,7 +171,17 @@ def test_any_supplied_digest_must_be_lowercase_sha256(digest: str) -> None:
         "https://robinhood.com/support?account=actual-secret-value",
         "https://robinhood.com/support?%2573ig=actual-secret-value",
         "https://robinhood.com/support?%2561ccount=actual-secret-value",
+        "https://robinhood.com/support?accountUuid=00000000-0000-4000-8000-000000000000",
+        "https://robinhood.com/support?accountUrl=00000000-0000-4000-8000-000000000000",
+        "https://robinhood.com/support?acct_id=00000000-0000-4000-8000-000000000000",
+        "https://robinhood.com/support?sessionId=synthetic-session",
+        "https://robinhood.com/support?sa%00fe=metadata",
+        "https://robinhood.com/support?sa%01fe=metadata",
+        "https://robinhood.com/support?safe%7F=metadata",
         "https://robinhood.com/support#access_token=fake-oauth-token",
+        "https://robinhood.com/account=00000000-0000-4000-8000-000000000000",
+        "https://robinhood.com/support#account_uuid=00000000-0000-4000-8000-000000000000",
+        "https://robinhood.com/safe path",
         "https://robinhood.com/access_token%25253Dactual-secret-value",
         "https://robinhood.com/support#access_token%25253Dactual-secret-value",
         "https://sk-testtokenvalue1234.robinhood.com/support",
@@ -196,13 +206,30 @@ def test_source_uri_rejects_credentials_sensitive_queries_and_malformed_values(
         replace(evidence_for(), source_uri=source_uri)
 
 
-def test_source_uri_allows_safe_query_metadata() -> None:
-    evidence = replace(
-        evidence_for(),
-        source_uri="https://robinhood.com/support?section=tools&page=2",
-    )
+@pytest.mark.parametrize(
+    "source_uri",
+    (
+        "https://robinhood.com/support?section=tools&page=2",
+        "https://robinhood.com/support#tools",
+    ),
+)
+def test_source_uri_rejects_query_and_fragment_metadata(source_uri: str) -> None:
+    with pytest.raises(InvalidCapabilityEvidence, match="source_uri"):
+        replace(evidence_for(), source_uri=source_uri)
 
-    assert evidence.source_uri.endswith("section=tools&page=2")
+
+@pytest.mark.parametrize(
+    "source_uri",
+    (
+        "https://robinhood.com/us/en/support/articles/agentic-trading-overview/",
+        "https://robinhood.com/us/en/support/articles/trading-with-your-agent/",
+        "https://docs.robinhood.com/crypto/trading/",
+    ),
+)
+def test_source_uri_allows_canonical_official_https_sources(source_uri: str) -> None:
+    evidence = replace(evidence_for(), source_uri=source_uri)
+
+    assert evidence.source_uri == source_uri
 
 
 def test_source_uri_allows_sanitized_mcp_schema_reference() -> None:
