@@ -3,6 +3,7 @@
 import ast
 import re
 from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
 
 import pytest
@@ -31,7 +32,9 @@ ERROR_NAMES = frozenset(
 CLI_ALLOWED_PROTOCOLS = PROTOCOL_NAMES - {"BrokerPlace"}
 RECOVERY_ALLOWED_PROTOCOLS = frozenset({"BrokerRead", "BrokerCancelOnly"})
 PLACE_ORDER_USE_ALLOWLIST = frozenset({Path("execution/service.py")})
-CURRENT_PLACE_ORDER_DEFINITION_ALLOWLIST = frozenset({Path("brokers/protocols.py")})
+CURRENT_PLACE_ORDER_DEFINITION_ALLOWLIST = frozenset(
+    {(Path("brokers/protocols.py"), "BrokerPlace")}
+)
 
 EXPECTED_PROTOCOL_IMPORTS = {
     "datetime": frozenset({"datetime"}),
@@ -196,142 +199,431 @@ def _restricted_import_violations(
     return violations
 
 
-def _constant_string(node: ast.AST, constants: dict[str, str] | None = None) -> str | None:
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    if isinstance(node, ast.Name) and constants is not None:
-        return constants.get(node.id)
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = _constant_string(node.left, constants)
-        right = _constant_string(node.right, constants)
-        if left is not None and right is not None:
-            return left + right
-    if isinstance(node, ast.JoinedStr):
-        parts: list[str] = []
-        for value in node.values:
-            if isinstance(value, ast.FormattedValue):
-                rendered = _constant_string(value.value, constants)
+class _Identity(Enum):
+    IMPORTLIB_MODULE = auto()
+    BUILTINS_MODULE = auto()
+    DYNAMIC_IMPORT = auto()
+    GETATTR = auto()
+    VARS = auto()
+
+
+type _Binding = ast.expr | _Identity | None
+type _Resolved = str | _Identity | None
+
+
+@dataclass(slots=True)
+class _ScopeFacts:
+    kind: str
+    parent: "_ScopeFacts | None"
+    writes: dict[str, list[_Binding]]
+    global_names: set[str]
+    nonlocal_names: set[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _ReflectionLookup:
+    name: str | None
+
+
+class _LexicalFacts(ast.NodeVisitor):
+    """Collect direct writes and resolve only unambiguous lexical bindings."""
+
+    def __init__(self, tree: ast.Module) -> None:
+        self.module_scope = _ScopeFacts("module", None, {}, set(), set())
+        self.current_scope = self.module_scope
+        self.node_scopes: dict[ast.AST, _ScopeFacts] = {}
+        self.visit(tree)
+
+    def visit(self, node: ast.AST) -> None:
+        self.node_scopes[node] = self.current_scope
+        super().visit(node)
+
+    def _record(self, name: str, value: _Binding) -> None:
+        self.current_scope.writes.setdefault(name, []).append(value)
+
+    def _record_unknown_target(self, target: ast.expr) -> None:
+        if isinstance(target, ast.Name):
+            self._record(target.id, None)
+        elif isinstance(target, (ast.List, ast.Tuple)):
+            for element in target.elts:
+                self._record_unknown_target(element)
+        elif isinstance(target, ast.Starred):
+            self._record_unknown_target(target.value)
+
+    def _visit_function(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
+        self._record(node.name, None)
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+        for argument in (
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+        ):
+            if argument.annotation is not None:
+                self.visit(argument.annotation)
+        if node.args.vararg is not None and node.args.vararg.annotation is not None:
+            self.visit(node.args.vararg.annotation)
+        if node.args.kwarg is not None and node.args.kwarg.annotation is not None:
+            self.visit(node.args.kwarg.annotation)
+        if node.returns is not None:
+            self.visit(node.returns)
+
+        lexical_parent = self.current_scope
+        if lexical_parent.kind == "class":
+            assert lexical_parent.parent is not None
+            lexical_parent = lexical_parent.parent
+        function_scope = _ScopeFacts("function", lexical_parent, {}, set(), set())
+        previous = self.current_scope
+        self.current_scope = function_scope
+        arguments = (
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+        )
+        for argument in arguments:
+            self._record(argument.arg, None)
+            self.node_scopes[argument] = function_scope
+        for optional_argument in (node.args.vararg, node.args.kwarg):
+            if optional_argument is not None:
+                self._record(optional_argument.arg, None)
+                self.node_scopes[optional_argument] = function_scope
+        for statement in node.body:
+            self.visit(statement)
+        self.current_scope = previous
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+        lexical_parent = self.current_scope
+        if lexical_parent.kind == "class":
+            assert lexical_parent.parent is not None
+            lexical_parent = lexical_parent.parent
+        lambda_scope = _ScopeFacts("lambda", lexical_parent, {}, set(), set())
+        previous = self.current_scope
+        self.current_scope = lambda_scope
+        for argument in (
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+        ):
+            self._record(argument.arg, None)
+            self.node_scopes[argument] = lambda_scope
+        for optional_argument in (node.args.vararg, node.args.kwarg):
+            if optional_argument is not None:
+                self._record(optional_argument.arg, None)
+                self.node_scopes[optional_argument] = lambda_scope
+        self.visit(node.body)
+        self.current_scope = previous
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._record(node.name, None)
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for base in node.bases:
+            self.visit(base)
+        for keyword in node.keywords:
+            self.visit(keyword.value)
+        class_scope = _ScopeFacts("class", self.current_scope, {}, set(), set())
+        previous = self.current_scope
+        self.current_scope = class_scope
+        for statement in node.body:
+            self.visit(statement)
+        self.current_scope = previous
+
+    def _visit_comprehension(
+        self,
+        generators: list[ast.comprehension],
+        values: tuple[ast.expr, ...],
+    ) -> None:
+        first, *remaining = generators
+        self.visit(first.iter)
+        lexical_parent = self.current_scope
+        if lexical_parent.kind == "class":
+            assert lexical_parent.parent is not None
+            lexical_parent = lexical_parent.parent
+        comprehension_scope = _ScopeFacts("comprehension", lexical_parent, {}, set(), set())
+        previous = self.current_scope
+        self.current_scope = comprehension_scope
+        self._record_unknown_target(first.target)
+        self.visit(first.target)
+        for condition in first.ifs:
+            self.visit(condition)
+        for generator in remaining:
+            self.visit(generator.iter)
+            self._record_unknown_target(generator.target)
+            self.visit(generator.target)
+            for condition in generator.ifs:
+                self.visit(condition)
+        for value in values:
+            self.visit(value)
+        self.current_scope = previous
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_comprehension(node.generators, (node.elt,))
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._visit_comprehension(node.generators, (node.elt,))
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._visit_comprehension(node.generators, (node.elt,))
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_comprehension(node.generators, (node.key, node.value))
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.visit(node.value)
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                self._record(target.id, node.value)
             else:
-                rendered = _constant_string(value, constants)
-            if rendered is None:
-                return None
-            parts.append(rendered)
-        return "".join(parts)
-    return None
+                self._record_unknown_target(target)
+            self.visit(target)
 
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self.visit(node.value)
+        self.visit(node.annotation)
+        if isinstance(node.target, ast.Name):
+            self._record(node.target.id, node.value)
+        else:
+            self._record_unknown_target(node.target)
+        self.visit(node.target)
 
-def _constant_bindings(tree: ast.Module) -> dict[str, str]:
-    assignments: dict[str, list[ast.AST | None]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    assignments.setdefault(target.id, []).append(node.value)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            assignments.setdefault(node.target.id, []).append(node.value)
-        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
-            assignments.setdefault(node.target.id, []).append(None)
-        elif isinstance(node, ast.arg) and node.arg in assignments:
-            assignments[node.arg].append(None)
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self.visit(node.value)
+        self._record_unknown_target(node.target)
+        self.visit(node.target)
 
-    constants: dict[str, str] = {}
-    changed = True
-    while changed:
-        changed = False
-        for name, values in assignments.items():
-            if name in constants or len(values) != 1 or values[0] is None:
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self.visit(node.value)
+        if isinstance(node.target, ast.Name):
+            self._record(node.target.id, node.value)
+        else:
+            self._record_unknown_target(node.target)
+        self.visit(node.target)
+
+    def visit_Delete(self, node: ast.Delete) -> None:
+        for target in node.targets:
+            self._record_unknown_target(target)
+            self.visit(target)
+
+    def _visit_for(self, node: ast.For | ast.AsyncFor) -> None:
+        self.visit(node.iter)
+        self._record_unknown_target(node.target)
+        self.visit(node.target)
+        for statement in (*node.body, *node.orelse):
+            self.visit(statement)
+
+    def visit_For(self, node: ast.For) -> None:
+        self._visit_for(node)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self._visit_for(node)
+
+    def _visit_with(self, node: ast.With | ast.AsyncWith) -> None:
+        for item in node.items:
+            self.visit(item.context_expr)
+            if item.optional_vars is not None:
+                self._record_unknown_target(item.optional_vars)
+                self.visit(item.optional_vars)
+        for statement in node.body:
+            self.visit(statement)
+
+    def visit_With(self, node: ast.With) -> None:
+        self._visit_with(node)
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        self._visit_with(node)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.type is not None:
+            self.visit(node.type)
+        if node.name is not None:
+            self._record(node.name, None)
+        for statement in node.body:
+            self.visit(statement)
+
+    def visit_Global(self, node: ast.Global) -> None:
+        self.current_scope.global_names.update(node.names)
+        for name in node.names:
+            self._record(name, None)
+
+    def visit_Nonlocal(self, node: ast.Nonlocal) -> None:
+        self.current_scope.nonlocal_names.update(node.names)
+        for name in node.names:
+            self._record(name, None)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            bound_name = alias.asname or alias.name.split(".", maxsplit=1)[0]
+            identity: _Identity | None = None
+            if alias.name == "importlib" or (
+                alias.asname is None and alias.name.startswith("importlib.")
+            ):
+                identity = _Identity.IMPORTLIB_MODULE
+            elif alias.name == "builtins":
+                identity = _Identity.BUILTINS_MODULE
+            self._record(bound_name, identity)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if node.level == 0 and node.module == "importlib" and alias.name == "*":
+                self._record("import_module", _Identity.DYNAMIC_IMPORT)
                 continue
-            value = _constant_string(values[0], constants)
-            if value is not None:
-                constants[name] = value
-                changed = True
-    return constants
+            identity: _Identity | None = None
+            if node.level == 0 and node.module == "importlib" and alias.name == "import_module":
+                identity = _Identity.DYNAMIC_IMPORT
+            elif node.level == 0 and node.module == "builtins":
+                identity = {
+                    "__import__": _Identity.DYNAMIC_IMPORT,
+                    "getattr": _Identity.GETATTR,
+                    "vars": _Identity.VARS,
+                }.get(alias.name)
+            self._record(alias.asname or alias.name, identity)
+
+    def scope_for(self, node: ast.AST) -> _ScopeFacts:
+        return self.node_scopes[node]
+
+    def resolve(self, node: ast.AST, scope: _ScopeFacts | None = None) -> _Resolved:
+        return self._resolve(node, scope or self.scope_for(node), set())
+
+    def _resolve(
+        self,
+        node: ast.AST,
+        scope: _ScopeFacts,
+        seen: set[tuple[int, str]],
+    ) -> _Resolved:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name):
+            return self._resolve_name(node.id, scope, seen)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = self._resolve(node.left, scope, seen.copy())
+            right = self._resolve(node.right, scope, seen.copy())
+            if isinstance(left, str) and isinstance(right, str):
+                return left + right
+            return None
+        if isinstance(node, ast.JoinedStr):
+            parts: list[str] = []
+            for value in node.values:
+                expression = value.value if isinstance(value, ast.FormattedValue) else value
+                rendered = self._resolve(expression, scope, seen.copy())
+                if not isinstance(rendered, str):
+                    return None
+                parts.append(rendered)
+            return "".join(parts)
+        if isinstance(node, ast.Attribute):
+            owner = self._resolve(node.value, scope, seen)
+            if owner is _Identity.IMPORTLIB_MODULE and node.attr == "import_module":
+                return _Identity.DYNAMIC_IMPORT
+            if owner is _Identity.BUILTINS_MODULE:
+                return {
+                    "__import__": _Identity.DYNAMIC_IMPORT,
+                    "getattr": _Identity.GETATTR,
+                    "vars": _Identity.VARS,
+                }.get(node.attr)
+        return None
+
+    def _resolve_name(
+        self,
+        name: str,
+        scope: _ScopeFacts,
+        seen: set[tuple[int, str]],
+    ) -> _Resolved:
+        key = (id(scope), name)
+        if key in seen:
+            return None
+        seen.add(key)
+        if name in scope.global_names or name in scope.nonlocal_names:
+            return None
+        if name in scope.writes:
+            values = scope.writes[name]
+            if len(values) != 1 or values[0] is None:
+                return None
+            value = values[0]
+            if isinstance(value, _Identity):
+                return value
+            return self._resolve(value, scope, seen)
+        if scope.parent is not None:
+            return self._resolve_name(name, scope.parent, seen)
+        return {
+            "__import__": _Identity.DYNAMIC_IMPORT,
+            "getattr": _Identity.GETATTR,
+            "vars": _Identity.VARS,
+        }.get(name)
 
 
-def _dynamic_import_aliases(
-    tree: ast.Module,
-) -> tuple[set[str], set[str], set[str]]:
-    importlib_modules: set[str] = set()
-    builtins_modules: set[str] = set()
-    import_functions = {"__import__"}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "importlib":
-                    importlib_modules.add(alias.asname or alias.name)
-                elif alias.name == "builtins":
-                    builtins_modules.add(alias.asname or alias.name)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0:
-            for alias in node.names:
-                if (node.module == "importlib" and alias.name == "import_module") or (
-                    node.module == "builtins" and alias.name == "__import__"
-                ):
-                    import_functions.add(alias.asname or alias.name)
-    return importlib_modules, builtins_modules, import_functions
-
-
-def _is_dynamic_import_call(
-    node: ast.Call,
-    importlib_modules: set[str],
-    builtins_modules: set[str],
-    import_functions: set[str],
-) -> bool:
-    if isinstance(node.func, ast.Name):
-        return node.func.id in import_functions
-    if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
-        return False
-    if node.func.attr == "import_module":
-        return node.func.value.id in importlib_modules
-    if node.func.attr == "__import__":
-        return node.func.value.id in builtins_modules
-    return False
+def _call_argument(node: ast.Call, position: int, keyword: str) -> ast.expr | None:
+    if len(node.args) > position:
+        return node.args[position]
+    return next((item.value for item in node.keywords if item.arg == keyword), None)
 
 
 def _dynamic_broker_import_violations(path: Path, package_root: Path) -> list[str]:
     tree = _parse(path)
-    constants = _constant_bindings(tree)
-    import_aliases = _dynamic_import_aliases(tree)
+    facts = _LexicalFacts(tree)
     violations: list[str] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not node.args:
+        if not isinstance(node, ast.Call):
             continue
-        if not _is_dynamic_import_call(node, *import_aliases):
+        if facts.resolve(node.func, facts.scope_for(node)) is not _Identity.DYNAMIC_IMPORT:
             continue
-        module = _constant_string(node.args[0], constants)
-        if module is not None and _is_broker_module(module):
-            relative = _relative_path(path, package_root)
-            violations.append(f"{relative}:{node.lineno}: dynamic broker import {module}")
+        target = _call_argument(node, 0, "name")
+        module = None if target is None else facts.resolve(target, facts.scope_for(node))
+        if isinstance(module, str) and not _is_broker_module(module):
+            continue
+        relative = _relative_path(path, package_root)
+        description = module if isinstance(module, str) else "unresolved target"
+        violations.append(f"{relative}:{node.lineno}: dynamic broker import {description}")
     return violations
 
 
-def _dynamic_lookup_name(node: ast.Call, constants: dict[str, str] | None = None) -> str | None:
-    if isinstance(node.func, ast.Name) and node.func.id == "getattr" and len(node.args) >= 2:
-        return _constant_string(node.args[1], constants)
-    if isinstance(node.func, ast.Attribute) and node.func.attr == "getattr" and len(node.args) >= 2:
-        return _constant_string(node.args[1], constants)
-    if isinstance(node.func, ast.Attribute) and node.func.attr == "__getattribute__":
-        for argument in node.args:
-            value = _constant_string(argument, constants)
-            if value is not None:
-                return value
-    return None
-
-
-def _reflective_subscript_name(
-    node: ast.Subscript,
-    constants: dict[str, str] | None = None,
-) -> str | None:
-    source = node.value
-    is_vars_lookup = (
-        isinstance(source, ast.Call)
-        and isinstance(source.func, ast.Name)
-        and source.func.id == "vars"
-        and len(source.args) == 1
+def _is_reflective_mapping(node: ast.AST, facts: _LexicalFacts, scope: _ScopeFacts) -> bool:
+    return (isinstance(node, ast.Call) and facts.resolve(node.func, scope) is _Identity.VARS) or (
+        isinstance(node, ast.Attribute) and node.attr == "__dict__"
     )
-    is_dict_lookup = isinstance(source, ast.Attribute) and source.attr == "__dict__"
-    if not is_vars_lookup and not is_dict_lookup:
+
+
+def _reflection_lookup(
+    node: ast.AST,
+    facts: _LexicalFacts,
+) -> _ReflectionLookup | None:
+    if not isinstance(node, (ast.Call, ast.Subscript)):
         return None
-    return _constant_string(node.slice, constants)
+    scope = facts.scope_for(node)
+    name_expression: ast.expr | None = None
+    if isinstance(node, ast.Call):
+        if facts.resolve(node.func, scope) is _Identity.GETATTR:
+            name_expression = _call_argument(node, 1, "name")
+        elif isinstance(node.func, ast.Attribute) and node.func.attr == "__getattribute__":
+            name_expression = _call_argument(node, 0, "name")
+        elif (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and _is_reflective_mapping(node.func.value, facts, scope)
+        ):
+            name_expression = _call_argument(node, 0, "key")
+        else:
+            return None
+    elif isinstance(node, ast.Subscript) and _is_reflective_mapping(node.value, facts, scope):
+        name_expression = node.slice
+    else:
+        return None
+    name = None if name_expression is None else facts.resolve(name_expression, scope)
+    return _ReflectionLookup(name if isinstance(name, str) else None)
 
 
 def _annotation_values(tree: ast.Module) -> tuple[ast.expr, ...]:
@@ -368,19 +660,16 @@ def _forbidden_reference_violations(
     forbidden_names: frozenset[str],
 ) -> list[str]:
     tree = _parse(path)
-    constants = _constant_bindings(tree)
+    facts = _LexicalFacts(tree)
     lines: set[int] = set()
     for node in ast.walk(tree):
+        reflection = _reflection_lookup(node, facts)
         forbidden_reference = (
             (isinstance(node, ast.Name) and node.id in forbidden_names)
             or (isinstance(node, ast.Attribute) and node.attr in forbidden_names)
             or (
-                isinstance(node, ast.Call)
-                and _dynamic_lookup_name(node, constants) in forbidden_names
-            )
-            or (
-                isinstance(node, ast.Subscript)
-                and _reflective_subscript_name(node, constants) in forbidden_names
+                reflection is not None
+                and (reflection.name is None or reflection.name in forbidden_names)
             )
         )
         if forbidden_reference:
@@ -513,37 +802,92 @@ def _place_order_definition_sites(package_root: Path) -> tuple[tuple[Path, str],
     return tuple((path, kind) for path, _lineno, kind in sorted(sites))
 
 
+def _class_place_order_members(tree: ast.Module) -> dict[str, list[tuple[str, ...]]]:
+    classes: dict[str, list[tuple[str, ...]]] = {}
+
+    def collect(body: list[ast.stmt], prefix: str = "") -> None:
+        for statement in body:
+            if not isinstance(statement, ast.ClassDef):
+                continue
+            qualified_name = f"{prefix}.{statement.name}" if prefix else statement.name
+            kinds: list[str] = []
+            for member in statement.body:
+                if isinstance(member, ast.AsyncFunctionDef) and member.name == "place_order":
+                    kinds.append("async")
+                elif isinstance(member, ast.FunctionDef) and member.name == "place_order":
+                    kinds.append("sync")
+                elif isinstance(member, (ast.Assign, ast.AnnAssign)) and (
+                    _assignment_defines_place_order(member)
+                ):
+                    kinds.append("assignment")
+            classes.setdefault(qualified_name, []).append(tuple(kinds))
+            collect(statement.body, qualified_name)
+
+    collect(tree.body)
+    return classes
+
+
+def _is_broker_adapter_module(path: Path) -> bool:
+    return (
+        len(path.parts) >= 2
+        and path.parts[0] == "brokers"
+        and path.name not in {"__init__.py", "errors.py", "protocols.py"}
+    )
+
+
 def _place_order_use_sites(package_root: Path) -> set[Path]:
     sites: set[Path] = set()
     for path in _python_files(package_root):
+        relative = _relative_path(path, package_root)
         tree = _parse(path)
-        constants = _constant_bindings(tree)
-        unsafe = any(
-            (isinstance(node, ast.Attribute) and node.attr == "place_order")
-            or (
-                isinstance(node, ast.Call)
-                and _dynamic_lookup_name(node, constants) == "place_order"
-            )
-            or (
-                isinstance(node, ast.Subscript)
-                and _reflective_subscript_name(node, constants) == "place_order"
-            )
-            for node in ast.walk(tree)
-        )
+        facts = _LexicalFacts(tree)
+        unsafe = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "place_order":
+                unsafe = True
+                break
+            reflection = _reflection_lookup(node, facts)
+            if reflection is not None and (
+                reflection.name == "place_order"
+                or (reflection.name is None and _is_broker_adapter_module(relative))
+            ):
+                unsafe = True
+                break
         if unsafe:
-            sites.add(_relative_path(path, package_root))
+            sites.add(relative)
     return sites
 
 
 def _definition_allowlist_violations(
     package_root: Path,
-    allowlist: frozenset[Path],
+    allowlist: frozenset[tuple[Path, str]],
 ) -> set[Path]:
-    return {
+    allowed_paths = {path for path, _qualified_name in allowlist}
+    violations = {
         path
         for path, kind in _place_order_definition_sites(package_root)
-        if path not in allowlist or kind != "async"
+        if path not in allowed_paths or kind != "async"
     }
+    definitions_by_path: dict[Path, list[str]] = {}
+    for path, kind in _place_order_definition_sites(package_root):
+        definitions_by_path.setdefault(path, []).append(kind)
+    for path in allowed_paths:
+        reviewed_names = {
+            qualified_name for allowed_path, qualified_name in allowlist if allowed_path == path
+        }
+        source_path = package_root / path
+        if not source_path.is_file():
+            violations.add(path)
+            continue
+        class_members = _class_place_order_members(_parse(source_path))
+        if any(class_members.get(name) != [("async",)] for name in reviewed_names):
+            violations.add(path)
+        definition_kinds = definitions_by_path.get(path, [])
+        if len(definition_kinds) != len(reviewed_names) or any(
+            kind != "async" for kind in definition_kinds
+        ):
+            violations.add(path)
+    return violations
 
 
 def _write_module(package_root: Path, relative: str, source: str) -> Path:
@@ -727,6 +1071,217 @@ def test_constant_dynamic_imports_respect_exact_broker_boundary(
 @pytest.mark.parametrize(
     ("area", "relative"),
     (
+        ("forbidden", "risk/dynamic_alias.py"),
+        ("cli", "cli/dynamic_alias.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import importlib\n"
+        "loader = importlib.import_module\n"
+        "module = loader(name=runtime_module_name())\n",
+        "from importlib import import_module\n"
+        "loader = import_module\n"
+        "module = loader(name=runtime_module_name())\n",
+        "loader = __import__\nmodule = loader(name=runtime_module_name())\n",
+        "from builtins import __import__ as loader\nmodule = loader(name=runtime_module_name())\n",
+        "import builtins\n"
+        "loader = builtins.__import__\n"
+        "module = loader(name=runtime_module_name())\n",
+        "import importlib\nmodule = importlib.import_module(name=runtime_module_name())\n",
+    ),
+)
+def test_dynamic_import_aliases_and_unresolved_keyword_targets_fail_closed(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+    source: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(package_root, relative, source)
+    assert _fixture_boundary_violations(package_root, area)
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/dynamic_runtime.py"),
+        ("cli", "cli/dynamic_runtime.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+def test_direct_positional_unresolved_dynamic_import_fails_closed(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        relative,
+        "import importlib\n"
+        "MODULE = runtime_module_name()\n"
+        "module = importlib.import_module(MODULE)\n",
+    )
+    assert _fixture_boundary_violations(package_root, area)
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/scoped_import.py"),
+        ("cli", "cli/scoped_import.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+def test_dynamic_import_constants_resolve_in_lexical_scope(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        relative,
+        "import importlib\n"
+        "def blocked():\n"
+        "    TARGET = 'trading_bot.' + 'brokers'\n"
+        "    return importlib.import_module(name=TARGET)\n"
+        "def allowed():\n"
+        "    TARGET = 'trading_bot.' + 'brokersafe'\n"
+        "    return importlib.import_module(name=TARGET)\n",
+    )
+    violations = _fixture_boundary_violations(package_root, area)
+    assert len(violations) == 1
+    assert ":4:" in violations[0]
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/dynamic_alias.py"),
+        ("cli", "cli/dynamic_alias.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+def test_assigned_dynamic_import_alias_allows_proven_brokersafe_target(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        relative,
+        "import importlib\n"
+        "loader = importlib.import_module\n"
+        "module = loader(name='trading_bot.' + 'brokersafe')\n",
+    )
+    assert _fixture_boundary_violations(package_root, area) == []
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/importlib_util.py"),
+        ("cli", "cli/importlib_util.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+def test_top_level_importlib_binding_from_submodule_import_is_recognized(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        relative,
+        "import importlib.util\n"
+        "module = importlib.import_module('trading_bot.brokers.protocols')\n",
+    )
+    assert _fixture_boundary_violations(package_root, area)
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/importlib_star.py"),
+        ("cli", "cli/importlib_star.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+def test_importlib_star_import_exposes_dynamic_import_callable(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        relative,
+        "from importlib import *\nmodule = import_module(runtime_module_name())\n",
+    )
+    assert _fixture_boundary_violations(package_root, area)
+
+
+@pytest.mark.parametrize(
+    ("area", "relative", "import_source"),
+    (
+        ("forbidden", "risk/importlib_control.py", "import importlib.util"),
+        ("cli", "cli/importlib_control.py", "import importlib.util"),
+        ("recovery", "execution/recovery.py", "import importlib.util"),
+        ("forbidden", "risk/importlib_control.py", "from importlib import *"),
+        ("cli", "cli/importlib_control.py", "from importlib import *"),
+        ("recovery", "execution/recovery.py", "from importlib import *"),
+    ),
+)
+def test_new_importer_forms_preserve_exact_brokersafe_allowance(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+    import_source: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        relative,
+        f"{import_source}\nmodule = importlib.import_module('trading_bot.brokersafe')\n"
+        if import_source == "import importlib.util"
+        else f"{import_source}\nmodule = import_module('trading_bot.brokersafe')\n",
+    )
+    assert _fixture_boundary_violations(package_root, area) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import importlib\ndef load(TARGET):\n    return importlib.import_module(TARGET)\n",
+        "import importlib\n"
+        "TARGET = 'trading_bot.brokersafe'\n"
+        "TARGET += runtime_suffix()\n"
+        "module = importlib.import_module(TARGET)\n",
+        "import importlib\n"
+        "TARGET = 'trading_bot.brokersafe'\n"
+        "del TARGET\n"
+        "TARGET = runtime_module_name()\n"
+        "module = importlib.import_module(TARGET)\n",
+        "import importlib\n"
+        "TARGET = 'trading_bot.brokersafe'\n"
+        "modules = [importlib.import_module(TARGET) for TARGET in runtime_module_names()]\n",
+    ),
+)
+def test_uncertain_lexical_import_targets_fail_closed(tmp_path: Path, source: str) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(package_root, "risk/uncertain_import.py", source)
+    assert _forbidden_layer_import_violations(package_root)
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
         ("forbidden", "risk/reflection.py"),
         ("cli", "cli/reflection.py"),
         ("recovery", "execution/recovery.py"),
@@ -746,12 +1301,92 @@ def test_reflective_constant_broker_place_subscript_is_rejected(
     assert _fixture_boundary_violations(package_root, area)
 
 
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/reflection.py"),
+        ("cli", "cli/reflection.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+@pytest.mark.parametrize(
+    "source",
+    (
+        "NAME = 'Broker' + 'Place'\ncapability = vars(module).get(NAME)\n",
+        "NAME = 'BrokerPlace'\ncapability = module.__dict__.get(NAME)\n",
+        "NAME = 'BrokerPlace'\ncapability = vars(module)[NAME]\n",
+        "NAME = 'BrokerPlace'\ncapability = module.__dict__[NAME]\n",
+        "NAME = 'BrokerPlace'\nlookup = getattr\ncapability = lookup(module, NAME)\n",
+        "NAME = 'BrokerPlace'\nfields = vars\ncapability = fields(module).get(NAME)\n",
+        "def blocked(module):\n"
+        "    NAME = 'BrokerPlace'\n"
+        "    return vars(module).get(NAME)\n"
+        "def allowed(module):\n"
+        "    NAME = 'health_check'\n"
+        "    return vars(module).get(NAME)\n",
+    ),
+)
+def test_reflective_mapping_get_rejects_scoped_broker_place_names(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+    source: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(package_root, relative, source)
+    assert _fixture_boundary_violations(package_root, area)
+
+
+@pytest.mark.parametrize(
+    ("area", "relative"),
+    (
+        ("forbidden", "risk/unresolved_reflection.py"),
+        ("cli", "cli/unresolved_reflection.py"),
+        ("recovery", "execution/recovery.py"),
+    ),
+)
+def test_unresolved_reflective_capability_lookup_fails_closed(
+    tmp_path: Path,
+    area: str,
+    relative: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        relative,
+        "NAME = runtime_name()\ncapability = vars(module).get(NAME)\n",
+    )
+    assert _fixture_boundary_violations(package_root, area)
+
+
+def test_unresolved_reflection_outside_restricted_areas_remains_allowed(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        "config/loader.py",
+        "NAME = runtime_name()\ncapability = vars(module).get(NAME)\n",
+    )
+    assert _forbidden_layer_import_violations(package_root) == []
+    assert _cli_violations(package_root) == []
+    assert _recovery_violations(package_root) == []
+
+
 def test_ordinary_mapping_subscript_is_not_a_capability_lookup(tmp_path: Path) -> None:
     package_root = _fixture_package(tmp_path)
     _write_module(
         package_root,
         "cli/labels.py",
         "labels = {'BrokerPlace': 'disabled'}\nlabel = labels['BrokerPlace']\n",
+    )
+    assert _cli_violations(package_root) == []
+
+
+def test_ordinary_mapping_get_is_not_a_capability_lookup(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        "cli/labels.py",
+        "labels = {'BrokerPlace': 'disabled'}\nlabel = labels.get('BrokerPlace')\n",
     )
     assert _cli_violations(package_root) == []
 
@@ -878,7 +1513,10 @@ def test_reviewed_adapter_declaration_is_not_mistaken_for_invocation(tmp_path: P
         "        return submission\n",
     )
     assert _place_order_definition_sites(package_root) == ((adapter, "async"),)
-    assert _definition_allowlist_violations(package_root, frozenset({adapter})) == set()
+    assert (
+        _definition_allowlist_violations(package_root, frozenset({(adapter, "ReviewedAdapter")}))
+        == set()
+    )
     assert _place_order_use_sites(package_root) == set()
 
 
@@ -893,7 +1531,9 @@ def test_allowlisted_adapter_path_still_rejects_sync_place_definition(tmp_path: 
         "        return submission\n",
     )
     assert _place_order_definition_sites(package_root) == ((adapter, "sync"),)
-    assert _definition_allowlist_violations(package_root, frozenset({adapter})) == {adapter}
+    assert _definition_allowlist_violations(
+        package_root, frozenset({(adapter, "ReviewedAdapter")})
+    ) == {adapter}
 
 
 def test_allowlisted_adapter_rejects_class_callable_place_assignment(tmp_path: Path) -> None:
@@ -908,7 +1548,9 @@ def test_allowlisted_adapter_rejects_class_callable_place_assignment(tmp_path: P
         "    place_order = provider_submit\n",
     )
     assert (adapter, "assignment") in _place_order_definition_sites(package_root)
-    assert _definition_allowlist_violations(package_root, frozenset({adapter})) == {adapter}
+    assert _definition_allowlist_violations(
+        package_root, frozenset({(adapter, "ReviewedAdapter")})
+    ) == {adapter}
 
 
 def test_allowlisted_adapter_rejects_inherited_place_exposure(tmp_path: Path) -> None:
@@ -923,7 +1565,77 @@ def test_allowlisted_adapter_rejects_inherited_place_exposure(tmp_path: Path) ->
         "class ReviewedAdapter(PlacementMixin):\n"
         "    pass\n",
     )
-    assert _definition_allowlist_violations(package_root, frozenset({adapter})) == {adapter}
+    assert _definition_allowlist_violations(
+        package_root, frozenset({(adapter, "ReviewedAdapter")})
+    ) == {adapter}
+
+
+def test_allowlisted_adapter_rejects_imported_place_base_without_override(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "from provider import PlacementBase\nclass ReviewedAdapter(PlacementBase):\n    pass\n",
+    )
+    assert _definition_allowlist_violations(
+        package_root, frozenset({(adapter, "ReviewedAdapter")})
+    ) == {adapter}
+
+
+def test_allowlisted_adapter_rejects_aliased_place_base_without_override(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "class PlacementBase:\n"
+        "    async def place_order(self, submission: object) -> object:\n"
+        "        return submission\n"
+        "BaseAlias = PlacementBase\n"
+        "class ReviewedAdapter(BaseAlias):\n"
+        "    pass\n",
+    )
+    assert _definition_allowlist_violations(
+        package_root, frozenset({(adapter, "ReviewedAdapter")})
+    ) == {adapter}
+
+
+def test_allowlisted_adapter_accepts_direct_async_override_of_imported_base(
+    tmp_path: Path,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "from provider import PlacementBase\n"
+        "class ReviewedAdapter(PlacementBase):\n"
+        "    async def place_order(self, submission: object) -> object:\n"
+        "        return submission\n",
+    )
+    assert (
+        _definition_allowlist_violations(package_root, frozenset({(adapter, "ReviewedAdapter")}))
+        == set()
+    )
+
+
+def test_allowlisted_adapter_path_rejects_extra_place_capable_class(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "class ReviewedAdapter:\n"
+        "    async def place_order(self, submission: object) -> object:\n"
+        "        return submission\n"
+        "class UnreviewedAdapter:\n"
+        "    async def place_order(self, submission: object) -> object:\n"
+        "        return submission\n",
+    )
+    assert _definition_allowlist_violations(
+        package_root, frozenset({(adapter, "ReviewedAdapter")})
+    ) == {adapter}
 
 
 def test_definition_inventory_preserves_multiple_same_file_declarations(tmp_path: Path) -> None:
@@ -975,7 +1687,44 @@ def test_adapter_place_invocation_and_alias_bypasses_are_denied(
     assert _place_order_use_sites(package_root) - PLACE_ORDER_USE_ALLOWLIST == {adapter}
 
 
-def test_unresolved_dynamic_and_ordinary_subscript_access_are_not_place_uses(
+@pytest.mark.parametrize(
+    "source",
+    (
+        "NAME = resolve_operation_name()\ncallback = getattr(broker, NAME)\n",
+        "NAME = resolve_operation_name()\ncallback = broker.__getattribute__(NAME)\n",
+        "NAME = resolve_operation_name()\ncallback = vars(broker)[NAME]\n",
+        "NAME = resolve_operation_name()\ncallback = vars(broker).get(NAME)\n",
+        "NAME = resolve_operation_name()\ncallback = broker.__dict__[NAME]\n",
+        "NAME = resolve_operation_name()\ncallback = broker.__dict__.get(NAME)\n",
+    ),
+)
+def test_adapter_unresolved_reflection_fails_closed_as_possible_place_use(
+    tmp_path: Path,
+    source: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(package_root, str(adapter), source)
+    assert _place_order_use_sites(package_root) == {adapter}
+
+
+def test_adapter_reflection_resolves_same_name_in_each_function_scope(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    adapter = Path("brokers/reviewed_adapter.py")
+    _write_module(
+        package_root,
+        str(adapter),
+        "def place_callback(broker):\n"
+        "    NAME = 'place_' + 'order'\n"
+        "    return getattr(broker, NAME)\n"
+        "def health_callback(broker):\n"
+        "    NAME = 'health_' + 'check'\n"
+        "    return getattr(broker, NAME)\n",
+    )
+    assert _place_order_use_sites(package_root) == {adapter}
+
+
+def test_known_safe_adapter_reflection_and_ordinary_mapping_access_are_allowed(
     tmp_path: Path,
 ) -> None:
     package_root = _fixture_package(tmp_path)
@@ -983,10 +1732,22 @@ def test_unresolved_dynamic_and_ordinary_subscript_access_are_not_place_uses(
     _write_module(
         package_root,
         str(adapter),
-        "NAME = resolve_operation_name()\n"
+        "NAME = 'health_' + 'check'\n"
         "callback = getattr(broker, NAME)\n"
+        "health = vars(broker).get(NAME)\n"
         "labels = {'place_order': 'disabled'}\n"
-        "label = labels['place_order']\n",
+        "label = labels['place_order']\n"
+        "other = labels.get('place_order')\n",
+    )
+    assert _place_order_use_sites(package_root) == set()
+
+
+def test_unresolved_config_getattr_is_not_treated_as_adapter_place_use(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        "config/loader.py",
+        "NAME = resolve_field_name()\nvalue = getattr(settings, NAME)\n",
     )
     assert _place_order_use_sites(package_root) == set()
 
