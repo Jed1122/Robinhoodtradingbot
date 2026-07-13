@@ -5,12 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, cast
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from mcp import types
 
@@ -40,6 +42,7 @@ _UUID_LIKE = re.compile(
     re.IGNORECASE,
 )
 _HIGH_ENTROPY_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])")
+_PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
 _PEM_PRIVATE_KEY = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)
 _BEARER_OR_HEADER_ASSIGNMENT = re.compile(
     r"(?:authorization|proxy-authorization|[a-z0-9-]*header|cookie|set-cookie)\s*[:=]"
@@ -52,27 +55,48 @@ _SECRET_ASSIGNMENT = re.compile(
     r"account[_-]?(?:id|number|uuid))\s*[:=]\s*\S+",
     re.IGNORECASE,
 )
+_ALIAS_ASSIGNMENT = re.compile(
+    r"(?:client[_-]?secret|password|passphrase|secret(?:[_-]?(?:value|key))?|"
+    r"session(?:[_-]?(?:id|key|token))?|acct(?:[_-]?id)?|"
+    r"account[_-]?(?:id|number|uuid|reference))\s*[:=]\s*\S+",
+    re.IGNORECASE,
+)
 _SENSITIVE_NAMES = frozenset(
     {
         "account",
         "accountid",
         "accountnumber",
+        "accountreference",
         "accountuuid",
         "accesstoken",
+        "acct",
+        "acctid",
         "apikey",
         "authorization",
+        "clientsecret",
         "cookie",
+        "password",
+        "passphrase",
         "privatekey",
         "refreshtoken",
+        "secret",
+        "secretkey",
+        "secretvalue",
         "setcookie",
         "sig",
         "signature",
         "signatures",
+        "session",
+        "sessionid",
+        "sessionkey",
+        "sessiontoken",
         "token",
         "xapikey",
     }
 )
 _VALUE_KEYWORDS = frozenset({"const", "default", "enum", "example", "examples"})
+_MAX_INSPECTION_TEXT_LENGTH = 65_536
+_MAX_PERCENT_DECODE_ROUNDS = 3
 
 _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
     "cancel_equity_order": (AssetClass.EQUITY, OperationKind.CANCEL),
@@ -121,9 +145,21 @@ class SanitizedToolSchema:
 
     name: str
     description: str | None
-    input_schema: dict[str, JsonValue]
-    output_schema: dict[str, JsonValue] | None
+    _input_schema_json: str
+    _output_schema_json: str | None
     schema_sha256: str
+
+    @property
+    def input_schema(self) -> dict[str, JsonValue]:
+        """Return a detached input-schema view."""
+        return _decode_schema_object(self._input_schema_json)
+
+    @property
+    def output_schema(self) -> dict[str, JsonValue] | None:
+        """Return a detached output-schema view, preserving explicit null."""
+        if self._output_schema_json is None:
+            return None
+        return _decode_schema_object(self._output_schema_json)
 
     def as_json(self) -> dict[str, JsonValue]:
         """Return a detached exact-schema representation suitable for JSON."""
@@ -195,12 +231,12 @@ async def capture_tools_snapshot(
     params: types.PaginatedRequestParams | None = None
 
     while True:
-        result = (
-            await session.list_tools(params=params)
-            if params is not None
-            else await session.list_tools()
-        )
+        result = await _request_tools_page(session, params)
+        if type(result.tools) is not list:
+            raise CapabilitySnapshotError("MCP tools/list failed safely")
         for declared in result.tools:
+            if not isinstance(declared, types.Tool):
+                raise CapabilitySnapshotError("MCP tools/list failed safely")
             if declared.name in names:
                 raise DuplicateToolNameError("tools/list contains a duplicate tool name")
             names.add(declared.name)
@@ -208,6 +244,8 @@ async def capture_tools_snapshot(
         cursor = result.nextCursor
         if cursor is None:
             break
+        if type(cursor) is not str:
+            raise CapabilitySnapshotError("MCP tools/list failed safely")
         if not cursor or cursor in seen_cursors:
             raise PaginationCycleError("tools/list returned an invalid or repeated cursor")
         seen_cursors.add(cursor)
@@ -223,6 +261,25 @@ async def capture_tools_snapshot(
     )
 
 
+async def _request_tools_page(
+    session: ToolsListSession,
+    params: types.PaginatedRequestParams | None,
+) -> types.ListToolsResult:
+    result: types.ListToolsResult | None = None
+    failed = False
+    try:
+        result = (
+            await session.list_tools(params=params)
+            if params is not None
+            else await session.list_tools()
+        )
+    except Exception:
+        failed = True
+    if failed or not isinstance(result, types.ListToolsResult):
+        raise CapabilitySnapshotError("MCP tools/list failed safely") from None
+    return result
+
+
 async def write_tools_snapshot(
     session: ToolsListSession,
     output: Path,
@@ -230,10 +287,14 @@ async def write_tools_snapshot(
     observed_at: datetime | None = None,
 ) -> ToolsListSnapshot:
     """Validate a complete snapshot in memory, then write exactly one artifact."""
+    if output.is_symlink():
+        raise CapabilitySnapshotError("snapshot destination cannot be a symlink")
     snapshot = await capture_tools_snapshot(session, observed_at=observed_at)
     artifact = snapshot.as_json()
     payload = json.dumps(artifact, allow_nan=False, indent=2, sort_keys=True) + "\n"
-    output.write_text(payload, encoding="utf-8")
+    if output.is_symlink():
+        raise CapabilitySnapshotError("snapshot destination cannot be a symlink")
+    _atomic_private_write(output, payload)
     return snapshot
 
 
@@ -264,8 +325,8 @@ def _sanitize_tool(tool: types.Tool) -> SanitizedToolSchema:
     return SanitizedToolSchema(
         name=tool.name,
         description=tool.description,
-        input_schema=input_value,
-        output_schema=output_value,
+        _input_schema_json=_encode_json(input_value),
+        _output_schema_json=None if output_value is None else _encode_json(output_value),
         schema_sha256=digest,
     )
 
@@ -324,6 +385,50 @@ def _copy_json(value: object) -> JsonValue:
     raise CapabilitySnapshotError("schema contains a non-JSON value")
 
 
+def _encode_json(value: JsonValue) -> str:
+    return json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+
+
+def _decode_schema_object(value: str) -> dict[str, JsonValue]:
+    decoded: object = json.loads(value)
+    if type(decoded) is not dict:
+        raise RuntimeError("stored schema invariant failed")
+    return decoded
+
+
+def _atomic_private_write(output: Path, payload: str) -> None:
+    descriptor = -1
+    temporary: Path | None = None
+    try:
+        descriptor, raw_temporary = tempfile.mkstemp(
+            dir=output.parent,
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+        )
+        temporary = Path(raw_temporary)
+        os.fchmod(descriptor, 0o600)
+        stream = os.fdopen(descriptor, "w", encoding="utf-8", newline="")
+        descriptor = -1
+        with stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if output.is_symlink():
+            raise CapabilitySnapshotError("snapshot destination cannot be a symlink")
+        os.replace(temporary, output)
+        temporary = None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def _scan_sensitive(
     value: JsonValue,
     *,
@@ -351,47 +456,103 @@ def _scan_sensitive(
         if key == "properties" and type(item) is dict:
             assert isinstance(item, dict)
             for property_name, property_schema in item.items():
+                if _string_is_sensitive(property_name):
+                    raise UnsafeCapabilitySnapshot(
+                        "capability snapshot contains sensitive material"
+                    )
+                sensitive_label = _name_is_sensitive(property_name)
+                if (
+                    sensitive_label
+                    and type(property_schema) is not dict
+                    and _contains_value(property_schema)
+                ):
+                    raise UnsafeCapabilitySnapshot(
+                        "capability snapshot contains sensitive material"
+                    )
                 _scan_sensitive(
                     property_schema,
-                    sensitive_property=_normalize_name(property_name) in _SENSITIVE_NAMES,
+                    sensitive_property=sensitive_label,
                 )
             continue
-        if (
-            normalized in _SENSITIVE_NAMES
-            and not _looks_like_schema(item)
-            and _contains_value(item)
-        ):
+        sensitive_schema_alias = _name_is_sensitive(key) and _looks_like_schema(item)
+        if _name_is_sensitive(key) and not sensitive_schema_alias and _contains_value(item):
             raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
-        _scan_sensitive(item, sensitive_property=sensitive_property)
+        _scan_sensitive(
+            item,
+            sensitive_property=sensitive_property or sensitive_schema_alias,
+        )
 
 
 def _string_is_sensitive(value: str) -> bool:
-    if (
-        _PEM_PRIVATE_KEY.search(value)
-        or _BEARER_MATERIAL.search(value)
-        or _JWT_LIKE.search(value)
-        or _API_TOKEN_LIKE.search(value)
-        or _ACCOUNT_ID_LIKE.search(value)
-        or _UUID_LIKE.search(value)
-        or _HIGH_ENTROPY_TOKEN.search(value)
-        or _BEARER_OR_HEADER_ASSIGNMENT.search(value)
-        or _SECRET_ASSIGNMENT.search(value)
-    ):
+    if len(value) > _MAX_INSPECTION_TEXT_LENGTH:
         return True
     try:
-        parsed = urlsplit(value)
-    except ValueError:
+        candidates = _decoded_candidates(value)
+    except (UnicodeError, ValueError):
         return True
-    if not parsed.query:
-        return False
-    return any(
-        _normalize_name(name) in _SENSITIVE_NAMES and bool(item)
-        for name, item in parse_qsl(parsed.query, keep_blank_values=True)
-    )
+    for candidate in candidates:
+        if (
+            _PEM_PRIVATE_KEY.search(candidate)
+            or _BEARER_MATERIAL.search(candidate)
+            or _JWT_LIKE.search(candidate)
+            or _API_TOKEN_LIKE.search(candidate)
+            or _ACCOUNT_ID_LIKE.search(candidate)
+            or _UUID_LIKE.search(candidate)
+            or _HIGH_ENTROPY_TOKEN.search(candidate)
+            or _BEARER_OR_HEADER_ASSIGNMENT.search(candidate)
+            or _SECRET_ASSIGNMENT.search(candidate)
+            or _ALIAS_ASSIGNMENT.search(candidate)
+        ):
+            return True
+        try:
+            parsed = urlsplit(candidate)
+        except ValueError:
+            return True
+        if parsed.username is not None or parsed.password is not None:
+            return True
+        for component in (parsed.query, parsed.fragment):
+            if not component:
+                continue
+            try:
+                pairs = parse_qsl(
+                    component,
+                    keep_blank_values=True,
+                    max_num_fields=128,
+                )
+            except ValueError:
+                return True
+            if any(_name_is_sensitive(name) and bool(item) for name, item in pairs):
+                return True
+    return False
+
+
+def _decoded_candidates(value: str) -> tuple[str, ...]:
+    candidates = [value]
+    decoded = value
+    for _ in range(_MAX_PERCENT_DECODE_ROUNDS):
+        next_value = unquote(decoded, errors="strict")
+        if next_value == decoded:
+            break
+        candidates.append(next_value)
+        decoded = next_value
+    if _PERCENT_ESCAPE.search(decoded):
+        raise ValueError
+    return tuple(candidates)
 
 
 def _normalize_name(value: str) -> str:
     return "".join(character for character in value.casefold() if character.isalnum())
+
+
+def _name_is_sensitive(value: str) -> bool:
+    normalized = _normalize_name(value)
+    return (
+        normalized in _SENSITIVE_NAMES
+        or "secret" in normalized
+        or "password" in normalized
+        or "passphrase" in normalized
+        or normalized.startswith(("account", "acct", "session"))
+    )
 
 
 def _contains_value(value: JsonValue) -> bool:

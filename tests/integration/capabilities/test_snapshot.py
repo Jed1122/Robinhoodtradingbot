@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import runpy
+import stat
+import traceback
 from collections.abc import Sequence
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,11 +17,14 @@ from mcp import types
 
 from trading_bot.capabilities import (
     CapabilityManifest,
+    CapabilitySnapshotError,
     DuplicateToolNameError,
     EvidenceLevel,
+    InvalidCapabilityManifest,
     OperationKind,
     PaginationCycleError,
     UnsafeCapabilitySnapshot,
+    canonical_sha256,
     capture_tools_list,
     capture_tools_snapshot,
     load_capability_manifest,
@@ -48,6 +55,31 @@ class FakeToolsListSession:
         assert cursor is None
         self.list_tools_params.append(params)
         return next(self._pages)
+
+
+class SecretFailingSession:
+    """External session failure whose message must never cross the boundary."""
+
+    async def list_tools(
+        self,
+        cursor: str | None = None,
+        *,
+        params: types.PaginatedRequestParams | None = None,
+    ) -> types.ListToolsResult:
+        raise RuntimeError("actual-secret-value")
+
+
+class PydanticFailingSession:
+    """Simulate MCP response validation that embeds invalid payload in its error."""
+
+    async def list_tools(
+        self,
+        cursor: str | None = None,
+        *,
+        params: types.PaginatedRequestParams | None = None,
+    ) -> types.ListToolsResult:
+        types.Tool.model_validate({"name": ["actual-secret-value"], "inputSchema": {}})
+        raise AssertionError("invalid MCP tool unexpectedly validated")
 
 
 def tool(
@@ -146,6 +178,21 @@ async def test_capture_rejects_repeated_pagination_cursor() -> None:
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
 
+@pytest.mark.parametrize("session", (SecretFailingSession(), PydanticFailingSession()))
+@pytest.mark.asyncio
+async def test_session_and_sdk_errors_are_generic_and_suppress_secret_tracebacks(
+    session: SecretFailingSession | PydanticFailingSession,
+) -> None:
+    with pytest.raises(CapabilitySnapshotError) as captured:
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "MCP tools/list failed safely"
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
 @pytest.mark.asyncio
 async def test_snapshot_preserves_exact_allowed_fields_and_explicit_null_output() -> None:
     input_schema: dict[str, object] = {
@@ -202,6 +249,74 @@ async def test_safe_snapshot_writes_complete_artifact(tmp_path: Path) -> None:
     assert artifact == snapshot.as_json()
     assert artifact["tools"][0]["inputSchema"] == snapshot.tools[0].input_schema
     assert artifact["tools"][0]["outputSchema"] is None
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    assert list(tmp_path.glob(".snapshot.json.*.tmp")) == []
+
+
+@pytest.mark.asyncio
+async def test_snapshot_write_is_atomic_and_cleans_temp_on_replace_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    output = tmp_path / "snapshot.json"
+    output.write_text("old-complete-artifact\n", encoding="utf-8")
+
+    def fail_replace(source: os.PathLike[str], destination: os.PathLike[str]) -> None:
+        raise OSError("synthetic replace failure")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="replace failure"):
+        await write_tools_snapshot(session, output, observed_at=OBSERVED_AT)
+
+    assert output.read_text(encoding="utf-8") == "old-complete-artifact\n"
+    assert list(tmp_path.glob(".snapshot.json.*.tmp")) == []
+
+
+@pytest.mark.asyncio
+async def test_snapshot_write_rejects_destination_symlink_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    target = tmp_path / "target.json"
+    target.write_text("target-must-remain\n", encoding="utf-8")
+    output = tmp_path / "snapshot.json"
+    output.symlink_to(target)
+
+    with pytest.raises(CapabilitySnapshotError, match="symlink"):
+        await write_tools_snapshot(session, output, observed_at=OBSERVED_AT)
+
+    assert output.is_symlink()
+    assert target.read_text(encoding="utf-8") == "target-must-remain\n"
+    assert list(tmp_path.glob(".snapshot.json.*.tmp")) == []
+
+
+@pytest.mark.asyncio
+async def test_captured_schema_and_artifact_views_are_detached_and_digest_stable() -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+    captured = snapshot.tools[0]
+    original_digest = captured.schema_sha256
+
+    first_view = captured.input_schema
+    first_view["mutated"] = True
+    first_artifact = snapshot.as_json()
+    tools_value = first_artifact["tools"]
+    assert isinstance(tools_value, list)
+    first_tool = tools_value[0]
+    assert isinstance(first_tool, dict)
+    first_tool["inputSchema"] = {"mutated": True}
+
+    assert "mutated" not in captured.input_schema
+    assert snapshot.as_json()["tools"] != first_artifact["tools"]
+    assert captured.schema_sha256 == original_digest
+    assert captured.schema_sha256 == canonical_sha256(
+        {
+            "inputSchema": captured.input_schema,
+            "outputSchema": captured.output_schema,
+        }
+    )
 
 
 @pytest.mark.parametrize(
@@ -253,7 +368,20 @@ async def test_capture_rejects_nested_sensitive_values_before_any_write(
     assert not output.exists()
 
 
-@pytest.mark.parametrize("keyword", ("account_number", "token", "signature", "x-api-key"))
+@pytest.mark.parametrize(
+    "keyword",
+    (
+        "account_number",
+        "token",
+        "signature",
+        "x-api-key",
+        "client_secret",
+        "password",
+        "session_id",
+        "acct_id",
+        "account_reference",
+    ),
+)
 @pytest.mark.asyncio
 async def test_sensitive_property_labels_without_values_are_allowed(keyword: str) -> None:
     session = FakeToolsListSession(
@@ -301,6 +429,163 @@ async def test_sensitive_schema_property_rejects_embedded_values(value_key: str)
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
 
+@pytest.mark.parametrize(
+    "property_name",
+    (
+        "client_secret",
+        "password",
+        "secret_value",
+        "session_id",
+        "acct_id",
+        "account_reference",
+    ),
+)
+@pytest.mark.asyncio
+async def test_sensitive_alias_defaults_nested_under_defs_are_rejected(
+    property_name: str,
+) -> None:
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "$defs": {
+                                "credentials": {
+                                    "type": "object",
+                                    "properties": {
+                                        property_name: {
+                                            "type": "string",
+                                            "default": "short-secret",
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize("definition_name", ("client_secret", "account_number"))
+@pytest.mark.asyncio
+async def test_sensitive_named_definition_default_is_rejected(
+    definition_name: str,
+) -> None:
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "$defs": {
+                                definition_name: {
+                                    "type": "string",
+                                    "default": "short-secret",
+                                }
+                            }
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "property_name",
+    (
+        "RHC123456789",
+        "Authorization: Bearer actual-secret-value",
+    ),
+)
+@pytest.mark.asyncio
+async def test_sensitive_material_used_as_property_key_is_rejected(property_name: str) -> None:
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "type": "object",
+                            "properties": {property_name: {"type": "string"}},
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.asyncio
+async def test_sensitive_property_label_with_direct_scalar_value_is_rejected() -> None:
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "type": "object",
+                            "properties": {"account_reference": "short-secret"},
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "sensitive_value",
+    (
+        "https://actual-secret-value@robinhood.com/path",
+        "https://robinhood.com/path?session_id=short-secret",
+        "https://robinhood.com/path?%73ession_id=short-secret",
+        "https://robinhood.com/path#session_id=short-secret",
+        "%61ccess_token%3Dactual-secret-value",
+        "%2561ccess_token%253Dactual-secret-value",
+        "%FFsession_id=short-secret",
+    ),
+)
+@pytest.mark.asyncio
+async def test_encoded_userinfo_query_and_fragment_secrets_are_rejected(
+    sensitive_value: str,
+) -> None:
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        input_schema={
+                            "type": "object",
+                            "properties": {
+                                "safe": {"type": "string", "description": sensitive_value}
+                            },
+                        }
+                    )
+                ]
+            )
+        ]
+    )
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
 @pytest.mark.asyncio
 async def test_unknown_name_remains_locked_discovery_despite_order_prose() -> None:
     session = FakeToolsListSession(
@@ -322,6 +607,109 @@ async def test_unknown_name_remains_locked_discovery_despite_order_prose() -> No
     assert record.operation_kind is OperationKind.DISCOVER
     assert record.locked_reason == "tool name is not in the reviewed operation allowlist"
     assert not record.satisfies(EvidenceLevel.SCHEMA_DECLARED)
+
+
+def fixture_payload() -> dict[str, object]:
+    """Return a detached mutable copy of the committed public fixture."""
+    value: object = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    assert type(value) is dict
+    return value
+
+
+def write_fixture(path: Path, payload: dict[str, object]) -> None:
+    path.write_text(json.dumps(payload, allow_nan=True), encoding="utf-8")
+
+
+@pytest.mark.parametrize("location", ("root", "record", "evidence"))
+def test_fixture_loader_rejects_extra_fields_at_every_level(
+    tmp_path: Path,
+    location: str,
+) -> None:
+    payload = deepcopy(fixture_payload())
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    evidence_values = record["evidence"]
+    assert isinstance(evidence_values, list)
+    evidence = evidence_values[0]
+    assert isinstance(evidence, dict)
+    target = {"root": payload, "record": record, "evidence": evidence}[location]
+    target["unexpected"] = "actual-secret-value"
+    path = tmp_path / "invalid.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest, match="fixture is invalid") as captured:
+        load_capability_manifest(path)
+
+    assert "actual-secret-value" not in str(captured.value)
+
+
+def test_fixture_loader_rejects_duplicate_keys_without_sensitive_context(
+    tmp_path: Path,
+) -> None:
+    raw = FIXTURE.read_text(encoding="utf-8").replace(
+        '"format_version": 1,',
+        '"format_version": 1, "format_version": "actual-secret-value",',
+        1,
+    )
+    path = tmp_path / "duplicate.json"
+    path.write_text(raw, encoding="utf-8")
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    assert str(captured.value) == "capability fixture is invalid"
+    assert "actual-secret-value" not in str(captured.value)
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_fixture_loader_rejects_nonfinite_json_constants(tmp_path: Path) -> None:
+    raw = FIXTURE.read_text(encoding="utf-8").replace(
+        '"format_version": 1',
+        '"format_version": NaN',
+        1,
+    )
+    path = tmp_path / "nonfinite.json"
+    path.write_text(raw, encoding="utf-8")
+
+    with pytest.raises(InvalidCapabilityManifest, match="fixture is invalid"):
+        load_capability_manifest(path)
+
+
+@pytest.mark.parametrize("version", (True, 1.0, "1", 2))
+def test_fixture_loader_requires_exact_integer_format_version(
+    tmp_path: Path,
+    version: object,
+) -> None:
+    payload = fixture_payload()
+    payload["format_version"] = version
+    path = tmp_path / "version.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest, match="fixture is invalid"):
+        load_capability_manifest(path)
+
+
+@pytest.mark.parametrize(
+    "checked_at",
+    (None, "not-a-timestamp", "2026-07-12T00:00:00-04:00", 123),
+)
+def test_fixture_loader_rejects_missing_invalid_or_non_utc_checked_at(
+    tmp_path: Path,
+    checked_at: object,
+) -> None:
+    payload = fixture_payload()
+    if checked_at is None:
+        del payload["checked_at"]
+    else:
+        payload["checked_at"] = checked_at
+    path = tmp_path / "checked-at.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest, match="fixture is invalid"):
+        load_capability_manifest(path)
 
 
 def test_documented_fixture_uses_only_public_evidence_and_locked_states() -> None:
@@ -450,3 +838,26 @@ def test_cli_help_promises_tools_list_only_and_no_account_data(
     assert captured_exit.value.code == 0
     assert "tools/list only" in captured.out
     assert "no account data" in captured.out
+
+
+def test_configured_cli_capture_failure_is_generic_and_writes_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    script_globals = runpy.run_path(str(SCRIPT))
+    main = script_globals["main"]
+    assert callable(main)
+
+    result = main(
+        ["--output", str(tmp_path / "snapshot.json")],
+        configured_session=SecretFailingSession(),
+    )
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert captured.out == ""
+    assert captured.err.strip() == "capability capture failed safely"
+    assert "actual-secret-value" not in captured.err
+    assert not (tmp_path / "snapshot.json").exists()

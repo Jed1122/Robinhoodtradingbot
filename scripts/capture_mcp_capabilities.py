@@ -43,7 +43,11 @@ def main(
     if configured_session is None:
         print(OFFICIAL_SETUP_COMMAND, file=sys.stderr)
         return 2
-    asyncio.run(write_tools_snapshot(configured_session, arguments.output))
+    try:
+        asyncio.run(write_tools_snapshot(configured_session, arguments.output))
+    except Exception:
+        print("capability capture failed safely", file=sys.stderr)
+        return 2
     return 0
 
 

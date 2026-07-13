@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Never
 
 from trading_bot.capabilities.models import (
     CapabilityEvidence,
@@ -15,7 +15,32 @@ from trading_bot.capabilities.models import (
     OperationKind,
     UnsupportedCapabilityError,
 )
+from trading_bot.clock import require_utc
 from trading_bot.domain import AssetClass
+
+_ROOT_FIELDS = frozenset({"format_version", "checked_at", "records"})
+_RECORD_FIELDS = frozenset(
+    {
+        "provider",
+        "operation",
+        "asset_class",
+        "operation_kind",
+        "evidence",
+        "limitations",
+        "locked_reason",
+    }
+)
+_EVIDENCE_FIELDS = frozenset(
+    {
+        "level",
+        "source_uri",
+        "observed_at",
+        "schema_sha256",
+        "authenticated",
+        "contains_account_data",
+        "notes",
+    }
+)
 
 __all__ = [
     "UnsupportedCapabilityError",
@@ -44,16 +69,30 @@ def require_capability(
 
 def load_capability_manifest(path: Path) -> CapabilityManifest:
     """Load a strict public-evidence fixture into validated immutable records."""
+    manifest: CapabilityManifest | None = None
+    invalid = False
     try:
-        raw: object = json.loads(path.read_text(encoding="utf-8"))
+        raw: object = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_nonfinite_constant,
+        )
         root = _mapping(raw)
-        if root.get("format_version") != 1:
+        _require_exact_fields(root, _ROOT_FIELDS)
+        if type(root["format_version"]) is not int or root["format_version"] != 1:
             raise ValueError
+        checked_at = datetime.fromisoformat(_string(root["checked_at"]).replace("Z", "+00:00"))
+        require_utc(checked_at)
         records_raw = _list(root["records"])
         records = tuple(_parse_record(item) for item in records_raw)
-    except (KeyError, TypeError, ValueError):
+        manifest = CapabilityManifest(records=records)
+    except MemoryError:
+        raise
+    except Exception:
+        invalid = True
+    if invalid or manifest is None:
         raise InvalidCapabilityManifest("capability fixture is invalid") from None
-    return CapabilityManifest(records=records)
+    return manifest
 
 
 def render_capability_matrix(manifest: CapabilityManifest) -> str:
@@ -85,6 +124,7 @@ def render_capability_matrix(manifest: CapabilityManifest) -> str:
 
 def _parse_record(raw: object) -> CapabilityRecord:
     value = _mapping(raw)
+    _require_exact_fields(value, _RECORD_FIELDS)
     return CapabilityRecord(
         provider=_string(value["provider"]),
         operation=_string(value["operation"]),
@@ -98,6 +138,7 @@ def _parse_record(raw: object) -> CapabilityRecord:
 
 def _parse_evidence(raw: object) -> CapabilityEvidence:
     value = _mapping(raw)
+    _require_exact_fields(value, _EVIDENCE_FIELDS)
     observed_at = datetime.fromisoformat(_string(value["observed_at"]).replace("Z", "+00:00"))
     return CapabilityEvidence(
         level=EvidenceLevel(_string(value["level"])),
@@ -131,6 +172,24 @@ def _mapping(value: object) -> dict[str, Any]:
     if type(value) is not dict or any(type(key) is not str for key in value):
         raise TypeError
     return value
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(value: str) -> Never:
+    raise ValueError
+
+
+def _require_exact_fields(value: dict[str, Any], expected: frozenset[str]) -> None:
+    if frozenset(value) != expected:
+        raise ValueError
 
 
 def _list(value: object) -> list[Any]:

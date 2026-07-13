@@ -73,7 +73,14 @@ The capture core accepts only a session exposing MCP 1.28.1 `list_tools`. It ret
 `name`, `description`, `inputSchema`, and explicit `outputSchema` (including `null`) plus
 a canonical digest over the named input/output schema object. It does not inspect full
 SDK objects, annotations, `_meta`, auth state, or account data, and it never invokes a
-declared tool.
+declared tool. Captured schema views are detached from immutable stored JSON so callers
+cannot mutate a schema away from its digest. Snapshot writes use a private `0600` sibling
+temporary file and atomic replacement; destination symlinks are rejected.
+
+The documented fixture loader requires duplicate-free finite JSON, exact root/record/
+evidence fields, format version integer `1`, and an aware UTC `checked_at`. Invalid
+fixtures and external MCP parser/session failures cross the boundary only as generic
+errors without including provider payload text.
 
 When no proven configured session is injected, the CLI exits with status 2, writes
 nothing, and prints:
