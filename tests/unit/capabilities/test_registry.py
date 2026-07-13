@@ -1,5 +1,6 @@
 """Tests for deterministic capability lookup and canonical hashing."""
 
+import traceback
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -54,6 +55,31 @@ def documented_record(
     )
 
 
+def forged_authenticated_write_manifest() -> tuple[CapabilityManifest, CapabilityRecord]:
+    """Forge exact nested objects that claim write evidence without its safeguards."""
+    evidence = object.__new__(CapabilityEvidence)
+    object.__setattr__(evidence, "level", EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED)
+    object.__setattr__(evidence, "source_uri", "Authorization: Bearer actual-secret-value")
+    object.__setattr__(evidence, "observed_at", NOW)
+    object.__setattr__(evidence, "schema_sha256", DIGEST)
+    object.__setattr__(evidence, "authenticated", False)
+    object.__setattr__(evidence, "contains_account_data", True)
+    object.__setattr__(evidence, "notes", ("forged evidence",))
+
+    record = object.__new__(CapabilityRecord)
+    object.__setattr__(record, "provider", "robinhood-trading")
+    object.__setattr__(record, "operation", "place_order")
+    object.__setattr__(record, "asset_class", AssetClass.EQUITY)
+    object.__setattr__(record, "operation_kind", OperationKind.PLACE)
+    object.__setattr__(record, "evidence", (evidence,))
+    object.__setattr__(record, "limitations", ())
+    object.__setattr__(record, "locked_reason", None)
+
+    manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(manifest, "records", (record,))
+    return manifest, record
+
+
 @pytest.mark.parametrize("records", ([], {"record"}, iter(())))
 def test_manifest_requires_exact_immutable_record_tuple(records: object) -> None:
     with pytest.raises(InvalidCapabilityManifest, match="immutable tuple"):
@@ -96,7 +122,10 @@ def test_find_returns_exact_provider_operation_match() -> None:
         )
     )
 
-    assert manifest.find(provider="target", operation="read") is target
+    found = manifest.find(provider="target", operation="read")
+
+    assert found == target
+    assert found is not target
 
 
 def test_find_rejects_missing_or_empty_keys() -> None:
@@ -112,15 +141,36 @@ def test_require_capability_returns_only_exact_unlocked_evidence() -> None:
     record = documented_record()
     manifest = CapabilityManifest(records=(record,))
 
-    assert (
+    result = require_capability(
+        manifest,
+        provider="robinhood-trading",
+        operation="get_quote",
+        minimum=EvidenceLevel.DOCUMENTED,
+    )
+
+    assert result == record
+    assert result is not record
+    assert result is not manifest.records[0]
+
+
+def test_forged_exact_nested_write_evidence_cannot_satisfy_capability_gate() -> None:
+    manifest, record = forged_authenticated_write_manifest()
+
+    assert not record.satisfies(EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED)
+    with pytest.raises(UnsupportedCapabilityError) as captured:
         require_capability(
             manifest,
             provider="robinhood-trading",
-            operation="get_quote",
-            minimum=EvidenceLevel.DOCUMENTED,
+            operation="place_order",
+            minimum=EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED,
         )
-        is record
-    )
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "requested capability does not have the required exact evidence"
+    assert "Authorization" not in rendered
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 @pytest.mark.parametrize(

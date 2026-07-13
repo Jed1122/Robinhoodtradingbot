@@ -62,6 +62,23 @@ COMPACT_SENSITIVE_NAMES = (
     "authheader",
     "authorizationheader",
 )
+GRAMMAR_SENSITIVE_NAMES = (
+    "api_keys",
+    "private_keys",
+    "signing_keys",
+    "authtoken",
+    "oauthtoken",
+    "bearertoken",
+    "secretkey",
+    "accesskeyid",
+    "clientsecret[]",
+    "apisecret",
+    "api_secrets",
+    "consumersecret",
+    "accesssecret",
+    "oauthclientsecret",
+    "authorizationtoken",
+)
 
 
 class FakeToolsListSession:
@@ -192,6 +209,25 @@ def direct_sanitized_tool(input_schema: dict[str, object]) -> SanitizedToolSchem
             {"inputSchema": input_schema, "outputSchema": None}  # type: ignore[dict-item]
         ),
     )
+
+
+def forged_sanitized_tool(
+    source: SanitizedToolSchema,
+    **changes: object,
+) -> SanitizedToolSchema:
+    """Build an exact dataclass instance without running its public constructor."""
+    forged = object.__new__(SanitizedToolSchema)
+    values: dict[str, object] = {
+        "name": source.name,
+        "description": source.description,
+        "_input_schema_json": source._input_schema_json,
+        "_output_schema_json": source._output_schema_json,
+        "schema_sha256": source.schema_sha256,
+    }
+    values.update(changes)
+    for field_name, field_value in values.items():
+        object.__setattr__(forged, field_name, field_value)
+    return forged
 
 
 @pytest.mark.asyncio
@@ -491,6 +527,92 @@ async def test_direct_tools_snapshot_construction_enforces_all_invariants() -> N
 
 
 @pytest.mark.asyncio
+async def test_direct_snapshot_reconstructs_and_stores_sanitized_tool_copies() -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    captured = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+    forged_safe_copy = forged_sanitized_tool(captured.tools[0])
+
+    rebuilt = ToolsListSnapshot(
+        provider=captured.provider,
+        observed_at=captured.observed_at,
+        tools=(forged_safe_copy,),
+        manifest=captured.manifest,
+    )
+
+    assert rebuilt.tools == captured.tools
+    assert rebuilt.tools[0] is not forged_safe_copy
+    assert rebuilt.manifest is not captured.manifest
+    assert rebuilt.manifest.records[0] is not captured.manifest.records[0]
+
+
+@pytest.mark.parametrize(
+    "forgery",
+    (
+        "unsafe_description",
+        "unsafe_schema",
+        "stale_digest",
+        "false_digest",
+        "wrong_schema_field",
+        "missing_schema_field",
+    ),
+)
+@pytest.mark.asyncio
+async def test_direct_snapshot_rejects_forged_exact_nested_tool_values(
+    forgery: str,
+) -> None:
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
+    captured = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+    original = captured.tools[0]
+    manifest = captured.manifest
+
+    if forgery == "unsafe_description":
+        forged = forged_sanitized_tool(original, description="safe=clientsecret=tiny")
+    elif forgery == "unsafe_schema":
+        unsafe_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {"auth_token": {"type": "string", "default": "tiny"}},
+        }
+        unsafe_digest = canonical_sha256(
+            {"inputSchema": unsafe_schema, "outputSchema": original.output_schema}  # type: ignore[dict-item]
+        )
+        forged = forged_sanitized_tool(
+            original,
+            _input_schema_json=json.dumps(unsafe_schema, separators=(",", ":")),
+            schema_sha256=unsafe_digest,
+        )
+        evidence = replace(manifest.records[0].evidence[0], schema_sha256=unsafe_digest)
+        manifest = CapabilityManifest(records=(replace(manifest.records[0], evidence=(evidence,)),))
+    elif forgery == "stale_digest":
+        changed_safe_schema = {"type": "object", "properties": {"symbol": {"type": "number"}}}
+        forged = forged_sanitized_tool(
+            original,
+            _input_schema_json=json.dumps(changed_safe_schema, separators=(",", ":")),
+        )
+    elif forgery == "false_digest":
+        false_digest = "0" * 64
+        forged = forged_sanitized_tool(original, schema_sha256=false_digest)
+        evidence = replace(manifest.records[0].evidence[0], schema_sha256=false_digest)
+        manifest = CapabilityManifest(records=(replace(manifest.records[0], evidence=(evidence,)),))
+    elif forgery == "wrong_schema_field":
+        forged = forged_sanitized_tool(original, _input_schema_json=123)
+    else:
+        forged = forged_sanitized_tool(original)
+        object.__delattr__(forged, "_output_schema_json")
+
+    with pytest.raises(CapabilitySnapshotError) as captured_error:
+        ToolsListSnapshot(
+            provider=captured.provider,
+            observed_at=captured.observed_at,
+            tools=(forged,),
+            manifest=manifest,
+        )
+
+    assert str(captured_error.value) == "snapshot tool is invalid"
+    assert captured_error.value.__cause__ is None
+    assert captured_error.value.__context__ is None
+
+
+@pytest.mark.asyncio
 async def test_direct_snapshot_rejects_equality_overriding_nested_record_forgery() -> None:
     session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
     snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
@@ -581,8 +703,19 @@ async def test_direct_snapshot_revalidates_nested_evidence_timestamp() -> None:
         expected_evidence.contains_account_data,
     )
     object.__setattr__(forged_evidence, "notes", expected_evidence.notes)
-    forged_record = replace(expected_record, evidence=(forged_evidence,))
-    forged_manifest = CapabilityManifest(records=(forged_record,))
+    forged_record = object.__new__(CapabilityRecord)
+    for field_name in (
+        "provider",
+        "operation",
+        "asset_class",
+        "operation_kind",
+        "limitations",
+        "locked_reason",
+    ):
+        object.__setattr__(forged_record, field_name, getattr(expected_record, field_name))
+    object.__setattr__(forged_record, "evidence", (forged_evidence,))
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
 
     with pytest.raises(CapabilitySnapshotError) as captured:
         ToolsListSnapshot(
@@ -1041,6 +1174,107 @@ async def test_compact_sensitive_names_are_rejected_across_schema_and_text_carri
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
 
+@pytest.mark.parametrize("alias", GRAMMAR_SENSITIVE_NAMES)
+@pytest.mark.parametrize(
+    "carrier",
+    (
+        "property_default",
+        "assignment",
+        "nested_assignment",
+        "query",
+        "fragment",
+        "encoded_query",
+        "path",
+    ),
+)
+@pytest.mark.asyncio
+async def test_sensitive_compound_grammar_rejects_plural_decorated_and_compact_aliases(
+    alias: str,
+    carrier: str,
+) -> None:
+    if carrier == "property_default":
+        input_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {alias: {"type": "string", "default": "tiny"}},
+        }
+    else:
+        encoded_alias = "".join(f"%{ord(character):02X}" for character in alias)
+        sensitive_text = {
+            "assignment": f"{alias}=tiny",
+            "nested_assignment": f"safe={alias}=tiny",
+            "query": f"https://robinhood.com/path?{alias}=tiny",
+            "fragment": f"https://robinhood.com/path#{alias}=tiny",
+            "encoded_query": f"https://robinhood.com/path?{encoded_alias}=tiny",
+            "path": f"https://robinhood.com/{alias}/tiny",
+        }[carrier]
+        input_schema = {
+            "type": "object",
+            "properties": {"safe_value": {"type": "string", "description": sensitive_text}},
+        }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "benign_name",
+    (
+        "author",
+        "signal",
+        "designation",
+        "assignment",
+        "accounting_period",
+        "session_duration",
+        "client_order_id",
+        "public_keys",
+        "authentication_method",
+        "api_version",
+        "keynote_title",
+        "secretary_name",
+        "consumer_sentiment",
+        "accessibility_label",
+        "clientele_segment",
+        "apiculture_method",
+        "authoritative_source",
+        "author[]",
+        "public_keys[]",
+        "client_order_id[]",
+    ),
+)
+@pytest.mark.parametrize(
+    "carrier",
+    ("property_default", "assignment", "nested_assignment", "query", "fragment", "path"),
+)
+@pytest.mark.asyncio
+async def test_sensitive_compound_grammar_preserves_benign_names_across_carriers(
+    benign_name: str,
+    carrier: str,
+) -> None:
+    if carrier == "property_default":
+        input_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {benign_name: {"type": "string", "default": "ordinary"}},
+        }
+    else:
+        benign_text = {
+            "assignment": f"{benign_name}=ordinary",
+            "nested_assignment": f"safe={benign_name}=ordinary",
+            "query": f"https://robinhood.com/path?{benign_name}=ordinary",
+            "fragment": f"https://robinhood.com/path#{benign_name}=ordinary",
+            "path": f"https://robinhood.com/{benign_name}/ordinary",
+        }[carrier]
+        input_schema = {
+            "type": "object",
+            "properties": {"safe_value": {"type": "string", "description": benign_text}},
+        }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].input_schema == input_schema
+
+
 @pytest.mark.parametrize("candidate_name", ("api\u200bkey", "tökén", "safe\x01name"))
 @pytest.mark.parametrize("carrier", ("property", "assignment", "query", "path"))
 @pytest.mark.asyncio
@@ -1098,6 +1332,8 @@ async def test_percent_encoded_sensitive_property_names_are_rejected(
         "#/$defs/access%5Fkey/tiny",
         "#/$defs/access_key%2Ftiny",
         "#/$defs/AuthToken/tiny",
+        "#/$defs/access_token~1tiny",
+        "#/$defs/access_token%7E1tiny",
     ),
 )
 @pytest.mark.asyncio
@@ -1113,12 +1349,47 @@ async def test_sensitive_local_ref_rejects_value_bearing_pointer_pairs(unsafe_re
         await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
 
 
+@pytest.mark.parametrize(
+    "unsafe_ref",
+    (
+        "#/$defs/Safe\x00Name",
+        "#/$defs/Safe\x1bName",
+        "#/$defs/Safe\u202eName",
+        "#/$defs/SaféName",
+        "#/$defs/Safe%00Name",
+    ),
+)
 @pytest.mark.asyncio
-async def test_sensitive_local_ref_allows_schema_only_terminal_definition_name() -> None:
+async def test_local_ref_rejects_unsafe_characters_in_every_decoded_pointer_segment(
+    unsafe_ref: str,
+) -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {"auth_token": {"$ref": unsafe_ref}},
+    }
+    session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
+
+    with pytest.raises(UnsafeCapabilitySnapshot):
+        await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+
+@pytest.mark.parametrize(
+    "safe_ref",
+    (
+        "#/$defs/AuthToken",
+        "#/$defs/Safe~0Name",
+        "#/$defs/Safe~01Name",
+        "#/properties/author",
+    ),
+)
+@pytest.mark.asyncio
+async def test_sensitive_local_ref_allows_safe_terminal_and_escaped_schema_names(
+    safe_ref: str,
+) -> None:
     input_schema: dict[str, object] = {
         "$defs": {"AuthToken": {"type": "string"}},
         "type": "object",
-        "properties": {"auth_token": {"$ref": "#/$defs/AuthToken"}},
+        "properties": {"auth_token": {"$ref": safe_ref}},
     }
     session = FakeToolsListSession([types.ListToolsResult(tools=[tool(input_schema=input_schema)])])
 
@@ -1550,6 +1821,90 @@ def test_fixture_loader_rejects_compact_sensitive_source_uri_path_pairs(
     assert captured.value.__context__ is None
 
 
+@pytest.mark.parametrize("alias", GRAMMAR_SENSITIVE_NAMES)
+def test_fixture_loader_rejects_nested_sensitive_compound_assignments(
+    tmp_path: Path,
+    alias: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    record["limitations"] = [f"safe={alias}=tiny"]
+    path = tmp_path / "nested-sensitive-compound.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    assert str(captured.value) == "capability fixture is invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize("alias", GRAMMAR_SENSITIVE_NAMES[:-1])
+def test_fixture_loader_rejects_sensitive_compound_source_uri_path_pairs(
+    tmp_path: Path,
+    alias: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    evidence_values = record["evidence"]
+    assert isinstance(evidence_values, list)
+    evidence = evidence_values[0]
+    assert isinstance(evidence, dict)
+    evidence["source_uri"] = f"https://robinhood.com/{alias}/tiny"
+    path = tmp_path / "sensitive-compound-source.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    assert str(captured.value) == "capability fixture is invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "unsafe_text", ("ordinary\x00text", "ordinary\x1btext", "ordinary\u202etext")
+)
+@pytest.mark.parametrize("field", ("limitations", "locked_reason", "notes"))
+def test_fixture_loader_rejects_control_and_bidi_freeform_text(
+    tmp_path: Path,
+    field: str,
+    unsafe_text: str,
+) -> None:
+    payload = fixture_payload()
+    records = payload["records"]
+    assert isinstance(records, list)
+    record = records[0]
+    assert isinstance(record, dict)
+    evidence_values = record["evidence"]
+    assert isinstance(evidence_values, list)
+    evidence = evidence_values[0]
+    assert isinstance(evidence, dict)
+    if field == "limitations":
+        record[field] = [unsafe_text]
+    elif field == "notes":
+        evidence[field] = [unsafe_text]
+    else:
+        record[field] = unsafe_text
+    path = tmp_path / "unsafe-freeform-control.json"
+    write_fixture(path, payload)
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        load_capability_manifest(path)
+
+    assert str(captured.value) == "capability fixture is invalid"
+    assert unsafe_text not in str(captured.value)
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
 def test_matrix_renderer_never_emits_sensitive_free_form_record_values() -> None:
     record = load_capability_manifest(FIXTURE).records[0]
     unsafe_evidence = replace(
@@ -1570,6 +1925,49 @@ def test_matrix_renderer_never_emits_sensitive_free_form_record_values() -> None
         assert str(captured.value) == "capability manifest contains unsafe text"
         assert captured.value.__cause__ is None
         assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize("alias", GRAMMAR_SENSITIVE_NAMES)
+def test_matrix_renderer_rejects_nested_sensitive_compound_assignments(alias: str) -> None:
+    record = load_capability_manifest(FIXTURE).records[0]
+    unsafe_record = replace(record, limitations=(f"safe={alias}=tiny",))
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        render_capability_matrix(CapabilityManifest(records=(unsafe_record,)))
+
+    assert str(captured.value) == "capability manifest contains unsafe text"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "unsafe_text", ("ordinary\x00text", "ordinary\x1btext", "ordinary\u202etext")
+)
+def test_matrix_renderer_rejects_control_and_bidi_text_from_forged_manifest(
+    unsafe_text: str,
+) -> None:
+    record = load_capability_manifest(FIXTURE).records[0]
+    forged_record = object.__new__(CapabilityRecord)
+    for field_name in (
+        "provider",
+        "operation",
+        "asset_class",
+        "operation_kind",
+        "evidence",
+        "locked_reason",
+    ):
+        object.__setattr__(forged_record, field_name, getattr(record, field_name))
+    object.__setattr__(forged_record, "limitations", (unsafe_text,))
+    forged_manifest = object.__new__(CapabilityManifest)
+    object.__setattr__(forged_manifest, "records", (forged_record,))
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        render_capability_matrix(forged_manifest)
+
+    assert str(captured.value) == "capability manifest contains unsafe text"
+    assert unsafe_text not in str(captured.value)
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 def test_documented_fixture_uses_only_public_evidence_and_locked_states() -> None:

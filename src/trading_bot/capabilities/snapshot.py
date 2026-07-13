@@ -24,6 +24,8 @@ from trading_bot.capabilities.models import (
     CapabilityRecord,
     EvidenceLevel,
     OperationKind,
+    has_unsafe_freeform_characters,
+    validated_manifest_copy,
 )
 from trading_bot.clock import require_utc
 from trading_bot.domain import AssetClass
@@ -59,7 +61,8 @@ _SECRET_ASSIGNMENT = re.compile(
     re.IGNORECASE,
 )
 _NAMED_ASSIGNMENT = re.compile(
-    r"(?P<name>[^\s&#:=]{1,128})\s*[:=]\s*(?P<value>[^\s&#]+)",
+    r"(?=(?:\A|(?<=[\s&#:=]))(?P<name>[^\s&#:=]{1,128})\s*[:=]\s*"
+    r"(?P<value>[^\s&#:=]+))",
     re.IGNORECASE,
 )
 _CAMEL_NAME_TOKEN = re.compile(r"[A-Z]+(?=[A-Z][a-z]|[0-9]|\Z)|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
@@ -97,32 +100,24 @@ _SENSITIVE_KEY_PREFIXES = frozenset(
         "client",
         "consumer",
         "private",
+        "secret",
         "signing",
     }
 )
 _SENSITIVE_SESSION_SUFFIXES = frozenset({"id", "key", "token", "cookie"})
-_COMPACT_SENSITIVE_NAMES = frozenset(
-    {
-        "apikey",
-        "xapikey",
-        "privatekey",
-        "signingkey",
-        "accesskey",
-        "clientkey",
-        "consumerkey",
-        "clientsecret",
-        "accesstoken",
-        "refreshtoken",
-        "sessionid",
-        "sessionkey",
-        "sessiontoken",
-        "sessioncookie",
-        "accountid",
-        "accountnumber",
-        "accountuuid",
-        "authheader",
-        "authorizationheader",
-    }
+_COMPACT_SENSITIVE_NAME_GRAMMAR = re.compile(
+    r"(?:"
+    r"x?api(?:key|keys|secret|secrets)|"
+    r"(?:private|signing|client|consumer|secret)(?:key|keys)|"
+    r"access(?:key|keys)(?:id|ids)?|"
+    r"(?:access|client|consumer)(?:secret|secrets)|"
+    r"oauth(?:client|consumer)(?:secret|secrets)|"
+    r"(?:access|refresh|auth|authorization|oauth|bearer)(?:token|tokens)|"
+    r"session(?:id|ids|key|keys|token|tokens|cookie|cookies)|"
+    r"account(?:id|ids|number|numbers|uuid|uuids)|"
+    r"(?:auth|authorization)(?:header|headers)"
+    r")\Z",
+    re.IGNORECASE,
 )
 _JSON_SCHEMA_TYPES = frozenset(
     {"array", "boolean", "integer", "null", "number", "object", "string"}
@@ -169,6 +164,7 @@ _SCHEMA_CHILD_KEYS = frozenset(
 )
 _SCHEMA_BOOLEAN_KEYS = frozenset({"deprecated", "nullable", "readOnly", "uniqueItems", "writeOnly"})
 _MAX_INSPECTION_TEXT_LENGTH = 65_536
+_MAX_CANDIDATE_NAME_LENGTH = 256
 _MAX_PERCENT_DECODE_ROUNDS = 3
 
 _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
@@ -301,17 +297,27 @@ class ToolsListSnapshot:
             type(item) is not SanitizedToolSchema for item in self.tools
         ):
             raise CapabilitySnapshotError("snapshot tools must be immutable sanitized values")
-        names = tuple(item.name for item in self.tools)
+        validated_tools = tuple(_validated_tool_copy(item) for item in self.tools)
+        names = tuple(item.name for item in validated_tools)
         if names != tuple(sorted(names)) or len(names) != len(set(names)):
             raise CapabilitySnapshotError("snapshot tools must be unique and deterministic")
         if type(self.manifest) is not CapabilityManifest:
             raise CapabilitySnapshotError("snapshot manifest is invalid")
-        validated_manifest = _validated_manifest_copy(self.manifest)
+        validated_manifest: CapabilityManifest | None = None
+        try:
+            validated_manifest = validated_manifest_copy(self.manifest)
+        except MemoryError:
+            raise
+        except Exception:
+            pass
+        if validated_manifest is None:
+            raise CapabilitySnapshotError("snapshot manifest is invalid") from None
         expected = CapabilityManifest(
-            records=tuple(_record_from_schema(item, self.observed_at) for item in self.tools)
+            records=tuple(_record_from_schema(item, self.observed_at) for item in validated_tools)
         )
         if validated_manifest != expected:
             raise CapabilitySnapshotError("snapshot manifest does not match captured schemas")
+        object.__setattr__(self, "tools", validated_tools)
         object.__setattr__(self, "manifest", validated_manifest)
 
     def as_json(self) -> dict[str, JsonValue]:
@@ -519,49 +525,25 @@ def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> Cap
     )
 
 
-def _validated_manifest_copy(value: CapabilityManifest) -> CapabilityManifest:
-    """Rebuild an exact manifest so nested equality cannot bypass model validation."""
-    validated: CapabilityManifest | None = None
+def _validated_tool_copy(value: SanitizedToolSchema) -> SanitizedToolSchema:
+    """Rebuild one exact stored tool before using any of its declared values."""
+    validated: SanitizedToolSchema | None = None
     try:
-        if type(value) is not CapabilityManifest or type(value.records) is not tuple:
+        if type(value) is not SanitizedToolSchema:
             raise TypeError
-        records: list[CapabilityRecord] = []
-        for record in value.records:
-            if type(record) is not CapabilityRecord or type(record.evidence) is not tuple:
-                raise TypeError
-            evidence: list[CapabilityEvidence] = []
-            for item in record.evidence:
-                if type(item) is not CapabilityEvidence:
-                    raise TypeError
-                evidence.append(
-                    CapabilityEvidence(
-                        level=item.level,
-                        source_uri=item.source_uri,
-                        observed_at=item.observed_at,
-                        schema_sha256=item.schema_sha256,
-                        authenticated=item.authenticated,
-                        contains_account_data=item.contains_account_data,
-                        notes=item.notes,
-                    )
-                )
-            records.append(
-                CapabilityRecord(
-                    provider=record.provider,
-                    operation=record.operation,
-                    asset_class=record.asset_class,
-                    operation_kind=record.operation_kind,
-                    evidence=tuple(evidence),
-                    limitations=record.limitations,
-                    locked_reason=record.locked_reason,
-                )
-            )
-        validated = CapabilityManifest(records=tuple(records))
+        validated = SanitizedToolSchema(
+            name=value.name,
+            description=value.description,
+            _input_schema_json=value._input_schema_json,
+            _output_schema_json=value._output_schema_json,
+            schema_sha256=value.schema_sha256,
+        )
     except MemoryError:
         raise
     except Exception:
         pass
     if validated is None:
-        raise CapabilitySnapshotError("snapshot manifest is invalid") from None
+        raise CapabilitySnapshotError("snapshot tool is invalid") from None
     return validated
 
 
@@ -801,7 +783,11 @@ def _validate_schema_node(value: JsonValue) -> None:
 
 
 def text_contains_sensitive_material(value: str) -> bool:
-    if len(value) > _MAX_INSPECTION_TEXT_LENGTH:
+    if (
+        type(value) is not str
+        or len(value) > _MAX_INSPECTION_TEXT_LENGTH
+        or has_unsafe_freeform_characters(value)
+    ):
         return True
     try:
         candidates = _decoded_candidates(value)
@@ -866,29 +852,34 @@ def _decoded_candidates(value: str) -> tuple[str, ...]:
 
 
 def _name_is_sensitive(value: str) -> bool:
+    if type(value) is not str or len(value) > _MAX_CANDIDATE_NAME_LENGTH:
+        return True
     try:
         decoded = _decoded_candidates(value)[-1]
     except (UnicodeError, ValueError):
         return True
     if _candidate_name_has_unsafe_characters(value):
         return True
-    if decoded.casefold() in _COMPACT_SENSITIVE_NAMES:
+    components = tuple(component for component in re.split(r"[^A-Za-z0-9]+", decoded) if component)
+    if any(_COMPACT_SENSITIVE_NAME_GRAMMAR.fullmatch(component) for component in components):
         return True
     tokens = tuple(
         token.casefold()
-        for component in re.split(r"[^A-Za-z0-9]+", decoded)
+        for component in components
         for token in _CAMEL_NAME_TOKEN.findall(component)
     )
     if any(token in _SENSITIVE_SINGLE_NAME_TOKENS for token in tokens):
         return True
     return any(
-        (left in _SENSITIVE_KEY_PREFIXES and right == "key")
-        or (left == "session" and right in _SENSITIVE_SESSION_SUFFIXES)
+        (left in _SENSITIVE_KEY_PREFIXES and right in {"key", "keys"})
+        or (left == "session" and right.removesuffix("s") in _SENSITIVE_SESSION_SUFFIXES)
         for left, right in pairwise(tokens)
     )
 
 
 def _candidate_name_has_unsafe_characters(value: str) -> bool:
+    if type(value) is not str or len(value) > _MAX_CANDIDATE_NAME_LENGTH:
+        return True
     try:
         decoded = _decoded_candidates(value)[-1]
     except (UnicodeError, ValueError):
@@ -899,26 +890,51 @@ def _candidate_name_has_unsafe_characters(value: str) -> bool:
 
 
 def _local_json_pointer_is_safe(value: str) -> bool:
-    if _LOCAL_JSON_POINTER.fullmatch(value) is None:
-        return False
+    segments = _decoded_local_pointer_segments(value)
+    return segments is not None and not _segments_have_sensitive_value_pair(segments)
+
+
+def _decoded_local_pointer_segments(value: str) -> tuple[str, ...] | None:
+    if (
+        type(value) is not str
+        or len(value) > _MAX_INSPECTION_TEXT_LENGTH
+        or _LOCAL_JSON_POINTER.fullmatch(value) is None
+    ):
+        return None
     try:
         decoded = _decoded_candidates(value)[-1]
-        parsed = urlsplit(decoded)
     except (UnicodeError, ValueError):
-        return False
-    return (
-        _LOCAL_JSON_POINTER.fullmatch(decoded) is not None
-        and not parsed.scheme
-        and not parsed.netloc
-        and not parsed.path
-        and not parsed.query
-        and not _path_has_sensitive_value_pair(parsed.fragment)
-    )
+        return None
+    if _LOCAL_JSON_POINTER.fullmatch(decoded) is None:
+        return None
+    if decoded == "#":
+        return ()
+    raw_segments = decoded[2:].split("/")
+    segments: list[str] = []
+    for raw_segment in raw_segments:
+        # RFC 6901 requires ~1 to be expanded before ~0 so ~01 remains literal ~1.
+        segment = raw_segment.replace("~1", "/").replace("~0", "~")
+        if not segment.isascii() or any(
+            ord(character) < 32 or ord(character) == 127 for character in segment
+        ):
+            return None
+        segments.append(segment)
+    return tuple(segments)
 
 
 def _path_has_sensitive_value_pair(value: str) -> bool:
-    segments = tuple(segment for segment in value.split("/") if segment)
-    return any(_name_is_sensitive(left) and bool(right) for left, right in pairwise(segments))
+    segments = tuple(
+        part
+        for segment in value.split("/")
+        for part in segment.replace("~1", "/").replace("~0", "~").split("/")
+        if part
+    )
+    return _segments_have_sensitive_value_pair(segments)
+
+
+def _segments_have_sensitive_value_pair(segments: tuple[str, ...]) -> bool:
+    flattened = tuple(part for segment in segments for part in segment.split("/") if part)
+    return any(_name_is_sensitive(left) and bool(right) for left, right in pairwise(flattened))
 
 
 def _contains_value(value: JsonValue) -> bool:

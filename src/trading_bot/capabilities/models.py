@@ -1,6 +1,7 @@
 """Immutable, fail-closed capability evidence models."""
 
 import re
+import unicodedata
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -173,6 +174,15 @@ class CapabilityRecord:
             raise InvalidCapabilityRecord("evidence must contain at least one observation")
         if any(type(item) is not CapabilityEvidence for item in self.evidence):
             raise InvalidCapabilityRecord("evidence must contain CapabilityEvidence records")
+        validated_evidence: list[CapabilityEvidence] = []
+        for item in self.evidence:
+            rebuilt = _rebuild_evidence(item)
+            if rebuilt is None:
+                raise InvalidCapabilityRecord(
+                    "evidence contains an invalid CapabilityEvidence value"
+                ) from None
+            validated_evidence.append(rebuilt)
+        object.__setattr__(self, "evidence", tuple(validated_evidence))
         _require_string_tuple(self.limitations, "limitations", InvalidCapabilityRecord)
         if self.locked_reason is not None:
             _require_nonempty_string(
@@ -188,12 +198,15 @@ class CapabilityRecord:
 
     def satisfies(self, required: EvidenceLevel) -> bool:
         """Return whether this unlocked record contains the exact category requested."""
-        if type(required) is not EvidenceLevel:
+        if type(self) is not CapabilityRecord or type(required) is not EvidenceLevel:
             return False
-        levels = frozenset(item.level for item in self.evidence)
+        validated = _rebuild_record(self)
+        if validated is None:
+            return False
+        levels = frozenset(item.level for item in validated.evidence)
         if required is EvidenceLevel.UNSUPPORTED:
             return levels == {EvidenceLevel.UNSUPPORTED}
-        return self.locked_reason is None and required in levels
+        return validated.locked_reason is None and required in levels
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,12 +219,21 @@ class CapabilityManifest:
         _require_exact_tuple(self.records, "records", InvalidCapabilityManifest)
         if any(type(item) is not CapabilityRecord for item in self.records):
             raise InvalidCapabilityManifest("records must contain CapabilityRecord values")
-        keys = tuple((item.provider, item.operation) for item in self.records)
+        validated_records: list[CapabilityRecord] = []
+        for item in self.records:
+            rebuilt = _rebuild_record(item)
+            if rebuilt is None:
+                raise InvalidCapabilityManifest(
+                    "records contain an invalid CapabilityRecord value"
+                ) from None
+            validated_records.append(rebuilt)
+        records = tuple(validated_records)
+        keys = tuple((item.provider, item.operation) for item in records)
         if len(keys) != len(set(keys)):
             raise InvalidCapabilityManifest(
                 "manifest contains a duplicate provider and operation key"
             )
-        for item in self.records:
+        for item in records:
             if (
                 item.asset_class is AssetClass.PREDICTION
                 and item.operation_kind is OperationKind.PLACE
@@ -225,17 +247,85 @@ class CapabilityManifest:
         object.__setattr__(
             self,
             "records",
-            tuple(sorted(self.records, key=lambda item: (item.provider, item.operation))),
+            tuple(sorted(records, key=lambda item: (item.provider, item.operation))),
         )
 
     def find(self, *, provider: str, operation: str) -> CapabilityRecord:
         """Find an exact manifest key without fuzzy or prose-based inference."""
         if not _is_nonempty_string(provider) or not _is_nonempty_string(operation):
             raise CapabilityNotFoundError(provider, operation)
-        for record in self.records:
+        validated = _rebuild_manifest(self)
+        if validated is None:
+            raise InvalidCapabilityManifest("capability manifest is invalid") from None
+        for record in validated.records:
             if record.provider == provider and record.operation == operation:
                 return record
         raise CapabilityNotFoundError(provider, operation)
+
+
+def validated_manifest_copy(value: object) -> CapabilityManifest:
+    """Return a fully reconstructed exact manifest or fail without nested context."""
+    rebuilt = _rebuild_manifest(value)
+    if rebuilt is None:
+        raise InvalidCapabilityManifest("capability manifest is invalid") from None
+    return rebuilt
+
+
+def _rebuild_evidence(value: object) -> CapabilityEvidence | None:
+    if type(value) is not CapabilityEvidence:
+        return None
+    rebuilt: CapabilityEvidence | None = None
+    try:
+        rebuilt = CapabilityEvidence(
+            level=value.level,
+            source_uri=value.source_uri,
+            observed_at=value.observed_at,
+            schema_sha256=value.schema_sha256,
+            authenticated=value.authenticated,
+            contains_account_data=value.contains_account_data,
+            notes=value.notes,
+        )
+    except MemoryError:
+        raise
+    except Exception:
+        pass
+    return rebuilt
+
+
+def _rebuild_record(value: object) -> CapabilityRecord | None:
+    if type(value) is not CapabilityRecord:
+        return None
+    rebuilt: CapabilityRecord | None = None
+    try:
+        rebuilt = CapabilityRecord(
+            provider=value.provider,
+            operation=value.operation,
+            asset_class=value.asset_class,
+            operation_kind=value.operation_kind,
+            evidence=value.evidence,
+            limitations=value.limitations,
+            locked_reason=value.locked_reason,
+        )
+    except MemoryError:
+        raise
+    except Exception:
+        pass
+    return rebuilt
+
+
+def _rebuild_manifest(value: object) -> CapabilityManifest | None:
+    if type(value) is not CapabilityManifest:
+        return None
+    rebuilt: CapabilityManifest | None = None
+    try:
+        if type(value.records) is not tuple:
+            raise TypeError
+        rebuilt = CapabilityManifest(records=value.records)
+    except MemoryError:
+        raise
+    except Exception:
+        pass
+    return rebuilt
 
 
 def _require_safe_source_uri(value: str) -> None:
@@ -314,8 +404,19 @@ def _text_looks_sensitive(value: str) -> bool:
     )
 
 
+def has_unsafe_freeform_characters(value: str) -> bool:
+    """Reject invisible formatting and unsafe controls while allowing ordinary prose."""
+    return type(value) is not str or any(
+        (unicodedata.category(character) == "Cc" and character not in {"\t", "\n", "\r"})
+        or unicodedata.category(character) == "Cf"
+        or unicodedata.bidirectional(character)
+        in {"LRE", "RLE", "LRO", "RLO", "PDF", "LRI", "RLI", "FSI", "PDI"}
+        for character in value
+    )
+
+
 def _is_nonempty_string(value: object) -> bool:
-    return type(value) is str and bool(value.strip())
+    return type(value) is str and not has_unsafe_freeform_characters(value) and bool(value.strip())
 
 
 def _require_nonempty_string(

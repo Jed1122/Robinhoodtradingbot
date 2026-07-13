@@ -8,12 +8,12 @@ from typing import Any, Never
 from trading_bot.capabilities.models import (
     CapabilityEvidence,
     CapabilityManifest,
-    CapabilityNotFoundError,
     CapabilityRecord,
     EvidenceLevel,
     InvalidCapabilityManifest,
     OperationKind,
     UnsupportedCapabilityError,
+    validated_manifest_copy,
 )
 from trading_bot.capabilities.snapshot import text_contains_sensitive_material
 from trading_bot.clock import require_utc
@@ -59,12 +59,27 @@ def require_capability(
     minimum: EvidenceLevel,
 ) -> CapabilityRecord:
     """Require an exact unlocked evidence category for a provider operation."""
+    validated: CapabilityManifest | None = None
     try:
-        record = manifest.find(provider=provider, operation=operation)
-    except CapabilityNotFoundError:
+        validated = validated_manifest_copy(manifest)
+    except MemoryError:
+        raise
+    except Exception:
+        pass
+    if validated is None:
+        raise UnsupportedCapabilityError(provider, operation, minimum) from None
+    record = next(
+        (
+            item
+            for item in validated.records
+            if item.provider == provider and item.operation == operation
+        ),
+        None,
+    )
+    if record is None:
         raise UnsupportedCapabilityError(provider, operation, minimum) from None
     if not record.satisfies(minimum):
-        raise UnsupportedCapabilityError(provider, operation, minimum)
+        raise UnsupportedCapabilityError(provider, operation, minimum) from None
     return record
 
 
@@ -98,13 +113,20 @@ def load_capability_manifest(path: Path) -> CapabilityManifest:
 
 def render_capability_matrix(manifest: CapabilityManifest) -> str:
     """Render a stable Markdown view without implying adapter implementation."""
-    if not _manifest_freeform_is_safe(manifest):
+    validated: CapabilityManifest | None = None
+    try:
+        validated = validated_manifest_copy(manifest)
+    except MemoryError:
+        raise
+    except Exception:
+        pass
+    if validated is None or not _manifest_freeform_is_safe(validated):
         raise InvalidCapabilityManifest("capability manifest contains unsafe text") from None
     lines = [
         "| Provider | Operation | Asset | Kind | Evidence | State | Limitations |",
         "|---|---|---|---|---|---|---|",
     ]
-    for record in manifest.records:
+    for record in validated.records:
         levels = ", ".join(sorted(item.level.value for item in record.evidence))
         limitations = "; ".join(sorted(record.limitations)) or "none recorded"
         lines.append(

@@ -118,6 +118,49 @@ def record_for(
     )
 
 
+def forged_evidence(
+    **changes: object,
+) -> CapabilityEvidence:
+    """Build an exact evidence object without executing validation."""
+    source = evidence_for(EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED)
+    forged = object.__new__(CapabilityEvidence)
+    values: dict[str, object] = {
+        "level": source.level,
+        "source_uri": source.source_uri,
+        "observed_at": source.observed_at,
+        "schema_sha256": source.schema_sha256,
+        "authenticated": source.authenticated,
+        "contains_account_data": source.contains_account_data,
+        "notes": source.notes,
+    }
+    values.update(changes)
+    for field_name, field_value in values.items():
+        object.__setattr__(forged, field_name, field_value)
+    return forged
+
+
+def forged_record(
+    source: CapabilityRecord | None = None,
+    **changes: object,
+) -> CapabilityRecord:
+    """Build an exact record object without executing validation."""
+    source = source or record_for()
+    forged = object.__new__(CapabilityRecord)
+    values: dict[str, object] = {
+        "provider": source.provider,
+        "operation": source.operation,
+        "asset_class": source.asset_class,
+        "operation_kind": source.operation_kind,
+        "evidence": source.evidence,
+        "limitations": source.limitations,
+        "locked_reason": source.locked_reason,
+    }
+    values.update(changes)
+    for field_name, field_value in values.items():
+        object.__setattr__(forged, field_name, field_value)
+    return forged
+
+
 def test_enumerations_expose_only_reviewed_categories() -> None:
     assert {item.value for item in EvidenceLevel} == {
         "documented",
@@ -149,6 +192,20 @@ def test_capability_records_are_frozen_and_slotted() -> None:
     with pytest.raises(FrozenInstanceError):
         manifest.records = ()  # type: ignore[misc]
     assert not hasattr(evidence, "__dict__")
+
+
+def test_record_and_manifest_store_deeply_revalidated_model_copies() -> None:
+    evidence = evidence_for()
+    record = record_for()
+
+    rebuilt_record = replace(record, evidence=(evidence,))
+    manifest = CapabilityManifest(records=(rebuilt_record,))
+
+    assert rebuilt_record.evidence == (evidence,)
+    assert rebuilt_record.evidence[0] is not evidence
+    assert manifest.records == (rebuilt_record,)
+    assert manifest.records[0] is not rebuilt_record
+    assert manifest.records[0].evidence[0] is not rebuilt_record.evidence[0]
 
 
 @pytest.mark.parametrize("level", tuple(AUTHENTICATED_LEVELS))
@@ -484,6 +541,52 @@ def test_record_rejects_capability_evidence_subclass_before_field_access() -> No
     assert captured.value.__context__ is None
 
 
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"authenticated": False},
+        {"contains_account_data": True},
+        {"source_uri": "Authorization: Bearer actual-secret-value"},
+        {"observed_at": datetime(2026, 7, 12, 12)},
+        {"notes": ("ordinary\x00text",)},
+    ),
+)
+def test_record_revalidates_forged_exact_evidence_before_storage(
+    changes: dict[str, object],
+) -> None:
+    forged = forged_evidence(**changes)
+
+    with pytest.raises(InvalidCapabilityRecord) as captured:
+        replace(
+            record_for(EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED),
+            evidence=(forged,),
+        )
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "evidence contains an invalid CapabilityEvidence value"
+    assert "Authorization" not in rendered
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_manifest_revalidates_forged_exact_record_and_nested_evidence() -> None:
+    unsafe_evidence = forged_evidence(contains_account_data=True)
+    unsafe_record = forged_record(
+        record_for(EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED),
+        evidence=(unsafe_evidence,),
+    )
+
+    with pytest.raises(InvalidCapabilityManifest) as captured:
+        CapabilityManifest(records=(unsafe_record,))
+
+    rendered = "".join(traceback.format_exception(captured.value))
+    assert str(captured.value) == "records contain an invalid CapabilityRecord value"
+    assert "actual-secret-value" not in rendered
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
 def test_manifest_rejects_capability_record_subclass_before_key_access() -> None:
     base = record_for()
     record = ArmedCapabilityRecord(
@@ -506,6 +609,28 @@ def test_manifest_rejects_capability_record_subclass_before_key_access() -> None
     assert "actual-secret-value" not in rendered
     assert captured.value.__cause__ is None
     assert captured.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "unsafe_text", ("ordinary\x00text", "ordinary\x1btext", "ordinary\u202etext")
+)
+@pytest.mark.parametrize("field", ("limitations", "locked_reason"))
+def test_record_rejects_control_and_bidi_freeform_text(
+    field: str,
+    unsafe_text: str,
+) -> None:
+    value: object = (unsafe_text,) if field == "limitations" else unsafe_text
+
+    with pytest.raises(InvalidCapabilityRecord):
+        replace(record_for(), **{field: value})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "unsafe_text", ("ordinary\x00text", "ordinary\x1btext", "ordinary\u202etext")
+)
+def test_evidence_rejects_control_and_bidi_note_text(unsafe_text: str) -> None:
+    with pytest.raises(InvalidCapabilityEvidence):
+        replace(evidence_for(), notes=(unsafe_text,))
 
 
 @pytest.mark.parametrize(

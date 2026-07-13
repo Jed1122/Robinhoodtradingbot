@@ -77,19 +77,26 @@ declared tool. Captured schema views are detached from immutable stored JSON so 
 cannot mutate a schema away from its digest. Snapshot writes use a private `0600` sibling
 temporary file and atomic replacement; destination symlinks are rejected.
 
-Sensitive schema names are classified from percent-decoded separator and camel-case tokens,
-including exact token/account/auth/credential/signature/cookie/bearer/secret/password names,
-reviewed key compounds, session ID/key/token/cookie compounds, and a closed set of reviewed
-compact spellings such as `apikey`, `clientsecret`, `accesstoken`, `accountid`, and
-`authorizationheader`. Compact spellings are exact names after bounded percent decoding, not
-raw substring matches; benign author, signal, designation, assignment, accounting-period,
-session-duration, and client-order names remain ordinary metadata. Candidate names containing
-non-ASCII, control, or format characters fail closed. Under sensitive scope, schema
+Sensitive schema names are classified from percent-decoded separator and camel-case tokens
+plus an anchored, reviewed compound grammar. The grammar covers singular/plural API, private,
+signing, access, client, consumer, and secret key forms; API/access/client/consumer secret
+forms; auth/OAuth/bearer/authorization token forms; session and account identifiers; and auth
+headers. It recognizes exact compact components and separators or punctuation such as array
+brackets, without raw substring matching. Thus `api_keys`, `clientsecret[]`, `oauthtoken`, and
+`accesskeyid` are sensitive, while author, signal, designation, assignment,
+accounting-period, session-duration, client-order, public-key, accessibility, and secretary
+names remain ordinary metadata. Candidate names containing non-ASCII, control, or format
+characters fail closed. Assignment inspection uses bounded overlapping boundaries, so a safe
+outer field cannot hide an inner assignment such as `safe=clientsecret=tiny`. Under sensitive
+scope, schema
 declarations are accepted only when their values have validated built-in shapes: known types
 and formats, safe local JSON pointers, exact booleans, matching required-property names, and
 recursive schema maps or combinators. Local pointer fragments are inspected as decoded path
-pairs: a terminal schema name such as `#/$defs/AuthToken` is declaration-only, while a
-sensitive segment followed by another segment is rejected as value-bearing. Unvalidated
+pairs after bounded percent decoding and RFC 6901 `~1` then `~0` unescaping. Every decoded
+segment must be ASCII and free of control, format, and bidirectional override characters. A
+terminal schema name such as `#/$defs/AuthToken` is declaration-only, while a sensitive
+segment followed by another segment, including `access_token~1tiny`, is rejected as
+value-bearing. Unvalidated
 numeric/list carriers, defaults, examples, descriptions, custom metadata, encoded
 assignments, userinfo, and identifier-bearing paths are rejected. Standalone bearer material
 is rejected regardless of length.
@@ -104,12 +111,17 @@ validator; digests and enums retain their dedicated validators. Snapshot timesta
 exact built-in datetimes and are stored as the canonical UTC value returned by validation,
 so subclass methods cannot cross the serialization boundary. Capability evidence timestamps
 have the same exact-type and canonical-UTC rule, and model string fields require exact
-built-in strings before any string operation. Capability records and manifests accept only
-exact nested evidence/record types. Exported snapshots rebuild and validate the full nested
-manifest before comparing it with the schema-derived manifest, so subclass equality and
-forged nested timestamps cannot satisfy consistency checks. They also revalidate canonical
-JSON, schema digests, provider identity, and tool order/type at construction. Only exact MCP
-SDK result and tool model types cross the external-result boundary.
+built-in strings before any string operation. NUL, escape, invisible format, and bidirectional
+override characters are rejected from model and matrix free-form text; ordinary documented
+prose remains supported. Capability records reconstruct every exact nested evidence value,
+and manifests reconstruct every exact nested record and evidence value, before safety
+decisions or storage. Exported snapshots likewise rebuild every nested sanitized tool schema
+and the full manifest before deriving names, comparing schema evidence, or storing copies.
+Unsafe descriptions, malformed canonical JSON, stale or false schema digests, subclass
+equality, forged model fields, and missing fields therefore cannot satisfy consistency or
+capability gates. Provider identity and deterministic tool ordering are also revalidated at
+construction. Only exact MCP SDK result and tool model types cross the external-result
+boundary.
 
 When no proven configured session is injected, the CLI exits with status 2, writes
 nothing, and prints:
