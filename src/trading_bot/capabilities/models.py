@@ -11,8 +11,15 @@ from trading_bot.domain import AssetClass
 
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ALLOWED_SOURCE_URI_SCHEMES = frozenset({"https", "mcp"})
+_ALLOWED_HTTPS_HOSTS = frozenset({"robinhood.com", "docs.robinhood.com"})
+_ALLOWED_MCP_HOST = "robinhood-trading"
 _HOST_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\Z")
 _PATH_SEGMENT = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,127})?\Z")
+_UUID_LIKE = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
+)
+_LONG_NUMERIC_ID = re.compile(r"\b[0-9]{8,}\b")
 _JWT_LIKE = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
 _API_TOKEN_LIKE = re.compile(
     r"\b(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}\b",
@@ -235,8 +242,15 @@ def _require_safe_source_uri(value: str) -> None:
         or any(character.isspace() for character in value)
         or any(ord(character) < 32 or ord(character) == 127 for character in value)
         or "%" in value
+        or "?" in value
+        or "#" in value
     ):
         raise InvalidCapabilityEvidence("source_uri must be a sanitized URI")
+    parsed = None
+    port = None
+    hostname = None
+    username = None
+    password = None
     try:
         parsed = urlsplit(value)
         port = parsed.port
@@ -244,17 +258,23 @@ def _require_safe_source_uri(value: str) -> None:
         username = parsed.username
         password = parsed.password
     except (TypeError, ValueError):
-        raise InvalidCapabilityEvidence("source_uri must be a sanitized URI") from None
+        parsed = None
+    if parsed is None:
+        raise InvalidCapabilityEvidence("source_uri must be a sanitized URI")
     if parsed.scheme not in _ALLOWED_SOURCE_URI_SCHEMES:
         raise InvalidCapabilityEvidence("source_uri must use an approved evidence scheme")
     if not parsed.netloc or hostname is None:
         raise InvalidCapabilityEvidence("source_uri must be an absolute URI")
     if not _hostname_is_valid(hostname) or _text_looks_sensitive(hostname):
         raise InvalidCapabilityEvidence("source_uri must use a sanitized hostname")
-    if port is not None and not 1 <= port <= 65535:
-        raise InvalidCapabilityEvidence("source_uri must use a valid port")
     if username is not None or password is not None:
         raise InvalidCapabilityEvidence("source_uri cannot contain user information")
+    if port is not None or parsed.netloc != hostname:
+        raise InvalidCapabilityEvidence("source_uri must use a canonical authority")
+    if parsed.scheme == "https" and hostname not in _ALLOWED_HTTPS_HOSTS:
+        raise InvalidCapabilityEvidence("source_uri must use an official HTTPS authority")
+    if parsed.scheme == "mcp" and hostname != _ALLOWED_MCP_HOST:
+        raise InvalidCapabilityEvidence("source_uri must use the approved MCP authority")
     if parsed.query or parsed.fragment:
         raise InvalidCapabilityEvidence("source_uri cannot contain a query or fragment")
     if not _path_is_valid(parsed.path) or _text_looks_sensitive(parsed.path):
@@ -276,7 +296,11 @@ def _path_is_valid(value: str) -> bool:
     segments = value.split("/")[1:]
     if segments and segments[-1] == "":
         segments.pop()
-    return all(_PATH_SEGMENT.fullmatch(segment) is not None for segment in segments)
+    if not all(_PATH_SEGMENT.fullmatch(segment) is not None for segment in segments):
+        return False
+    if any(segment.casefold().startswith(("account", "acct", "session")) for segment in segments):
+        return False
+    return _UUID_LIKE.search(value) is None and _LONG_NUMERIC_ID.search(value) is None
 
 
 def _text_looks_sensitive(value: str) -> bool:

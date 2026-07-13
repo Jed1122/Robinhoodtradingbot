@@ -192,6 +192,17 @@ def test_any_supplied_digest_must_be_lowercase_sha256(digest: str) -> None:
         "https://%20robinhood.com/support",
         "https://robinhood.com/support%ZZ",
         "https://robinhood.com/support%00",
+        "https://evil.com/official",
+        "https://localhost/support",
+        "https://127.0.0.1/support",
+        "https://robinhood.com:8443/support",
+        "https://robinhood.com:/support",
+        "mcp://evil/tools/get_equity_quotes",
+        "mcp://robinhood-trading:443/tools/get_equity_quotes",
+        "https://ROBINHOOD.com/support",
+        "https://robinhood.com/accounts/00000000-0000-4000-8000-000000000000",
+        "mcp://robinhood-trading/accounts/00000000-0000-4000-8000-000000000000",
+        "https://robinhood.com/account-123456789",
         "data:text/plain,Bearer%20fake-token",
         "http://robinhood.com/support",
         "https://robinhood.com:not-a-port/support",
@@ -211,6 +222,9 @@ def test_source_uri_rejects_credentials_sensitive_queries_and_malformed_values(
     (
         "https://robinhood.com/support?section=tools&page=2",
         "https://robinhood.com/support#tools",
+        "https://robinhood.com/support?",
+        "https://robinhood.com/support#",
+        "https://robinhood.com/support?#",
     ),
 )
 def test_source_uri_rejects_query_and_fragment_metadata(source_uri: str) -> None:
@@ -241,11 +255,19 @@ def test_source_uri_allows_sanitized_mcp_schema_reference() -> None:
     assert evidence.source_uri == "mcp://robinhood-trading/tools/get_equity_quotes"
 
 
-def test_malformed_source_uri_does_not_chain_parser_input() -> None:
+@pytest.mark.parametrize(
+    "source_uri",
+    (
+        "https://[actual-secret-value",
+        "https://robinhood.com:actual-secret-value/support",
+    ),
+)
+def test_malformed_source_uri_does_not_chain_parser_input(source_uri: str) -> None:
     with pytest.raises(InvalidCapabilityEvidence) as captured:
-        replace(evidence_for(), source_uri="https://[actual-secret-value")
+        replace(evidence_for(), source_uri=source_uri)
 
     assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 @pytest.mark.parametrize("notes", ([], {"note"}, iter(("note",))))
