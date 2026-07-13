@@ -239,7 +239,10 @@ class _LexicalFacts(ast.NodeVisitor):
         super().visit(node)
 
     def _record(self, name: str, value: _Binding) -> None:
-        self.current_scope.writes.setdefault(name, []).append(value)
+        self._record_in_scope(self.current_scope, name, value)
+
+    def _record_in_scope(self, scope: _ScopeFacts, name: str, value: _Binding) -> None:
+        scope.writes.setdefault(name, []).append(value)
 
     def _record_unknown_target(self, target: ast.expr) -> None:
         if isinstance(target, ast.Name):
@@ -410,10 +413,33 @@ class _LexicalFacts(ast.NodeVisitor):
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         self.visit(node.value)
         if isinstance(node.target, ast.Name):
-            self._record(node.target.id, node.value)
+            binding_scope = self.current_scope
+            while binding_scope.kind == "comprehension":
+                assert binding_scope.parent is not None
+                binding_scope = binding_scope.parent
+            self._record_in_scope(binding_scope, node.target.id, node.value)
+            self.node_scopes[node.target] = binding_scope
         else:
             self._record_unknown_target(node.target)
-        self.visit(node.target)
+            self.visit(node.target)
+
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.pattern is not None:
+            self.visit(node.pattern)
+        if node.name is not None:
+            self._record(node.name, None)
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name is not None:
+            self._record(node.name, None)
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        for key in node.keys:
+            self.visit(key)
+        for pattern in node.patterns:
+            self.visit(pattern)
+        if node.rest is not None:
+            self._record(node.rest, None)
 
     def visit_Delete(self, node: ast.Delete) -> None:
         for target in node.targets:
@@ -1277,6 +1303,84 @@ def test_uncertain_lexical_import_targets_fail_closed(tmp_path: Path, source: st
     package_root = _fixture_package(tmp_path)
     _write_module(package_root, "risk/uncertain_import.py", source)
     assert _forbidden_layer_import_violations(package_root)
+
+
+def test_comprehension_walrus_writes_enclosing_scope(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        "risk/comprehension_walrus.py",
+        "import importlib\n"
+        "TARGET = 'trading_bot.brokersafe'\n"
+        "[TARGET := runtime_module_name() for _ in values()]\n"
+        "module = importlib.import_module(TARGET)\n",
+    )
+    assert _forbidden_layer_import_violations(package_root)
+
+
+def test_match_capture_writes_enclosing_scope(tmp_path: Path) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        "risk/match_capture.py",
+        "import importlib\n"
+        "TARGET = 'trading_bot.brokersafe'\n"
+        "match runtime_module_name():\n"
+        "    case TARGET:\n"
+        "        pass\n"
+        "module = importlib.import_module(TARGET)\n",
+    )
+    assert _forbidden_layer_import_violations(package_root)
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    (
+        "[*TARGET]",
+        "{**TARGET}",
+    ),
+)
+def test_structural_pattern_capture_forms_are_unknown_writes(
+    tmp_path: Path,
+    pattern: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        "risk/structural_capture.py",
+        "import importlib\n"
+        "TARGET = 'trading_bot.brokersafe'\n"
+        "match runtime_module_name():\n"
+        f"    case {pattern}:\n"
+        "        pass\n"
+        "module = importlib.import_module(TARGET)\n",
+    )
+    assert _forbidden_layer_import_violations(package_root)
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    (
+        "constants.TARGET",
+        "models.TARGET()",
+    ),
+)
+def test_pattern_value_and_class_attributes_are_not_capture_writes(
+    tmp_path: Path,
+    pattern: str,
+) -> None:
+    package_root = _fixture_package(tmp_path)
+    _write_module(
+        package_root,
+        "risk/pattern_attribute.py",
+        "import importlib\n"
+        "TARGET = 'trading_bot.brokersafe'\n"
+        "match runtime_module_name():\n"
+        f"    case {pattern}:\n"
+        "        pass\n"
+        "module = importlib.import_module(TARGET)\n",
+    )
+    assert _forbidden_layer_import_violations(package_root) == []
 
 
 @pytest.mark.parametrize(
