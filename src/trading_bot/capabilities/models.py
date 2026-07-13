@@ -11,7 +11,29 @@ from trading_bot.domain import AssetClass
 
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ALLOWED_SOURCE_URI_SCHEMES = frozenset({"https", "mcp"})
-_SENSITIVE_QUERY_NAMES = frozenset({"auth", "bearer", "key", "oauth"})
+_HOST_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\Z")
+_INVALID_PERCENT_ENCODING = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_MAX_URI_DECODE_PASSES = 8
+_SENSITIVE_QUERY_TOKENS = frozenset(
+    {
+        "account",
+        "auth",
+        "authorization",
+        "bearer",
+        "cookie",
+        "credential",
+        "credentials",
+        "key",
+        "oauth",
+        "password",
+        "secret",
+        "sig",
+        "signature",
+        "signatures",
+        "token",
+        "tokens",
+    }
+)
 _SENSITIVE_QUERY_SUFFIXES = (
     "accountid",
     "accountnumber",
@@ -247,29 +269,33 @@ class CapabilityManifest:
 
 def _require_safe_source_uri(value: str) -> None:
     _require_nonempty_string(value, "source_uri", InvalidCapabilityEvidence)
-    if value != value.strip() or any(character in value for character in "\r\n\t"):
+    if (
+        value != value.strip()
+        or any(character in value for character in "\r\n\t")
+        or _INVALID_PERCENT_ENCODING.search(value) is not None
+    ):
         raise InvalidCapabilityEvidence("source_uri must be a sanitized URI")
     try:
         parsed = urlsplit(value)
         port = parsed.port
+        hostname = parsed.hostname
+        username = parsed.username
+        password = parsed.password
         query = parse_qsl(parsed.query, keep_blank_values=True)
     except (TypeError, ValueError):
         raise InvalidCapabilityEvidence("source_uri must be a sanitized URI") from None
     if parsed.scheme not in _ALLOWED_SOURCE_URI_SCHEMES:
         raise InvalidCapabilityEvidence("source_uri must use an approved evidence scheme")
-    if not parsed.netloc or parsed.hostname is None:
+    if not parsed.netloc or hostname is None:
         raise InvalidCapabilityEvidence("source_uri must be an absolute URI")
+    if not _hostname_is_valid(hostname) or _uri_text_looks_sensitive(hostname):
+        raise InvalidCapabilityEvidence("source_uri must use a sanitized hostname")
     if port is not None and not 1 <= port <= 65535:
         raise InvalidCapabilityEvidence("source_uri must use a valid port")
-    if parsed.username is not None or parsed.password is not None:
+    if username is not None or password is not None:
         raise InvalidCapabilityEvidence("source_uri cannot contain user information")
     for name, query_value in query:
-        normalized = re.sub(r"[^a-z0-9]", "", name.casefold())
-        if (
-            normalized in _SENSITIVE_QUERY_NAMES
-            or normalized.endswith(_SENSITIVE_QUERY_SUFFIXES)
-            or _query_value_looks_sensitive(query_value)
-        ):
+        if _query_name_looks_sensitive(name) or _query_value_looks_sensitive(query_value):
             raise InvalidCapabilityEvidence(
                 "source_uri cannot contain secret-bearing query parameters"
             )
@@ -283,16 +309,47 @@ def _query_value_looks_sensitive(value: str) -> bool:
     return _uri_text_looks_sensitive(value)
 
 
-def _uri_text_looks_sensitive(value: str) -> bool:
+def _query_name_looks_sensitive(value: str) -> bool:
     decoded = value
-    for _ in range(2):
+    for _ in range(_MAX_URI_DECODE_PASSES):
+        if _decoded_query_name_looks_sensitive(decoded):
+            return True
         expanded = unquote_plus(decoded)
         if expanded == decoded:
-            break
+            return False
         decoded = expanded
+    return True
+
+
+def _decoded_query_name_looks_sensitive(value: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]", "", value.casefold())
+    tokens = frozenset(re.findall(r"[a-z0-9]+", value.casefold()))
+    return bool(tokens & _SENSITIVE_QUERY_TOKENS) or normalized.endswith(_SENSITIVE_QUERY_SUFFIXES)
+
+
+def _hostname_is_valid(value: str) -> bool:
+    if len(value) > 253:
+        return False
+    labels = value.split(".")
+    return all(_HOST_LABEL.fullmatch(label) is not None for label in labels)
+
+
+def _uri_text_looks_sensitive(value: str) -> bool:
+    decoded = value
+    for _ in range(_MAX_URI_DECODE_PASSES):
+        if _decoded_uri_text_looks_sensitive(decoded):
+            return True
+        expanded = unquote_plus(decoded)
+        if expanded == decoded:
+            return False
+        decoded = expanded
+    return True
+
+
+def _decoded_uri_text_looks_sensitive(decoded: str) -> bool:
     normalized = decoded.casefold()
     return (
-        any(character in decoded for character in "\r\n\t")
+        any(ord(character) < 32 or ord(character) == 127 for character in decoded)
         or "authorization:" in normalized
         or "bearer " in normalized
         or "-----begin private key-----" in normalized
