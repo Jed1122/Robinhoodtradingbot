@@ -3,7 +3,10 @@
 This repository currently implements a paper-safe, fail-closed foundation: canonical
 domain records, one strict configuration graph, capability evidence and sanitized
 schema-capture primitives, broker protocols, and pre-serialization structured-log
-redaction. It does not yet implement a trading application.
+redaction. It also includes an Alembic-owned SQLite WAL ledger foundation with canonical
+Decimal and UTC storage, no-affinity safety-scalar checks, and database-bound provenance
+across authorization and economic-effect records. It does not yet implement a trading
+application or persistence repositories.
 
 ## Current safety status
 
@@ -37,6 +40,11 @@ code because Structlog does not expose a registry through which they can be revo
 Python 3.12, 3.13, or 3.14 and `uv` 0.11.28 are required. These commands exercise local
 code only; they do not configure or contact an account or a trading endpoint.
 
+The ledger requires SQLite 3.31 or newer for stored generated identity columns. Exact
+Decimal, Boolean, and safety-counter columns deliberately declare SQLite `BLOB` affinity
+while storing runtime `TEXT` or `INTEGER` values; this prevents SQLite from silently
+coercing raw numeric input before the database checks execute.
+
 ```shell
 uv sync --all-groups
 make lint
@@ -51,9 +59,10 @@ arguments, or committed files; the safe template contains file references only.
 ## What comes later
 
 Broker adapters, authenticated reads, market-data providers, strategies, portfolio and
-risk policy, persistence, simulation and paper runners, review and execution services,
-reconciliation, operator controls, deployment, and every opt-in live gate remain future
-work. Their presence in the implementation plans is not evidence that they exist.
+risk policy, persistence repositories and append-only guards, simulation and paper
+runners, review and execution services, reconciliation, operator controls, deployment,
+and every opt-in live gate remain future work. Their presence in the implementation plans
+is not evidence that they exist.
 
 The executable plans live under `docs/superpowers/plans/`. Later slices may not bypass a
 failed foundation or capability gate.

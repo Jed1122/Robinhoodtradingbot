@@ -1,0 +1,79 @@
+"""Complete ORM registry for the approved durable ledger."""
+
+from trading_bot.persistence.models.accounts import (
+    AccountRow,
+    DrawdownEventRow,
+    EquityCurveRow,
+    PortfolioSnapshotRow,
+    PositionRow,
+    RealizedPnlRow,
+)
+from trading_bot.persistence.models.decisions import (
+    PromotionEvidenceRow,
+    ResearchAcceptanceEvidenceRow,
+    RiskEvaluationRow,
+    StrategyDecisionRow,
+)
+from trading_bot.persistence.models.market import (
+    BarRow,
+    DataQualityEventRow,
+    FeatureRow,
+    InstrumentRow,
+    MarketSnapshotRow,
+    SignalRow,
+)
+from trading_bot.persistence.models.operations import (
+    AlertRow,
+    AuditEventRow,
+    ConfigurationVersionRow,
+    ExecutionLeaseRow,
+    HeartbeatRow,
+    KillSwitchEventRow,
+    LiveAuthorizationRow,
+    LiveLeaseRow,
+    ReconciliationEventRow,
+    UsedNonceRow,
+)
+from trading_bot.persistence.models.orders import (
+    BrokerReviewRow,
+    FillRow,
+    OrderIntentRow,
+    OrderRow,
+    OrderTransitionRow,
+    SubmissionAttemptRow,
+)
+
+__all__ = [
+    "AccountRow",
+    "AlertRow",
+    "AuditEventRow",
+    "BarRow",
+    "BrokerReviewRow",
+    "ConfigurationVersionRow",
+    "DataQualityEventRow",
+    "DrawdownEventRow",
+    "EquityCurveRow",
+    "ExecutionLeaseRow",
+    "FeatureRow",
+    "FillRow",
+    "HeartbeatRow",
+    "InstrumentRow",
+    "KillSwitchEventRow",
+    "LiveAuthorizationRow",
+    "LiveLeaseRow",
+    "MarketSnapshotRow",
+    "OrderIntentRow",
+    "OrderRow",
+    "OrderTransitionRow",
+    "PortfolioSnapshotRow",
+    "PositionRow",
+    "PromotionEvidenceRow",
+    "RealizedPnlRow",
+    "ReconciliationEventRow",
+    "ResearchAcceptanceEvidenceRow",
+    "RiskEvaluationRow",
+    "SignalRow",
+    "StrategyDecisionRow",
+    "SubmissionAttemptRow",
+    "UsedNonceRow",
+]

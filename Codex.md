@@ -4,7 +4,9 @@
 
 Only the paper-safe, fail-closed foundation is implemented: domain and configuration
 primitives, capability evidence and sanitized schema capture, broker protocols, and safe
-structured logging. Trading MCP is not configured. Prediction live execution is unsupported.
+structured logging, plus the Alembic-owned async SQLite ledger schema. Persistence
+repositories, append-only guards, and runtime composition are not implemented.
+Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 
 Trader CLI is not implemented. Broker adapters are not implemented.
