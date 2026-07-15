@@ -490,7 +490,7 @@ def test_upgrade_records_core_revision(
 
     with closing(sqlite3.connect(database_path)) as connection:
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
-    assert revision == ("0001_core_ledger",)
+    assert revision == ("0002_append_only_guards",)
 
 
 def test_models_register_exactly_the_required_tables() -> None:
@@ -2132,7 +2132,7 @@ def test_failed_downgrade_restores_all_schema_changes_and_can_retry(
         correction = connection.execute(
             "SELECT corrects_id FROM audit_events WHERE id = 'audit-2'"
         ).fetchone()
-    assert revision == ("0001_core_ledger",)
+    assert revision == ("0002_append_only_guards",)
     assert correction == ("audit-1",)
 
     command.downgrade(alembic_config, "base")

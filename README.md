@@ -6,7 +6,10 @@ schema-capture primitives, broker protocols, and pre-serialization structured-lo
 redaction. It also includes an Alembic-owned SQLite WAL ledger foundation with canonical
 Decimal and UTC storage, no-affinity safety-scalar checks, and database-bound provenance
 across authorization and economic-effect records. It does not yet implement a trading
-application or persistence repositories.
+application. A single-use async unit of work currently supports lossless order-intent and
+secret-screened audit writes; repository commands for later execution, fills, data quality,
+authorization, reconciliation, and evidence workflows remain deliberately absent until their
+complete domain records exist.
 
 ## Current safety status
 
@@ -45,6 +48,12 @@ Decimal, Boolean, and safety-counter columns deliberately declare SQLite `BLOB` 
 while storing runtime `TEXT` or `INTEGER` values; this prevents SQLite from silently
 coercing raw numeric input before the database checks execute.
 
+Every application connection also verifies recursive-trigger enforcement. Database triggers
+make audit events, order transitions, risk evaluations, configuration versions, live
+authorizations, kill-switch events, and reconciliation events insert-only. Corrections append
+a distinct row referencing an existing original; updates, deletes, self/missing corrections,
+and SQLite replace/upsert mutation paths fail closed and roll back the transaction.
+
 ```shell
 uv sync --all-groups
 make lint
@@ -59,7 +68,7 @@ arguments, or committed files; the safe template contains file references only.
 ## What comes later
 
 Broker adapters, authenticated reads, market-data providers, strategies, portfolio and
-risk policy, persistence repositories and append-only guards, simulation and paper
+risk policy, the remaining workflow-specific persistence commands, simulation and paper
 runners, review and execution services, reconciliation, operator controls, deployment,
 and every opt-in live gate remain future work. Their presence in the implementation plans
 is not evidence that they exist.

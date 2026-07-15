@@ -30,17 +30,18 @@ class DatetimeSubclass(datetime):
     pass
 
 
-async def _read_pragmas(engine: AsyncEngine) -> tuple[str, int, int]:
+async def _read_pragmas(engine: AsyncEngine) -> tuple[str, int, int, int]:
     async with engine.connect() as connection:
         journal = await connection.scalar(text("PRAGMA journal_mode"))
         foreign_keys = await connection.scalar(text("PRAGMA foreign_keys"))
         synchronous = await connection.scalar(text("PRAGMA synchronous"))
-    return str(journal).lower(), int(foreign_keys), int(synchronous)
+        recursive_triggers = await connection.scalar(text("PRAGMA recursive_triggers"))
+    return str(journal).lower(), int(foreign_keys), int(synchronous), int(recursive_triggers)
 
 
 @pytest.mark.asyncio
 async def test_sqlite_uses_wal_foreign_keys_and_full_sync(sqlite_engine: AsyncEngine) -> None:
-    assert await _read_pragmas(sqlite_engine) == ("wal", 1, 2)
+    assert await _read_pragmas(sqlite_engine) == ("wal", 1, 2, 1)
 
 
 @pytest.mark.asyncio
@@ -68,7 +69,7 @@ async def test_connection_policy_is_applied_to_a_new_physical_connection(
     sqlite_engine: AsyncEngine,
 ) -> None:
     await sqlite_engine.dispose()
-    assert await _read_pragmas(sqlite_engine) == ("wal", 1, 2)
+    assert await _read_pragmas(sqlite_engine) == ("wal", 1, 2, 1)
 
 
 @pytest.mark.asyncio
@@ -79,10 +80,11 @@ async def test_connection_policy_repairs_tampered_pooled_connections(
         await connection.exec_driver_sql("PRAGMA journal_mode=DELETE")
         await connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
         await connection.exec_driver_sql("PRAGMA synchronous=OFF")
+        await connection.exec_driver_sql("PRAGMA recursive_triggers=OFF")
 
-    assert await _read_pragmas(sqlite_engine) == ("wal", 1, 2)
+    assert await _read_pragmas(sqlite_engine) == ("wal", 1, 2, 1)
     await sqlite_engine.dispose()
-    assert await _read_pragmas(sqlite_engine) == ("wal", 1, 2)
+    assert await _read_pragmas(sqlite_engine) == ("wal", 1, 2, 1)
 
 
 @pytest.mark.asyncio
@@ -95,6 +97,32 @@ async def test_async_session_factory_binds_safe_sessions_to_engine(
         assert session.bind is sqlite_engine
         assert session.sync_session.autoflush is False
         assert session.sync_session.expire_on_commit is False
+
+
+@pytest.mark.asyncio
+async def test_database_errors_hide_bound_parameter_values(
+    sqlite_engine: AsyncEngine,
+) -> None:
+    secret = "ordinary-looking-value-that-must-not-appear"
+    async with sqlite_engine.begin() as connection:
+        await connection.execute(
+            text("CREATE TABLE hidden_parameter_probe (value TEXT PRIMARY KEY)")
+        )
+        await connection.execute(
+            text("INSERT INTO hidden_parameter_probe (value) VALUES (:value)"),
+            {"value": secret},
+        )
+
+    with pytest.raises(IntegrityError) as captured:
+        async with sqlite_engine.begin() as connection:
+            await connection.execute(
+                text("INSERT INTO hidden_parameter_probe (value) VALUES (:value)"),
+                {"value": secret},
+            )
+
+    assert secret not in str(captured.value)
+    assert secret not in repr(captured.value)
+    assert "hidden" in str(captured.value).lower()
 
 
 @pytest.mark.asyncio

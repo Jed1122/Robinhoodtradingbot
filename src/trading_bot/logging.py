@@ -269,6 +269,16 @@ def _registered_text_snapshot() -> tuple[str, ...]:
         return _REGISTRY_STATE.text_values
 
 
+def contains_registered_secret(value: str) -> bool:
+    """Return whether exact registered secret material occurs in safe identifier text."""
+    if type(value) is not str:
+        return True
+    try:
+        return any(secret in value for secret in _registered_text_snapshot())
+    except Exception:
+        return True
+
+
 def _install_logging_settings(
     settings: _LoggingSettings,
     envelope: _LoggingSettings,
@@ -1678,4 +1688,9 @@ def configure_logging(level: str) -> None:
             raise
 
 
-__all__ = ["SecretRegistry", "configure_logging", "redact_secrets"]
+__all__ = [
+    "SecretRegistry",
+    "configure_logging",
+    "contains_registered_secret",
+    "redact_secrets",
+]

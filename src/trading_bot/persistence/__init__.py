@@ -13,6 +13,11 @@ from trading_bot.persistence.base import (
     async_session_factory,
     create_engine,
 )
+from trading_bot.persistence.unit_of_work import (
+    SqlAlchemyUnitOfWork,
+    UnitOfWork,
+    UnitOfWorkStateError,
+)
 
 __all__ = [
     "Base",
@@ -22,7 +27,10 @@ __all__ = [
     "PersistenceConfigurationError",
     "PersistenceDataError",
     "SHA256Digest",
+    "SqlAlchemyUnitOfWork",
     "UTCDateTime",
+    "UnitOfWork",
+    "UnitOfWorkStateError",
     "async_session_factory",
     "create_engine",
     "models",

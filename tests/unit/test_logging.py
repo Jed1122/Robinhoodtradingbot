@@ -19,7 +19,12 @@ import structlog
 
 import trading_bot.logging as logging_module
 from trading_bot.config import LoggingSettings
-from trading_bot.logging import SecretRegistry, configure_logging, redact_secrets
+from trading_bot.logging import (
+    SecretRegistry,
+    configure_logging,
+    contains_registered_secret,
+    redact_secrets,
+)
 
 _OWN_HANDLER_MARKER = "_trading_bot_json_handler"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -114,8 +119,16 @@ def test_module_exports_exact_public_api() -> None:
     assert logging_module.__all__ == [
         "SecretRegistry",
         "configure_logging",
+        "contains_registered_secret",
         "redact_secrets",
     ]
+
+
+def test_registered_secret_identifier_screen_is_exact_registry_only() -> None:
+    SecretRegistry().register("ordinary-registered-value")
+
+    assert contains_registered_secret("prefix-ordinary-registered-value-suffix")
+    assert not contains_registered_secret("4b8be287-49b5-4d14-bf47-f02dddc0d98c")
 
 
 @pytest.mark.parametrize(

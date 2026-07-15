@@ -7,8 +7,9 @@ Implemented code is limited to canonical domain primitives and immutable cross-l
 safety attestations, strict configuration and hashing, capability evidence and sanitized
 schema capture, least-privilege broker protocols, code identity, clocks, and structured
 logging with pre-serialization redaction. The implemented persistence foundation is an
-Alembic-owned, normalized SQLite ledger with an async engine policy; it does not yet
-include repositories or runtime composition.
+Alembic-owned, normalized SQLite ledger with an async engine policy, a single-use async
+unit of work, lossless order-intent persistence, and secret-screened audit appends. It does
+not yet include the remaining workflow repositories or runtime composition.
 
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. Trader CLI is not implemented. Broker adapters are not implemented.
@@ -28,9 +29,10 @@ hashes. They do not import or implement reconciliation, authorization, monitorin
 promotion, or research services. Audit events have one canonical domain class while the
 prior decision-module import remains a compatibility alias.
 
-`trading_bot.persistence` depends on the domain-neutral clock and SQLAlchemy only; domain,
-strategy, risk, and broker protocols do not import it. Every new or reused SQLite connection
-must prove WAL mode, foreign-key enforcement, and `synchronous=FULL` or fail closed. Trading
+`trading_bot.persistence` maps canonical domain records to SQLAlchemy rows; domain, strategy,
+risk, and broker modules do not import persistence. Every new or reused SQLite connection
+must prove WAL mode, foreign-key enforcement, recursive-trigger enforcement, and
+`synchronous=FULL` or fail closed. Trading
 Decimal values, UTC timestamps, SHA-256 digests, booleans, and safety counters use exact
 bind/read types plus database checks, preventing raw SQL from storing noncanonical evidence.
 Decimal, Boolean, and safety-counter columns declare no-coercion `BLOB` affinity while
@@ -49,12 +51,30 @@ to the same account and instrument, and position rows can be bound to the accoun
 portfolio snapshot they comprise. Live authorization rows are limited to micro-live and
 normal-live stages.
 
+The next migration makes audit events, order transitions, risk evaluations, configuration
+versions, live authorizations, kill-switch events, and reconciliation events insert-only at
+the database boundary. Each table rejects updates and deletes and validates inserts so
+SQLite `REPLACE`, `INSERT OR REPLACE`, and conflict-update paths cannot erase history through
+validated application connections. Insert guards also block ordinary replace conflicts on
+raw connections, while database-owner changes remain outside the trigger threat boundary. A
+correction is a new row whose `corrects_id` names a distinct existing row. Trigger rejection
+rolls back the whole transaction. The application unit of work also
+requires an explicit commit, rolls back normal uncommitted exits and failures, closes its
+session, and prevents repository use outside its one transaction. Construction binds the active
+code and configuration hashes; intent or audit writes with another identity are rejected while
+historical reads remain available. Audit identifiers are checked against the process
+exact-secret registry, while detail values pass both the shared sensitive-material classifier
+and that registry before canonical JSON encoding. Raw UUID, account, and provider identifiers
+are not accepted in free-form details; callers use the event correlation ID and content hashes until a later
+migration adds an explicit typed foreign-key field for a required durable identity.
+
 Relational provenance does not itself prove that an authorization or lease is currently
 valid. Expiry, revocation, nonce consumption, exact config/code identity, and execution
 fencing are fail-closed runtime decisions owned by later pretrade, authorization, and
-execution-leadership services. Provider payloads, signing material, repositories,
-unit-of-work behavior, append-only triggers, and lease acquisition policy are deliberately
-absent from this schema task.
+execution-leadership services. Provider payloads, signing material, workflow-specific
+submission/fill/authorization/reconciliation repository commands, and lease acquisition
+policy remain deliberately absent. The current repository surface does not invent lossy
+commands for domain records that cannot yet populate their required provenance columns.
 
 Shared capability sanitization owns the reviewed sensitive-name and sensitive-text
 taxonomy. Structured logging reuses that taxonomy, adds only the process-local exact
@@ -88,7 +108,7 @@ or a non-submitting order review.
 ## Absent runtime layers
 
 Market data services, strategies, portfolio construction, risk gates, persistence
-repositories, authorization services, simulation, paper and shadow runners, provider
+commands beyond order intents and audit events, authorization services, simulation, paper and shadow runners, provider
 adapters, review and execution, reconciliation, recovery, operations, and deployment
 remain planned. No current module composes a place capability or provides an order call
 site. Later slices must preserve the independent broker capabilities and add their tests

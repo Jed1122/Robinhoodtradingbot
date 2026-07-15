@@ -29,6 +29,7 @@ PROVIDER_LENGTH = 64
 STATE_LENGTH = 64
 
 _VALIDATED_ENGINES: WeakSet[AsyncEngine] = WeakSet()
+_VALIDATED_SESSION_FACTORIES: WeakSet[async_sessionmaker[AsyncSession]] = WeakSet()
 
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_name)s",
@@ -374,9 +375,11 @@ def _apply_sqlite_policy(dbapi_connection: object) -> None:
     journal_row: object | None = None
     foreign_keys_row: object | None = None
     synchronous_row: object | None = None
+    recursive_triggers_row: object | None = None
     try:
         cursor = cast(Any, dbapi_connection).cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA recursive_triggers=ON")
         cursor.execute("PRAGMA journal_mode=WAL")
         journal_row = cursor.fetchone()
         cursor.execute("PRAGMA synchronous=FULL")
@@ -384,6 +387,8 @@ def _apply_sqlite_policy(dbapi_connection: object) -> None:
         foreign_keys_row = cursor.fetchone()
         cursor.execute("PRAGMA synchronous")
         synchronous_row = cursor.fetchone()
+        cursor.execute("PRAGMA recursive_triggers")
+        recursive_triggers_row = cursor.fetchone()
     except Exception as exc:
         operation_error = exc
 
@@ -406,12 +411,17 @@ def _apply_sqlite_policy(dbapi_connection: object) -> None:
     journal_mode = "" if journal_row is None else str(cast(Any, journal_row)[0]).lower()
     foreign_keys = None if foreign_keys_row is None else cast(Any, foreign_keys_row)[0]
     synchronous = None if synchronous_row is None else cast(Any, synchronous_row)[0]
+    recursive_triggers = (
+        None if recursive_triggers_row is None else cast(Any, recursive_triggers_row)[0]
+    )
     if journal_mode != "wal":
         raise PersistenceConfigurationError("SQLite connection did not enter WAL mode")
     if foreign_keys != 1:
         raise PersistenceConfigurationError("SQLite foreign-key enforcement is disabled")
     if synchronous != 2:
         raise PersistenceConfigurationError("SQLite synchronous mode is not FULL")
+    if recursive_triggers != 1:
+        raise PersistenceConfigurationError("SQLite recursive-trigger enforcement is disabled")
 
 
 def create_engine(database_url: str) -> AsyncEngine:
@@ -426,7 +436,11 @@ def create_engine(database_url: str) -> AsyncEngine:
         raise PersistenceConfigurationError("database_url must use sqlite+aiosqlite")
 
     try:
-        engine = create_async_engine(database_url, pool_pre_ping=True)
+        engine = create_async_engine(
+            database_url,
+            pool_pre_ping=True,
+            hide_parameters=True,
+        )
     except (ImportError, SQLAlchemyError, TypeError, ValueError) as exc:
         raise PersistenceConfigurationError("database_url cannot create an async engine") from exc
 
@@ -452,9 +466,33 @@ def async_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessio
     """Create safe async sessions bound to one validated engine."""
     if not isinstance(engine, AsyncEngine) or engine not in _VALIDATED_ENGINES:
         raise PersistenceConfigurationError("engine must be a validated persistence AsyncEngine")
-    return async_sessionmaker(
+    factory = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
         autoflush=False,
         expire_on_commit=False,
     )
+    _VALIDATED_SESSION_FACTORIES.add(factory)
+    return factory
+
+
+def _require_validated_session_factory(
+    factory: object,
+) -> async_sessionmaker[AsyncSession]:
+    """Reject unbranded or rebound factories at each transaction boundary."""
+    if not isinstance(factory, async_sessionmaker) or factory not in _VALIDATED_SESSION_FACTORIES:
+        raise PersistenceConfigurationError(
+            "session factory must come from the validated persistence factory"
+        )
+    bind = factory.kw.get("bind")
+    if not isinstance(bind, AsyncEngine) or bind not in _VALIDATED_ENGINES:
+        raise PersistenceConfigurationError("session factory is not bound to a validated engine")
+    if (
+        set(factory.kw) != {"bind", "autoflush", "expire_on_commit"}
+        or factory.class_ is not AsyncSession
+        or factory.kw.get("autoflush") is not False
+        or factory.kw.get("expire_on_commit") is not False
+        or bind.sync_engine.hide_parameters is not True
+    ):
+        raise PersistenceConfigurationError("session factory safety options were modified")
+    return factory
