@@ -268,7 +268,7 @@ The persisted states are:
 
 `PROPOSED`, `RISK_REJECTED`, `RISK_APPROVED`, `REVIEW_REQUESTED`, `REVIEWED`, `SUBMISSION_PENDING`, `SUBMITTED`, `PARTIALLY_FILLED`, `FILLED`, `CANCEL_PENDING`, `CANCELED`, `REJECTED`, `EXPIRED`, and `UNKNOWN_REQUIRES_RECONCILIATION`.
 
-Transitions are validated by a pure state-machine function and persisted in the same transaction as the initiating event. Each transition records UTC time, actor, immutable reason code, configuration hash, prior state, next state, and correlation ID. Rejected orders cannot transition to submission states.
+Transitions are validated by a pure state-machine function and persisted in the same transaction as the initiating event. Each transition records UTC time, actor, immutable reason code, configuration hash, prior state, next state, and correlation ID. Rejected orders cannot transition to submission states. If reconciliation detects drift while an order is known as submitted, partially filled, or cancel-pending, an explicit `RECONCILIATION_DRIFT` event first moves it to `UNKNOWN_REQUIRES_RECONCILIATION`; only a later broker-backed reconciliation outcome may restore a known active or terminal state. Reconciliation outcome events assert cumulative broker and durable fill facts: an order with any recorded fill cannot reconcile to submitted or rejected, and lifecycle transitions never erase fill provenance.
 
 Every order intent has a stable local deduplication key. Crypto uses the documented `client_order_id`. Equity uses an MCP-supported client reference only if capability discovery confirms one; otherwise the system persists the complete reviewed intent and reconciles broker state before any ambiguous retry. A timeout after submission is never treated as proof that an order failed.
 

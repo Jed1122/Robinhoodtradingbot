@@ -100,6 +100,7 @@ class OrderEvent(StrEnum):
     CANCEL_CONFIRMED = "cancel_confirmed"
     CANCEL_REJECTED = "cancel_rejected"
     BROKER_EXPIRED = "broker_expired"
+    RECONCILIATION_DRIFT = "reconciliation_drift"
     RECONCILE_SUBMITTED = "reconcile_submitted"
     RECONCILE_PARTIAL = "reconcile_partial"
     RECONCILE_FILLED = "reconcile_filled"

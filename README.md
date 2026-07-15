@@ -3,7 +3,9 @@
 This repository currently implements a paper-safe, fail-closed foundation: canonical
 domain records, one strict configuration graph, capability evidence and sanitized
 schema-capture primitives, broker protocols, and pre-serialization structured-log
-redaction. It also includes an Alembic-owned SQLite WAL ledger foundation with canonical
+redaction. A pure, immutable-table order state machine now rejects invalid lifecycle
+events and routes detected drift on known active orders through explicit reconciliation.
+The repository also includes an Alembic-owned SQLite WAL ledger foundation with canonical
 Decimal and UTC storage, no-affinity safety-scalar checks, and database-bound provenance
 across authorization and economic-effect records. It does not yet implement a trading
 application. A single-use async unit of work currently supports lossless order-intent and
@@ -69,7 +71,7 @@ arguments, or committed files; the safe template contains file references only.
 
 Broker adapters, authenticated reads, market-data providers, strategies, portfolio and
 risk policy, the remaining workflow-specific persistence commands, simulation and paper
-runners, review and execution services, reconciliation, operator controls, deployment,
+runners, review and order-submission services, reconciliation services, operator controls, deployment,
 and every opt-in live gate remain future work. Their presence in the implementation plans
 is not evidence that they exist.
 

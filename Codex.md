@@ -7,8 +7,9 @@ primitives, capability evidence and sanitized schema capture, broker protocols, 
 structured logging, plus the Alembic-owned async SQLite ledger schema. Persistence
 now includes an explicit single-use unit of work, lossless order-intent writes,
 secret-screened audit appends, and database-enforced append-only guards for the seven
-critical correction tables. Other workflow repositories and runtime composition are not
-implemented.
+critical correction tables. A broker-neutral pure order state machine validates lifecycle
+events, keeps terminal states closed, and requires explicit reconciliation after detected
+active-order drift. Other workflow repositories and runtime composition are not implemented.
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 

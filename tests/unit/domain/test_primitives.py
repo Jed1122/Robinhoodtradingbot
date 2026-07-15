@@ -104,6 +104,7 @@ def test_enums_have_exact_canonical_members() -> None:
             "CANCEL_CONFIRMED",
             "CANCEL_REJECTED",
             "BROKER_EXPIRED",
+            "RECONCILIATION_DRIFT",
             "RECONCILE_SUBMITTED",
             "RECONCILE_PARTIAL",
             "RECONCILE_FILLED",
@@ -144,9 +145,7 @@ def test_identifiers_are_distinct_newtypes_over_strings() -> None:
     assert len({id(identifier_type) for identifier_type in identifier_types}) == len(
         identifier_types
     )
-    assert all(
-        identifier_type.__supertype__ is str for identifier_type in identifier_types
-    )
+    assert all(identifier_type.__supertype__ is str for identifier_type in identifier_types)
 
 
 def test_new_order_intent_id_is_uuid4_and_unique() -> None:

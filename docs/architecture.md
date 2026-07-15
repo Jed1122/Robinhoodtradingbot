@@ -6,7 +6,9 @@ The repository is a paper-safe, fail-closed foundation, not a running trading sy
 Implemented code is limited to canonical domain primitives and immutable cross-layer
 safety attestations, strict configuration and hashing, capability evidence and sanitized
 schema capture, least-privilege broker protocols, code identity, clocks, and structured
-logging with pre-serialization redaction. The implemented persistence foundation is an
+logging with pre-serialization redaction. The implemented execution boundary contains only
+a pure state machine backed by an immutable explicit transition table; it has no broker
+call site. The implemented persistence foundation is an
 Alembic-owned, normalized SQLite ledger with an async engine policy, a single-use async
 unit of work, lossless order-intent persistence, and secret-screened audit appends. It does
 not yet include the remaining workflow repositories or runtime composition.
@@ -109,7 +111,7 @@ or a non-submitting order review.
 
 Market data services, strategies, portfolio construction, risk gates, persistence
 commands beyond order intents and audit events, authorization services, simulation, paper and shadow runners, provider
-adapters, review and execution, reconciliation, recovery, operations, and deployment
+adapters, review and order-submission services, reconciliation services, recovery, operations, and deployment
 remain planned. No current module composes a place capability or provides an order call
 site. Later slices must preserve the independent broker capabilities and add their tests
 and documentation with each architectural change.

@@ -343,15 +343,18 @@ TRANSITIONS: Final[dict[tuple[OrderState, OrderEvent], OrderState]] = {
     (OrderState.SUBMITTED, OrderEvent.FILL): OrderState.FILLED,
     (OrderState.SUBMITTED, OrderEvent.REQUEST_CANCEL): OrderState.CANCEL_PENDING,
     (OrderState.SUBMITTED, OrderEvent.BROKER_EXPIRED): OrderState.EXPIRED,
+    (OrderState.SUBMITTED, OrderEvent.RECONCILIATION_DRIFT): OrderState.UNKNOWN_REQUIRES_RECONCILIATION,
     (OrderState.PARTIALLY_FILLED, OrderEvent.PARTIAL_FILL): OrderState.PARTIALLY_FILLED,
     (OrderState.PARTIALLY_FILLED, OrderEvent.FILL): OrderState.FILLED,
     (OrderState.PARTIALLY_FILLED, OrderEvent.REQUEST_CANCEL): OrderState.CANCEL_PENDING,
     (OrderState.PARTIALLY_FILLED, OrderEvent.BROKER_EXPIRED): OrderState.EXPIRED,
+    (OrderState.PARTIALLY_FILLED, OrderEvent.RECONCILIATION_DRIFT): OrderState.UNKNOWN_REQUIRES_RECONCILIATION,
     (OrderState.CANCEL_PENDING, OrderEvent.CANCEL_CONFIRMED): OrderState.CANCELED,
     (OrderState.CANCEL_PENDING, OrderEvent.CANCEL_REJECTED): OrderState.UNKNOWN_REQUIRES_RECONCILIATION,
     (OrderState.CANCEL_PENDING, OrderEvent.PARTIAL_FILL): OrderState.CANCEL_PENDING,
     (OrderState.CANCEL_PENDING, OrderEvent.FILL): OrderState.FILLED,
     (OrderState.CANCEL_PENDING, OrderEvent.BROKER_EXPIRED): OrderState.EXPIRED,
+    (OrderState.CANCEL_PENDING, OrderEvent.RECONCILIATION_DRIFT): OrderState.UNKNOWN_REQUIRES_RECONCILIATION,
     (OrderState.CANCEL_PENDING, OrderEvent.BROKER_AMBIGUOUS): OrderState.UNKNOWN_REQUIRES_RECONCILIATION,
     (OrderState.UNKNOWN_REQUIRES_RECONCILIATION, OrderEvent.RECONCILE_SUBMITTED): OrderState.SUBMITTED,
     (OrderState.UNKNOWN_REQUIRES_RECONCILIATION, OrderEvent.RECONCILE_PARTIAL): OrderState.PARTIALLY_FILLED,
@@ -362,7 +365,7 @@ TRANSITIONS: Final[dict[tuple[OrderState, OrderEvent], OrderState]] = {
 }
 ```
 
-This is the complete transition table. `EXPIRE` is valid only before broker acceptance. After acceptance, only a broker-confirmed `BROKER_EXPIRED` or reconciled `RECONCILE_EXPIRED` can make the order terminal, so a local deadline can never hide a resting order. `RISK_REJECTED`, `REJECTED`, `FILLED`, `CANCELED`, and `EXPIRED` are terminal. A partial fill received while cancellation is pending keeps the state at `CANCEL_PENDING`; its cumulative fill quantity is persisted separately. No terminal state has an outgoing transition.
+This is the complete transition table. `EXPIRE` is valid only before broker acceptance. After acceptance, only a broker-confirmed `BROKER_EXPIRED` or reconciled `RECONCILE_EXPIRED` can move an order specifically to `EXPIRED`, so a local deadline can never hide a resting order; fills, confirmed cancellations, and other reconciled terminal outcomes retain their distinct states. Reconciliation drift discovered for a known submitted, partially filled, or cancel-pending order must first use `RECONCILIATION_DRIFT`; the resulting unknown state accepts only explicit reconciliation outcomes. Reconciliation events assert broker-backed facts; the later reconciliation service must reject `RECONCILE_SUBMITTED` or `RECONCILE_REJECTED` when any cumulative durable or broker-reported fill exists, and no state transition may delete or reset fill records. `RISK_REJECTED`, `REJECTED`, `FILLED`, `CANCELED`, and `EXPIRED` are terminal. A partial fill received while cancellation is pending keeps the state at `CANCEL_PENDING`; its cumulative fill quantity is persisted separately. No terminal state has an outgoing transition.
 
 - [ ] **Step 4: Add property invariants**
 
@@ -898,6 +901,14 @@ async def test_unexpected_broker_order_is_material(service: ReconciliationServic
     assert not result.clean
     assert result.differences[0].code == "unexpected_broker_order"
     assert result.differences[0].material
+
+@pytest.mark.parametrize("outcome", [OrderEvent.RECONCILE_SUBMITTED, OrderEvent.RECONCILE_REJECTED])
+async def test_fill_provenance_blocks_incompatible_reconciliation_outcome(
+    service: ReconciliationService, outcome: OrderEvent
+) -> None:
+    service.local.fills = (persisted_partial_fill(),)
+    with pytest.raises(IncompatibleReconciliationOutcome):
+        await service.apply_outcome(outcome)
 ```
 
 - [ ] **Step 2: Run tests and observe failure**
@@ -908,7 +919,7 @@ Expected: FAIL with missing reconciliation service.
 
 - [ ] **Step 3: Implement explicit comparisons**
 
-Compare account identity/state, positions, open and recent orders, executions/fills, quantities, buying power, and local pending submissions. Quantization tolerance comes from current instrument metadata; no generic monetary drift is ignored.
+Compare account identity/state, positions, open and recent orders, executions/fills, quantities, buying power, and local pending submissions. Quantization tolerance comes from current instrument metadata; no generic monetary drift is ignored. Reconciliation derives an order event only after comparing cumulative persisted and broker-reported fills. Any positive fill blocks `RECONCILE_SUBMITTED` and `RECONCILE_REJECTED`; a transition never deletes, resets, or implicitly interprets that fill as zero.
 
 - [ ] **Step 4: Persist the complete result atomically**
 
