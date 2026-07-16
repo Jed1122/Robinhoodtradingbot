@@ -406,24 +406,24 @@ git commit -m "feat: add auditable order state machine"
 - Test: `tests/unit/risk/test_sizing.py`
 - Test: `tests/unit/risk/test_limits.py`
 - Test: `tests/property/risk/test_sizing_properties.py`
+- Test: `tests/property/risk/test_exposure_properties.py`
 
 **Interfaces:**
-- Produces: `SizingRequest`, `SizingDecision`, `size_position`, `ExposureSnapshot`, and `evaluate_exposure_limits`.
+- Produces: `SizingRequest`, `SizingDecision`, `size_position`, `ExposureProjection`, and `evaluate_exposure_limits`.
 
 - [ ] **Step 1: Write failing sizing tests**
 
 ```python
 def test_position_size_uses_smaller_quantity_cap() -> None:
     decision = size_position(
-        SizingRequest(
+        SizingRequest.from_config(
             reconciled_equity=Decimal("100"),
             authorized_risk_equity=Decimal("100"),
-            risk_pct=Decimal("0.50"),
             stop_distance_per_unit=Decimal("1"),
             entry_price=Decimal("10"),
-            max_position_notional_pct=Decimal("15"),
-            quantity_increment=Decimal("0.001"),
-            minimum_notional=Decimal("1"),
+            instrument=instrument,
+            position_risk=config.position_risk,
+            activity=config.activity,
         )
     )
     assert decision.quantity == Decimal("0.500")
@@ -450,19 +450,20 @@ def size_position(request: SizingRequest) -> SizingDecision:
     risk_equity = min(request.reconciled_equity, request.authorized_risk_equity)
     risk_budget = risk_equity * request.risk_pct / Decimal("100")
     risk_quantity = risk_budget / request.stop_distance_per_unit
-    max_notional = risk_equity * request.max_position_notional_pct / Decimal("100")
+    percentage_notional_cap = risk_equity * request.max_position_notional_pct / Decimal("100")
+    max_notional = min(percentage_notional_cap, request.max_order_notional)
     notional_quantity = max_notional / request.entry_price
     quantity = quantize_down(min(risk_quantity, notional_quantity), request.quantity_increment)
-    notional = quantity * request.entry_price
-    risk = quantity * request.stop_distance_per_unit
-    return SizingDecision.validate_final(quantity=quantity, notional=notional, risk=risk, request=request)
+    return SizingDecision.validate_final(quantity=quantity, request=request)
 ```
 
-Backtest/paper set `authorized_risk_equity` to the run's fixed starting-capital reference. Live authorization signs the reference equity for the lease. Losses reduce `reconciled_equity` and therefore size immediately; gains never increase the risk reference until a new preflight and manual authorization. Consecutive losses/wins do not otherwise alter risk percentage or quantity.
+`SizingDecision` construction is factory-only. `validate_final(...)` recomputes notional, stop risk, risk budget, and the effective notional cap from the canonical request before it can create an allowed record; public callers cannot inject inconsistent economic values. `SizingRequest` construction is also factory-only: `from_config(...)` resolves risk percentages from canonical `PositionRiskSettings`, the mode-specific absolute order cap from canonical `ActivitySettings`, and quantity/minimum-notional values from validated `Instrument` metadata. Callers cannot inject parallel threshold values. Backtest/paper set `authorized_risk_equity` to the run's fixed starting-capital reference. Live authorization signs the reference equity for the lease. Losses reduce `reconciled_equity` and therefore size immediately; gains never increase the risk reference until a new preflight and manual authorization. Consecutive losses/wins do not otherwise alter risk percentage or quantity.
 
 - [ ] **Step 4: Add exposure and correlation checks**
 
-Test total gross, open position count, per-position notional, correlated-group exposure, total crypto, single crypto, and cash reserve. Every denial includes a stable code and observed/configured values.
+`ExposureProjection(equity, authorized_risk_equity, cash, gross_exposure, open_position_count, position_notional, correlated_group_exposure, crypto_exposure, single_crypto_exposure, observed_at)` is a projected post-entry view, not a competing actual-portfolio record. `evaluate_exposure_limits(projection, *, portfolio: PortfolioSettings, position_risk: PositionRiskSettings, crypto: CryptoSettings) -> tuple[CheckResult, ...]` consumes the canonical config graph directly. Test total gross, open position count, per-position notional, correlated-group exposure, total crypto, single crypto, and cash reserve. Stable codes are `total_gross_exposure`, `open_position_count`, `position_notional`, `correlated_group_exposure`, `total_crypto_exposure`, `single_crypto_exposure`, and `cash_reserve`; every result includes observed/configured values. Percentage exposure caps use the lesser of current reconciled equity and authorized risk equity, so gains cannot auto-scale exposure. The cash reserve uses current equity, and `cash` cannot exceed current equity. The gross cap is the stricter of the percentage and mode-specific absolute-dollar limits.
+
+This evaluator owns new-exposure cap arithmetic. A later protective-exit/action-policy path must compare current and projected exposure and may allow only a non-increasing reduce-exposure action; it may not reinterpret an over-cap entry as an exit or maintain a competing cap formula.
 
 - [ ] **Step 5: Add property tests**
 

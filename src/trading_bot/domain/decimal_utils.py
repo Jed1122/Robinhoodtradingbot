@@ -7,6 +7,7 @@ from enum import Enum
 from trading_bot.clock import DomainValidationError as DomainValidationError
 
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
+MAX_CANONICAL_DECIMAL_TEXT_LENGTH = 512
 
 
 class InvalidDecimal(DomainValidationError):
@@ -38,6 +39,47 @@ def quantize_down(value: Decimal, increment: Decimal) -> Decimal:
             return (value // increment) * increment
     except DecimalException as exc:
         raise InvalidDecimal("value cannot be quantized to the requested increment") from exc
+
+
+def require_bounded_decimal(
+    value: Decimal,
+    field_name: str,
+    *,
+    nonnegative: bool = False,
+    positive: bool = False,
+) -> Decimal:
+    """Validate an exact finite Decimal whose representation is safe for arithmetic."""
+
+    validated = _require_decimal(
+        value,
+        field_name,
+        nonnegative=nonnegative,
+        positive=positive,
+    )
+    if validated != 0 and (
+        len(validated.as_tuple().digits) > MAX_CANONICAL_DECIMAL_TEXT_LENGTH
+        or abs(validated.adjusted()) > MAX_CANONICAL_DECIMAL_TEXT_LENGTH
+    ):
+        raise InvalidDecimal(f"{field_name} exceeds safe Decimal arithmetic bounds")
+    if validated != 0 and len(_render_decimal_text(validated)) > MAX_CANONICAL_DECIMAL_TEXT_LENGTH:
+        raise InvalidDecimal(f"{field_name} exceeds canonical Decimal text bounds")
+    return validated
+
+
+def canonical_decimal_text(value: Decimal) -> str:
+    """Render a bounded Decimal in canonical non-exponent form for durable evidence."""
+
+    validated = require_bounded_decimal(value, "value")
+    if validated == 0:
+        return "0"
+    return _render_decimal_text(validated)
+
+
+def _render_decimal_text(value: Decimal) -> str:
+    rendered = format(value, "f")
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    return rendered
 
 
 def _require_decimal(

@@ -20,10 +20,15 @@ from sqlalchemy.orm import DeclarativeBase, MappedColumn, mapped_column
 from sqlalchemy.types import TypeDecorator, UserDefinedType
 
 from trading_bot.clock import InvalidTimestamp, require_utc
+from trading_bot.domain.decimal_utils import (
+    MAX_CANONICAL_DECIMAL_TEXT_LENGTH,
+    InvalidDecimal,
+    canonical_decimal_text,
+)
 
 ID_LENGTH = 255
 HASH_LENGTH = 64
-DECIMAL_TEXT_MAX_LENGTH = 512
+DECIMAL_TEXT_MAX_LENGTH = MAX_CANONICAL_DECIMAL_TEXT_LENGTH
 NAME_LENGTH = 128
 PROVIDER_LENGTH = 64
 STATE_LENGTH = 64
@@ -57,19 +62,12 @@ class Base(DeclarativeBase):
 def _canonical_decimal_text(value: Decimal) -> str:
     if type(value) is not Decimal or not value.is_finite():
         raise PersistenceDataError("trading values must be finite exact Decimal instances")
-    if value == 0:
-        return "0"
-    if (
-        len(value.as_tuple().digits) > DECIMAL_TEXT_MAX_LENGTH
-        or abs(value.adjusted()) > DECIMAL_TEXT_MAX_LENGTH
-    ):
-        raise PersistenceDataError("trading value exceeds canonical Decimal storage bounds")
-    rendered = format(value, "f")
-    if "." in rendered:
-        rendered = rendered.rstrip("0").rstrip(".")
-    if len(rendered) > DECIMAL_TEXT_MAX_LENGTH:
-        raise PersistenceDataError("trading value exceeds canonical Decimal storage bounds")
-    return rendered
+    try:
+        return canonical_decimal_text(value)
+    except InvalidDecimal as exc:
+        raise PersistenceDataError(
+            "trading value exceeds canonical Decimal storage bounds"
+        ) from exc
 
 
 class _SQLiteTextStorage(UserDefinedType[str]):

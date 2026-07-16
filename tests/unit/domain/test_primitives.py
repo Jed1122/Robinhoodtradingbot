@@ -39,9 +39,11 @@ from trading_bot.domain import (
     SubmissionAttemptId,
     TimeInForce,
     TimestampSource,
+    canonical_decimal_text,
     new_order_intent_id,
     parse_decimal,
     quantize_down,
+    require_bounded_decimal,
 )
 
 
@@ -169,6 +171,38 @@ def test_parse_decimal_rejects_nonfinite_or_malformed_values(raw: str) -> None:
 
 def test_quantize_down_never_increases_exposure() -> None:
     assert quantize_down(Decimal("1.239"), Decimal("0.01")) == Decimal("1.23")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (Decimal("100.000"), "100"),
+        (Decimal("1E+2"), "100"),
+        (Decimal("0.00100"), "0.001"),
+        (Decimal("-10.5000"), "-10.5"),
+        (Decimal("0E-1000000"), "0"),
+    ],
+)
+def test_canonical_decimal_text_is_fixed_and_lossless(value: Decimal, expected: str) -> None:
+    assert canonical_decimal_text(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        Decimal("NaN"),
+        Decimal("Infinity"),
+        Decimal("1E+512"),
+        Decimal("1E-512"),
+        Decimal("1" * 513),
+        1,
+    ],
+)
+def test_bounded_decimal_rejects_unsafe_arithmetic_representations(
+    value: object,
+) -> None:
+    with pytest.raises(InvalidDecimal):
+        require_bounded_decimal(value, "value")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

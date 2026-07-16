@@ -9,7 +9,10 @@ now includes an explicit single-use unit of work, lossless order-intent writes,
 secret-screened audit appends, and database-enforced append-only guards for the seven
 critical correction tables. A broker-neutral pure order state machine validates lifecycle
 events, keeps terminal states closed, and requires explicit reconciliation after detected
-active-order drift. Other workflow repositories and runtime composition are not implemented.
+active-order drift. Pure sizing and projected-exposure checks use factory-bound canonical
+config and instrument inputs, the lesser current/authorized risk-equity reference, and
+downward Decimal quantization. Other workflow repositories and runtime composition are not
+implemented.
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 

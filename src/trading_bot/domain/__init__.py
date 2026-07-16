@@ -9,8 +9,10 @@ from trading_bot.domain.accounts import (
 from trading_bot.domain.decimal_utils import (
     DomainValidationError,
     InvalidDecimal,
+    canonical_decimal_text,
     parse_decimal,
     quantize_down,
+    require_bounded_decimal,
 )
 from trading_bot.domain.decisions import (
     AlertAttestation,
@@ -127,7 +129,9 @@ __all__ = [
     "SubmissionAttemptId",
     "TimeInForce",
     "TimestampSource",
+    "canonical_decimal_text",
     "new_order_intent_id",
     "parse_decimal",
     "quantize_down",
+    "require_bounded_decimal",
 ]

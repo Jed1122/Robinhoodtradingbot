@@ -8,10 +8,15 @@ safety attestations, strict configuration and hashing, capability evidence and s
 schema capture, least-privilege broker protocols, code identity, clocks, and structured
 logging with pre-serialization redaction. The implemented execution boundary contains only
 a pure state machine backed by an immutable explicit transition table; it has no broker
-call site. The implemented persistence foundation is an
-Alembic-owned, normalized SQLite ledger with an async engine policy, a single-use async
-unit of work, lossless order-intent persistence, and secret-screened audit appends. It does
-not yet include the remaining workflow repositories or runtime composition.
+call site. The implemented portfolio/risk boundary contains pure position sizing and seven
+projected new-exposure checks. It consumes the canonical config models directly, fixes the
+risk-equity reference against gain-based auto-scaling, binds sizing requests to validated
+instrument metadata, applies percentage and absolute notional caps, and has no provider or
+broker dependency. Exposure percentage caps use the lesser of current and authorized risk
+equity; the minimum cash reserve remains based on current equity. The implemented persistence
+foundation is an Alembic-owned, normalized SQLite ledger with an async engine policy, a
+single-use async unit of work, lossless order-intent persistence, and secret-screened audit
+appends. It does not yet include the remaining workflow repositories or runtime composition.
 
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. Trader CLI is not implemented. Broker adapters are not implemented.
@@ -37,6 +42,8 @@ must prove WAL mode, foreign-key enforcement, recursive-trigger enforcement, and
 `synchronous=FULL` or fail closed. Trading
 Decimal values, UTC timestamps, SHA-256 digests, booleans, and safety counters use exact
 bind/read types plus database checks, preventing raw SQL from storing noncanonical evidence.
+Pure arithmetic and persistence share one bounded, fixed-form Decimal renderer; unsafe
+finite exponents or digit counts fail before sizing or evidence serialization.
 Decimal, Boolean, and safety-counter columns declare no-coercion `BLOB` affinity while
 their validated values retain SQLite `TEXT` or `INTEGER` storage classes. Stored generated
 identity columns provide tagged, null-safe equality for optional prices and client order
@@ -109,9 +116,10 @@ or a non-submitting order review.
 
 ## Absent runtime layers
 
-Market data services, strategies, portfolio construction, risk gates, persistence
-commands beyond order intents and audit events, authorization services, simulation, paper and shadow runners, provider
-adapters, review and order-submission services, reconciliation services, recovery, operations, and deployment
-remain planned. No current module composes a place capability or provides an order call
-site. Later slices must preserve the independent broker capabilities and add their tests
-and documentation with each architectural change.
+Market data services, strategies, portfolio target construction, remaining risk and action
+gates, persistence commands beyond order intents and audit events, authorization services,
+simulation, paper and shadow runners, provider adapters, review and order-submission
+services, reconciliation services, recovery, operations, and deployment remain planned. No
+current module composes a place capability or provides an order call site. Later slices must
+preserve the independent broker capabilities and add their tests and documentation with each
+architectural change.

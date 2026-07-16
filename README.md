@@ -5,13 +5,16 @@ domain records, one strict configuration graph, capability evidence and sanitize
 schema-capture primitives, broker protocols, and pre-serialization structured-log
 redaction. A pure, immutable-table order state machine now rejects invalid lifecycle
 events and routes detected drift on known active orders through explicit reconciliation.
-The repository also includes an Alembic-owned SQLite WAL ledger foundation with canonical
-Decimal and UTC storage, no-affinity safety-scalar checks, and database-bound provenance
-across authorization and economic-effect records. It does not yet implement a trading
-application. A single-use async unit of work currently supports lossless order-intent and
-secret-screened audit writes; repository commands for later execution, fills, data quality,
-authorization, reconciliation, and evidence workflows remain deliberately absent until their
-complete domain records exist.
+Pure position sizing now resolves thresholds only from canonical config and instrument
+metadata, caps risk against the lesser of reconciled and authorized equity, rounds exposure
+downward, applies mode-specific absolute order limits, and evaluates projected exposure
+without gain-based cap auto-scaling. The repository also includes an Alembic-owned SQLite
+WAL ledger foundation with canonical Decimal and UTC storage, no-affinity safety-scalar
+checks, and database-bound provenance across authorization and economic-effect records. It
+does not yet implement a trading application. A single-use async unit of work currently
+supports lossless order-intent and secret-screened audit writes; repository commands for
+later execution, fills, data quality, authorization, reconciliation, and evidence workflows
+remain deliberately absent until their complete domain records exist.
 
 ## Current safety status
 
@@ -69,11 +72,11 @@ arguments, or committed files; the safe template contains file references only.
 
 ## What comes later
 
-Broker adapters, authenticated reads, market-data providers, strategies, portfolio and
-risk policy, the remaining workflow-specific persistence commands, simulation and paper
-runners, review and order-submission services, reconciliation services, operator controls, deployment,
-and every opt-in live gate remain future work. Their presence in the implementation plans
-is not evidence that they exist.
+Broker adapters, authenticated reads, market-data providers, strategies, portfolio target
+construction and the remaining risk gates, the remaining workflow-specific persistence
+commands, simulation and paper runners, review and order-submission services, reconciliation
+services, operator controls, deployment, and every opt-in live gate remain future work. Their
+presence in the implementation plans is not evidence that they exist.
 
 The executable plans live under `docs/superpowers/plans/`. Later slices may not bypass a
 failed foundation or capability gate.
