@@ -33,6 +33,7 @@ from trading_bot.domain.enums import (
     OrderType,
     RuntimeState,
     Side,
+    SubmissionOutcome,
     TimeInForce,
     TimestampSource,
 )
@@ -52,6 +53,7 @@ from trading_bot.domain.identifiers import (
     FillId,
     InstrumentId,
     LeaseId,
+    OrderId,
     OrderIntentId,
     OrderTransitionId,
     ReconciliationId,
@@ -61,6 +63,10 @@ from trading_bot.domain.identifiers import (
     new_order_intent_id,
 )
 from trading_bot.domain.market import Bar, Instrument, MarketClock, Quote, SpreadEstimate
+from trading_bot.domain.order_serialization import (
+    canonical_order_intent_payload,
+    canonical_order_intent_sha256,
+)
 from trading_bot.domain.orders import (
     BrokerHealth,
     BrokerOrder,
@@ -106,6 +112,7 @@ __all__ = [
     "LiveLeaseAttestation",
     "MarketClock",
     "OrderEvent",
+    "OrderId",
     "OrderIntent",
     "OrderIntentId",
     "OrderPurpose",
@@ -127,9 +134,12 @@ __all__ = [
     "SpreadEstimate",
     "StrategyEligibilityAttestation",
     "SubmissionAttemptId",
+    "SubmissionOutcome",
     "TimeInForce",
     "TimestampSource",
     "canonical_decimal_text",
+    "canonical_order_intent_payload",
+    "canonical_order_intent_sha256",
     "new_order_intent_id",
     "parse_decimal",
     "quantize_down",

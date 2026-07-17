@@ -6,17 +6,28 @@ The repository is a paper-safe, fail-closed foundation, not a running trading sy
 Implemented code is limited to canonical domain primitives and immutable cross-layer
 safety attestations, strict configuration and hashing, capability evidence and sanitized
 schema capture, least-privilege broker protocols, code identity, clocks, and structured
-logging with pre-serialization redaction. The implemented execution boundary contains only
-a pure state machine backed by an immutable explicit transition table; it has no broker
-call site. The implemented portfolio/risk boundary contains pure position sizing and seven
-projected new-exposure checks. It consumes the canonical config models directly, fixes the
-risk-equity reference against gain-based auto-scaling, binds sizing requests to validated
-instrument metadata, applies percentage and absolute notional caps, and has no provider or
-broker dependency. Exposure percentage caps use the lesser of current and authorized risk
-equity; the minimum cash reserve remains based on current equity. The implemented persistence
-foundation is an Alembic-owned, normalized SQLite ledger with an async engine policy, a
-single-use async unit of work, lossless order-intent persistence, and secret-screened audit
-appends. It does not yet include the remaining workflow repositories or runtime composition.
+logging with pre-serialization redaction. The implemented execution boundary contains a
+pure state machine backed by an immutable explicit transition table, an exact review-only
+wrapper, a deterministic internal SHA-256 deduplication-key function, and non-waiting
+account-scoped exclusion for single-process fake and simulation brokers. A broker-neutral
+execution service owns the only implemented placement call site. It accepts independently
+injected review and place capabilities, persists each safety boundary, and rejects micro-live
+and normal-live modes at construction. The in-process exclusion is not a live-host mutex.
+Reviewed submissions are canonical domain records: non-live records must use fencing token
+zero with no lease claim, while live records require a positive fencing token plus complete
+lease identity and evidence. No current composition can construct a live submission. The
+implemented portfolio/risk boundary
+contains pure position sizing and seven projected new-exposure checks. It consumes the
+canonical config models directly, fixes the risk-equity reference against gain-based
+auto-scaling, binds sizing requests to validated instrument metadata, applies percentage and
+absolute notional caps, and has no provider or broker dependency. Exposure percentage caps
+use the lesser of current and authorized risk equity; the minimum cash reserve remains based
+on current equity. The implemented persistence foundation is an Alembic-owned, normalized
+SQLite ledger with an async engine policy, a single-use async unit of work, lossless
+order-intent persistence, append-only risk and transition evidence, exact review and broker-order
+evidence, a unique one-attempt submission journal, and secret-screened audit appends. It does
+not yet include fill, data-quality, authorization, reconciliation, or research-evidence
+repositories, provider adapters, or application runtime composition.
 
 Loss and activity evaluation is also pure and config-bound. `LossSnapshot` never resets its
 own counters: the future context loader must derive the daily boundary from the canonical
@@ -48,6 +59,23 @@ a verified reduce-only exit, but provider tradability, market state, reconciliat
 bounds, and non-increasing exposure checks still apply. Prediction live execution remains
 denied.
 
+`ExecutionService.execute` first commits the intent and its `PROPOSED` transition, then loads
+fresh preliminary context and persists all 23 initial checks. A denial stops before review or
+placement. An allowed intent advances through a separately injected, review-only capability;
+the normalized review must match the durable intent exactly before the review and `REVIEWED`
+transition are committed. The service then acquires the non-waiting account exclusion, loads
+fresh final context, evaluates and persists all 24 checks, and rechecks the intent and review
+expiration windows. A final denial or expiration is durably terminal and never calls placement.
+
+For an allowed, current non-live intent, one transaction stores the final risk evidence, reserves
+the unique pending submission attempt, and records `SUBMISSION_PENDING` before the injected
+`BrokerPlace` capability is called exactly once. The response outcome and lifecycle transition
+are committed before the exclusion is released. An exception, a response that does not match the
+persisted submission, or an otherwise nonterminal broker state is recorded as ambiguous for later
+reconciliation; it is not interpreted as a safe retry. Exact submitted and rejected responses are
+bound to a canonical broker-order row. This sequence is an implemented local orchestration
+boundary, not a provider adapter, runner, live-authorization service, or proof of broker access.
+
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. Trader CLI is not implemented. Broker adapters are not implemented.
 Account access is not implemented. The repository makes no profitability claim.
@@ -59,7 +87,11 @@ validated thresholds but does not import provider code. Capability models record
 kind and source of evidence without turning documentation or a schema into behavioral
 proof. The broker package currently contains only independent read, review, place, and
 cancel-only protocols plus safe broker-neutral errors; it contains no transport or
-implementation.
+implementation. The execution review wrapper receives only the review protocol, validates
+exact canonical intent equality, and cannot place an order. Its internal deduplication key
+hashes the account, persisted intent identity, configuration hash, and purpose; it does not
+replace a provider client-order identifier. The in-process exclusion fails immediately on a
+same-account overlap, permits independent accounts, and always releases its slot on exit.
 
 Domain safety attestations carry only validated status, identity, UTC time, and evidence
 hashes. Reconciliation attestations are account-bound, and live leases are account-, config-,
@@ -108,12 +140,20 @@ and that registry before canonical JSON encoding. Raw UUID, account, and provide
 are not accepted in free-form details; callers use the event correlation ID and content hashes until a later
 migration adds an explicit typed foreign-key field for a required durable identity.
 
+The submission-attempt migration adds database triggers that admit only canonical pending
+inserts and one pending-to-terminal update. Non-live reservations require fencing token zero
+and no lease claim; live-shaped reservations require a positive fencing token and complete lease
+provenance. Attempt identity and provenance are immutable, accepted and rejected outcomes require
+canonical response evidence, and completed timestamps cannot precede their attempt. Application
+repositories additionally bind intent, review, attempt, broker order, account, instrument,
+configuration, and economic fields before staging the transaction.
+
 Relational provenance does not itself prove that an authorization or lease is currently
 valid. Expiry, revocation, nonce consumption, exact config/code identity, and execution
 fencing are fail-closed runtime decisions owned by later pretrade, authorization, and
 execution-leadership services. Provider payloads, signing material, workflow-specific
-submission/fill/authorization/reconciliation repository commands, and lease acquisition
-policy remain deliberately absent. The current repository surface does not invent lossy
+fill/authorization/reconciliation repository commands, and lease acquisition policy remain
+deliberately absent. The current repository surface does not invent lossy
 commands for domain records that cannot yet populate their required provenance columns.
 
 Shared capability sanitization owns the reviewed sensitive-name and sensitive-text
@@ -148,9 +188,10 @@ or a non-submitting order review.
 ## Absent runtime layers
 
 Market data services, strategies, portfolio target construction, remaining action and authorization
-gates, persistence commands beyond order intents and audit events, authorization services,
-simulation, paper and shadow runners, provider adapters, review and order-submission
-services, reconciliation services, recovery, operations, and deployment remain planned. No
-current module composes a place capability or provides an order call site. Later slices must
-preserve the independent broker capabilities and add their tests and documentation with each
-architectural change.
+gates, remaining persistence commands, authorization services, simulation, paper and shadow
+runners, provider adapters, provider-connected placement and cancellation, reconciliation
+services, recovery, operations, and deployment remain planned. The implemented durable execution
+service composes only explicitly injected broker-neutral capabilities and refuses live modes; no
+provider transport, authenticated account access, live mutex, lease leadership, or live runtime
+composition exists. Later slices must preserve the independent broker capabilities and add their
+tests and documentation with each architectural change.

@@ -341,5 +341,21 @@ def test_transition_mapping_is_private_and_runtime_immutable() -> None:
 def test_public_exports_are_minimal() -> None:
     expected = ["InvalidOrderTransition", "transition"]
 
-    assert execution_package.__all__ == expected
     assert state_machine_module.__all__ == expected
+    assert {
+        "DuplicateSubmissionAttempt",
+        "ExecutionResult",
+        "ExecutionService",
+        "InProcessSubmissionExclusion",
+        "InvalidOrderTransition",
+        "OrderReviewMismatch",
+        "OrderReviewService",
+        "PretradeContextLoader",
+        "PretradeEvaluator",
+        "SubmissionAlreadyInProgress",
+        "SubmissionExclusion",
+        "UnitOfWorkFactory",
+        "derive_deduplication_key",
+        "review_matches_intent",
+        "transition",
+    } == set(execution_package.__all__)

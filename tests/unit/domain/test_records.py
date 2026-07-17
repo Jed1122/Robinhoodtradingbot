@@ -26,11 +26,14 @@ from trading_bot.domain import (
     CorrelationId,
     DataHash,
     DomainValidationError,
+    ExecutionMode,
     Fill,
     FillId,
     Instrument,
     InstrumentId,
+    LeaseId,
     MarketClock,
+    OrderId,
     OrderIntent,
     OrderIntentId,
     OrderPurpose,
@@ -192,7 +195,8 @@ def _valid_records() -> dict[str, Any]:
         broker_review_id="review-at-broker",
     )
     broker_order = BrokerOrder(
-        id=BrokerOrderId("broker-order-1"),
+        id=OrderId("order-1"),
+        broker_order_id=BrokerOrderId("broker-order-1"),
         account_id=account.account_id,
         intent_id=intent.id,
         client_order_id=ClientOrderId("client-1"),
@@ -212,7 +216,7 @@ def _valid_records() -> dict[str, Any]:
     )
     fill = Fill(
         id=FillId("fill-1"),
-        broker_order_id=broker_order.id,
+        broker_order_id=broker_order.broker_order_id,
         account_id=account.account_id,
         instrument_id=instrument.id,
         side=Side.BUY,
@@ -223,7 +227,7 @@ def _valid_records() -> dict[str, Any]:
         data_hash=DataHash(HASH_A),
     )
     cancel_receipt = CancelReceipt(
-        broker_order_id=broker_order.id,
+        broker_order_id=broker_order.broker_order_id,
         accepted=True,
         ambiguous=False,
         observed_at=NOW,
@@ -239,9 +243,11 @@ def _valid_records() -> dict[str, Any]:
         review_id=ReviewId("review-1"),
         submission_attempt_id=SubmissionAttemptId("attempt-1"),
         review=review,
-        deduplication_key="dedupe-1",
-        fencing_token=1,
-        live_lease_evidence_hash=HASH_C,
+        deduplication_key=HASH_A,
+        fencing_token=0,
+        execution_mode=ExecutionMode.PAPER,
+        live_lease_id=None,
+        live_lease_evidence_hash=None,
         account_id=account.account_id,
         config_hash=ConfigHash(HASH_B),
     )
@@ -422,6 +428,7 @@ def test_record_fields_are_exact_and_stable() -> None:
         ),
         BrokerOrder: (
             "id",
+            "broker_order_id",
             "account_id",
             "intent_id",
             "client_order_id",
@@ -465,6 +472,8 @@ def test_record_fields_are_exact_and_stable() -> None:
             "review",
             "deduplication_key",
             "fencing_token",
+            "execution_mode",
+            "live_lease_id",
             "live_lease_evidence_hash",
             "account_id",
             "config_hash",
@@ -701,6 +710,7 @@ def test_boolean_fields_require_exact_boolean_values(record_name: str, field_nam
         ("broker_order", "order_type"),
         ("broker_order", "time_in_force"),
         ("broker_order", "state"),
+        ("persisted_review", "execution_mode"),
         ("fill", "side"),
     ],
 )
@@ -727,6 +737,7 @@ def test_enum_fields_reject_raw_string_values(record_name: str, field_name: str)
         ("review", "outbound_payload_sha256"),
         ("broker_order", "data_hash"),
         ("fill", "data_hash"),
+        ("persisted_review", "deduplication_key"),
         ("persisted_review", "live_lease_evidence_hash"),
         ("persisted_review", "config_hash"),
         ("risk_evaluation", "config_hash"),
@@ -746,6 +757,61 @@ def test_optional_hash_accepts_none() -> None:
     event = replace(_valid_records()["audit_event"], data_hash=None)
 
     assert event.data_hash is None
+
+
+def test_non_live_persisted_review_has_no_lease_or_fencing_claim() -> None:
+    persisted = _valid_records()["persisted_review"]
+
+    assert persisted.execution_mode is ExecutionMode.PAPER
+    assert persisted.fencing_token == 0
+    assert persisted.live_lease_id is None
+    assert persisted.live_lease_evidence_hash is None
+
+
+def test_live_persisted_review_requires_complete_lease_and_fencing_provenance() -> None:
+    persisted = _valid_records()["persisted_review"]
+    live = replace(
+        persisted,
+        fencing_token=1,
+        execution_mode=ExecutionMode.MICRO_LIVE,
+        live_lease_id=LeaseId("lease-1"),
+        live_lease_evidence_hash=HASH_C,
+    )
+
+    assert live.live_lease_id == "lease-1"
+    assert live.live_lease_evidence_hash == HASH_C
+
+    for changes in (
+        {
+            "execution_mode": ExecutionMode.MICRO_LIVE,
+            "live_lease_id": LeaseId("lease-1"),
+            "live_lease_evidence_hash": HASH_C,
+        },
+        {
+            "fencing_token": 1,
+            "execution_mode": ExecutionMode.MICRO_LIVE,
+            "live_lease_evidence_hash": HASH_C,
+        },
+        {
+            "fencing_token": 1,
+            "execution_mode": ExecutionMode.MICRO_LIVE,
+            "live_lease_id": LeaseId("lease-1"),
+        },
+    ):
+        with pytest.raises(DomainValidationError):
+            replace(persisted, **changes)
+
+
+def test_non_live_persisted_review_rejects_lease_or_fencing_provenance() -> None:
+    persisted = _valid_records()["persisted_review"]
+
+    for changes in (
+        {"fencing_token": 1},
+        {"live_lease_id": LeaseId("lease-1")},
+        {"live_lease_evidence_hash": HASH_C},
+    ):
+        with pytest.raises(DomainValidationError):
+            replace(persisted, **changes)
 
 
 def test_account_buying_power_requires_exactly_one_asset_class_value() -> None:

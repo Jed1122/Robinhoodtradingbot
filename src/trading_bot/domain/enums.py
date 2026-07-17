@@ -107,3 +107,12 @@ class OrderEvent(StrEnum):
     RECONCILE_CANCELED = "reconcile_canceled"
     RECONCILE_REJECTED = "reconcile_rejected"
     RECONCILE_EXPIRED = "reconcile_expired"
+
+
+class SubmissionOutcome(StrEnum):
+    """Durable classification of one broker placement attempt."""
+
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    AMBIGUOUS = "ambiguous"

@@ -184,6 +184,7 @@ class SqlAlchemyUnitOfWork:
                 _SqlSubmissionAttemptRepository(
                     session,
                     ensure_active=self._ensure_transaction_active,
+                    ensure_config_hash=self._ensure_config_hash,
                 ),
             )
             self._fills = cast(

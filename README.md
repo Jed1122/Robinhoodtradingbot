@@ -18,17 +18,30 @@ all 24 without short-circuiting. It captures one injected UTC clock value per ev
 binds costs and exposure projections to exact evidence identities, and explicitly denies
 missing, stale, mismatched, or unsafe evidence. Non-live modes waive only the live-lease
 requirement; matching config, code, research, and alert evidence remain mandatory. The
-repository also includes an Alembic-owned SQLite
+execution package now also provides an exact review-only wrapper, deterministic internal
+SHA-256 submission keys, and non-waiting per-account exclusion for single-process fake and
+simulation brokers. Its broker-neutral `ExecutionService` durably records the proposed intent,
+the 23-check preliminary decision, the exact broker review, and a fresh 24-check final decision.
+Under the account exclusion, an allowed non-live attempt atomically records its unique pending
+reservation before calling the injected placement capability exactly once, then records an
+accepted, rejected, or ambiguous outcome before releasing the exclusion. Transport errors,
+response mismatches, and broker states that are not an exact acceptance or rejection remain
+ambiguous for later reconciliation. The in-process exclusion is explicitly not a live-host
+mutex. A persisted reviewed order distinguishes non-live provenance (fencing token zero and no
+lease claim) from live provenance (a positive fencing token and complete lease identity and
+evidence), and this service rejects both live modes at construction until the later authorization
+and leadership layers exist. The repository also includes an Alembic-owned SQLite
 WAL ledger foundation with canonical Decimal and UTC storage, no-affinity safety-scalar
 checks, and database-bound provenance across authorization and economic-effect records. It
 does not yet implement a trading application. A single-use async unit of work currently
-supports lossless order-intent and secret-screened audit writes; repository commands for
-later execution, fills, data quality, authorization, reconciliation, and evidence workflows
-remain deliberately absent until their complete domain records exist.
+supports lossless order-intent, risk-evaluation, review, lifecycle-transition, submission-attempt,
+broker-order, and secret-screened audit writes. Repository commands for fills, data quality,
+authorization, reconciliation, and evidence workflows remain deliberately absent until their
+complete domain records exist.
 
 ## Current safety status
 
-- The default remains paused and cannot submit an order.
+- The default remains paused and cannot construct a live submission path.
 - Trading MCP is not configured. The committed capability baseline comes only from
   official public documentation; it is not schema or authenticated evidence.
 - Prediction live execution is unsupported.
@@ -84,9 +97,11 @@ arguments, or committed files; the safe template contains file references only.
 
 Broker adapters, authenticated reads, market-data providers, strategies, portfolio target
 construction, runtime action and authorization gates, the remaining workflow-specific persistence
-commands, simulation and paper runners, review and order-submission services, reconciliation
-services, operator controls, deployment, and every opt-in live gate remain future work. Their
-presence in the implementation plans is not evidence that they exist.
+commands, simulation and paper runners, provider-connected order submission and cancellation,
+reconciliation services, operator controls, deployment, and every opt-in live gate remain future
+work. The broker-neutral execution service accepts only injected capabilities and explicitly blocks
+live modes; it does not establish account access, broker connectivity, or permission to trade. The
+presence of later layers in the implementation plans is not evidence that they exist.
 
 The executable plans live under `docs/superpowers/plans/`. Later slices may not bypass a
 failed foundation or capability gate.

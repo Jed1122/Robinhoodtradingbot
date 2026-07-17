@@ -26,6 +26,7 @@ from trading_bot.domain import (
     InvalidDecimal,
     LeaseId,
     OrderEvent,
+    OrderId,
     OrderIntentId,
     OrderPurpose,
     OrderState,
@@ -37,6 +38,7 @@ from trading_bot.domain import (
     RuntimeState,
     Side,
     SubmissionAttemptId,
+    SubmissionOutcome,
     TimeInForce,
     TimestampSource,
     canonical_decimal_text,
@@ -114,6 +116,7 @@ def test_enums_have_exact_canonical_members() -> None:
             "RECONCILE_REJECTED",
             "RECONCILE_EXPIRED",
         ),
+        SubmissionOutcome: ("PENDING", "ACCEPTED", "REJECTED", "AMBIGUOUS"),
     }
 
     for enum_type, expected in expected_members.items():
@@ -125,6 +128,7 @@ def test_identifiers_are_distinct_newtypes_over_strings() -> None:
         AccountId,
         InstrumentId,
         OrderIntentId,
+        OrderId,
         ClientOrderId,
         ReviewId,
         SubmissionAttemptId,

@@ -230,7 +230,10 @@ def test_exact_append_only_trigger_inventory(
     with closing(_connect(migrated_database)) as connection:
         actual = {
             str(row[0])
-            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'")
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type = 'trigger' AND name LIKE 'trg_%_append_only_%'"
+            )
         }
     assert actual == expected
 
@@ -556,8 +559,8 @@ def test_failed_trigger_downgrade_is_atomic_and_retryable(
         trigger_count = connection.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'"
         ).fetchone()
-    assert revision == ("0002_append_only_guards",)
-    assert trigger_count == (len(PROTECTED_TABLES) * 4,)
+    assert revision == ("0003_submission_attempt_guards",)
+    assert trigger_count == (len(PROTECTED_TABLES) * 4 + 2,)
 
     command.downgrade(alembic_config, "0001_core_ledger")
     with closing(_connect(database_path)) as connection:

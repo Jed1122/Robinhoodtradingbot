@@ -18,8 +18,14 @@ not configuration or authentication evidence.
   by this committed baseline.
 - Unsupported: prediction-order placement. The official public evidence records no
   programmatic placement interface, so positive placement evidence is prohibited.
-- Not implemented in this slice: broker adapters, account access, order review, order
-  submission, cancellation, and live trading.
+- Implemented locally: a broker-neutral, non-live execution service that persists preliminary
+  and final risk evidence, an exact review, one pending submission reservation, and the resulting
+  accepted, rejected, or ambiguous outcome around an injected fake or simulation placement
+  capability.
+- Not implemented in this slice: broker adapters, account access, broker-connected order review
+  or submission, cancellation, live authorization and leadership, and live trading. The local
+  orchestration service explicitly refuses live modes and does not change any external capability
+  state in this matrix.
 
 `documented_locked_external_pending` means the public operation is named, but required
 schema/behavioral evidence and implementation are absent. `unsupported_locked` is a

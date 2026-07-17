@@ -221,7 +221,16 @@ def _seed_submission(
     execution_mode: str = "paper",
     live_lease_id: str | None = None,
     live_lease_evidence_hash: str | None = None,
+    fencing_token: int | None = None,
+    completed_at: str | None = None,
+    outcome_class: str = "pending",
+    sanitized_response_hash: str | None = None,
 ) -> None:
+    effective_fencing_token = (
+        (1 if execution_mode in {"micro_live", "normal_live"} else 0)
+        if fencing_token is None
+        else fencing_token
+    )
     connection.execute(
         """
         INSERT INTO submission_attempts (
@@ -230,7 +239,7 @@ def _seed_submission(
             provider_client_reference, fencing_token, attempt_started_at,
             execution_mode, live_lease_id, live_lease_evidence_hash,
             completed_at, outcome_class, sanitized_response_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL, 'started', NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             submission_id,
@@ -241,10 +250,14 @@ def _seed_submission(
             deduplication_key,
             provider,
             provider_client_reference,
+            effective_fencing_token,
             UTC_TEXT,
             execution_mode,
             live_lease_id,
             live_lease_evidence_hash,
+            completed_at,
+            outcome_class,
+            sanitized_response_hash,
         ),
     )
 
@@ -268,6 +281,7 @@ def _seed_order(
     limit_price: str | None = "10",
     stop_price: str | None = None,
     client_order_id: str | None = None,
+    state: str = "submitted",
 ) -> None:
     connection.execute(
         """
@@ -279,7 +293,7 @@ def _seed_order(
             created_at, updated_at, data_hash
         ) VALUES (?, ?, ?, ?, ?, ?, ?,
                   ?, ?, ?, ?, ?, ?,
-                  'submitted', ?, '0', ?, ?, NULL, ?, ?, ?)
+                  ?, ?, '0', ?, ?, NULL, ?, ?, ?)
         """,
         (
             order_id,
@@ -295,6 +309,7 @@ def _seed_order(
             purpose,
             order_type,
             time_in_force,
+            state,
             requested_quantity,
             limit_price,
             stop_price,
@@ -490,7 +505,7 @@ def test_upgrade_records_core_revision(
 
     with closing(sqlite3.connect(database_path)) as connection:
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
-    assert revision == ("0002_append_only_guards",)
+    assert revision == ("0003_submission_attempt_guards",)
 
 
 def test_models_register_exactly_the_required_tables() -> None:
@@ -1156,6 +1171,239 @@ def test_submission_accepts_nonlive_mode_without_lease_provenance(
         ).fetchone()
 
     assert stored == (execution_mode, None)
+
+
+def test_submission_attempt_contract_is_pending_then_exactly_once_terminal(
+    alembic_config: Config,
+    database_path: Path,
+) -> None:
+    command.upgrade(alembic_config, "head")
+
+    with closing(_connect(database_path)) as connection:
+        _seed_account(connection)
+        _seed_instrument(connection)
+        _seed_intent(connection, "intent-1")
+        _seed_review(connection, "review-1", "intent-1")
+        connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="submission attempt contract"):
+            _seed_submission(
+                connection,
+                "invalid-submission",
+                "intent-1",
+                "review-1",
+                fencing_token=1,
+            )
+
+        _seed_submission(connection, "submission-1", "intent-1", "review-1")
+        _seed_order(
+            connection,
+            "order-1",
+            "broker-order-1",
+            "submission-1",
+        )
+        connection.execute(
+            """
+            UPDATE submission_attempts
+            SET outcome_class = 'accepted', completed_at = ?, sanitized_response_hash = ?
+            WHERE id = 'submission-1'
+            """,
+            (UTC_TEXT, HASH_B),
+        )
+        connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="submission attempt contract"):
+            connection.execute(
+                "UPDATE submission_attempts SET outcome_class = 'rejected' "
+                "WHERE id = 'submission-1'"
+            )
+
+        stored = connection.execute(
+            "SELECT outcome_class, completed_at, sanitized_response_hash "
+            "FROM submission_attempts WHERE id = 'submission-1'"
+        ).fetchone()
+
+    assert stored == ("accepted", UTC_TEXT, HASH_B)
+
+
+@pytest.mark.parametrize("outcome_class", ["accepted", "rejected", "ambiguous", "unknown"])
+def test_submission_attempt_insert_rejects_every_non_pending_outcome(
+    alembic_config: Config,
+    database_path: Path,
+    outcome_class: str,
+) -> None:
+    command.upgrade(alembic_config, "head")
+
+    with closing(_connect(database_path)) as connection:
+        _seed_account(connection)
+        _seed_instrument(connection)
+        _seed_intent(connection, "intent-1")
+        _seed_review(connection, "review-1", "intent-1")
+        connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="submission attempt contract"):
+            _seed_submission(
+                connection,
+                "submission-1",
+                "intent-1",
+                "review-1",
+                completed_at=UTC_TEXT,
+                outcome_class=outcome_class,
+                sanitized_response_hash=HASH_B,
+            )
+
+
+@pytest.mark.parametrize(
+    ("outcome_class", "order_state", "response_hash"),
+    [
+        ("accepted", "submitted", HASH_B),
+        ("rejected", "rejected", HASH_B),
+        ("ambiguous", None, None),
+        ("ambiguous", None, HASH_B),
+    ],
+)
+def test_submission_attempt_allows_only_well_formed_terminal_updates(
+    alembic_config: Config,
+    database_path: Path,
+    outcome_class: str,
+    order_state: str | None,
+    response_hash: str | None,
+) -> None:
+    command.upgrade(alembic_config, "head")
+
+    with closing(_connect(database_path)) as connection:
+        _seed_account(connection)
+        _seed_instrument(connection)
+        _seed_intent(connection, "intent-1")
+        _seed_review(connection, "review-1", "intent-1")
+        _seed_submission(connection, "submission-1", "intent-1", "review-1")
+        if order_state is not None:
+            _seed_order(
+                connection,
+                "order-1",
+                "broker-order-1",
+                "submission-1",
+                state=order_state,
+            )
+        connection.execute(
+            """
+            UPDATE submission_attempts
+            SET outcome_class = ?, completed_at = ?, sanitized_response_hash = ?
+            WHERE id = 'submission-1'
+            """,
+            (outcome_class, UTC_TEXT, response_hash),
+        )
+        connection.commit()
+
+        stored = connection.execute(
+            "SELECT outcome_class, completed_at, sanitized_response_hash "
+            "FROM submission_attempts WHERE id = 'submission-1'"
+        ).fetchone()
+
+    assert stored == (outcome_class, UTC_TEXT, response_hash)
+
+
+@pytest.mark.parametrize(
+    ("outcome_class", "order_state", "completed_at", "response_hash"),
+    [
+        ("accepted", None, UTC_TEXT, HASH_B),
+        ("rejected", None, UTC_TEXT, HASH_B),
+        ("accepted", "rejected", UTC_TEXT, HASH_B),
+        ("rejected", "submitted", UTC_TEXT, HASH_B),
+        ("accepted", "submitted", UTC_TEXT, None),
+        ("rejected", "rejected", UTC_TEXT, None),
+        ("accepted", "submitted", "2026-07-13T11:59:59.000000Z", HASH_B),
+    ],
+)
+def test_submission_attempt_rejects_malformed_terminal_updates(
+    alembic_config: Config,
+    database_path: Path,
+    outcome_class: str,
+    order_state: str | None,
+    completed_at: str,
+    response_hash: str | None,
+) -> None:
+    command.upgrade(alembic_config, "head")
+
+    with closing(_connect(database_path)) as connection:
+        _seed_account(connection)
+        _seed_instrument(connection)
+        _seed_intent(connection, "intent-1")
+        _seed_review(connection, "review-1", "intent-1")
+        _seed_submission(connection, "submission-1", "intent-1", "review-1")
+        if order_state is not None:
+            _seed_order(
+                connection,
+                "order-1",
+                "broker-order-1",
+                "submission-1",
+                state=order_state,
+            )
+        connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="submission attempt contract"):
+            connection.execute(
+                """
+                UPDATE submission_attempts
+                SET outcome_class = ?, completed_at = ?, sanitized_response_hash = ?
+                WHERE id = 'submission-1'
+                """,
+                (outcome_class, completed_at, response_hash),
+            )
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE submission_attempts SET provider = 'other' WHERE id = 'submission-1'",
+        "UPDATE submission_attempts SET outcome_class = 'pending' WHERE id = 'submission-1'",
+    ],
+)
+def test_submission_attempt_rejects_immutable_or_noop_updates(
+    alembic_config: Config,
+    database_path: Path,
+    statement: str,
+) -> None:
+    command.upgrade(alembic_config, "head")
+
+    with closing(_connect(database_path)) as connection:
+        _seed_account(connection)
+        _seed_instrument(connection)
+        _seed_intent(connection, "intent-1")
+        _seed_review(connection, "review-1", "intent-1")
+        _seed_submission(connection, "submission-1", "intent-1", "review-1")
+        connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="submission attempt contract"):
+            connection.execute(statement)
+
+
+def test_live_submission_attempt_rejects_zero_fencing_token(
+    alembic_config: Config,
+    database_path: Path,
+) -> None:
+    command.upgrade(alembic_config, "head")
+
+    with closing(_connect(database_path)) as connection:
+        _seed_account(connection)
+        _seed_instrument(connection)
+        _seed_intent(connection, "intent-1")
+        _seed_review(connection, "review-1", "intent-1")
+        _seed_promotion_and_authorization(connection)
+        _seed_live_lease(connection)
+        connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="submission attempt contract"):
+            _seed_submission(
+                connection,
+                "submission-1",
+                "intent-1",
+                "review-1",
+                execution_mode="micro_live",
+                live_lease_id="live-lease-1",
+                live_lease_evidence_hash=HASH_B,
+                fencing_token=0,
+            )
 
 
 def test_live_submission_lease_must_match_the_submission_account(
@@ -2132,7 +2380,7 @@ def test_failed_downgrade_restores_all_schema_changes_and_can_retry(
         correction = connection.execute(
             "SELECT corrects_id FROM audit_events WHERE id = 'audit-2'"
         ).fetchone()
-    assert revision == ("0002_append_only_guards",)
+    assert revision == ("0003_submission_attempt_guards",)
     assert correction == ("audit-1",)
 
     command.downgrade(alembic_config, "base")

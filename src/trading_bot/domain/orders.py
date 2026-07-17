@@ -17,6 +17,7 @@ from trading_bot.domain.decimal_utils import (
 )
 from trading_bot.domain.enums import (
     AssetClass,
+    ExecutionMode,
     OrderPurpose,
     OrderState,
     OrderType,
@@ -31,6 +32,8 @@ from trading_bot.domain.identifiers import (
     DataHash,
     FillId,
     InstrumentId,
+    LeaseId,
+    OrderId,
     OrderIntentId,
     ReviewId,
     SubmissionAttemptId,
@@ -143,7 +146,8 @@ class BrokerOrderReview:
 
 @dataclass(frozen=True, slots=True)
 class BrokerOrder:
-    id: BrokerOrderId
+    id: OrderId
+    broker_order_id: BrokerOrderId
     account_id: AccountId
     intent_id: OrderIntentId | None
     client_order_id: ClientOrderId | None
@@ -163,6 +167,7 @@ class BrokerOrder:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.id, "id")
+        _require_nonempty(self.broker_order_id, "broker_order_id")
         _require_nonempty(self.account_id, "account_id")
         if self.intent_id is not None:
             _require_nonempty(self.intent_id, "intent_id")
@@ -260,7 +265,9 @@ class PersistedReviewedOrder:
     review: BrokerOrderReview
     deduplication_key: str
     fencing_token: int
-    live_lease_evidence_hash: str
+    execution_mode: ExecutionMode
+    live_lease_id: LeaseId | None
+    live_lease_evidence_hash: str | None
     account_id: AccountId
     config_hash: ConfigHash
 
@@ -269,9 +276,31 @@ class PersistedReviewedOrder:
         _require_nonempty(self.submission_attempt_id, "submission_attempt_id")
         if type(self.review) is not BrokerOrderReview:
             raise DomainValidationError("review must be a BrokerOrderReview")
-        _require_nonempty(self.deduplication_key, "deduplication_key")
+        _require_sha256_hex(self.deduplication_key, "deduplication_key")
         _require_nonnegative_int(self.fencing_token, "fencing_token")
-        _require_sha256_hex(self.live_lease_evidence_hash, "live_lease_evidence_hash")
+        _require_exact_enum(self.execution_mode, ExecutionMode, "execution_mode")
+        live_mode = self.execution_mode in {
+            ExecutionMode.MICRO_LIVE,
+            ExecutionMode.NORMAL_LIVE,
+        }
+        if live_mode:
+            if self.fencing_token <= 0:
+                raise DomainValidationError("live submissions require a positive fencing token")
+            if self.live_lease_id is None:
+                raise DomainValidationError("live submissions require a live lease id")
+            _require_nonempty(self.live_lease_id, "live_lease_id")
+            if self.live_lease_evidence_hash is None:
+                raise DomainValidationError("live submissions require lease evidence")
+            _require_sha256_hex(
+                self.live_lease_evidence_hash,
+                "live_lease_evidence_hash",
+            )
+        elif (
+            self.fencing_token != 0
+            or self.live_lease_id is not None
+            or self.live_lease_evidence_hash is not None
+        ):
+            raise DomainValidationError("non-live submissions cannot claim lease provenance")
         _require_nonempty(self.account_id, "account_id")
         _require_sha256_hex(self.config_hash, "config_hash")
         normalized = self.review.normalized_order

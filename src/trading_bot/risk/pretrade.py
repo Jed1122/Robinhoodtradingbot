@@ -46,6 +46,7 @@ from trading_bot.domain import (
     Side,
     StrategyEligibilityAttestation,
     canonical_decimal_text,
+    canonical_order_intent_payload,
     require_bounded_decimal,
 )
 from trading_bot.domain.decimal_utils import (
@@ -342,10 +343,6 @@ class FinalPretradeContext:
             raise DomainValidationError("reviewed_order must be a BrokerOrderReview")
 
 
-def _optional_decimal_text(value: Decimal | None) -> str | None:
-    return None if value is None else canonical_decimal_text(value)
-
-
 def _evidence_decimal_text(value: Decimal) -> str:
     try:
         return canonical_decimal_text(value)
@@ -364,26 +361,8 @@ def canonical_review_payload_sha256(
         raise DomainValidationError("intent must be an OrderIntent")
     if client_order_id is not None:
         _require_nonempty(client_order_id, "client_order_id")
-    payload = {
-        "account_id": str(intent.account_id),
-        "asset_class": intent.asset_class.value,
-        "client_order_id": None if client_order_id is None else str(client_order_id),
-        "config_hash": str(intent.config_hash),
-        "created_at": intent.created_at.isoformat(),
-        "data_hash": str(intent.data_hash),
-        "exit_policy_version": intent.exit_policy_version,
-        "expires_at": intent.expires_at.isoformat(),
-        "instrument_id": str(intent.instrument_id),
-        "intent_id": str(intent.id),
-        "limit_price": _optional_decimal_text(intent.limit_price),
-        "order_type": intent.order_type.value,
-        "purpose": intent.purpose.value,
-        "quantity": canonical_decimal_text(intent.quantity),
-        "side": intent.side.value,
-        "stop_price": _optional_decimal_text(intent.stop_price),
-        "strategy_version": intent.strategy_version,
-        "time_in_force": intent.time_in_force.value,
-    }
+    payload = canonical_order_intent_payload(intent)
+    payload["client_order_id"] = None if client_order_id is None else str(client_order_id)
     encoded = json.dumps(
         payload,
         allow_nan=False,
