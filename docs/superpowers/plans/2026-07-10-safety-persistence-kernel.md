@@ -498,7 +498,7 @@ git commit -m "feat: add bounded position sizing and exposure limits"
 - Test: `tests/property/risk/test_loss_properties.py`
 
 **Interfaces:**
-- Produces: `LossSnapshot`, `ActivitySnapshot`, `LossDecision`, `evaluate_loss_limits`, and `evaluate_activity_limits`.
+- Produces: `LossSnapshot`, `ActivitySnapshot`, `LossDecision`, `evaluate_loss_limits(...) -> LossDecision`, and `evaluate_activity_limits(...) -> CheckResult`.
 
 - [ ] **Step 1: Write failing boundary tests**
 
@@ -522,7 +522,9 @@ Expected: FAIL with missing loss gates.
 
 - [ ] **Step 3: Implement deterministic UTC boundaries**
 
-Daily state resets only on a configured trading-session boundary after reconciliation; weekly state resets at the configured UTC week boundary only after manual review. Three consecutive losses create a 240-minute entry pause. Drawdown at 10% requests kill-switch activation but never liquidation.
+The evaluator never resets state. The future context loader derives the daily window from the canonical trading-session calendar and the weekly window from the configured UTC boundary. `LossSnapshot` and `LossDecision` are bound to one account. `daily_reset_reconciled` and `weekly_reset_reviewed` must attest those resets; missing evidence hard-stops new entry and exit intents. Three consecutive losses create the configured 240-minute entry pause. Daily, weekly, and active consecutive-loss limits block entries and request cancellation of unfilled entries while preserving non-entry exit intents for later reduce-exposure checks. Drawdown at 10% blocks new entry and exit intents, requests kill-switch activation, and never requests liquidation; existing broker-held protective orders remain governed by the runtime matrix.
+
+`ActivitySnapshot` is bound to one account and instrument and counts distinct durable entry intents that reached submission. A transport retry for the same intent does not increment the count, while an ambiguous submission remains counted until reconciliation. Daily and per-symbol limits block the next order at equality. The spacing check uses the exact elapsed duration and allows at equality. The activity day boundary is UTC.
 
 - [ ] **Step 4: Add activity-limit property tests**
 

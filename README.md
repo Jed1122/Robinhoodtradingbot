@@ -8,7 +8,11 @@ events and routes detected drift on known active orders through explicit reconci
 Pure position sizing now resolves thresholds only from canonical config and instrument
 metadata, caps risk against the lesser of reconciled and authorized equity, rounds exposure
 downward, applies mode-specific absolute order limits, and evaluates projected exposure
-without gain-based cap auto-scaling. The repository also includes an Alembic-owned SQLite
+without gain-based cap auto-scaling. Pure loss, drawdown, consecutive-loss pause, and
+activity gates now enforce canonical mode settings and deterministic UTC windows. Drawdown
+requests kill-switch activation without liquidation, while daily/weekly/pause entry blocks
+preserve only eligible exit intents. Loss evidence is account-bound and activity evidence is
+account-and-instrument-bound. The repository also includes an Alembic-owned SQLite
 WAL ledger foundation with canonical Decimal and UTC storage, no-affinity safety-scalar
 checks, and database-bound provenance across authorization and economic-effect records. It
 does not yet implement a trading application. A single-use async unit of work currently

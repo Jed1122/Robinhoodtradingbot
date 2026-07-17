@@ -243,7 +243,7 @@ An order is denied if it lacks a reliable protective-exit policy, violates a bro
 
 Protective exits are classified as `REDUCE_EXPOSURE`. They still pass risk review but may remain available when new entries are paused only if they cannot increase absolute position size or gross exposure. Emergency liquidation is disabled by default.
 
-Any daily loss breach cancels unfilled entries, blocks new entries, preserves approved protective exits, alerts the operator, and requires next-session reconciliation. Weekly breach blocks entries through the configured week boundary and requires review. Drawdown breach activates the kill switch, cancels unfilled entries, generates an incident report, and requires manual reauthorization.
+Any daily loss breach cancels unfilled entries, blocks new entries, preserves approved protective exits, alerts the operator, and requires next-session reconciliation. Weekly and active consecutive-loss-pause breaches use the same entry-blocked action policy through their configured boundary. A drawdown breach blocks new entry and exit intents, activates the kill switch, cancels unfilled entries, generates an incident report, and requires manual reauthorization; it does not cancel an existing broker-held protective order or request liquidation. A daily loss window cannot reset without reconciliation, and a weekly window cannot reset without review. Loss evidence and decisions are account-bound; activity evidence is account-and-instrument-bound so a pretrade context cannot silently reuse another account's or symbol's counters.
 
 ### Runtime state and broker-write policy
 

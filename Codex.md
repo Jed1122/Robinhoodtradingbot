@@ -11,8 +11,10 @@ critical correction tables. A broker-neutral pure order state machine validates 
 events, keeps terminal states closed, and requires explicit reconciliation after detected
 active-order drift. Pure sizing and projected-exposure checks use factory-bound canonical
 config and instrument inputs, the lesser current/authorized risk-equity reference, and
-downward Decimal quantization. Other workflow repositories and runtime composition are not
-implemented.
+downward Decimal quantization. Pure loss/drawdown and durable activity gates preserve
+entry-blocked exits, hard-stop on drawdown or unverified reset state, and cannot request
+liquidation; their evidence is account-bound and, for activity, instrument-bound. Other
+workflow repositories and runtime composition are not implemented.
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 

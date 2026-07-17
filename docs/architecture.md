@@ -18,6 +18,20 @@ foundation is an Alembic-owned, normalized SQLite ledger with an async engine po
 single-use async unit of work, lossless order-intent persistence, and secret-screened audit
 appends. It does not yet include the remaining workflow repositories or runtime composition.
 
+Loss and activity evaluation is also pure and config-bound. `LossSnapshot` never resets its
+own counters: the future context loader must derive the daily boundary from the canonical
+trading-session calendar, derive the UTC weekly boundary, and attest daily reconciliation
+and weekly review. Each loss snapshot and decision is bound to one account. Missing reset
+evidence is a hard stop. Daily, weekly, and active
+consecutive-loss limits block entries and request cancellation of unfilled entries while
+leaving eligible exit intents to later reduce-exposure checks. A drawdown breach blocks new
+entry and exit intents, requests kill-switch activation, and never requests liquidation;
+existing broker-held protective orders remain governed by the runtime action matrix.
+`ActivitySnapshot` is bound to one account and instrument and counts distinct durable entry
+intents that reached submission. Transport retries do not add capacity usage, while an
+ambiguous submission continues to count until reconciliation. Its day boundary is UTC and
+spacing evidence is exact to the microsecond.
+
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. Trader CLI is not implemented. Broker adapters are not implemented.
 Account access is not implemented. The repository makes no profitability claim.
