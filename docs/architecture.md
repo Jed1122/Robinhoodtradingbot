@@ -32,6 +32,22 @@ intents that reached submission. Transport retries do not add capacity usage, wh
 ambiguous submission continues to count until reconciliation. Its day boundary is UTC and
 spacing evidence is exact to the microsecond.
 
+Pretrade evaluation is pure, ordered, broker-neutral, and non-short-circuiting. The
+preliminary pass runs 23 shared check functions; the final pass adds the exact broker-review
+match and runs all 24. `PretradeEngine` receives the canonical `AppConfig`, its externally
+loaded config hash, an account allowlist, the active code hash, and a trusted `Clock` as
+explicit constructor dependencies. It captures the clock once for each pass, uses that value
+for every freshness and expiry decision and result timestamp, and treats the context's
+`observed_at` only as bound snapshot provenance. Exposure projections are bound to account,
+intent, instrument, asset class, correlation group, equity, and snapshot time. Cost evidence
+is factory-only and quote/intent/hash bound. Dependent checks deny absent or mismatched
+evidence instead of inventing defaults. Paper and simulation waive only a live lease; exact
+config, code, research, strategy, alert, health, data, limit, and reconciliation evidence is
+still required. Entry-only symbol, liquidity, earnings, and asset-enable policies do not trap
+a verified reduce-only exit, but provider tradability, market state, reconciliation, broker
+bounds, and non-increasing exposure checks still apply. Prediction live execution remains
+denied.
+
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. Trader CLI is not implemented. Broker adapters are not implemented.
 Account access is not implemented. The repository makes no profitability claim.
@@ -46,7 +62,8 @@ cancel-only protocols plus safe broker-neutral errors; it contains no transport 
 implementation.
 
 Domain safety attestations carry only validated status, identity, UTC time, and evidence
-hashes. They do not import or implement reconciliation, authorization, monitoring,
+hashes. Reconciliation attestations are account-bound, and live leases are account-, config-,
+mode-, and expiry-bound. They do not import or implement reconciliation, authorization, monitoring,
 promotion, or research services. Audit events have one canonical domain class while the
 prior decision-module import remains a compatibility alias.
 
@@ -130,7 +147,7 @@ or a non-submitting order review.
 
 ## Absent runtime layers
 
-Market data services, strategies, portfolio target construction, remaining risk and action
+Market data services, strategies, portfolio target construction, remaining action and authorization
 gates, persistence commands beyond order intents and audit events, authorization services,
 simulation, paper and shadow runners, provider adapters, review and order-submission
 services, reconciliation services, recovery, operations, and deployment remain planned. No

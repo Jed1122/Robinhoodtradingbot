@@ -12,6 +12,7 @@ from trading_bot.domain import (
     CodeHash,
     ConfigHash,
     DomainValidationError,
+    ExecutionMode,
     LiveLeaseAttestation,
     PromotionAttestation,
     ReconciliationAttestation,
@@ -35,6 +36,7 @@ class DatetimeSubclass(datetime):
 def _valid_attestations() -> dict[str, Any]:
     return {
         "reconciliation": ReconciliationAttestation(
+            account_id=AccountId("account-1"),
             clean=True,
             observed_at=NOW,
             evidence_hash=HASH_A,
@@ -43,6 +45,7 @@ def _valid_attestations() -> dict[str, Any]:
             valid=True,
             account_id=AccountId("account-1"),
             config_hash=ConfigHash(HASH_B),
+            mode=ExecutionMode.MICRO_LIVE,
             expires_at=LATER,
             evidence_hash=HASH_A,
         ),
@@ -72,11 +75,17 @@ def _valid_attestations() -> dict[str, Any]:
 
 def test_attestation_fields_are_exact_and_stable() -> None:
     expected_fields = {
-        ReconciliationAttestation: ("clean", "observed_at", "evidence_hash"),
+        ReconciliationAttestation: (
+            "account_id",
+            "clean",
+            "observed_at",
+            "evidence_hash",
+        ),
         LiveLeaseAttestation: (
             "valid",
             "account_id",
             "config_hash",
+            "mode",
             "expires_at",
             "evidence_hash",
         ),
@@ -194,6 +203,7 @@ def test_attestation_hashes_require_lowercase_sha256(
     ("record_name", "field_name", "invalid"),
     [
         ("live_lease", "account_id", ""),
+        ("reconciliation", "account_id", ""),
         ("strategy", "strategy_version", " "),
         ("promotion", "stage", ""),
         ("promotion", "stage", 1),

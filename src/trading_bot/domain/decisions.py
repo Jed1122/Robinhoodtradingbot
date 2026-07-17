@@ -7,11 +7,13 @@ from trading_bot.clock import require_utc
 from trading_bot.domain.decimal_utils import (
     DomainValidationError,
     _require_exact_bool,
+    _require_exact_enum,
     _require_nonempty,
     _require_nonnegative_int,
     _require_sha256_hex,
     _require_tuple,
 )
+from trading_bot.domain.enums import ExecutionMode
 from trading_bot.domain.events import AuditEvent
 from trading_bot.domain.identifiers import (
     AccountId,
@@ -76,11 +78,13 @@ class RiskEvaluation:
 
 @dataclass(frozen=True, slots=True)
 class ReconciliationAttestation:
+    account_id: AccountId
     clean: bool
     observed_at: datetime
     evidence_hash: str
 
     def __post_init__(self) -> None:
+        _require_nonempty(self.account_id, "account_id")
         _require_exact_bool(self.clean, "clean")
         require_utc(self.observed_at)
         _require_sha256_hex(self.evidence_hash, "evidence_hash")
@@ -91,6 +95,7 @@ class LiveLeaseAttestation:
     valid: bool
     account_id: AccountId
     config_hash: ConfigHash
+    mode: ExecutionMode
     expires_at: datetime
     evidence_hash: str
 
@@ -98,6 +103,7 @@ class LiveLeaseAttestation:
         _require_exact_bool(self.valid, "valid")
         _require_nonempty(self.account_id, "account_id")
         _require_sha256_hex(self.config_hash, "config_hash")
+        _require_exact_enum(self.mode, ExecutionMode, "mode")
         require_utc(self.expires_at)
         _require_sha256_hex(self.evidence_hash, "evidence_hash")
 

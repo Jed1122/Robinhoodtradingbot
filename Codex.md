@@ -13,7 +13,11 @@ active-order drift. Pure sizing and projected-exposure checks use factory-bound 
 config and instrument inputs, the lesser current/authorized risk-equity reference, and
 downward Decimal quantization. Pure loss/drawdown and durable activity gates preserve
 entry-blocked exits, hard-stop on drawdown or unverified reset state, and cannot request
-liquidation; their evidence is account-bound and, for activity, instrument-bound. Other
+liquidation; their evidence is account-bound and, for activity, instrument-bound. The pure
+pretrade engine runs the same ordered functions for a 23-check preliminary pass and 24-check
+post-review pass, never short-circuits, captures one injected UTC clock value, and binds
+exposure projections to the originating intent. Non-live evaluation waives only live-lease
+authorization; code, config, research, and alert evidence remain mandatory. Other
 workflow repositories and runtime composition are not implemented.
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
@@ -31,6 +35,9 @@ elapsed evidence, authentication, review, or execution as completed.
 - Keep provider transports out of broker-neutral domain, strategy, risk, and portfolio
   logic.
 - Keep read, review, place, and cancel-only capabilities independently injectable.
+- Keep the pretrade clock, account allowlist, active code hash, and loaded-config hash
+  explicitly injected. Never substitute caller-supplied context time for the evaluation
+  clock or reuse an exposure projection across intents.
 - Never put credential material, authorization headers, signatures, private keys,
   account identifiers, or provider payloads in logs, fixtures, errors, reports, or Git.
 - Redact structured event data before JSON serialization and fail closed on unknown

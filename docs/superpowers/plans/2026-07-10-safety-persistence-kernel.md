@@ -110,7 +110,16 @@ class OrderIntent:
     exit_policy_version: str | None
 ```
 
-Also define immutable `ReconciliationAttestation(clean, observed_at, evidence_hash)`, `LiveLeaseAttestation(valid, account_id, config_hash, expires_at, evidence_hash)`, `AlertAttestation(critical_count, observed_at, evidence_hash)`, `StrategyEligibilityAttestation(eligible, strategy_version, config_hash, code_hash, research_manifest_hash, report_hash, observed_at)`, and `PromotionAttestation(stage, eligible, evidence_hash, evaluated_at, expires_at)`. These are broker-neutral snapshots used by risk/runtime; later services create them without making core logic import reconciliation, authorization, monitoring, or research implementations.
+Also define immutable `ReconciliationAttestation(account_id, clean, observed_at,
+evidence_hash)`, `LiveLeaseAttestation(valid, account_id, config_hash, mode, expires_at,
+evidence_hash)`, `AlertAttestation(critical_count, observed_at, evidence_hash)`,
+`StrategyEligibilityAttestation(eligible, strategy_version, config_hash, code_hash,
+research_manifest_hash, report_hash, observed_at)`, and `PromotionAttestation(stage,
+eligible, evidence_hash, evaluated_at, expires_at)`. These are broker-neutral snapshots used
+by risk/runtime; later services create them without making core logic import reconciliation,
+authorization, monitoring, or research implementations. Reconciliation evidence is bound to
+one account, and a live lease is bound to one execution mode in addition to its account and
+config.
 
 Use `tuple` instead of mutable collections, reject nonfinite/negative numerics, enforce side/purpose consistency, require entry intents to carry a versioned exit policy, and keep raw provider payloads out of domain records. The internal deduplication key is derived and persisted by the execution service; it is not an `OrderIntent` field.
 
@@ -461,7 +470,22 @@ def size_position(request: SizingRequest) -> SizingDecision:
 
 - [ ] **Step 4: Add exposure and correlation checks**
 
-`ExposureProjection(equity, authorized_risk_equity, cash, gross_exposure, open_position_count, position_notional, correlated_group_exposure, crypto_exposure, single_crypto_exposure, observed_at)` is a projected post-entry view, not a competing actual-portfolio record. `evaluate_exposure_limits(projection, *, portfolio: PortfolioSettings, position_risk: PositionRiskSettings, crypto: CryptoSettings) -> tuple[CheckResult, ...]` consumes the canonical config graph directly. Test total gross, open position count, per-position notional, correlated-group exposure, total crypto, single crypto, and cash reserve. Stable codes are `total_gross_exposure`, `open_position_count`, `position_notional`, `correlated_group_exposure`, `total_crypto_exposure`, `single_crypto_exposure`, and `cash_reserve`; every result includes observed/configured values. Percentage exposure caps use the lesser of current reconciled equity and authorized risk equity, so gains cannot auto-scale exposure. The cash reserve uses current equity, and `cash` cannot exceed current equity. The gross cap is the stricter of the percentage and mode-specific absolute-dollar limits.
+`ExposureProjection(account_id, intent_id, instrument_id, asset_class, correlation_group,
+equity, authorized_risk_equity, cash, gross_exposure, open_position_count,
+position_notional, correlated_group_exposure, crypto_exposure, single_crypto_exposure,
+observed_at)` is a projected post-entry view, not a competing actual-portfolio record.
+`evaluate_exposure_limits(projection, *, portfolio: PortfolioSettings, position_risk:
+PositionRiskSettings, crypto: CryptoSettings) -> tuple[CheckResult, ...]` consumes the
+canonical config graph directly. Test total gross, open position count, per-position
+notional, correlated-group exposure, total crypto, single crypto, and cash reserve. Stable
+codes are `total_gross_exposure`, `open_position_count`, `position_notional`,
+`correlated_group_exposure`, `total_crypto_exposure`, `single_crypto_exposure`, and
+`cash_reserve`; every result includes observed/configured values. Percentage exposure caps
+use the lesser of current reconciled equity and authorized risk equity, so gains cannot
+auto-scale exposure. The cash reserve uses current equity, and `cash` cannot exceed current
+equity. The gross cap is the stricter of the percentage and mode-specific absolute-dollar
+limits. The pretrade layer additionally requires all projection provenance to match the
+originating intent and current immutable context before consuming these results.
 
 This evaluator owns new-exposure cap arithmetic. A later protective-exit/action-policy path must compare current and projected exposure and may allow only a non-increasing reduce-exposure action; it may not reinterpret an over-cap entry as an exit or maintain a competing cap formula.
 
@@ -553,7 +577,11 @@ git commit -m "feat: add loss drawdown and activity gates"
 - Test: `tests/property/risk/test_pretrade_properties.py`
 
 **Interfaces:**
-- Produces: `InitialRiskContext`, `FinalPretradeContext`, `InstrumentEligibility`, `ExposureProjection`, `ExecutionCostEstimate`, `PretradeEngine.evaluate_initial(context) -> RiskEvaluation`, and `PretradeEngine.evaluate_final(context) -> RiskEvaluation` exactly as defined in the index.
+- Produces: `InitialRiskContext`, `FinalPretradeContext`, `InstrumentEligibility`,
+  `ExposureProjection`, `ExecutionCostEstimate`, and
+  `PretradeEngine(config, *, config_hash, account_allowlist, active_code_hash, clock)` with
+  `evaluate_initial(context) -> RiskEvaluation` and `evaluate_final(context) ->
+  RiskEvaluation` exactly as defined in the index.
 - Produces: one `PretradeCheckCode` enum member for each approved check.
 
 - [ ] **Step 1: Write a failing parameterized denial test**
@@ -570,7 +598,7 @@ git commit -m "feat: add loss drawdown and activity gates"
     ],
 )
 def test_each_failed_check_denies(mutator: ContextMutator, expected_code: str) -> None:
-    result = PretradeEngine(default_config()).evaluate_final(mutator(valid_pretrade_context()))
+    result = pretrade_engine().evaluate_final(mutator(valid_pretrade_context()))
     assert not result.allowed
     assert expected_code in {check.code for check in result.checks if not check.allowed}
 ```
@@ -625,7 +653,19 @@ def evaluate_final(self, context: FinalPretradeContext) -> RiskEvaluation:
     )
 ```
 
-`evaluate_initial` accepts `InitialRiskContext` and runs the same ordered check functions except `REVIEW_MATCH`, producing exactly 23 results. `evaluate_final` accepts a newly loaded `FinalPretradeContext` and runs all 24. There is one implementation per check; the preliminary pass cannot maintain a competing rule set. When an upstream prerequisite is unavailable, the dependent check returns an explicit denial rather than raising or assuming a value. Simulation marks only live authorization as not applicable and cannot construct a network write adapter.
+`evaluate_initial` accepts `InitialRiskContext` and runs the same ordered check functions
+except `REVIEW_MATCH`, producing exactly 23 results. `evaluate_final` accepts a newly loaded
+`FinalPretradeContext` and runs all 24. There is one implementation per check; the
+preliminary pass cannot maintain a competing rule set. Each evaluation calls the injected
+trusted `Clock` exactly once and uses that value for every freshness/expiry decision and
+result timestamp; `InitialRiskContext.observed_at` remains immutable snapshot provenance.
+Exposure projections must match the exact account, intent, instrument, asset class,
+correlation group, equity, and snapshot time. When an upstream prerequisite is unavailable,
+the dependent check returns an explicit denial rather than raising or assuming a value.
+Simulation marks only the live-lease authorization requirement not applicable and cannot
+construct a network write adapter. Entry-only symbol, asset-enable, liquidity, and earnings
+gates do not trap a verified reduce-only exit; provider tradability, current market state,
+broker bounds, reconciliation, and non-increasing exposure validation remain mandatory.
 
 Implement the exact inputs and decision for each final check:
 
@@ -636,7 +676,7 @@ Implement the exact inputs and decision for each final check:
 | `ACCOUNT_ALLOWLIST` | account snapshot and configured allowlist | exact account ID is allowed, active/unrestricted, unchanged, and at or below configured equity ceiling |
 | `BROKER_HEALTH` | broker health | healthy and no older than configured 30-second maximum |
 | `MARKET_DATA_FRESHNESS` | quote and current time | identity/hash valid, `freshness_verified`, and no older than configured 5-second executable maximum |
-| `SYMBOL_TRADABILITY` | instrument eligibility | symbol allowlisted, provider tradable, asset policy eligible, and configured earnings/liquidity/price filters clear |
+| `SYMBOL_TRADABILITY` | instrument eligibility | provider is tradable/current; entries also require symbol/asset allowlists and configured earnings/liquidity/price filters, while reduce-only exits retain the provider and execution constraints |
 | `FRACTIONAL_ELIGIBILITY` | quantity and instrument eligibility | integer quantity or current fractional eligibility is verified |
 | `MARKET_SESSION` | market clock and order policy | venue/session accepts this order type now; crypto pair status is active |
 | `MARKET_HALT` | market clock/instrument status | no halt, cancel-only, trading-disabled, or provider restriction |

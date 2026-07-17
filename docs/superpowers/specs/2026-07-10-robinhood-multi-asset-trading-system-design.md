@@ -140,7 +140,17 @@ After broker review and immediately before any live broker submission, the execu
 23. Quantity and notional satisfy current broker minimums and increments.
 24. Local account, position, order, and fill state matches reconciled broker state.
 
-The final checklist uses fresh account, quote, order, and health reads within configured age limits. Failure produces a machine-readable denial and prevents submission. A broker review older than the configured review lifetime is discarded and cannot be reused.
+The final checklist captures one trusted injected UTC clock value and uses it for every age,
+expiry, and result timestamp. Caller-supplied context time is snapshot provenance, not the
+freshness authority. Exposure projections are bound to the originating account and intent as
+well as instrument, asset class, correlation group, equity, and snapshot time. Failure
+produces a machine-readable denial and prevents submission. A broker review older than the
+configured review lifetime is discarded and cannot be reused. Paper and simulation mark only
+the live-lease requirement not applicable; config, code, research, alert, health, data, limit,
+and reconciliation evidence remain mandatory. Entry-only allowlist, liquidity, earnings, and
+asset-enable gates may not trap an otherwise verified reduce-only exit, while provider
+tradability, market state, broker bounds, reconciliation, and non-increasing exposure checks
+still apply. Prediction live execution remains unsupported.
 
 ## 7. Domain and Arithmetic
 

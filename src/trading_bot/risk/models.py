@@ -5,13 +5,30 @@ from datetime import datetime
 from decimal import Decimal
 
 from trading_bot.clock import require_utc
-from trading_bot.domain import DomainValidationError, require_bounded_decimal
+from trading_bot.domain import (
+    AccountId,
+    AssetClass,
+    DomainValidationError,
+    InstrumentId,
+    OrderIntentId,
+    require_bounded_decimal,
+)
+
+
+def _require_nonempty_identifier(value: str, field_name: str) -> None:
+    if type(value) is not str or not value.strip():
+        raise DomainValidationError(f"{field_name} must be a nonempty identifier")
 
 
 @dataclass(frozen=True, slots=True)
 class ExposureProjection:
     """Projected post-order exposure values at one UTC observation time."""
 
+    account_id: AccountId
+    intent_id: OrderIntentId
+    instrument_id: InstrumentId
+    asset_class: AssetClass
+    correlation_group: str
     equity: Decimal
     authorized_risk_equity: Decimal
     cash: Decimal
@@ -24,6 +41,12 @@ class ExposureProjection:
     observed_at: datetime
 
     def __post_init__(self) -> None:
+        _require_nonempty_identifier(self.account_id, "account_id")
+        _require_nonempty_identifier(self.intent_id, "intent_id")
+        _require_nonempty_identifier(self.instrument_id, "instrument_id")
+        if type(self.asset_class) is not AssetClass:
+            raise DomainValidationError("asset_class must be an AssetClass")
+        _require_nonempty_identifier(self.correlation_group, "correlation_group")
         for field_name, value in (
             ("equity", self.equity),
             ("authorized_risk_equity", self.authorized_risk_equity),

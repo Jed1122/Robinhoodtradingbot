@@ -7,6 +7,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from trading_bot.config import CryptoSettings, PortfolioSettings, PositionRiskSettings
+from trading_bot.domain import AccountId, AssetClass, InstrumentId, OrderIntentId
 from trading_bot.risk import ExposureProjection, evaluate_exposure_limits
 
 OBSERVED_AT = datetime(2026, 7, 15, 4, 30, tzinfo=UTC)
@@ -66,6 +67,11 @@ def exposure_cases(
     )
 
     projection = ExposureProjection(
+        account_id=AccountId("property-account"),
+        intent_id=OrderIntentId("property-intent"),
+        instrument_id=InstrumentId("property-instrument"),
+        asset_class=AssetClass.CRYPTO,
+        correlation_group="property-group",
         equity=equity,
         authorized_risk_equity=authorized_risk_equity,
         cash=cash,
@@ -191,6 +197,11 @@ def test_equity_gain_cannot_raise_authorized_percentage_exposure_caps(
 
     def projection(equity: Decimal) -> ExposureProjection:
         return ExposureProjection(
+            account_id=AccountId("property-account"),
+            intent_id=OrderIntentId("property-intent"),
+            instrument_id=InstrumentId("property-instrument"),
+            asset_class=AssetClass.CRYPTO,
+            correlation_group="property-group",
             equity=equity,
             authorized_risk_equity=authorized,
             cash=authorized / Decimal("2"),

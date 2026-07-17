@@ -8,7 +8,14 @@ from pathlib import Path
 import pytest
 
 from trading_bot.config import AppConfig, load_config
-from trading_bot.domain import DomainValidationError, InvalidDecimal
+from trading_bot.domain import (
+    AccountId,
+    AssetClass,
+    DomainValidationError,
+    InstrumentId,
+    InvalidDecimal,
+    OrderIntentId,
+)
 from trading_bot.portfolio import aggregate_correlated_exposure
 from trading_bot.risk import ExposureProjection, evaluate_exposure_limits
 
@@ -37,6 +44,11 @@ def settings(mode: str = "paper") -> AppConfig:
 
 def exposure_projection(**overrides: object) -> ExposureProjection:
     values: dict[str, object] = {
+        "account_id": AccountId("paper-account"),
+        "intent_id": OrderIntentId("paper-intent"),
+        "instrument_id": InstrumentId("btc-usd"),
+        "asset_class": AssetClass.CRYPTO,
+        "correlation_group": "crypto-major",
         "equity": Decimal("100"),
         "authorized_risk_equity": Decimal("100"),
         "cash": Decimal("50"),
@@ -183,6 +195,11 @@ def test_check_evidence_uses_canonical_decimal_text() -> None:
     ("field", "value"),
     [
         ("equity", Decimal("-1")),
+        ("account_id", ""),
+        ("intent_id", ""),
+        ("instrument_id", ""),
+        ("asset_class", "crypto"),
+        ("correlation_group", ""),
         ("authorized_risk_equity", Decimal("-1")),
         ("cash", Decimal("NaN")),
         ("gross_exposure", Decimal("Infinity")),

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 class DomainValidationError(ValueError):
@@ -26,6 +26,7 @@ def require_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+@runtime_checkable
 class Clock(Protocol):
     """Source of aware UTC wall-clock time."""
 

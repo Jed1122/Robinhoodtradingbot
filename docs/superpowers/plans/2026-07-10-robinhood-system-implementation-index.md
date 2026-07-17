@@ -400,6 +400,15 @@ class FinalPretradeContext:
     reviewed_order: BrokerOrderReview
 
 class PretradeEngine:
+    def __init__(
+        self,
+        config: AppConfig,
+        *,
+        config_hash: ConfigHash,
+        account_allowlist: tuple[AccountId, ...],
+        active_code_hash: CodeHash,
+        clock: Clock,
+    ) -> None: ...
     def evaluate_initial(self, context: InitialRiskContext) -> RiskEvaluation: ...
     def evaluate_final(self, context: FinalPretradeContext) -> RiskEvaluation: ...
 

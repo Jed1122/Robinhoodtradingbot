@@ -12,7 +12,13 @@ without gain-based cap auto-scaling. Pure loss, drawdown, consecutive-loss pause
 activity gates now enforce canonical mode settings and deterministic UTC windows. Drawdown
 requests kill-switch activation without liquidation, while daily/weekly/pause entry blocks
 preserve only eligible exit intents. Loss evidence is account-bound and activity evidence is
-account-and-instrument-bound. The repository also includes an Alembic-owned SQLite
+account-and-instrument-bound. A broker-neutral pretrade engine now evaluates one shared,
+ordered checklist: the preliminary pass records 23 checks and the post-review pass records
+all 24 without short-circuiting. It captures one injected UTC clock value per evaluation,
+binds costs and exposure projections to exact evidence identities, and explicitly denies
+missing, stale, mismatched, or unsafe evidence. Non-live modes waive only the live-lease
+requirement; matching config, code, research, and alert evidence remain mandatory. The
+repository also includes an Alembic-owned SQLite
 WAL ledger foundation with canonical Decimal and UTC storage, no-affinity safety-scalar
 checks, and database-bound provenance across authorization and economic-effect records. It
 does not yet implement a trading application. A single-use async unit of work currently
@@ -77,7 +83,7 @@ arguments, or committed files; the safe template contains file references only.
 ## What comes later
 
 Broker adapters, authenticated reads, market-data providers, strategies, portfolio target
-construction and the remaining risk gates, the remaining workflow-specific persistence
+construction, runtime action and authorization gates, the remaining workflow-specific persistence
 commands, simulation and paper runners, review and order-submission services, reconciliation
 services, operator controls, deployment, and every opt-in live gate remain future work. Their
 presence in the implementation plans is not evidence that they exist.

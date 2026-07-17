@@ -1,6 +1,9 @@
 # Robinhood Multi-Asset Trading System Implementation Plan
 
-This repository is currently in the design-and-planning stage. No trading-system implementation, cloud deployment, authenticated broker read, broker write, or live order is represented as complete by this document.
+This repository is being implemented incrementally from the approved plans. The capability
+foundation and the first safety-kernel tasks are executable, but no composed trading
+application, cloud deployment, authenticated broker read, broker write, or live order is
+represented as complete by this document.
 
 The approved design is in [`docs/superpowers/specs/2026-07-10-robinhood-multi-asset-trading-system-design.md`](./superpowers/specs/2026-07-10-robinhood-multi-asset-trading-system-design.md).
 
