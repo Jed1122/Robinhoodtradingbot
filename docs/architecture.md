@@ -1,5 +1,8 @@
 # Current architecture
 
+Operational composition keeps monitoring read-only, daemon startup paused, operator signing
+outside the service host, and placement factories behind authorization and promotion.
+
 ## Implemented boundary
 
 The repository is a paper-safe, fail-closed foundation, not a running trading system.

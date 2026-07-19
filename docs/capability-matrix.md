@@ -1,18 +1,24 @@
 # Robinhood capability baseline
 
-Checked on 2026-07-12 from official public documentation only. The local MCP state is
+Checked again on 2026-07-17 from official public documentation only. The cloud environment
+does not provide the `codex` MCP client and contains no configured authenticated Trading MCP
+session. The local MCP state remains
 `blocked_unconfigured_mcp`: no `robinhood-trading` configuration was present in the
 filtered local Codex MCP listing. The public endpoint URL in an environment variable is
 not configuration or authentication evidence.
 
+Operational readiness, promotion, and authorization are independent gates and do not upgrade any
+provider evidence level shown below.
+
 ## What is and is not implemented
 
-- Implemented: immutable evidence records, exact categorical gates, schema-only
+- Implemented: immutable evidence records, strict official Crypto v2 DTOs and mappings, exact-byte
+  Ed25519 signing, read-only Crypto account/position/order adapters against mock HTTP, schema-only
   `tools/list` capture for an injected configured session, recursive artifact rejection,
   and deterministic matrix rendering.
 - Documented: the exact equity MCP names and Crypto Trading API v2 paths below.
-- Locked: every documented broker operation. Public documentation alone cannot unlock an
-  adapter, authenticated read, review, submission, or cancellation path.
+- Locked externally: every authenticated operation. Local schema fixtures and mock HTTP cannot
+  unlock an authenticated read, review, submission, or cancellation path.
 - External evidence pending: a real sanitized MCP schema capture and later separately
   authorized authenticated verification. No schema or authenticated result is claimed
   by this committed baseline.
@@ -22,10 +28,11 @@ not configuration or authentication evidence.
   and final risk evidence, an exact review, one pending submission reservation, and the resulting
   accepted, rejected, or ambiguous outcome around an injected fake or simulation placement
   capability.
-- Not implemented in this slice: broker adapters, account access, broker-connected order review
-  or submission, cancellation, live authorization and leadership, and live trading. The local
-  orchestration service explicitly refuses live modes and does not change any external capability
-  state in this matrix.
+- Equity mapping and account access remain absent because authenticated response shapes were not
+  captured. Read-only shadow composition is implemented, but connected startup exits 2 in this
+  environment. Prediction live operations always raise `UnsupportedCapabilityError`.
+  Consequently equity review, placement, and cancellation have no adapter classes: write
+  argument and result fields will not be guessed from public operation names.
 
 `documented_locked_external_pending` means the public operation is named, but required
 schema/behavioral evidence and implementation are absent. `unsupported_locked` is a

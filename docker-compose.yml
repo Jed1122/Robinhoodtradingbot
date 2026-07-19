@@ -1,0 +1,21 @@
+services:
+  trading-bot:
+    build:
+      context: .
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:8080:8080"]
+    environment:
+      TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH: "true"
+    tmpfs: [/tmp]
+    mem_limit: 768m
+    cpus: "0.75"
+    pids_limit: 256
+    init: true
+    stop_grace_period: 45s
+    restart: unless-stopped
+    command: ["run", "--config", "/etc/trading-bot/base.yaml", "--mode", "shadow", "--paused"]

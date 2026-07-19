@@ -96,7 +96,9 @@ def _canonical_utc_check_expression(name: str) -> str:
         "[0-9][0-9]:[0-9][0-9]:[0-9][0-9]."
         "[0-9][0-9][0-9][0-9][0-9][0-9]Z"
     )
-    normalized = f"strftime('%Y-%m-%dT%H:%M:%S', {name})"
+    # Validate the calendar portion independently of fractional seconds. SQLite rounds
+    # fractions near the next second, which would reject valid values ending in .999999.
+    normalized = f"strftime('%Y-%m-%dT%H:%M:%S', substr({name}, 1, 19) || 'Z')"
     return (
         f"typeof({name}) = 'text' AND length({name}) = 27 "
         f"AND length(CAST({name} AS BLOB)) = 27 "

@@ -62,7 +62,15 @@ from trading_bot.domain.identifiers import (
     SubmissionAttemptId,
     new_order_intent_id,
 )
-from trading_bot.domain.market import Bar, Instrument, MarketClock, Quote, SpreadEstimate
+from trading_bot.domain.market import (
+    Bar,
+    CorporateAction,
+    EarningsEvent,
+    Instrument,
+    MarketClock,
+    Quote,
+    SpreadEstimate,
+)
 from trading_bot.domain.order_serialization import (
     canonical_order_intent_payload,
     canonical_order_intent_sha256,
@@ -75,6 +83,12 @@ from trading_bot.domain.orders import (
     Fill,
     OrderIntent,
     PersistedReviewedOrder,
+)
+from trading_bot.domain.prediction import (
+    PredictionContractSnapshot,
+    PredictionCosts,
+    PredictionEvaluation,
+    ProbabilityEstimate,
 )
 
 __all__ = [
@@ -98,9 +112,11 @@ __all__ = [
     "CodeHash",
     "ConfigHash",
     "ConfigVersionId",
+    "CorporateAction",
     "CorrelationId",
     "DataHash",
     "DomainValidationError",
+    "EarningsEvent",
     "EvidenceId",
     "ExecutionMode",
     "Fill",
@@ -122,6 +138,10 @@ __all__ = [
     "PersistedReviewedOrder",
     "PortfolioSnapshot",
     "Position",
+    "PredictionContractSnapshot",
+    "PredictionCosts",
+    "PredictionEvaluation",
+    "ProbabilityEstimate",
     "PromotionAttestation",
     "Quote",
     "ReconciliationAttestation",

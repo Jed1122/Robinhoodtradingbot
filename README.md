@@ -46,9 +46,11 @@ complete domain records exist.
   official public documentation; it is not schema or authenticated evidence.
 - Prediction live execution is unsupported.
 - No live order has been placed by this implementation or its tests.
-- Trader CLI is not implemented, even though packaging reserves its future entry point.
-- Broker adapters are not implemented.
-- Account access is not implemented.
+- Offline `backtest`, `simulate`, and one-cycle `paper` CLI commands are implemented with
+  deterministic hashes and no live placement capability.
+- Official Crypto v2 read DTOs, exact signing, and read adapters are implemented against
+  reviewed schema fixtures and mock HTTP; no authenticated account read is claimed.
+- Equity account access remains locked because authenticated MCP evidence is unavailable.
 - This repository makes no profitability claim.
 
 The [capability matrix](docs/capability-matrix.md) keeps five states distinct:
@@ -93,15 +95,44 @@ make test
 audit. Do not place credential values in environment variables, fixtures, logs, command
 arguments, or committed files; the safe template contains file references only.
 
+## Offline research modes
+
+Run `make backtest`, `make simulate`, or `make paper`. These commands validate the selected
+configuration against the immutable safety envelope and emit a canonical mode, seed,
+configuration hash, and result hash. See [strategy research](docs/strategy-research.md) and
+[limitations](docs/limitations.md). No result is a profitability claim.
+
+## Robinhood read and shadow setup
+
+Register the official Trading MCP endpoint in an operator-controlled Codex environment:
+
+```shell
+codex mcp add robinhood-trading --url https://agent.robinhood.com/mcp/trading
+uv run python scripts/verify_robinhood_equity_reads.py
+make shadow-smoke
+make shadow
+make live-readiness
+```
+
+Crypto v2 reads use only `ROBINHOOD_CRYPTO_API_KEY_FILE` and
+`ROBINHOOD_CRYPTO_PRIVATE_KEY_FILE`; each referenced service-owned file must be mode `0600`.
+Raw credential environment variables are rejected. MCP OAuth state is referenced through
+`ROBINHOOD_MCP_OAUTH_STORE_DIR`, a service-owned `0700` directory. `make shadow-smoke` uses
+sanitized local evidence and is never promotable. In this cloud environment `make shadow`
+fails closed with exit status 2 because authenticated equity reads are unavailable.
+
 ## What comes later
 
-Broker adapters, authenticated reads, market-data providers, strategies, portfolio target
-construction, runtime action and authorization gates, the remaining workflow-specific persistence
-commands, simulation and paper runners, provider-connected order submission and cancellation,
-reconciliation services, operator controls, deployment, and every opt-in live gate remain future
-work. The broker-neutral execution service accepts only injected capabilities and explicitly blocks
-live modes; it does not establish account access, broker connectivity, or permission to trade. The
-presence of later layers in the implementation plans is not evidence that they exist.
+Authenticated account access, provider-connected order submission and cancellation, operator
+deployment, and every opt-in live gate remain locked. The broker-neutral execution service accepts
+only injected capabilities; current adapter evidence does not grant permission to trade.
 
 The executable plans live under `docs/superpowers/plans/`. Later slices may not bypass a
 failed foundation or capability gate.
+
+## Operations and deployment
+
+See the [operations runbook](docs/operations-runbook.md), [live activation](docs/live-activation.md),
+[risk policy](docs/risk-policy.md), [incident response](docs/incident-response.md), and
+[disaster recovery](docs/disaster-recovery.md). Containers and cloud deployment always start
+paused, expose administration only through host loopback, and never activate live trading.

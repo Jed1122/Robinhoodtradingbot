@@ -1,0 +1,1 @@
+{"tools":[{"description":"Read equity quotes","inputSchema":{"additionalProperties":false,"properties":{"symbols":{"items":{"type":"string"},"type":"array"}},"required":["symbols"],"type":"object"},"name":"get_equity_quotes","outputSchema":{"properties":{"quotes":{"type":"array"}},"required":["quotes"],"type":"object"}}]}

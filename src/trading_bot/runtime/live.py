@@ -1,0 +1,114 @@
+"""Locked live composition roots; placement is requested only after every gate."""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
+
+from trading_bot.authorization import LiveAuthorization, LiveLease, PreflightReport
+from trading_bot.brokers.protocols import BrokerCancelOnly, BrokerPlace, BrokerRead
+from trading_bot.domain import ExecutionMode, PromotionAttestation, RuntimeState
+
+
+class LiveNotReady(RuntimeError):
+    pass
+
+
+class LiveStage(StrEnum):
+    MICRO = "micro"
+    NORMAL = "normal"
+
+
+@dataclass(frozen=True, slots=True)
+class LivePreflightResult:
+    ready: bool
+    reason_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CancelOnlyRecovery:
+    broker_read: BrokerRead
+    broker_cancel: BrokerCancelOnly
+
+
+class LiveApplication:
+    def __init__(self, broker_place: BrokerPlace) -> None:
+        self._broker_place = broker_place
+        self.state = RuntimeState.PAUSED
+
+    def start_paused(self) -> RuntimeState:
+        self.state = RuntimeState.PAUSED
+        return self.state
+
+    async def run_cycle(self) -> None:
+        if self.state is not RuntimeState.RUNNING_LIVE:
+            raise LiveNotReady("live application is paused")
+
+
+def evaluate_live_preflight(report: PreflightReport, *, now: datetime) -> LivePreflightResult:
+    reasons: list[str] = []
+    if report.observed_at > now or (now - report.observed_at).total_seconds() > 300:
+        reasons.append("stale_preflight")
+    if report.equity > 150:
+        reasons.append("account_equity_ceiling")
+    flags = {
+        "account_inactive": not report.account_active or report.account_restricted,
+        "code_identity_dirty": not report.code_identity_clean,
+        "strategy_ineligible": not report.strategy_eligible,
+        "promotion_ineligible": not report.promotion_eligible,
+        "kill_switch_active": report.kill_switch_active,
+        "reconciliation_dirty": not report.reconciliation_clean,
+        "risk_self_test_failed": not report.risk_self_test_passed,
+        "critical_alerts": report.critical_alert_count != 0,
+        "clock_unsynchronized": report.clock_drift_seconds > 2,
+    }
+    reasons.extend(code for code, failed in flags.items() if failed)
+    return LivePreflightResult(not reasons, tuple(reasons))
+
+
+def build_cancel_only_recovery(
+    broker_read: BrokerRead, broker_cancel: BrokerCancelOnly
+) -> CancelOnlyRecovery:
+    return CancelOnlyRecovery(broker_read, broker_cancel)
+
+
+def build_live_application(
+    *,
+    live_trading_enabled: bool,
+    preflight: PreflightReport,
+    authorization: LiveAuthorization | None,
+    lease: LiveLease | None,
+    promotion: PromotionAttestation | None,
+    place_factory: Callable[[], BrokerPlace],
+    now: datetime,
+) -> LiveApplication:
+    if not live_trading_enabled:
+        raise LiveNotReady("live trading is disabled")
+    readiness = evaluate_live_preflight(preflight, now=now)
+    if not readiness.ready:
+        raise LiveNotReady("live preflight is not ready")
+    if promotion is None or not promotion.eligible:
+        raise LiveNotReady("promotion evidence is required")
+    expected_stage = "micro" if preflight.stage is ExecutionMode.MICRO_LIVE else "normal"
+    promotion_current = promotion.evaluated_at <= now < promotion.expires_at
+    if promotion.stage != expected_stage or not promotion_current:
+        raise LiveNotReady("stage-specific promotion evidence is invalid")
+    if authorization is None or lease is None:
+        raise LiveNotReady("authorization and live lease are required")
+    if lease.account_id != preflight.account_id or lease.stage is not preflight.stage:
+        raise LiveNotReady("live lease does not match preflight")
+    if not (lease.issued_at <= now < lease.expires_at):
+        raise LiveNotReady("live lease is expired")
+    return LiveApplication(place_factory())
+
+
+__all__ = [
+    "CancelOnlyRecovery",
+    "LiveApplication",
+    "LiveNotReady",
+    "LivePreflightResult",
+    "LiveStage",
+    "build_cancel_only_recovery",
+    "build_live_application",
+    "evaluate_live_preflight",
+]

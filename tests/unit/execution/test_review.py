@@ -1,6 +1,7 @@
 """Unit tests for exact broker-neutral order review."""
 
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
@@ -9,6 +10,7 @@ from trading_bot.domain import BrokerOrderReview, DomainValidationError, OrderIn
 from trading_bot.execution.review import (
     OrderReviewMismatch,
     OrderReviewService,
+    review_is_fresh,
     review_matches_intent,
 )
 
@@ -105,3 +107,11 @@ def test_review_mismatch_error_has_no_mutable_or_secret_bearing_state() -> None:
     assert OrderReviewMismatch.__slots__ == ()
     assert vars(error) == {}
     assert BrokerOrderReview is not object
+
+
+def test_review_freshness_has_hard_thirty_second_bound() -> None:
+    review = make_review(make_intent())
+    assert review_is_fresh(review, review.reviewed_at + timedelta(seconds=29))
+    assert not review_is_fresh(review, review.reviewed_at + timedelta(seconds=31))
+    with pytest.raises(DomainValidationError, match="within thirty seconds"):
+        review_is_fresh(review, review.reviewed_at, timedelta(seconds=31))

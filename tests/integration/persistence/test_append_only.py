@@ -481,7 +481,7 @@ def test_downgrade_and_reupgrade_remove_and_restore_guards(
         trigger_count = connection.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'"
         ).fetchone()
-    assert trigger_count == (len(PROTECTED_TABLES) * 4,)
+    assert trigger_count == (len(PROTECTED_TABLES) * 4 + 2,)
 
 
 def test_failed_trigger_upgrade_is_atomic_and_retryable(
@@ -524,7 +524,7 @@ def test_failed_trigger_upgrade_is_atomic_and_retryable(
         trigger_count = connection.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'"
         ).fetchone()
-    assert trigger_count == (len(PROTECTED_TABLES) * 4,)
+    assert trigger_count == (len(PROTECTED_TABLES) * 4 + 2,)
 
 
 def test_failed_trigger_downgrade_is_atomic_and_retryable(

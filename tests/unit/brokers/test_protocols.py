@@ -132,11 +132,12 @@ def test_modules_export_only_the_reviewed_public_contract() -> None:
         "UnsupportedCapabilityError",
         "BrokerUnavailable",
         "BrokerSubmissionAmbiguous",
+        "BrokerCancellationAmbiguous",
         "SchemaDriftError",
     }
     assert set(broker_protocols.__all__) == expected_protocols
     assert set(broker_errors.__all__) == expected_errors
-    assert set(broker_exports.__all__) == expected_protocols | expected_errors
+    assert set(broker_exports.__all__) == expected_protocols | expected_errors | {"FakeBroker"}
 
     for name in expected_protocols:
         assert getattr(broker_exports, name) is getattr(broker_protocols, name)
@@ -153,7 +154,12 @@ def test_unsupported_capability_error_is_reexported_without_redefinition() -> No
 
 
 def test_broker_local_errors_are_only_the_three_safe_runtime_errors() -> None:
-    expected = {BrokerUnavailable, BrokerSubmissionAmbiguous, SchemaDriftError}
+    expected = {
+        broker_errors.BrokerCancellationAmbiguous,
+        BrokerUnavailable,
+        BrokerSubmissionAmbiguous,
+        SchemaDriftError,
+    }
     local_error_types = {
         value
         for value in vars(broker_errors).values()
