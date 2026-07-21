@@ -7,7 +7,7 @@ from enum import StrEnum
 
 from trading_bot.authorization import LiveAuthorization, LiveLease, PreflightReport
 from trading_bot.brokers.protocols import BrokerCancelOnly, BrokerPlace, BrokerRead
-from trading_bot.domain import ExecutionMode, PromotionAttestation, RuntimeState
+from trading_bot.domain import PromotionAttestation, RuntimeState
 
 
 class LiveNotReady(RuntimeError):
@@ -89,14 +89,52 @@ def build_live_application(
         raise LiveNotReady("live preflight is not ready")
     if promotion is None or not promotion.eligible:
         raise LiveNotReady("promotion evidence is required")
-    expected_stage = "micro" if preflight.stage is ExecutionMode.MICRO_LIVE else "normal"
+    expected_stage = preflight.stage.value
     promotion_current = promotion.evaluated_at <= now < promotion.expires_at
     if promotion.stage != expected_stage or not promotion_current:
         raise LiveNotReady("stage-specific promotion evidence is invalid")
     if authorization is None or lease is None:
         raise LiveNotReady("authorization and live lease are required")
-    if lease.account_id != preflight.account_id or lease.stage is not preflight.stage:
-        raise LiveNotReady("live lease does not match preflight")
+    payload = authorization.payload
+    promotion_hashes = {
+        promotion.evidence_hash,
+        preflight.promotion_evidence_hash,
+        payload.promotion_evidence_hash,
+        lease.promotion_evidence_hash,
+    }
+    if len(promotion_hashes) != 1:
+        raise LiveNotReady("promotion evidence does not match all live records")
+    expected_identity = (
+        preflight.account_id,
+        preflight.stage,
+        preflight.config_hash,
+        preflight.code_hash,
+        preflight.strategy_eligibility_hash,
+    )
+    if (
+        (
+            payload.account_id,
+            payload.stage,
+            payload.config_hash,
+            payload.code_hash,
+            payload.strategy_eligibility_hash,
+        )
+        != expected_identity
+        or (
+            lease.account_id,
+            lease.stage,
+            lease.config_hash,
+            lease.code_hash,
+            lease.strategy_eligibility_hash,
+        )
+        != expected_identity
+        or lease.authorization_id != payload.authorization_id
+        or lease.authorized_risk_equity != payload.authorized_risk_equity
+        or lease.authorized_risk_equity > preflight.equity
+    ):
+        raise LiveNotReady("authorization and live lease do not match preflight")
+    if not payload.issued_at <= authorization.consumed_at <= now:
+        raise LiveNotReady("authorization consumption time is invalid")
     if not (lease.issued_at <= now < lease.expires_at):
         raise LiveNotReady("live lease is expired")
     return LiveApplication(place_factory())

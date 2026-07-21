@@ -99,6 +99,7 @@ _MAX_LOCAL_JSON_POINTER_LENGTH = 65_536
 
 _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
     "cancel_equity_order": (AssetClass.EQUITY, OperationKind.CANCEL),
+    "get_accounts": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_fundamentals": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_historicals": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_orders": (AssetClass.EQUITY, OperationKind.READ),
@@ -106,6 +107,7 @@ _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
     "get_equity_quotes": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_technical_indicators": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_tradability": (AssetClass.EQUITY, OperationKind.READ),
+    "get_portfolio": (AssetClass.EQUITY, OperationKind.READ),
     "place_equity_order": (AssetClass.EQUITY, OperationKind.PLACE),
     "review_equity_order": (AssetClass.EQUITY, OperationKind.REVIEW),
 }

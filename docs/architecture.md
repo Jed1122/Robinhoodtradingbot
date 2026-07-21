@@ -9,7 +9,13 @@ The repository is a paper-safe, fail-closed foundation, not a running trading sy
 Implemented code is limited to canonical domain primitives and immutable cross-layer
 safety attestations, strict configuration and hashing, capability evidence and sanitized
 schema capture, least-privilege broker protocols, code identity, clocks, and structured
-logging with pre-serialization redaction. The implemented execution boundary contains a
+logging with pre-serialization redaction. It also contains an equity-only Robinhood Trading MCP
+read adapter and one-shot connected-shadow probe. The connection owns a private encrypted OAuth
+store. Its OAuth client requests and pins the sole official `internal` scope; that bearer credential
+is trading-capable and is not a broker-enforced read-only grant. Local write incapability comes from
+an SDK-session read allowlist, a second transport read allowlist, and the absence of provider review,
+placement, and cancellation adapters. A stolen token or compromised host could trade in the
+Agentic account through another client. The implemented execution boundary contains a
 pure state machine backed by an immutable explicit transition table, an exact review-only
 wrapper, a deterministic internal SHA-256 deduplication-key function, and non-waiting
 account-scoped exclusion for single-process fake and simulation brokers. A broker-neutral
@@ -28,9 +34,10 @@ use the lesser of current and authorized risk equity; the minimum cash reserve r
 on current equity. The implemented persistence foundation is an Alembic-owned, normalized
 SQLite ledger with an async engine policy, a single-use async unit of work, lossless
 order-intent persistence, append-only risk and transition evidence, exact review and broker-order
-evidence, a unique one-attempt submission journal, and secret-screened audit appends. It does
-not yet include fill, data-quality, authorization, reconciliation, or research-evidence
-repositories, provider adapters, or application runtime composition.
+evidence, a unique one-attempt submission journal, secret-screened audit appends, and focused
+stores for market-data quality, authorization, reconciliation, research, and promotion evidence.
+Promotion observations and aggregate evaluator decisions are append-only. Full strategy-cycle
+composition and a provider write adapter remain absent.
 
 Loss and activity evaluation is also pure and config-bound. `LossSnapshot` never resets its
 own counters: the future context loader must derive the daily boundary from the canonical
@@ -79,19 +86,22 @@ reconciliation; it is not interpreted as a safe retry. Exact submitted and rejec
 bound to a canonical broker-order row. This sequence is an implemented local orchestration
 boundary, not a provider adapter, runner, live-authorization service, or proof of broker access.
 
-Trading MCP is not configured. Prediction live execution is unsupported.
-No live order has been placed. The CLI provides offline commands and a health-only paused shadow
-service, not a trading application. Broker adapters and account access are not implemented. The
-repository makes no profitability claim.
+Authenticated, value-free equity read shapes have been captured and are enforced by strict DTOs.
+Nonempty position and order collections remain unsupported until their authenticated shapes are
+observed and reviewed. Prediction live execution is unsupported. No live order has been placed.
+The CLI provides offline commands, a health-only paused service, explicit OAuth bootstrap for the
+locally write-incapable client, and a one-shot connected shadow probe, not a live trading application. The repository
+makes no profitability claim.
 
 ## Dependency direction
 
 `trading_bot.domain` and `trading_bot.clock` are dependency roots. Configuration owns
 validated thresholds but does not import provider code. Capability models record the
 kind and source of evidence without turning documentation or a schema into behavioral
-proof. The broker package currently contains only independent read, review, place, and
-cancel-only protocols plus safe broker-neutral errors; it contains no transport or
-implementation. The execution review wrapper receives only the review protocol, validates
+proof. The broker package contains independent read, review, place, and cancel-only protocols;
+strict equity read DTOs/mapping; a dual-allowlisted MCP transport and SDK composition; and safe
+broker-neutral errors. Provider imports remain outside strategy, risk, and broker-neutral
+execution logic. The execution review wrapper receives only the review protocol, validates
 exact canonical intent equality, and cannot place an order. Its internal deduplication key
 hashes the account, persisted intent identity, configuration hash, and purpose; it does not
 replace a provider client-order identifier. The in-process exclusion fails immediately on a
@@ -116,8 +126,10 @@ their validated values retain SQLite `TEXT` or `INTEGER` storage classes. Stored
 identity columns provide tagged, null-safe equality for optional prices and client order
 identifiers; SQLite 3.31 or newer is therefore required.
 
-The initial migration and ORM metadata define the same 32-table ledger, and each migration
-revision runs inside an explicit rollback-capable SQLite transaction. Composite constraints
+The initial migration and ORM metadata establish the normalized ledger, and each migration
+revision runs inside an explicit rollback-capable SQLite transaction. The current revision adds
+identity-bound promotion observations and database mutation guards for both raw observations and
+aggregate promotion decisions. Composite constraints
 bind eligible stage-specific promotion evidence to authorizations; authorizations to leases
 and used nonces; live submissions to the exact lease, account, stage, and evidence; and local
 intents, reviews, submissions, orders, transitions, and fills across duplicated identity and
@@ -152,12 +164,11 @@ canonical response evidence, and completed timestamps cannot precede their attem
 repositories additionally bind intent, review, attempt, broker order, account, instrument,
 configuration, and economic fields before staging the transaction.
 
-Relational provenance does not itself prove that an authorization or lease is currently
-valid. Expiry, revocation, nonce consumption, exact config/code identity, and execution
-fencing are fail-closed runtime decisions owned by later pretrade, authorization, and
-execution-leadership services. Provider payloads, signing material, workflow-specific
-fill/authorization/reconciliation repository commands, and lease acquisition policy remain
-deliberately absent. The current repository surface does not invent lossy
+Relational provenance does not itself prove that an authorization or lease is currently valid.
+The live runtime boundary checks expiry, revocation, exact config/code/strategy/promotion identity,
+authorization, and lease evidence before a placement factory could be constructed, but no current
+application composition supplies that factory. Provider write payloads, signing material, and
+lease acquisition policy remain deliberately absent. The current repository surface does not invent lossy
 commands for domain records that cannot yet populate their required provenance columns.
 
 Shared capability sanitization owns the reviewed sensitive-name and sensitive-text
@@ -191,10 +202,15 @@ or a non-submitting order review.
 
 ## Absent runtime layers
 
-Provider-connected market data, complete strategy scheduling, remaining action and authorization
-gates, provider adapters, connected placement and cancellation, and a live runtime remain planned.
+Provider-connected equity market reads are implemented for the reviewed MCP surface. Complete
+strategy scheduling, authenticated nonempty position/order mappings, remaining action and
+authorization gates, connected review/placement/cancellation, and a live application runtime
+remain planned.
 The implemented durable execution service composes only explicitly injected broker-neutral
-capabilities and refuses live modes. The deployable runtime is limited to loopback-published health
-for a write-incapable paused shadow process; it has no provider transport, authenticated account
-access, live mutex, lease leadership, or strategy cycle. Later slices must preserve the independent
-broker capabilities and add their tests and documentation with each architectural change.
+capabilities and refuses live modes. The default deployable runtime is limited to loopback-published
+health for a write-incapable paused process with no host volumes or credential access. An explicit
+Compose profile runs one authenticated, locally write-incapable equity probe and appends durable
+evidence before exiting; it has no live mutex,
+lease leadership, or complete strategy cycle. Its deliberately ineligible observation cannot start
+the seven-date shadow promotion clock. Later slices must preserve the independent broker
+capabilities and add their tests and documentation with each architectural change.

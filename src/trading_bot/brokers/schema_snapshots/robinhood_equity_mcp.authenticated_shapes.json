@@ -1,0 +1,466 @@
+{
+  "format_version": 1,
+  "source_uri": "mcp://robinhood-trading/authenticated-read-shapes",
+  "contains_account_data": false,
+  "captured_date_utc": "2026-07-21",
+  "tools": {
+    "get_accounts": {
+      "type": "object",
+      "fields": {
+        "data": {
+          "type": "object",
+          "fields": {
+            "accounts": {
+              "type": "array",
+              "cardinality": "many",
+              "items": [
+                {
+                  "type": "object",
+                  "fields": {
+                    "account_number": {
+                      "type": "string",
+                      "nullable": false
+                    },
+                    "affiliate": {
+                      "type": "string",
+                      "nullable": false
+                    },
+                    "agentic_allowed": {
+                      "type": "boolean",
+                      "nullable": false
+                    },
+                    "brokerage_account_type": {
+                      "type": "string",
+                      "nullable": false
+                    },
+                    "deactivated": {
+                      "type": "boolean",
+                      "nullable": false
+                    },
+                    "is_default": {
+                      "type": "boolean",
+                      "nullable": false
+                    },
+                    "management_type": {
+                      "type": "string",
+                      "nullable": false
+                    },
+                    "option_level": {
+                      "type": "string",
+                      "nullable": false
+                    },
+                    "permanently_deactivated": {
+                      "type": "boolean",
+                      "nullable": false
+                    },
+                    "rhs_account_number": {
+                      "type": "string",
+                      "nullable": false
+                    },
+                    "state": {
+                      "type": "string",
+                      "nullable": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "nullable": false
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "guide": {
+          "type": "string",
+          "nullable": false
+        }
+      }
+    },
+    "get_portfolio": {
+      "type": "object",
+      "fields": {
+        "data": {
+          "type": "object",
+          "fields": {
+            "buying_power": {
+              "type": "object",
+              "fields": {
+                "buying_power": {
+                  "nullable": false,
+                  "type": "string"
+                },
+                "display_currency": {
+                  "nullable": false,
+                  "type": "string"
+                },
+                "unleveraged_buying_power": {
+                  "nullable": false,
+                  "type": "string"
+                }
+              }
+            },
+            "cash": {
+              "nullable": false,
+              "type": "string"
+            },
+            "crypto_value": {
+              "nullable": false,
+              "type": "string"
+            },
+            "currency": {
+              "nullable": false,
+              "type": "string"
+            },
+            "equity_value": {
+              "nullable": false,
+              "type": "string"
+            },
+            "event_contracts_value": {
+              "nullable": false,
+              "type": "string"
+            },
+            "fixed_income_value": {
+              "nullable": false,
+              "type": "string"
+            },
+            "futures_value": {
+              "nullable": false,
+              "type": "string"
+            },
+            "mutual_funds_value": {
+              "nullable": false,
+              "type": "string"
+            },
+            "options_value": {
+              "nullable": false,
+              "type": "string"
+            },
+            "pending_deposits": {
+              "nullable": false,
+              "type": "string"
+            },
+            "total_value": {
+              "nullable": false,
+              "type": "string"
+            }
+          }
+        },
+        "guide": {
+          "nullable": false,
+          "type": "string"
+        }
+      }
+    },
+    "get_equity_positions": {
+      "type": "object",
+      "fields": {
+        "data": {
+          "type": "object",
+          "fields": {
+            "positions": {
+              "type": "array",
+              "cardinality": "empty",
+              "items": []
+            }
+          }
+        },
+        "guide": {
+          "nullable": false,
+          "type": "string"
+        }
+      }
+    },
+    "get_equity_orders": {
+      "type": "object",
+      "fields": {
+        "data": {
+          "type": "object",
+          "fields": {
+            "orders": {
+              "type": "array",
+              "cardinality": "empty",
+              "items": []
+            }
+          }
+        },
+        "guide": {
+          "nullable": false,
+          "type": "string"
+        }
+      }
+    },
+    "get_equity_quotes": {
+      "type": "object",
+      "fields": {
+        "data": {
+          "type": "object",
+          "fields": {
+            "results": {
+              "type": "array",
+              "cardinality": "one",
+              "items": [
+                {
+                  "type": "object",
+                  "fields": {
+                    "close": {
+                      "type": "object",
+                      "fields": {
+                        "date": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "interpolated": {
+                          "nullable": false,
+                          "type": "boolean"
+                        },
+                        "price": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "source": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "symbol": {
+                          "nullable": false,
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "quote": {
+                      "type": "object",
+                      "fields": {
+                        "adjusted_previous_close": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "ask_price": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "bid_price": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "has_traded": {
+                          "nullable": false,
+                          "type": "boolean"
+                        },
+                        "last_non_reg_trade_price": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "last_trade_price": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "previous_close": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "previous_close_date": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "state": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "symbol": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "venue_ask_time": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "venue_bid_time": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "venue_last_non_reg_trade_time": {
+                          "nullable": false,
+                          "type": "string"
+                        },
+                        "venue_last_trade_time": {
+                          "nullable": false,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "guide": {
+          "nullable": false,
+          "type": "string"
+        }
+      }
+    },
+    "get_equity_tradability": {
+      "type": "object",
+      "fields": {
+        "data": {
+          "type": "object",
+          "fields": {
+            "results": {
+              "type": "array",
+              "cardinality": "one",
+              "items": [
+                {
+                  "type": "object",
+                  "fields": {
+                    "account_type_tradabilities": {
+                      "type": "array",
+                      "cardinality": "one",
+                      "items": [
+                        {
+                          "type": "object",
+                          "fields": {
+                            "account_type": {
+                              "nullable": false,
+                              "type": "string"
+                            },
+                            "account_type_tradability": {
+                              "nullable": false,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "all_day_tradability": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "country": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "extended_hours_fractional_tradability": {
+                      "nullable": false,
+                      "type": "boolean"
+                    },
+                    "fractional_tradability": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "name": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "short_selling_tradability": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "simple_name": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "state": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "symbol": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "tradeable": {
+                      "nullable": false,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "guide": {
+          "nullable": false,
+          "type": "string"
+        }
+      }
+    },
+    "get_equity_historicals": {
+      "type": "object",
+      "fields": {
+        "data": {
+          "type": "object",
+          "fields": {
+            "results": {
+              "type": "array",
+              "cardinality": "one",
+              "items": [
+                {
+                  "type": "object",
+                  "fields": {
+                    "bars": {
+                      "type": "array",
+                      "cardinality": "many",
+                      "items": [
+                        {
+                          "type": "object",
+                          "fields": {
+                            "begins_at": {
+                              "nullable": false,
+                              "type": "string"
+                            },
+                            "close_price": {
+                              "nullable": false,
+                              "type": "string"
+                            },
+                            "high_price": {
+                              "nullable": false,
+                              "type": "string"
+                            },
+                            "low_price": {
+                              "nullable": false,
+                              "type": "string"
+                            },
+                            "open_price": {
+                              "nullable": false,
+                              "type": "string"
+                            },
+                            "session": {
+                              "nullable": false,
+                              "type": "string"
+                            },
+                            "volume": {
+                              "nullable": false,
+                              "type": "number"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "bounds": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "interval": {
+                      "nullable": false,
+                      "type": "string"
+                    },
+                    "symbol": {
+                      "nullable": false,
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "guide": {
+          "nullable": false,
+          "type": "string"
+        }
+      }
+    }
+  },
+  "shape_sha256": "27b009a26d590d74a12eed0e933ddb302ce623f06f44fc05270992e17df8825f"
+}

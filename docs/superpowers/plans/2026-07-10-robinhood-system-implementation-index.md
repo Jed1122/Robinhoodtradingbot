@@ -1,5 +1,8 @@
 # Robinhood Multi-Asset Trading System Implementation Plan Index
 
+> Historical planning snapshot from 2026-07-10. For current implementation and operational
+> status, see the repository README and `docs/final-implementation-report.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the complete approved Robinhood multi-asset trading system through independently testable, fail-closed vertical slices.

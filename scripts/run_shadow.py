@@ -1,15 +1,15 @@
-"""Operator shadow entry point; unavailable providers fail with a stable code."""
+"""Compatibility entry point for the fail-closed connected-shadow CLI command."""
 
-import argparse
+from __future__ import annotations
+
+import sys
+
+from trading_bot.cli.main import app
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    parser.parse_args()
-    print("external_capability_missing")
-    return 2
+def main() -> None:
+    app(args=["shadow", *sys.argv[1:]], prog_name="run_shadow.py")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

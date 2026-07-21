@@ -32,6 +32,7 @@ PROTECTED_TABLES = (
     "kill_switch_events",
     "reconciliation_events",
 )
+PROMOTION_TRIGGER_COUNT = 10
 
 ROW_IDS = {table_name: f"{table_name}-1" for table_name in PROTECTED_TABLES}
 
@@ -481,7 +482,9 @@ def test_downgrade_and_reupgrade_remove_and_restore_guards(
         trigger_count = connection.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'"
         ).fetchone()
-    assert trigger_count == (len(PROTECTED_TABLES) * 4 + 2,)
+    assert trigger_count == (
+        len(PROTECTED_TABLES) * 4 + 2 + PROMOTION_TRIGGER_COUNT,
+    )
 
 
 def test_failed_trigger_upgrade_is_atomic_and_retryable(
@@ -524,7 +527,9 @@ def test_failed_trigger_upgrade_is_atomic_and_retryable(
         trigger_count = connection.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'"
         ).fetchone()
-    assert trigger_count == (len(PROTECTED_TABLES) * 4 + 2,)
+    assert trigger_count == (
+        len(PROTECTED_TABLES) * 4 + 2 + PROMOTION_TRIGGER_COUNT,
+    )
 
 
 def test_failed_trigger_downgrade_is_atomic_and_retryable(
@@ -559,8 +564,10 @@ def test_failed_trigger_downgrade_is_atomic_and_retryable(
         trigger_count = connection.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'"
         ).fetchone()
-    assert revision == ("0003_submission_attempt_guards",)
-    assert trigger_count == (len(PROTECTED_TABLES) * 4 + 2,)
+    assert revision == ("0004_promotion_observations",)
+    assert trigger_count == (
+        len(PROTECTED_TABLES) * 4 + 2 + PROMOTION_TRIGGER_COUNT,
+    )
 
     command.downgrade(alembic_config, "0001_core_ledger")
     with closing(_connect(database_path)) as connection:

@@ -11,7 +11,7 @@ RELEASES_DIR="$COMPOSE_DIR/releases"
 LAST_GOOD_POINTER="$COMPOSE_DIR/last-good"
 RUNTIME_DIR=/run/trading-bot-deploy
 LOCK_FILE="$RUNTIME_DIR/deploy.lock"
-EXPECTED_COMPOSE_SHA256=57e90d6833daeff4b1db86b6678e7f876cebda8ddb6bb0d18d94163d6036f829
+EXPECTED_COMPOSE_SHA256=b09841e89d3175caa8ac50858d6dde8d5de41ca51b3dc2c2141ca5d8f299d31b
 SAFE_PATH=/usr/sbin:/usr/bin:/sbin:/bin
 PATH="$SAFE_PATH"
 export PATH
@@ -62,12 +62,30 @@ observe_config_hash() {
 validate_release_environment() (
   expected_image="$1"
   release_env="$2"
+  # Accept the exact prior paused-release shape so the first no-volume release can
+  # still roll back transactionally. New releases always write the two-line form.
+  printf '%s\n' \
+    "TRADING_BOT_IMAGE=$expected_image" \
+    "TRADING_BOT_PULL_POLICY=never" \
+    | cmp -s "$release_env" - \
+    && exit 0
   printf '%s\n' \
     "TRADING_BOT_IMAGE=$expected_image" \
     "TRADING_BOT_PULL_POLICY=never" \
     "TRADING_BOT_STATE_DIR=/var/lib/trading-bot" \
     "TRADING_BOT_LOG_DIR=/var/log/trading-bot" \
     | cmp -s "$release_env" -
+)
+
+validate_resolved_images() (
+  expected_image="$1"
+  resolved_images="$2"
+  printf '%s\n' "$resolved_images" \
+    | awk -v expected="$expected_image" '
+        BEGIN { seen = 0 }
+        { seen = 1; if ($0 != expected) exit 1 }
+        END { if (!seen) exit 1 }
+      '
 )
 
 verify_paused_service() (
@@ -264,8 +282,6 @@ TEMP_ENV="$(mktemp "$COMPOSE_DIR/.env.XXXXXX")"
 printf '%s\n' \
   "TRADING_BOT_IMAGE=$IMAGE" \
   "TRADING_BOT_PULL_POLICY=never" \
-  "TRADING_BOT_STATE_DIR=/var/lib/trading-bot" \
-  "TRADING_BOT_LOG_DIR=/var/log/trading-bot" \
   > "$TEMP_ENV"
 chmod 0600 "$TEMP_ENV"
 
@@ -306,7 +322,7 @@ if ! RESOLVED_IMAGES="$(compose_with "$ENV_FILE" "$COMPOSE_SNAPSHOT" config --im
   rollback || true
   exit 2
 fi
-if [ "$RESOLVED_IMAGES" != "$IMAGE" ]; then
+if ! validate_resolved_images "$IMAGE" "$RESOLVED_IMAGES"; then
   rollback || true
   exit 2
 fi

@@ -36,9 +36,43 @@ def _compare_by_key(
     values: tuple[str, ...],
     differences: list[ReconciliationDifference],
 ) -> None:
-    local_map = {str(getattr(item, key)): item for item in local}
-    broker_map = {str(getattr(item, key)): item for item in broker}
+    local_groups: dict[str, list[object]] = {}
+    broker_groups: dict[str, list[object]] = {}
+    for item in local:
+        local_groups.setdefault(str(getattr(item, key)), []).append(item)
+    for item in broker:
+        broker_groups.setdefault(str(getattr(item, key)), []).append(item)
+    local_map = {
+        identity: items[0] for identity, items in local_groups.items() if len(items) == 1
+    }
+    broker_map = {
+        identity: items[0] for identity, items in broker_groups.items() if len(items) == 1
+    }
+    for identity, items in sorted(local_groups.items()):
+        if len(items) > 1:
+            differences.append(
+                ReconciliationDifference(
+                    f"duplicate_local_{code}_identity",
+                    identity,
+                    f"count:{len(items)}",
+                    None,
+                )
+            )
+    for identity, items in sorted(broker_groups.items()):
+        if len(items) > 1:
+            differences.append(
+                ReconciliationDifference(
+                    f"duplicate_broker_{code}_identity",
+                    identity,
+                    None,
+                    f"count:{len(items)}",
+                )
+            )
     for identity in sorted(local_map.keys() | broker_map.keys()):
+        if identity in local_groups and len(local_groups[identity]) > 1:
+            continue
+        if identity in broker_groups and len(broker_groups[identity]) > 1:
+            continue
         left = local_map.get(identity)
         right = broker_map.get(identity)
         if left is None or right is None:
@@ -70,23 +104,35 @@ class ReconciliationService:
         local: LocalReconciliationState,
         store: ReconciliationStore,
         clock: Clock,
+        *,
+        enabled_asset_classes: tuple[AssetClass, ...],
     ) -> None:
+        if (
+            not enabled_asset_classes
+            or len(set(enabled_asset_classes)) != len(enabled_asset_classes)
+            or any(type(item) is not AssetClass for item in enabled_asset_classes)
+        ):
+            raise ValueError("enabled_asset_classes must be unique AssetClass values")
         self._broker = broker
         self._local = local
         self._store = store
         self._clock = clock
+        self._enabled_asset_classes = enabled_asset_classes
 
     async def reconcile(self, account_id: AccountId) -> ReconciliationResult:
         now = self._clock.now()
         differences: list[ReconciliationDifference] = []
         accounts = await self._broker.get_accounts()
-        if tuple(account.account_id for account in accounts) != (account_id,):
+        matching_accounts = tuple(
+            account for account in accounts if account.account_id == account_id
+        )
+        if len(matching_accounts) != 1:
             differences.append(
                 ReconciliationDifference(
                     "account_identity_mismatch",
                     str(account_id),
                     str(account_id),
-                    ",".join(account.account_id for account in accounts),
+                    f"matching_count:{len(matching_accounts)}",
                 )
             )
         local_account = await self._local.account(account_id)
@@ -112,9 +158,14 @@ class ReconciliationService:
             differences=differences,
         )
         local_orders = await self._local.orders(account_id)
-        broker_orders = (
+        raw_broker_orders = (
             *await self._broker.get_open_orders(account_id),
             *await self._broker.get_recent_orders(account_id, now - timedelta(days=1)),
+        )
+        broker_orders = tuple(
+            item
+            for index, item in enumerate(raw_broker_orders)
+            if item not in raw_broker_orders[:index]
         )
         _compare_by_key(
             local_orders,
@@ -141,7 +192,7 @@ class ReconciliationService:
             values=("broker_order_id", "instrument_id", "side", "quantity", "price", "fee"),
             differences=differences,
         )
-        for asset_class in AssetClass:
+        for asset_class in self._enabled_asset_classes:
             try:
                 local_power = local_account.buying_power_for(asset_class)
             except ValueError:

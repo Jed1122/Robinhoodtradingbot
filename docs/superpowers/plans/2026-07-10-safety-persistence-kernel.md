@@ -1,5 +1,8 @@
 # Safety, Persistence, and Risk Kernel Implementation Plan
 
+> Historical planning snapshot from 2026-07-10. For current implementation and operational
+> status, see the repository README and `docs/final-implementation-report.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the durable, broker-neutral safety kernel that makes every decision, risk check, state transition, authorization, reconciliation result, and recovery action explicit and auditable.

@@ -3,10 +3,10 @@ from pathlib import Path
 
 def test_documented_commands_exist() -> None:
     readme = Path("README.md").read_text()
-    assert "codex mcp add robinhood-trading --url https://agent.robinhood.com/mcp/trading" in readme
-    assert "uv run python scripts/verify_robinhood_equity_reads.py" in readme
+    assert "uv run trader mcp-oauth-bootstrap" in readme
+    assert "TRADING_BOT_IMAGE_DIGEST=sha256:<64-lowercase-hex-image-id>" in readme
+    assert "uv run trader shadow" in readme
     assert "make shadow-smoke" in readme
-    assert "make shadow" in readme
 
 
 def test_secret_values_are_not_documented() -> None:

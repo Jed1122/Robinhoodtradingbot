@@ -7,6 +7,8 @@ FROM ${PYTHON_BASE_IMAGE} AS runtime
 RUN groupadd --system --gid 10001 tradingbot && useradd --system --uid 10001 --gid tradingbot tradingbot
 WORKDIR /app
 COPY --from=builder /build/.venv /app/.venv
+COPY alembic.ini /app/alembic.ini
+COPY migrations /app/migrations
 COPY src /app/src
 COPY configs /app/configs
 ENV PATH="/app/.venv/bin:$PATH" \

@@ -65,7 +65,7 @@ async def test_fixture_shadow_records_nonpromotable_simulated_result() -> None:
     fake = FakeBroker(account, FixedClock(now))
     store = Store()
     app = build_shadow_application(
-        ShadowConfig(AccountId("allowed"), "200", "c" * 64, "e" * 64, True, True, True),
+        ShadowConfig(AccountId("allowed"), "200", "c" * 64, "e" * 64, True),
         Reads(account),  # type: ignore[arg-type]
         Cycle(),  # type: ignore[arg-type]
         fake,

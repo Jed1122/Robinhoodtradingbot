@@ -1,4 +1,4 @@
-"""Read-only connected runtime whose economic effects stay in simulation."""
+"""Non-promotable shadow-cycle harness whose economic effects stay simulated."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,8 +23,6 @@ class ShadowConfig:
     account_equity_ceiling: str
     config_hash: str
     code_hash: str
-    provider_ready: bool
-    strategy_eligible: bool
     fixture_data: bool = False
 
 
@@ -86,7 +84,11 @@ class ShadowApplication:
         result = await self._cycle.run_cycle(request)
         completed = self._clock.now()
         eligibility_hash = content_hash(
-            {"config_hash": self._config.config_hash, "eligible": self._config.strategy_eligible}
+            {
+                "config_hash": self._config.config_hash,
+                "eligible": False,
+                "reason": "strategy_attestation_not_wired",
+            }
         )
         evidence = ShadowCycleEvidence(
             cycle_id=content_hash(
@@ -103,15 +105,11 @@ class ShadowApplication:
             config_hash=self._config.config_hash,
             data_hash=result.market.data_hash,
             code_hash=self._config.code_hash,
-            provider_ready=self._config.provider_ready,
+            provider_ready=False,
             strategy_eligibility_hash=eligibility_hash,
             simulated_outcomes=tuple(str(item) for item in result.order_outcomes),
-            reconciliation_equal=True,
-            evidence_eligible=(
-                self._config.provider_ready
-                and self._config.strategy_eligible
-                and not self._config.fixture_data
-            ),
+            reconciliation_equal=False,
+            evidence_eligible=False,
             result=result,
         )
         await self._repositories.append_shadow(evidence)
@@ -126,7 +124,7 @@ def build_shadow_application(
     repositories: ShadowEvidenceStore,
     clock: Clock,
 ) -> ShadowApplication:
-    """Compose shadow without accepting or importing a live placement capability."""
+    """Compose a non-promotable harness without any live placement capability."""
     return ShadowApplication(config, broker_read, market_data, fake_broker, repositories, clock)
 
 

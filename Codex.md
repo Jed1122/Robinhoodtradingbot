@@ -17,17 +17,24 @@ liquidation; their evidence is account-bound and, for activity, instrument-bound
 pretrade engine runs the same ordered functions for a 23-check preliminary pass and 24-check
 post-review pass, never short-circuits, captures one injected UTC clock value, and binds
 exposure projections to the originating intent. Non-live evaluation waives only live-lease
-authorization; code, config, research, and alert evidence remain mandatory. Other
-workflow repositories and broker-connected runtime composition are not implemented. A
-write-incapable paused shadow process may serve loopback-published health, readiness, and
-metrics endpoints; it never constructs a broker read, review, cancel, or place capability.
-Trading MCP is not configured. Prediction live execution is unsupported.
+authorization; code, config, research, and alert evidence remain mandatory. An equity-only,
+write-incapable connected-shadow composition can construct exactly the reviewed Robinhood
+Trading MCP read capability, validate authenticated response shapes, and append identity-bound
+probe and promotion-decision evidence. An SDK-session allowlist and a separate transport allowlist
+contain no review, cancel, or place operation, and no provider write adapter exists. This incapability
+is enforced locally, not by OAuth: the sole official `internal` scope yields a bearer credential
+that must be treated as trading-capable. A stolen token or compromised host could trade in the
+Agentic account. The default process remains the paused loopback-published monitoring service and
+has no host volumes or credential access.
+Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 
-The operator CLI implements offline commands and the health-only paused service, not a trading
-application. Broker adapters are not implemented.
-Account access is not implemented. Do not represent planned modules, modes, commands, cloud resources,
-elapsed evidence, authentication, review, or execution as completed.
+The operator CLI implements offline commands, the health-only paused service, explicit OAuth
+bootstrap for the locally write-incapable client, and a one-shot connected shadow probe, not a live
+trading application. Nonempty
+equity position and order mappings, provider review/place/cancel adapters, complete strategy cycles,
+and qualifying elapsed shadow evidence are not implemented. Do not represent planned modules,
+modes, commands, cloud resources, elapsed evidence, review, or execution as completed.
 
 ## Safety rules
 
@@ -38,6 +45,9 @@ elapsed evidence, authentication, review, or execution as completed.
 - Keep provider transports out of broker-neutral domain, strategy, risk, and portfolio
   logic.
 - Keep read, review, place, and cancel-only capabilities independently injectable.
+- Never describe the Robinhood OAuth credential as read-only. Pin the sole official `internal`
+  scope, treat its bearer token as trading-capable, and preserve both local read allowlists and the
+  absence of provider review/place/cancel adapters.
 - Keep the pretrade clock, account allowlist, active code hash, and loaded-config hash
   explicitly injected. Never substitute caller-supplied context time for the evaluation
   clock or reuse an exposure projection across intents.

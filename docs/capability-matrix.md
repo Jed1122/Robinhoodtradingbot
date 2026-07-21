@@ -1,38 +1,47 @@
 # Robinhood capability baseline
 
-Checked again on 2026-07-17 from official public documentation only. The cloud environment
-does not provide the `codex` MCP client and contains no configured authenticated Trading MCP
-session. The local MCP state remains
-`blocked_unconfigured_mcp`: no `robinhood-trading` configuration was present in the
-filtered local Codex MCP listing. The public endpoint URL in an environment variable is
-not configuration or authentication evidence.
+Checked again on 2026-07-21. In addition to official public documentation, this repository now
+contains a sanitized, value-free artifact from authenticated calls to the seven reviewed equity
+read tools. It contains response structure and type information only—no account identifiers,
+balances, symbols, order values, tokens, or other provider values. Runtime OAuth state remains
+operator-controlled outside Git. A public endpoint URL alone is still neither authentication nor
+capability evidence.
+
+Robinhood exposes the sole official OAuth scope `internal`. The client pins that scope, but it is
+not a broker-enforced read-only grant; its bearer credential must be treated as trading-capable. A
+stolen token or compromised host could trade in the Agentic account. The implemented client is
+write-incapable only because an SDK-session allowlist and an independent transport allowlist admit
+the seven reads below and because no equity review, placement, or cancellation adapter exists.
 
 Operational readiness, promotion, and authorization are independent gates and do not upgrade any
 provider evidence level shown below.
 
 ## What is and is not implemented
 
-- Implemented: immutable evidence records, strict official Crypto v2 DTOs and mappings, exact-byte
-  Ed25519 signing, read-only Crypto account/position/order adapters against mock HTTP, schema-only
-  `tools/list` capture for an injected configured session, recursive artifact rejection,
-  and deterministic matrix rendering.
+- Implemented: immutable evidence records; strict official Crypto v2 DTOs and mappings; exact-byte
+  Ed25519 signing; read-only Crypto account/position/order adapters against mock HTTP; schema-only
+  `tools/list` capture; recursive artifact rejection; deterministic matrix rendering; and a strict
+  equity-only `BrokerRead` adapter for seven authenticated MCP read operations.
 - Documented: the exact equity MCP names and Crypto Trading API v2 paths below.
-- Locked externally: every authenticated operation. Local schema fixtures and mock HTTP cannot
-  unlock an authenticated read, review, submission, or cancellation path.
-- External evidence pending: a real sanitized MCP schema capture and later separately
-  authorized authenticated verification. No schema or authenticated result is claimed
-  by this committed baseline.
+- Authenticated read verified: `get_accounts`, `get_portfolio`, `get_equity_positions`,
+  `get_equity_orders`, `get_equity_quotes`, `get_equity_tradability`, and
+  `get_equity_historicals`. Positions and orders accept only authenticated empty collections;
+  any nonempty collection or pagination cursor fails closed until row shapes are reviewed.
+- Locked externally: Crypto authenticated operations and every equity review, submission, and
+  cancellation operation. Local schema fixtures, authenticated reads, and mock HTTP do not unlock
+  a write path.
 - Unsupported: prediction-order placement. The official public evidence records no
   programmatic placement interface, so positive placement evidence is prohibited.
 - Implemented locally: a broker-neutral, non-live execution service that persists preliminary
   and final risk evidence, an exact review, one pending submission reservation, and the resulting
   accepted, rejected, or ambiguous outcome around an injected fake or simulation placement
   capability.
-- Equity mapping and account access remain absent because authenticated response shapes were not
-  captured. Read-only shadow composition is implemented, but connected startup exits 2 in this
-  environment. Prediction live operations always raise `UnsupportedCapabilityError`.
-  Consequently equity review, placement, and cancellation have no adapter classes: write
-  argument and result fields will not be guessed from public operation names.
+- Equity read mapping and a one-shot connected-shadow composition are implemented. The SDK-session
+  allowlist rejects write tools before the MCP SDK call, and the provider transport's separate
+  allowlist contains only the seven reads above. These are local restrictions, not OAuth scope.
+  Prediction live operations always raise `UnsupportedCapabilityError`.
+  Equity review, placement, and cancellation therefore have no adapter classes: write argument
+  and result fields are not guessed from public operation names.
 
 `documented_locked_external_pending` means the public operation is named, but required
 schema/behavioral evidence and implementation are absent. `unsupported_locked` is a
@@ -52,15 +61,20 @@ terminal negative record, not a lower positive evidence rank.
 | robinhood-crypto-v2 | `POST /api/v2/crypto/trading/orders/{id}/cancel/` | crypto | cancel | documented | documented_locked_external_pending |
 | robinhood-prediction | `place_prediction_order` | prediction | place | unsupported | unsupported_locked |
 | robinhood-trading | `cancel_equity_order` | equity | cancel | documented | documented_locked_external_pending |
+| robinhood-trading | `get_accounts` | equity | read | authenticated-read-verified | implemented_read_only |
 | robinhood-trading | `get_equity_fundamentals` | equity | read | documented | documented_locked_external_pending |
-| robinhood-trading | `get_equity_historicals` | equity | read | documented | documented_locked_external_pending |
-| robinhood-trading | `get_equity_orders` | equity | read | documented | documented_locked_external_pending |
-| robinhood-trading | `get_equity_positions` | equity | read | documented | documented_locked_external_pending |
-| robinhood-trading | `get_equity_quotes` | equity | read | documented | documented_locked_external_pending |
+| robinhood-trading | `get_equity_historicals` | equity | read | authenticated-read-verified | implemented_read_only |
+| robinhood-trading | `get_equity_orders` | equity | read | authenticated-read-verified | implemented_empty_only |
+| robinhood-trading | `get_equity_positions` | equity | read | authenticated-read-verified | implemented_empty_only |
+| robinhood-trading | `get_equity_quotes` | equity | read | authenticated-read-verified | implemented_read_only |
 | robinhood-trading | `get_equity_technical_indicators` | equity | read | documented | documented_locked_external_pending |
-| robinhood-trading | `get_equity_tradability` | equity | read | documented | documented_locked_external_pending |
+| robinhood-trading | `get_equity_tradability` | equity | read | authenticated-read-verified | implemented_read_only |
+| robinhood-trading | `get_portfolio` | equity | read | authenticated-read-verified | implemented_read_only |
 | robinhood-trading | `place_equity_order` | equity | place | documented | documented_locked_external_pending |
 | robinhood-trading | `review_equity_order` | equity | review | documented | documented_locked_external_pending |
+
+The `implemented_read_only` and `implemented_empty_only` states describe this repository's local
+adapter behavior. They do not describe or reduce the authority of the OAuth bearer credential.
 
 The machine-readable public baseline is
 `tests/fixtures/capabilities/documented_robinhood.json`. It records Crypto v2 signed
@@ -176,7 +190,8 @@ converted into a capture error. The async timeout can cancel a session implement
 yields to the event loop; it cannot preempt an implementation that blocks the event loop or
 never reaches a cancellation point. No background thread or process workaround is used.
 
-When no proven configured session is injected, the CLI exits with status 2, writes
+The older schema-capture command remains unauthenticated declaration evidence only. When no proven
+configured capture session is injected, it exits with status 2, writes
 nothing, and prints:
 
 ```text

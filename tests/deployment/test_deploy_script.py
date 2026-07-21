@@ -16,13 +16,16 @@ def test_deploy_never_enables_live() -> None:
     assert "ready_status" in text and '"503"' in text
     assert "flock -n" in text
     assert "/usr/bin/env -i" in text
-    assert 'export PATH' in text
+    assert "export PATH" in text
     assert "--disable" in text and "--noproxy '*'" in text
     assert "started_image" in text
     assert "LAST_GOOD_POINTER" in text
     assert "LAST_GOOD_IMAGE" in text
     assert 'cmp -s "$release_env" -' in text
+    assert "first no-volume release" in text
+    assert "TRADING_BOT_STATE_DIR=/var/lib/trading-bot" in text
     assert 'write_last_good_pointer "$LAST_GOOD_RELEASE_KEY"' in text
+    assert 'validate_resolved_images "$IMAGE" "$RESOLVED_IMAGES"' in text
 
 
 def test_deploy_scripts_have_valid_shell_syntax() -> None:

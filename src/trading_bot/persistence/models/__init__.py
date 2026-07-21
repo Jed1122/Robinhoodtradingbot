@@ -10,6 +10,7 @@ from trading_bot.persistence.models.accounts import (
 )
 from trading_bot.persistence.models.decisions import (
     PromotionEvidenceRow,
+    PromotionObservationRow,
     ResearchAcceptanceEvidenceRow,
     RiskEvaluationRow,
     StrategyDecisionRow,
@@ -68,6 +69,7 @@ __all__ = [
     "PortfolioSnapshotRow",
     "PositionRow",
     "PromotionEvidenceRow",
+    "PromotionObservationRow",
     "RealizedPnlRow",
     "ReconciliationEventRow",
     "ResearchAcceptanceEvidenceRow",

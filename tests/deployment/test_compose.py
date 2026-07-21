@@ -11,7 +11,4 @@ def test_compose_hardening() -> None:
     assert service["environment"]["LIVE_TRADING_ENABLED"] == "false"
     assert service["environment"]["PREDICTION_LIVE_ENABLED"] == "false"
     assert service["environment"]["TRADING_BOT__MONITORING__HOST"] == "0.0.0.0"
-    assert {volume["target"] for volume in service["volumes"]} == {
-        "/var/lib/trading-bot",
-        "/var/log/trading-bot",
-    }
+    assert "volumes" not in service

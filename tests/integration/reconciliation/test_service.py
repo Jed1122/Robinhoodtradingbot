@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -119,9 +120,86 @@ class Store:
 @pytest.mark.asyncio
 async def test_unexpected_broker_order_is_material() -> None:
     store = Store()
-    service = ReconciliationService(Broker(), Local(), store, Clock())  # type: ignore[arg-type]
+    service = ReconciliationService(
+        Broker(),
+        Local(),
+        store,
+        Clock(),
+        enabled_asset_classes=(AssetClass.EQUITY,),
+    )  # type: ignore[arg-type]
     result = await service.reconcile(ACCOUNT)
     assert not result.clean
     assert result.differences[0].code == "unexpected_broker_order"
     assert result.differences[0].material
     assert store.result is result
+
+
+@pytest.mark.asyncio
+async def test_other_provider_accounts_do_not_replace_exact_target_selection() -> None:
+    class MultipleAccountsBroker(Broker):
+        open_orders = ()
+
+        async def get_accounts(self) -> tuple:
+            return (
+                replace(account(), account_id=AccountId("other-account")),
+                account(),
+            )
+
+    store = Store()
+    service = ReconciliationService(
+        MultipleAccountsBroker(),
+        Local(),
+        store,
+        Clock(),
+        enabled_asset_classes=(AssetClass.EQUITY,),
+    )  # type: ignore[arg-type]
+
+    result = await service.reconcile(ACCOUNT)
+
+    assert result.clean
+
+
+@pytest.mark.asyncio
+async def test_conflicting_duplicate_broker_order_identity_is_material() -> None:
+    class DuplicateOrderBroker(Broker):
+        open_orders = (
+            unexpected_order(),
+            replace(
+                unexpected_order(),
+                filled_quantity=Decimal("0.5"),
+                state=OrderState.PARTIALLY_FILLED,
+            ),
+        )
+
+    store = Store()
+    service = ReconciliationService(
+        DuplicateOrderBroker(),
+        Local(),
+        store,
+        Clock(),
+        enabled_asset_classes=(AssetClass.EQUITY,),
+    )  # type: ignore[arg-type]
+
+    result = await service.reconcile(ACCOUNT)
+
+    assert not result.clean
+    assert result.differences[0].code == "duplicate_broker_order_identity"
+
+
+def test_enabled_asset_classes_are_explicit_and_unique() -> None:
+    with pytest.raises(ValueError, match="enabled_asset_classes"):
+        ReconciliationService(
+            Broker(),
+            Local(),
+            Store(),
+            Clock(),
+            enabled_asset_classes=(),
+        )  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="enabled_asset_classes"):
+        ReconciliationService(
+            Broker(),
+            Local(),
+            Store(),
+            Clock(),
+            enabled_asset_classes=(AssetClass.EQUITY, AssetClass.EQUITY),
+        )  # type: ignore[arg-type]

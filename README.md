@@ -30,10 +30,18 @@ ambiguous for later reconciliation. The in-process exclusion is explicitly not a
 mutex. A persisted reviewed order distinguishes non-live provenance (fencing token zero and no
 lease claim) from live provenance (a positive fencing token and complete lease identity and
 evidence), and this service rejects both live modes at construction until the later authorization
-and leadership layers exist. The repository also includes an Alembic-owned SQLite
+and leadership layers exist. A separate equity-only Robinhood Trading MCP adapter can perform
+the seven reviewed read operations through an encrypted OAuth store. Its connected-shadow
+composition has no review, place, or cancel adapter: an SDK-session allowlist and a second
+transport allowlist independently reject every tool outside those seven reads. This is a local
+software boundary, not a broker permission boundary. The OAuth flow requests and pins Robinhood's
+sole official `internal` scope, whose bearer credential must be treated as trading-capable. A
+stolen credential or compromised host could trade in the Agentic account outside this client.
+The probe writes append-only, identity-bound promotion evidence to the ledger. The repository also
+includes an Alembic-owned SQLite
 WAL ledger foundation with canonical Decimal and UTC storage, no-affinity safety-scalar
 checks, and database-bound provenance across authorization and economic-effect records. It
-does not yet implement a trading application. A single-use async unit of work currently
+does not yet implement a live trading application. A single-use async unit of work currently
 supports lossless order-intent, risk-evaluation, review, lifecycle-transition, submission-attempt,
 broker-order, and secret-screened audit writes. Repository commands for fills, data quality,
 authorization, reconciliation, and evidence workflows remain deliberately absent until their
@@ -42,15 +50,19 @@ complete domain records exist.
 ## Current safety status
 
 - The default remains paused and cannot construct a live submission path.
-- Trading MCP is not configured. The committed capability baseline comes only from
-  official public documentation; it is not schema or authenticated evidence.
+- Authenticated, value-free equity MCP response-shape evidence has been captured for the reviewed
+  read surface. Runtime OAuth state is never committed to the repository and must be bootstrapped
+  explicitly by the operator.
 - Prediction live execution is unsupported.
 - No live order has been placed by this implementation or its tests.
 - Offline `backtest`, `simulate`, and one-cycle `paper` CLI commands are implemented with
   deterministic hashes and no live placement capability.
 - Official Crypto v2 read DTOs, exact signing, and read adapters are implemented against
   reviewed schema fixtures and mock HTTP; no authenticated account read is claimed.
-- Equity account access remains locked because authenticated MCP evidence is unavailable.
+- The connected client invokes equity reads only because of two local allowlists and the absence of
+  review, placement, and cancellation adapters. The broker token itself is not read-only. Nonempty
+  position and order collections remain locked until their authenticated shapes are observed and
+  reviewed.
 - This repository makes no profitability claim.
 
 The [capability matrix](docs/capability-matrix.md) keeps five states distinct:
@@ -104,28 +116,72 @@ configuration hash, and result hash. See [strategy research](docs/strategy-resea
 
 ## Robinhood read and shadow setup
 
-Register the official Trading MCP endpoint in an operator-controlled Codex environment:
+Bootstrap the standalone runtime against the official Trading MCP endpoint from a trusted
+workstation. The command requests and pins the sole official OAuth scope, `internal`. That scope is
+not a broker-enforced read-only grant; treat the bearer credential as trading-capable. The bootstrap
+parent must already be a service-owned directory with mode `0700` or stricter, and the `oauth`
+destination must not exist. The command stages encrypted OAuth state and the SHA-256 account
+fingerprint together, then atomically commits the complete directory:
 
 ```shell
-codex mcp add robinhood-trading --url https://agent.robinhood.com/mcp/trading
-uv run python scripts/verify_robinhood_equity_reads.py
+umask 077
+mkdir -p "$HOME/.local/share/robinhood-trading-bot"
+chmod 700 "$HOME/.local/share/robinhood-trading-bot"
+test ! -e "$HOME/.local/share/robinhood-trading-bot/oauth"
+PYTHONPATH=src uv run trader mcp-oauth-bootstrap \
+  --oauth-store "$HOME/.local/share/robinhood-trading-bot/oauth" \
+  --account-fingerprint-file \
+    "$HOME/.local/share/robinhood-trading-bot/oauth/account-fingerprint"
+
+mkdir -p "$HOME/.local/share/robinhood-trading-bot/evidence"
+chmod 700 "$HOME/.local/share/robinhood-trading-bot/evidence"
+```
+
+Then run one write-incapable connected probe with an immutable local image digest:
+
+```shell
+TRADING_BOT_IMAGE_DIGEST=sha256:<64-lowercase-hex-image-id> \
+PYTHONPATH=src uv run trader shadow \
+  --config configs/shadow.yaml \
+  --once \
+  --oauth-store "$HOME/.local/share/robinhood-trading-bot/oauth" \
+  --account-fingerprint-file \
+    "$HOME/.local/share/robinhood-trading-bot/oauth/account-fingerprint" \
+  --ledger "$HOME/.local/share/robinhood-trading-bot/evidence/ledger.db"
+
 make shadow-smoke
-make shadow
 make live-readiness
 ```
 
 Crypto v2 reads use only `ROBINHOOD_CRYPTO_API_KEY_FILE` and
 `ROBINHOOD_CRYPTO_PRIVATE_KEY_FILE`; each referenced service-owned file must be mode `0600`.
-Raw credential environment variables are rejected. MCP OAuth state is referenced through
-`ROBINHOOD_MCP_OAUTH_STORE_DIR`, a service-owned `0700` directory. `make shadow-smoke` uses
-sanitized local evidence and is never promotable. In this cloud environment `make shadow`
-fails closed with exit status 2 because authenticated equity reads are unavailable.
+Raw credential environment variables are rejected. The OAuth directory must be service-owned mode
+`0700`; its encrypted files and its `account-fingerprint` file must be mode `0600`. Treat the entire
+directory as a trading credential: stealing the token or compromising a host that can read it may
+permit trades in the Agentic account. The probe emits only sanitized hashes and status.
+`make shadow-smoke` uses sanitized local evidence and is never promotable. The connected probe is
+also deliberately non-promotable today: it verifies locally constrained read connectivity and
+zero-state reconciliation but does not fabricate an accepted strategy attestation, complete trading
+outcomes, or elapsed shadow history.
+
+Promotion progress is derived only from append-only observations matching the exact account,
+provider declaration, strategy, configuration, and image-code identity. The configured minimums
+are 100 eligible paper cycles, seven distinct UTC shadow dates, and—before normal live—100 combined
+eligible observations across 30 distinct UTC dates including micro-live evidence and a separate
+current micro-order review summary that proves every configured ten-order boundary was reviewed,
+plus current security, acknowledgement, runtime-control, slippage, and drawdown attestations. A
+code, config, strategy, provider, or account identity change starts a different evidence series.
+These thresholds are prerequisites, not permission to trade.
+Normal-live evaluation retains the paper and shadow prerequisites; normal-live observations do not
+add progress, and their latest dirty state blocks re-promotion.
 
 ## What comes later
 
-Authenticated account access, provider-connected order submission and cancellation, and every
-opt-in live gate remain locked. The deployable container is only a health-visible paused shadow
-process: it does not construct broker capabilities and deliberately reports `/readyz` as unavailable.
+Provider-connected order review, submission, and cancellation, complete strategy scheduling, and
+every opt-in live gate remain locked. The default deployable service is a health-visible paused
+process with no host volumes or credential access and deliberately reports `/readyz` as unavailable.
+An explicit `connected-shadow` Compose profile runs one authenticated, locally write-incapable probe
+with no published port and then exits.
 The broker-neutral execution service accepts only injected capabilities; current adapter evidence
 does not grant permission to trade.
 
@@ -138,5 +194,7 @@ See the [operations runbook](docs/operations-runbook.md), [live activation](docs
 [risk policy](docs/risk-policy.md), [incident response](docs/incident-response.md), and
 [disaster recovery](docs/disaster-recovery.md). Containers and cloud deployment always start
 paused, expose administration only through host loopback, and never activate live trading. A
-successful paused deployment has a healthy `/healthz`, a `503` `/readyz`, and the metric
-`trading_bot_live_enabled 0.0`.
+successful default paused deployment has a healthy `/healthz`, a `503` `/readyz`, and the metric
+`trading_bot_live_enabled 0.0`. The default service has no host volumes and cannot access OAuth or
+evidence state. The connected-shadow profile is explicit and locally write-incapable; its evidence
+ledger does not by itself authorize or activate live execution.

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Annotated
 
@@ -15,9 +16,15 @@ from trading_bot.cli.status import locked_status
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.domain import ExecutionMode
 from trading_bot.market_data import content_hash
+from trading_bot.runtime.connected_shadow import (
+    ConnectedShadowNotReady,
+    bootstrap_read_only_oauth,
+    run_connected_shadow_once,
+)
 from trading_bot.runtime.paused_service import build_paused_monitoring_service
 
 app = typer.Typer(no_args_is_help=True)
+_PROBE_SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,14}\Z")
 
 
 def _config_environment() -> dict[str, str]:
@@ -88,13 +95,63 @@ def paper(
 def shadow(
     config: Annotated[Path, typer.Option()] = Path("configs/shadow.yaml"),
     once: Annotated[bool, typer.Option("--once")] = False,
+    oauth_store: Annotated[Path, typer.Option()] = Path("/var/lib/trading-bot/oauth"),
+    account_fingerprint_file: Annotated[Path, typer.Option()] = Path(
+        "/var/lib/trading-bot/oauth/account-fingerprint"
+    ),
+    ledger: Annotated[Path, typer.Option()] = Path(
+        "/var/lib/trading-bot/evidence/ledger.db"
+    ),
+    image_digest: Annotated[str | None, typer.Option(envvar="TRADING_BOT_IMAGE_DIGEST")] = None,
+    probe_symbol: Annotated[str | None, typer.Option()] = None,
 ) -> None:
-    """Attempt authenticated read-only shadow startup; never construct a writer."""
+    """Run one authenticated, write-incapable connected-shadow evidence probe."""
     if not once:
         raise typer.BadParameter("shadow currently requires --once")
-    del config
-    typer.echo("external_capability_missing", err=True)
-    raise typer.Exit(2)
+    loaded = _load_runtime_config(config)
+    if loaded.config.mode is not ExecutionMode.SHADOW:
+        raise typer.BadParameter("configuration mode does not match command")
+    if loaded.config.live_trading_enabled or not loaded.config.runtime.start_paused:
+        raise typer.BadParameter("connected shadow requires fail-closed configuration")
+    if not loaded.config.equities.enabled or loaded.config.crypto.enabled:
+        raise typer.BadParameter("connected Agentic shadow requires an equity-only profile")
+    if image_digest is None:
+        raise typer.BadParameter("connected shadow requires TRADING_BOT_IMAGE_DIGEST")
+    if probe_symbol is not None and _PROBE_SYMBOL.fullmatch(probe_symbol) is None:
+        raise typer.BadParameter("probe symbol must be an exact uppercase ticker")
+
+    try:
+        output = run_connected_shadow_once(
+            loaded=loaded,
+            repository_root=config.resolve().parent.parent,
+            oauth_store=oauth_store,
+            account_fingerprint_file=account_fingerprint_file,
+            ledger=ledger,
+            image_digest=image_digest,
+            probe_symbol=probe_symbol,
+        )
+    except ConnectedShadowNotReady:
+        typer.echo("connected_shadow_not_ready", err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(output, sort_keys=True, separators=(",", ":")))
+
+
+@app.command("mcp-oauth-bootstrap")
+def mcp_oauth_bootstrap(
+    oauth_store: Annotated[Path, typer.Option()],
+    account_fingerprint_file: Annotated[Path, typer.Option()],
+) -> None:
+    """Authorize the MCP credential used only by the write-incapable client."""
+
+    try:
+        output = bootstrap_read_only_oauth(
+            oauth_store=oauth_store,
+            account_fingerprint_file=account_fingerprint_file,
+        )
+    except ConnectedShadowNotReady:
+        typer.echo("oauth_bootstrap_failed", err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(output, sort_keys=True, separators=(",", ":")))
 
 
 @app.command("config-hash")

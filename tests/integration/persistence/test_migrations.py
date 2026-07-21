@@ -45,6 +45,7 @@ REQUIRED_TABLES = {
     "alerts",
     "reconciliation_events",
     "promotion_evidence",
+    "promotion_observations",
     "configuration_versions",
     "live_authorizations",
     "live_leases",
@@ -59,6 +60,7 @@ HASH_A = "a" * 64
 HASH_B = "b" * 64
 HASH_C = "c" * 64
 UTC_TEXT = "2026-07-13T12:00:00.000000Z"
+PROMOTION_EXPIRES_TEXT = "2026-07-13T12:05:00.000000Z"
 
 
 @contextmanager
@@ -412,7 +414,7 @@ def _seed_promotion_and_authorization(connection: sqlite3.Connection) -> None:
             evaluated_at, expires_at
         ) VALUES ('promotion-1', 'micro_live', 1, ?, '[]', ?, ?)
         """,
-        (HASH_A, UTC_TEXT, UTC_TEXT),
+        (HASH_A, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
     )
     connection.execute(
         """
@@ -421,7 +423,7 @@ def _seed_promotion_and_authorization(connection: sqlite3.Connection) -> None:
             evaluated_at, expires_at
         ) VALUES ('promotion-2', 'normal_live', 1, ?, '[]', ?, ?)
         """,
-        (HASH_B, UTC_TEXT, UTC_TEXT),
+        (HASH_B, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
     )
     connection.execute(
         """
@@ -430,7 +432,7 @@ def _seed_promotion_and_authorization(connection: sqlite3.Connection) -> None:
             evaluated_at, expires_at
         ) VALUES ('promotion-3', 'micro_live', 0, ?, '["ineligible"]', ?, ?)
         """,
-        (HASH_C, UTC_TEXT, UTC_TEXT),
+        (HASH_C, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
     )
     connection.execute(
         """
@@ -505,7 +507,7 @@ def test_upgrade_records_core_revision(
 
     with closing(sqlite3.connect(database_path)) as connection:
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
-    assert revision == ("0003_submission_attempt_guards",)
+    assert revision == ("0004_promotion_observations",)
 
 
 def test_models_register_exactly_the_required_tables() -> None:
@@ -792,7 +794,7 @@ def test_database_rejects_noncanonical_boolean_and_hash_values(
                 evaluated_at, expires_at
             ) VALUES ('promotion-1', 'paper', ?, ?, '[]', ?, ?)
             """,
-            (eligible, evidence_hash, UTC_TEXT, UTC_TEXT),
+            (eligible, evidence_hash, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
         )
 
 
@@ -1498,7 +1500,7 @@ def test_live_lease_rejects_missing_promotion_evidence_hash(
                 evaluated_at, expires_at
             ) VALUES ('promotion-1', 'micro_live', 1, ?, '[]', ?, ?)
             """,
-            (HASH_A, UTC_TEXT, UTC_TEXT),
+            (HASH_A, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
         )
         connection.execute(
             """
@@ -1543,7 +1545,7 @@ def test_live_authorization_rejects_a_nonlive_stage(
                 evaluated_at, expires_at
             ) VALUES ('promotion-paper', 'paper', 1, ?, '[]', ?, ?)
             """,
-            (HASH_A, UTC_TEXT, UTC_TEXT),
+            (HASH_A, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
         )
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
@@ -2380,7 +2382,7 @@ def test_failed_downgrade_restores_all_schema_changes_and_can_retry(
         correction = connection.execute(
             "SELECT corrects_id FROM audit_events WHERE id = 'audit-2'"
         ).fetchone()
-    assert revision == ("0003_submission_attempt_guards",)
+    assert revision == ("0004_promotion_observations",)
     assert correction == ("audit-1",)
 
     command.downgrade(alembic_config, "base")

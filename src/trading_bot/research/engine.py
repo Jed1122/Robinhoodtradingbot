@@ -33,7 +33,9 @@ async def assess_and_persist(
 ) -> StrategyEligibilityAttestation:
     assessment = assess_research(report, policy)
     attestation = StrategyEligibilityAttestation(
-        eligible=assessment.eligible,
+        # A statistically eligible report is still non-promotable when its exact
+        # code identity is not clean.  Downstream runtimes consume this stricter bit.
+        eligible=assessment.promotable,
         strategy_version=report.run.strategy_version,
         config_hash=ConfigHash(report.run.config_hash),
         code_hash=CodeHash(report.run.code_hash),
