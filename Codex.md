@@ -18,11 +18,14 @@ pretrade engine runs the same ordered functions for a 23-check preliminary pass 
 post-review pass, never short-circuits, captures one injected UTC clock value, and binds
 exposure projections to the originating intent. Non-live evaluation waives only live-lease
 authorization; code, config, research, and alert evidence remain mandatory. Other
-workflow repositories and runtime composition are not implemented.
+workflow repositories and broker-connected runtime composition are not implemented. A
+write-incapable paused shadow process may serve loopback-published health, readiness, and
+metrics endpoints; it never constructs a broker read, review, cancel, or place capability.
 Trading MCP is not configured. Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 
-Trader CLI is not implemented. Broker adapters are not implemented.
+The operator CLI implements offline commands and the health-only paused service, not a trading
+application. Broker adapters are not implemented.
 Account access is not implemented. Do not represent planned modules, modes, commands, cloud resources,
 elapsed evidence, authentication, review, or execution as completed.
 

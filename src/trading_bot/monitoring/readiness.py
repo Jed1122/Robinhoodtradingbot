@@ -1,6 +1,8 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from trading_bot.clock import Clock
 from trading_bot.domain import ExecutionMode
 from trading_bot.runtime.live import LivePreflightResult
 
@@ -14,7 +16,12 @@ class ReadinessSnapshot:
 
 
 class ReadinessService:
-    def __init__(self, mode: ExecutionMode, preflight, clock):  # type: ignore[no-untyped-def]
+    def __init__(
+        self,
+        mode: ExecutionMode,
+        preflight: Callable[[], LivePreflightResult],
+        clock: Clock,
+    ) -> None:
         self._mode, self._preflight, self._clock = mode, preflight, clock
 
     def snapshot(self) -> ReadinessSnapshot:

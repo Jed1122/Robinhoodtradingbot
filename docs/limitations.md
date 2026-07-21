@@ -14,5 +14,8 @@
   have no authenticated MCP capture because the cloud MCP client/session is unavailable.
 - Shadow smoke evidence is explicitly non-promotable. Connected shadow exits 2 until all required
   authenticated read providers and exact reviewed schemas are available.
-- Single-host filesystem exclusion does not support multi-host active/active deployment. Cloud
-  infrastructure has not been applied and requires operator-supplied immutable images.
+- The deployable container is only a paused monitoring process. It does not run strategy cycles,
+  authenticate to Robinhood, or place, review, or cancel orders.
+- Single-host filesystem exclusion does not support multi-host active/active deployment. The
+  Terraform and cloud-init templates are not a validated end-to-end provisioning path; manual hosts
+  still require operator-supplied immutable images and independent hardening.

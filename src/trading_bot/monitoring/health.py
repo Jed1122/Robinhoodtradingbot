@@ -1,5 +1,8 @@
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
+
+from trading_bot.clock import Clock
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,8 +22,12 @@ class HealthSnapshot:
 
 
 class HealthService:
-    def __init__(self, checks, clock):  # type: ignore[no-untyped-def]
-        self._checks, self._clock = checks, clock
+    def __init__(
+        self,
+        checks: Iterable[Callable[[], HealthCheckResult]],
+        clock: Clock,
+    ) -> None:
+        self._checks, self._clock = tuple(checks), clock
 
     def snapshot(self) -> HealthSnapshot:
         checks = tuple(check() for check in self._checks)

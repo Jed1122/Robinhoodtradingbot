@@ -1,16 +1,24 @@
 services:
   trading-bot:
-    build:
-      context: .
-      args:
-        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE}
+    image: ${TRADING_BOT_IMAGE:-trading-bot:local}
+    pull_policy: ${TRADING_BOT_PULL_POLICY:-missing}
     user: "10001:10001"
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     ports: ["127.0.0.1:8080:8080"]
     environment:
+      LIVE_TRADING_ENABLED: "false"
+      PREDICTION_LIVE_ENABLED: "false"
+      TRADING_BOT__MONITORING__HOST: "0.0.0.0"
       TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH: "true"
+    volumes:
+      - type: bind
+        source: ${TRADING_BOT_STATE_DIR:-/var/lib/trading-bot}
+        target: /var/lib/trading-bot
+      - type: bind
+        source: ${TRADING_BOT_LOG_DIR:-/var/log/trading-bot}
+        target: /var/log/trading-bot
     tmpfs: [/tmp]
     mem_limit: 768m
     cpus: "0.75"
@@ -18,4 +26,3 @@ services:
     init: true
     stop_grace_period: 45s
     restart: unless-stopped
-    command: ["run", "--config", "/etc/trading-bot/base.yaml", "--mode", "shadow", "--paused"]

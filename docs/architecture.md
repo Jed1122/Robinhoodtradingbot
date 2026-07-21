@@ -80,8 +80,9 @@ bound to a canonical broker-order row. This sequence is an implemented local orc
 boundary, not a provider adapter, runner, live-authorization service, or proof of broker access.
 
 Trading MCP is not configured. Prediction live execution is unsupported.
-No live order has been placed. Trader CLI is not implemented. Broker adapters are not implemented.
-Account access is not implemented. The repository makes no profitability claim.
+No live order has been placed. The CLI provides offline commands and a health-only paused shadow
+service, not a trading application. Broker adapters and account access are not implemented. The
+repository makes no profitability claim.
 
 ## Dependency direction
 
@@ -190,11 +191,10 @@ or a non-submitting order review.
 
 ## Absent runtime layers
 
-Market data services, strategies, portfolio target construction, remaining action and authorization
-gates, remaining persistence commands, authorization services, simulation, paper and shadow
-runners, provider adapters, provider-connected placement and cancellation, reconciliation
-services, recovery, operations, and deployment remain planned. The implemented durable execution
-service composes only explicitly injected broker-neutral capabilities and refuses live modes; no
-provider transport, authenticated account access, live mutex, lease leadership, or live runtime
-composition exists. Later slices must preserve the independent broker capabilities and add their
-tests and documentation with each architectural change.
+Provider-connected market data, complete strategy scheduling, remaining action and authorization
+gates, provider adapters, connected placement and cancellation, and a live runtime remain planned.
+The implemented durable execution service composes only explicitly injected broker-neutral
+capabilities and refuses live modes. The deployable runtime is limited to loopback-published health
+for a write-incapable paused shadow process; it has no provider transport, authenticated account
+access, live mutex, lease leadership, or strategy cycle. Later slices must preserve the independent
+broker capabilities and add their tests and documentation with each architectural change.

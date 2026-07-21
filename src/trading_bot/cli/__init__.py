@@ -1,3 +1,3 @@
-from trading_bot.cli.main import app, main
+"""Operator CLI package; import the concrete entry point explicitly."""
 
-__all__ = ["app", "main"]
+__all__: list[str] = []

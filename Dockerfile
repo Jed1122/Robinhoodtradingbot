@@ -8,7 +8,15 @@ RUN groupadd --system --gid 10001 tradingbot && useradd --system --uid 10001 --g
 WORKDIR /app
 COPY --from=builder /build/.venv /app/.venv
 COPY src /app/src
-ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app/src" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY configs /app/configs
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/src" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    LIVE_TRADING_ENABLED=false \
+    PREDICTION_LIVE_ENABLED=false
 USER 10001:10001
 ENTRYPOINT ["python", "-m", "trading_bot.cli.main"]
-CMD ["run", "--config", "/etc/trading-bot/base.yaml", "--mode", "shadow", "--paused"]
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).close()"]
+CMD ["serve", "--config", "/app/configs/shadow.yaml", "--mode", "shadow", "--paused"]

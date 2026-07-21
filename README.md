@@ -123,9 +123,11 @@ fails closed with exit status 2 because authenticated equity reads are unavailab
 
 ## What comes later
 
-Authenticated account access, provider-connected order submission and cancellation, operator
-deployment, and every opt-in live gate remain locked. The broker-neutral execution service accepts
-only injected capabilities; current adapter evidence does not grant permission to trade.
+Authenticated account access, provider-connected order submission and cancellation, and every
+opt-in live gate remain locked. The deployable container is only a health-visible paused shadow
+process: it does not construct broker capabilities and deliberately reports `/readyz` as unavailable.
+The broker-neutral execution service accepts only injected capabilities; current adapter evidence
+does not grant permission to trade.
 
 The executable plans live under `docs/superpowers/plans/`. Later slices may not bypass a
 failed foundation or capability gate.
@@ -135,4 +137,6 @@ failed foundation or capability gate.
 See the [operations runbook](docs/operations-runbook.md), [live activation](docs/live-activation.md),
 [risk policy](docs/risk-policy.md), [incident response](docs/incident-response.md), and
 [disaster recovery](docs/disaster-recovery.md). Containers and cloud deployment always start
-paused, expose administration only through host loopback, and never activate live trading.
+paused, expose administration only through host loopback, and never activate live trading. A
+successful paused deployment has a healthy `/healthz`, a `503` `/readyz`, and the metric
+`trading_bot_live_enabled 0.0`.
