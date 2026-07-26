@@ -11,6 +11,9 @@ not a broker-enforced read-only grant: the bearer credential must be treated as 
 a stolen token or compromised host could trade in the Agentic account. The current client is
 write-incapable only because both its SDK-session and provider-transport allowlists accept seven
 reviewed reads and because it constructs no review, place, or cancel adapter.
+For a reviewed zero-argument read, the declaration gate accepts an omitted `properties` member only
+when the schema is an object with `additionalProperties: false`; an open or broader schema remains
+incompatible.
 
 Token and client records are authenticated-encrypted at rest; the encryption key, encrypted
 records, and `account-fingerprint` file must be service-owned regular files with mode `0600` inside

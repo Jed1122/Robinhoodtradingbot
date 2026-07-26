@@ -159,7 +159,16 @@ def validate_read_tool_declarations(observed: tuple[DeclaredMcpTool, ...]) -> Da
         tool = by_name.get(name)
         if tool is None or type(tool.input_schema) is not dict or tool.output_schema is None:
             raise EquityEvidenceError("required MCP read declaration is missing")
-        properties = tool.input_schema.get("properties")
+        if "properties" not in tool.input_schema:
+            if (
+                expected_properties
+                or tool.input_schema.get("type") != "object"
+                or tool.input_schema.get("additionalProperties") is not False
+            ):
+                raise EquityEvidenceError("required MCP input declaration is incompatible")
+            properties: object = {}
+        else:
+            properties = tool.input_schema["properties"]
         required = tool.input_schema.get("required", [])
         if type(properties) is not dict or type(required) is not list:
             raise EquityEvidenceError("required MCP input declaration is incompatible")
