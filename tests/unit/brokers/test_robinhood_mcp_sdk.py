@@ -4,9 +4,11 @@ import stat
 from collections.abc import Mapping
 from pathlib import Path
 
+import httpx
 import pytest
 from mcp import types
-from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
+from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
+from pydantic import AnyUrl
 
 from trading_bot.brokers.robinhood_mcp_schema_gate import JsonValue
 from trading_bot.brokers.robinhood_mcp_sdk import (
@@ -15,9 +17,11 @@ from trading_bot.brokers.robinhood_mcp_sdk import (
     LoopbackOAuthCallback,
     McpSdkConnectionError,
     OAuthStoreError,
+    PinnedScopeOAuthClientProvider,
     ReadOnlyMcpClientSession,
     initialize_private_oauth_store,
 )
+from trading_bot.brokers.robinhood_mcp_transport import OFFICIAL_MCP_ENDPOINT
 
 
 class LocalClientSession:
@@ -36,6 +40,20 @@ class LocalClientSession:
 
 def _private_mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
+
+
+def _pinned_provider(tmp_path: Path) -> PinnedScopeOAuthClientProvider:
+    storage = EncryptedFileTokenStorage(initialize_private_oauth_store(tmp_path / "oauth"))
+    return PinnedScopeOAuthClientProvider(
+        OFFICIAL_MCP_ENDPOINT,
+        OAuthClientMetadata(
+            redirect_uris=[AnyUrl("http://127.0.0.1:18765/callback")],
+            token_endpoint_auth_method="none",
+            scope=ROBINHOOD_MCP_OAUTH_SCOPE,
+            client_name="test-read-only-client",
+        ),
+        storage,
+    )
 
 
 @pytest.mark.asyncio
@@ -100,6 +118,197 @@ async def test_encrypted_storage_rejects_scope_outside_pinned_contract(tmp_path:
 
     with pytest.raises(OAuthStoreError, match="scope"):
         await storage.set_tokens(OAuthToken(access_token="test-access-token", scope="write"))
+
+
+@pytest.mark.asyncio
+async def test_encrypted_storage_requires_scope_provenance_for_omitted_scope(
+    tmp_path: Path,
+) -> None:
+    store_path = initialize_private_oauth_store(tmp_path / "oauth")
+    storage = EncryptedFileTokenStorage(store_path)
+    tokens = OAuthToken(access_token="new-proven-token")
+    client_info = OAuthClientInformationFull(
+        redirect_uris=["http://127.0.0.1:18765/callback"],
+        token_endpoint_auth_method="none",
+        client_name="new-proven-client",
+        client_id="test-client-id",
+    )
+
+    await storage.set_tokens(tokens)
+    await storage.set_client_info(client_info)
+    assert await storage.get_tokens() == tokens
+    assert await storage.get_client_info() == client_info
+
+    storage._write("tokens.json.box", {"access_token": "legacy-unproven-token"})
+    with pytest.raises(OAuthStoreError, match="pinned-scope provenance"):
+        await storage.get_tokens()
+    storage._write(
+        "client.json.box",
+        client_info.model_dump(mode="json", exclude_none=True),
+    )
+    with pytest.raises(OAuthStoreError, match="pinned-scope provenance"):
+        await storage.get_client_info()
+
+
+@pytest.mark.asyncio
+async def test_oauth_provider_rejects_broader_challenge_before_discovery(tmp_path: Path) -> None:
+    provider = _pinned_provider(tmp_path)
+    request = httpx.Request("POST", OFFICIAL_MCP_ENDPOINT)
+    flow = provider.async_auth_flow(request)
+
+    assert await anext(flow) is request
+    response = httpx.Response(
+        401,
+        headers={"WWW-Authenticate": 'Bearer scope="internal future-broader-scope"'},
+        request=request,
+    )
+    with pytest.raises(McpSdkConnectionError, match="challenge"):
+        await flow.asend(response)
+
+
+@pytest.mark.asyncio
+async def test_oauth_provider_rejects_broader_resource_metadata(tmp_path: Path) -> None:
+    provider = _pinned_provider(tmp_path)
+    request = httpx.Request("POST", OFFICIAL_MCP_ENDPOINT)
+    flow = provider.async_auth_flow(request)
+
+    assert await anext(flow) is request
+    initial_response = httpx.Response(
+        401,
+        headers={
+            "WWW-Authenticate": (
+                'Bearer resource_metadata="https://agent.robinhood.com/'
+                '.well-known/oauth-protected-resource/mcp/trading"'
+            )
+        },
+        request=request,
+    )
+    discovery_request = await flow.asend(initial_response)
+    metadata_response = httpx.Response(
+        200,
+        json={
+            "resource": OFFICIAL_MCP_ENDPOINT,
+            "authorization_servers": ["https://agent.robinhood.com"],
+            "scopes_supported": ["internal", "future-broader-scope"],
+        },
+        request=discovery_request,
+    )
+
+    with pytest.raises(McpSdkConnectionError, match="protected-resource metadata"):
+        await flow.asend(metadata_response)
+
+
+@pytest.mark.asyncio
+async def test_oauth_provider_rejects_broader_authorization_metadata(
+    tmp_path: Path,
+) -> None:
+    provider = _pinned_provider(tmp_path)
+    request = httpx.Request("POST", OFFICIAL_MCP_ENDPOINT)
+    flow = provider.async_auth_flow(request)
+
+    assert await anext(flow) is request
+    initial_response = httpx.Response(
+        401,
+        headers={
+            "WWW-Authenticate": (
+                'Bearer scope="internal", resource_metadata="https://agent.robinhood.com/'
+                '.well-known/oauth-protected-resource/mcp/trading"'
+            )
+        },
+        request=request,
+    )
+    resource_request = await flow.asend(initial_response)
+    resource_response = httpx.Response(
+        200,
+        json={
+            "resource": OFFICIAL_MCP_ENDPOINT,
+            "authorization_servers": ["https://agent.robinhood.com"],
+            "scopes_supported": [ROBINHOOD_MCP_OAUTH_SCOPE],
+        },
+        request=resource_request,
+    )
+    authorization_request = await flow.asend(resource_response)
+    authorization_response = httpx.Response(
+        200,
+        json={
+            "issuer": "https://agent.robinhood.com",
+            "authorization_endpoint": "https://agent.robinhood.com/authorize",
+            "token_endpoint": "https://agent.robinhood.com/token",
+            "registration_endpoint": "https://agent.robinhood.com/register",
+            "scopes_supported": ["internal", "future-broader-scope"],
+        },
+        request=authorization_request,
+    )
+
+    with pytest.raises(McpSdkConnectionError, match="authorization-server metadata"):
+        await flow.asend(authorization_response)
+
+
+@pytest.mark.asyncio
+async def test_oauth_provider_rejects_insufficient_scope_step_up(tmp_path: Path) -> None:
+    provider = _pinned_provider(tmp_path)
+    request = httpx.Request("POST", OFFICIAL_MCP_ENDPOINT)
+    flow = provider.async_auth_flow(request)
+
+    assert await anext(flow) is request
+    response = httpx.Response(
+        403,
+        headers={
+            "WWW-Authenticate": (
+                'Bearer error="insufficient_scope", scope="internal"'
+            )
+        },
+        request=request,
+    )
+    with pytest.raises(McpSdkConnectionError, match="step-up"):
+        await flow.asend(response)
+
+
+@pytest.mark.asyncio
+async def test_oauth_provider_clears_rejected_broader_token_before_retry(
+    tmp_path: Path,
+) -> None:
+    provider = _pinned_provider(tmp_path)
+    token_request = httpx.Request("POST", "https://agent.robinhood.com/token")
+    token_response = httpx.Response(
+        200,
+        json={
+            "access_token": "rejected-broader-token",
+            "scope": "internal future-broader-scope",
+        },
+        request=token_request,
+    )
+
+    with pytest.raises(OAuthStoreError, match="scope"):
+        await provider._handle_token_response(token_response)
+    assert provider.context.current_tokens is None
+
+    retry = httpx.Request("POST", OFFICIAL_MCP_ENDPOINT)
+    retry_flow = provider.async_auth_flow(retry)
+    outgoing = await anext(retry_flow)
+    try:
+        assert "Authorization" not in outgoing.headers
+    finally:
+        await retry_flow.aclose()
+
+
+@pytest.mark.asyncio
+async def test_oauth_provider_clears_rejected_broader_client_before_request(
+    tmp_path: Path,
+) -> None:
+    provider = _pinned_provider(tmp_path)
+    provider.context.client_info = OAuthClientInformationFull(
+        redirect_uris=["http://127.0.0.1:18765/callback"],
+        token_endpoint_auth_method="none",
+        client_name="rejected-broader-client",
+        client_id="test-client-id",
+        scope="internal future-broader-scope",
+    )
+    flow = provider.async_auth_flow(httpx.Request("POST", OFFICIAL_MCP_ENDPOINT))
+
+    with pytest.raises(McpSdkConnectionError, match="current OAuth client"):
+        await anext(flow)
+    assert provider.context.client_info is None
 
 
 def test_oauth_store_rejects_symlinked_directory(tmp_path: Path) -> None:
@@ -168,7 +377,10 @@ async def test_callback_ignores_unrelated_and_wrong_state_requests() -> None:
     callback = LoopbackOAuthCallback(open_browser=lambda _: True, timeout_seconds=1)
     await callback.start()
     try:
-        await callback.redirect_handler(f"https://example.test/authorize?state={expected_state}")
+        await callback.redirect_handler(
+            f"https://example.test/authorize?state={expected_state}"
+            f"&scope={ROBINHOOD_MCP_OAUTH_SCOPE}"
+        )
         unrelated = await _callback_request("/wrong?code=" + "c" * 32)
         wrong_state = await _callback_request("/callback?code=" + "c" * 32 + "&state=" + "x" * 32)
         valid = await _callback_request("/callback?code=" + "c" * 32 + "&state=" + expected_state)
@@ -186,8 +398,32 @@ async def test_callback_wait_is_bounded() -> None:
     callback = LoopbackOAuthCallback(open_browser=lambda _: True, timeout_seconds=0.01)
     await callback.start()
     try:
-        await callback.redirect_handler("https://example.test/authorize?state=" + "s" * 32)
+        await callback.redirect_handler(
+            "https://example.test/authorize?state="
+            + "s" * 32
+            + f"&scope={ROBINHOOD_MCP_OAUTH_SCOPE}"
+        )
         with pytest.raises(McpSdkConnectionError, match="timed out"):
             await callback.callback_handler()
+    finally:
+        await callback.close()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_broader_scope_before_opening_browser() -> None:
+    opened: list[str] = []
+    callback = LoopbackOAuthCallback(
+        open_browser=lambda url: not opened.append(url),
+        timeout_seconds=1,
+    )
+    await callback.start()
+    try:
+        with pytest.raises(McpSdkConnectionError, match="request is invalid"):
+            await callback.redirect_handler(
+                "https://example.test/authorize?state="
+                + "s" * 32
+                + "&scope=internal%20future-broader-scope"
+            )
+        assert opened == []
     finally:
         await callback.close()

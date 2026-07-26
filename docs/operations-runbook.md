@@ -88,7 +88,10 @@ PYTHONPATH=src uv run trader mcp-oauth-bootstrap \
 
 Complete the Robinhood browser flow that returns to `127.0.0.1:18765`. The OAuth client requests and
 pins Robinhood's sole official `internal` scope. That scope is not read-only; its bearer credential
-must be treated as trading-capable. The command verifies the seven read declarations and one active
+must be treated as trading-capable. The client rejects any broader challenge or advertised metadata
+scope, disables `insufficient_scope` step-up, and validates the exact authorization URL before
+opening the browser. Encrypted state without the current pinned-scope provenance marker is rejected
+and must be bootstrapped again. The command verifies the seven read declarations and one active
 individual cash Agentic account. It first stages encrypted token and client state, the encryption
 key, and a SHA-256 account fingerprint inside a private temporary directory, then atomically commits
 the complete directory to `$HOME/.local/share/robinhood-trading-bot/oauth`. The parent must be

@@ -10,7 +10,7 @@ import re
 import stat
 import tempfile
 import webbrowser
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import AsyncExitStack
 from datetime import timedelta
 from pathlib import Path
@@ -21,8 +21,14 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 from mcp import ClientSession, types
 from mcp.client.auth import OAuthClientProvider
+from mcp.client.auth.utils import extract_field_from_www_auth, extract_scope_from_www_auth
 from mcp.client.streamable_http import streamable_http_client
-from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
+from mcp.shared.auth import (
+    OAuthClientInformationFull,
+    OAuthClientMetadata,
+    OAuthToken,
+    ProtectedResourceMetadata,
+)
 from nacl.exceptions import CryptoError
 from nacl.secret import SecretBox
 from nacl.utils import random as random_bytes
@@ -47,6 +53,8 @@ _OAUTH_CODE_VALUE = re.compile(r"[\x21-\x7e]{1,4096}\Z")
 _KEY_FILE = "oauth-store.key"
 _TOKENS_FILE = "tokens.json.box"
 _CLIENT_FILE = "client.json.box"
+_SCOPE_PROOF_FIELD = "_trading_bot_scope_contract"
+_SCOPE_PROOF_VALUE = f"{ROBINHOOD_MCP_OAUTH_SCOPE}:v1"
 
 
 class OAuthStoreError(RuntimeError):
@@ -55,6 +63,124 @@ class OAuthStoreError(RuntimeError):
 
 class McpSdkConnectionError(RuntimeError):
     pass
+
+
+class PinnedScopeOAuthClientProvider(OAuthClientProvider):
+    """MCP OAuth provider that rejects every scope change before external use."""
+
+    @staticmethod
+    def _require_exact_advertised_scope(
+        scopes: list[str] | None,
+        source: str,
+    ) -> None:
+        if scopes is not None and scopes != [ROBINHOOD_MCP_OAUTH_SCOPE]:
+            raise McpSdkConnectionError(f"{source} is outside the pinned OAuth scope")
+
+    def _discard_outside_scope_state(self) -> tuple[bool, bool]:
+        current_tokens = self.context.current_tokens
+        tokens_discarded = current_tokens is not None and current_tokens.scope not in {
+            None,
+            ROBINHOOD_MCP_OAUTH_SCOPE,
+        }
+        if tokens_discarded:
+            self.context.clear_tokens()
+        client_info = self.context.client_info
+        client_discarded = client_info is not None and client_info.scope not in {
+            None,
+            ROBINHOOD_MCP_OAUTH_SCOPE,
+        }
+        if client_discarded:
+            self.context.client_info = None
+        return tokens_discarded, client_discarded
+
+    def _require_pinned_scope_contract(self) -> None:
+        if self.context.client_metadata.scope != ROBINHOOD_MCP_OAUTH_SCOPE:
+            raise McpSdkConnectionError("effective OAuth scope changed from the pinned contract")
+        tokens_discarded, client_discarded = self._discard_outside_scope_state()
+        if tokens_discarded:
+            raise McpSdkConnectionError("current OAuth token is outside the pinned scope")
+        if client_discarded:
+            raise McpSdkConnectionError("current OAuth client is outside the pinned scope")
+        protected = self.context.protected_resource_metadata
+        if protected is not None:
+            self._require_exact_advertised_scope(
+                protected.scopes_supported,
+                "protected-resource metadata",
+            )
+        authorization = self.context.oauth_metadata
+        if authorization is not None:
+            self._require_exact_advertised_scope(
+                authorization.scopes_supported,
+                "authorization-server metadata",
+            )
+
+    @staticmethod
+    def _require_safe_challenge(response: httpx.Response) -> None:
+        if (
+            response.status_code == 403
+            and extract_field_from_www_auth(response, "error") == "insufficient_scope"
+        ):
+            raise McpSdkConnectionError("OAuth scope step-up is disabled")
+        challenge_scope = extract_scope_from_www_auth(response)
+        if challenge_scope is not None and challenge_scope != ROBINHOOD_MCP_OAUTH_SCOPE:
+            raise McpSdkConnectionError("OAuth challenge is outside the pinned scope")
+
+    async def _validate_resource_match(self, prm: ProtectedResourceMetadata) -> None:
+        self._require_exact_advertised_scope(
+            prm.scopes_supported,
+            "protected-resource metadata",
+        )
+        await super()._validate_resource_match(prm)
+
+    async def _perform_authorization_code_grant(self) -> tuple[str, str]:
+        self._require_pinned_scope_contract()
+        return await super()._perform_authorization_code_grant()
+
+    async def _initialize(self) -> None:
+        await super()._initialize()
+        self._require_pinned_scope_contract()
+
+    async def _handle_token_response(self, response: httpx.Response) -> None:
+        try:
+            await super()._handle_token_response(response)
+            self._require_pinned_scope_contract()
+        except BaseException:
+            self.context.clear_tokens()
+            raise
+
+    async def _handle_refresh_response(self, response: httpx.Response) -> bool:
+        try:
+            refreshed = await super()._handle_refresh_response(response)
+            self._require_pinned_scope_contract()
+        except BaseException:
+            self.context.clear_tokens()
+            raise
+        return refreshed
+
+    async def async_auth_flow(
+        self,
+        request: httpx.Request,
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        """Guard each delegated request before it can leave the process."""
+
+        self._require_pinned_scope_contract()
+        delegated = super().async_auth_flow(request)
+        try:
+            try:
+                outgoing = await anext(delegated)
+            except StopAsyncIteration:
+                return
+            while True:
+                self._require_pinned_scope_contract()
+                response = yield outgoing
+                self._require_safe_challenge(response)
+                try:
+                    outgoing = await delegated.asend(response)
+                except StopAsyncIteration:
+                    return
+        finally:
+            self._discard_outside_scope_state()
+            await delegated.aclose()
 
 
 def _validate_private_directory(path: Path) -> None:
@@ -160,6 +286,8 @@ class EncryptedFileTokenStorage:
         value = self._read(_TOKENS_FILE)
         if value is None:
             return None
+        if value.pop(_SCOPE_PROOF_FIELD, None) != _SCOPE_PROOF_VALUE:
+            raise OAuthStoreError("stored OAuth token lacks pinned-scope provenance")
         try:
             tokens = OAuthToken.model_validate(value)
         except ValueError as exc:
@@ -173,12 +301,16 @@ class EncryptedFileTokenStorage:
             raise TypeError("tokens must be OAuthToken")
         if tokens.scope not in {None, ROBINHOOD_MCP_OAUTH_SCOPE}:
             raise OAuthStoreError("OAuth token scope is outside the pinned contract")
-        self._write(_TOKENS_FILE, tokens.model_dump(mode="json", exclude_none=True))
+        value = tokens.model_dump(mode="json", exclude_none=True)
+        value[_SCOPE_PROOF_FIELD] = _SCOPE_PROOF_VALUE
+        self._write(_TOKENS_FILE, value)
 
     async def get_client_info(self) -> OAuthClientInformationFull | None:
         value = self._read(_CLIENT_FILE)
         if value is None:
             return None
+        if value.pop(_SCOPE_PROOF_FIELD, None) != _SCOPE_PROOF_VALUE:
+            raise OAuthStoreError("stored OAuth client lacks pinned-scope provenance")
         try:
             client_info = OAuthClientInformationFull.model_validate(value)
         except ValueError as exc:
@@ -192,7 +324,9 @@ class EncryptedFileTokenStorage:
             raise TypeError("client_info must be OAuthClientInformationFull")
         if client_info.scope not in {None, ROBINHOOD_MCP_OAUTH_SCOPE}:
             raise OAuthStoreError("OAuth client scope is outside the pinned contract")
-        self._write(_CLIENT_FILE, client_info.model_dump(mode="json", exclude_none=True))
+        value = client_info.model_dump(mode="json", exclude_none=True)
+        value[_SCOPE_PROOF_FIELD] = _SCOPE_PROOF_VALUE
+        self._write(_CLIENT_FILE, value)
 
 
 def _as_json(value: object) -> JsonValue:
@@ -318,10 +452,15 @@ class LoopbackOAuthCallback:
         try:
             values = parse_qs(urlsplit(authorization_url).query, strict_parsing=True)
             states = values.get("state", ())
-            if len(states) != 1 or _OAUTH_STATE_VALUE.fullmatch(states[0]) is None:
+            scopes = values.get("scope", ())
+            if (
+                len(states) != 1
+                or _OAUTH_STATE_VALUE.fullmatch(states[0]) is None
+                or scopes != [ROBINHOOD_MCP_OAUTH_SCOPE]
+            ):
                 raise ValueError
         except (TypeError, ValueError):
-            raise McpSdkConnectionError("OAuth authorization state is invalid") from None
+            raise McpSdkConnectionError("OAuth authorization request is invalid") from None
         if self._expected_state is not None:
             raise McpSdkConnectionError("OAuth authorization redirect was repeated")
         self._expected_state = states[0]
@@ -430,7 +569,7 @@ class RobinhoodMcpSdkConnection:
             if self._callback is not None
             else f"http://{OAUTH_CALLBACK_HOST}:{OAUTH_CALLBACK_PORT}{OAUTH_CALLBACK_PATH}"
         )
-        provider = OAuthClientProvider(
+        provider = PinnedScopeOAuthClientProvider(
             self._endpoint,
             OAuthClientMetadata(
                 redirect_uris=[AnyUrl(callback_uri)],
@@ -525,6 +664,7 @@ __all__ = [
     "LoopbackOAuthCallback",
     "McpSdkConnectionError",
     "OAuthStoreError",
+    "PinnedScopeOAuthClientProvider",
     "ReadOnlyMcpClientSession",
     "RobinhoodMcpSdkConnection",
     "bootstrap_oauth",
