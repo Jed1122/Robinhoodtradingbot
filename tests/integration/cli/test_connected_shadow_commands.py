@@ -50,8 +50,39 @@ def test_shadow_command_delegates_to_sanitized_runtime_boundary(
         "write_capabilities_present": False,
     }
     assert observed["probe_symbol"] is None
+    assert observed["strategy_version"] is None
+    assert observed["research_evidence_hash"] is None
     assert observed["image_digest"] == f"sha256:{'a' * 64}"
     assert observed["loaded"].config.crypto.enabled is False
+
+
+def test_shadow_command_requires_complete_pinned_research_identity(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    called = False
+
+    def run_once(**kwargs: object) -> dict[str, object]:
+        nonlocal called
+        del kwargs
+        called = True
+        return {}
+
+    monkeypatch.setattr(main, "run_connected_shadow_once", run_once)
+    result = CliRunner().invoke(
+        main.app,
+        [
+            "shadow",
+            "--config",
+            "configs/shadow.yaml",
+            "--once",
+            "--image-digest",
+            f"sha256:{'a' * 64}",
+            "--strategy-version",
+            "equity_momentum-v1",
+        ],
+        terminal_width=180,
+    )
+
+    assert result.exit_code == 2
+    assert not called
 
 
 def test_shadow_command_fails_before_runtime_without_immutable_digest(monkeypatch) -> None:  # type: ignore[no-untyped-def]

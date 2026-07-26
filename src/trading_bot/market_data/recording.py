@@ -3,7 +3,7 @@
 import dataclasses
 import hashlib
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -18,6 +18,12 @@ def _canonical(value: object) -> object:
         return canonical_decimal_text(value)
     if isinstance(value, datetime):
         return value.isoformat(timespec="microseconds").replace("+00:00", "Z")
+    if isinstance(value, timedelta):
+        return {
+            "days": value.days,
+            "microseconds": value.microseconds,
+            "seconds": value.seconds,
+        }
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, Enum):

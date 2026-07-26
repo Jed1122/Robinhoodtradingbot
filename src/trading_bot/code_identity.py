@@ -50,6 +50,13 @@ class CodeIdentity:
         _validate_image_digest(self.image_digest)
 
 
+def deployed_image_code_hash(image_digest: str) -> CodeHash:
+    """Return the canonical promotion identity for one immutable OCI image."""
+
+    _validate_image_digest(image_digest)
+    return CodeHash(hashlib.sha256(f"oci-image:{image_digest}".encode()).hexdigest())
+
+
 class _HashWriter(Protocol):
     def update(self, data: bytes, /) -> object:
         """Add bytes to the running digest."""

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import os
 import re
@@ -38,8 +37,16 @@ from trading_bot.brokers.robinhood_mcp_transport import (
     RobinhoodMcpTransport,
 )
 from trading_bot.clock import Clock, SystemClock
+from trading_bot.code_identity import InvalidImageDigest, deployed_image_code_hash
 from trading_bot.config import LoadedConfig
-from trading_bot.domain import AssetClass, BarInterval, ExecutionMode, InstrumentId
+from trading_bot.domain import (
+    AssetClass,
+    BarInterval,
+    CodeHash,
+    ConfigHash,
+    ExecutionMode,
+    InstrumentId,
+)
 from trading_bot.market_data import content_hash
 from trading_bot.market_data.robinhood_equity_mcp import RobinhoodEquityMarketData
 from trading_bot.monitoring.promotion import (
@@ -54,8 +61,11 @@ from trading_bot.persistence.promotion import (
     SqlPromotionEvidenceStore,
     SqlPromotionObservationStore,
 )
+from trading_bot.persistence.research import (
+    PersistedStrategyEligibility,
+    SqlResearchEvidenceStore,
+)
 
-_IMAGE_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _PROBE_SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,14}\Z")
 _MICROSECONDS_PER_SECOND = Decimal("1000000")
 _DEPENDENCY_LOG_DISABLE_LEVEL = logging.CRITICAL
@@ -95,8 +105,9 @@ class ConnectedShadowProbeConfig:
     maximum_quote_age: timedelta
     recent_order_lookback: timedelta
     market_history_lookback: timedelta
-    strategy_version: str = "equity-research-pending"
     probe_instrument: InstrumentId | None = None
+    strategy_eligibility: PersistedStrategyEligibility | None = None
+    research_promotion_enabled: bool = False
 
     def __post_init__(self) -> None:
         for name in ("expected_account_fingerprint", "config_hash", "code_hash"):
@@ -112,8 +123,41 @@ class ConnectedShadowProbeConfig:
         ):
             if getattr(self, name) <= timedelta(0):
                 raise ValueError(f"{name} must be positive")
-        if not self.strategy_version.strip():
-            raise ValueError("strategy_version must be nonempty")
+        eligibility = self.strategy_eligibility
+        if type(self.research_promotion_enabled) is not bool:
+            raise TypeError("research_promotion_enabled must be an exact bool")
+        if eligibility is not None and (
+            not self.research_promotion_enabled
+            or not eligibility.attestation.eligible
+            or eligibility.attestation.config_hash != self.config_hash
+            or eligibility.attestation.code_hash != self.code_hash
+        ):
+            raise ValueError("strategy eligibility must match the exact connected build")
+
+    @property
+    def strategy_version(self) -> str:
+        eligibility = self.strategy_eligibility
+        return (
+            "equity-research-pending"
+            if eligibility is None
+            else eligibility.attestation.strategy_version
+        )
+
+    @property
+    def strategy_eligibility_hash(self) -> str:
+        eligibility = self.strategy_eligibility
+        if eligibility is not None:
+            return eligibility.evidence_hash
+        return str(
+            content_hash(
+                {
+                    "code_hash": self.code_hash,
+                    "config_hash": self.config_hash,
+                    "eligible": False,
+                    "strategy_version": self.strategy_version,
+                }
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,9 +224,12 @@ def write_account_fingerprint(path: str | Path, value: str) -> None:
 
 
 def deployment_code_hash(image_digest: str) -> str:
-    if _IMAGE_DIGEST.fullmatch(image_digest) is None:
-        raise ConnectedShadowNotReady("connected shadow requires an immutable image digest")
-    return hashlib.sha256(f"oci-image:{image_digest}".encode()).hexdigest()
+    try:
+        return str(deployed_image_code_hash(image_digest))
+    except InvalidImageDigest:
+        raise ConnectedShadowNotReady(
+            "connected shadow requires an immutable image digest"
+        ) from None
 
 
 class ConnectedShadowProbe:
@@ -201,6 +248,12 @@ class ConnectedShadowProbe:
 
     async def run(self) -> ConnectedShadowProbeResult:
         started_at = self._clock.now()
+        strategy_eligibility = self._config.strategy_eligibility
+        if (
+            strategy_eligibility is not None
+            and strategy_eligibility.attestation.observed_at > started_at
+        ):
+            raise ConnectedShadowNotReady("strategy eligibility is future-dated")
         async with RobinhoodMcpSdkConnection(
             oauth_store_dir=self._oauth_store_dir,
         ) as connection:
@@ -284,21 +337,12 @@ class ConnectedShadowProbe:
                 market_probe_complete = True
 
         completed_at = self._clock.now()
-        strategy_eligibility_hash = str(
-            content_hash(
-                {
-                    "code_hash": self._config.code_hash,
-                    "config_hash": self._config.config_hash,
-                    "eligible": False,
-                    "strategy_version": self._config.strategy_version,
-                }
-            )
-        )
+        strategy_eligible = self._config.strategy_eligibility is not None
         identity = PromotionIdentity(
             account_fingerprint=self._config.expected_account_fingerprint,
             provider_evidence_hash=provider_evidence_hash,
             strategy_version=self._config.strategy_version,
-            strategy_eligibility_hash=strategy_eligibility_hash,
+            strategy_eligibility_hash=self._config.strategy_eligibility_hash,
             config_hash=self._config.config_hash,
             code_hash=self._config.code_hash,
         )
@@ -333,13 +377,13 @@ class ConnectedShadowProbe:
             data_hash=data_hash,
             identity_verified=identity_verified,
             provider_evidence_verified=True,
-            strategy_eligible=False,
+            strategy_eligible=strategy_eligible,
             authenticated_reads=True,
-            data_validated=market_probe_complete,
+            data_validated=False,
             outcomes_complete=False,
             reconciliation_clean=zero_state_clean,
             fixture_data=False,
-            runtime_scope_valid=True,
+            runtime_scope_valid=False,
             order_state_known=not open_orders and not recent_orders,
         )
         persisted = await self._observations.append(observation)
@@ -361,6 +405,8 @@ def run_connected_shadow_once(
     ledger: str | Path,
     image_digest: str,
     probe_symbol: str | None,
+    strategy_version: str | None = None,
+    research_evidence_hash: str | None = None,
 ) -> dict[str, object]:
     """Run one authenticated read-only probe and return only sanitized status."""
 
@@ -375,21 +421,25 @@ def run_connected_shadow_once(
         raise ConnectedShadowNotReady("connected shadow configuration is unsafe")
     if probe_symbol is not None and _PROBE_SYMBOL.fullmatch(probe_symbol) is None:
         raise ConnectedShadowNotReady("connected shadow probe symbol is invalid")
+    if (strategy_version is None) != (research_evidence_hash is None):
+        raise ConnectedShadowNotReady(
+            "strategy version and research evidence hash must be supplied together"
+        )
+    research_promotion_enabled = bool(
+        config.research.assumptions_validated and config.research.evidence_promotable
+    )
+    if research_evidence_hash is not None and not research_promotion_enabled:
+        raise ConnectedShadowNotReady(
+            "connected shadow research promotion is disabled by configuration"
+        )
 
     previous_umask = os.umask(0o077)
     engine = None
     try:
         root = Path(repository_root).resolve(strict=True)
-        probe_config = ConnectedShadowProbeConfig(
-            expected_account_fingerprint=read_account_fingerprint(account_fingerprint_file),
-            config_hash=str(loaded.config_hash),
-            code_hash=deployment_code_hash(image_digest),
-            account_equity_ceiling=config.portfolio.live_account_equity_ceiling_usd,
-            maximum_quote_age=_seconds(config.freshness.max_executable_quote_age_seconds),
-            recent_order_lookback=timedelta(seconds=config.runtime.remainder_order_max_age_seconds),
-            market_history_lookback=timedelta(days=config.equity_strategies.maximum_holding_bars),
-            probe_instrument=(None if probe_symbol is None else InstrumentId(probe_symbol)),
-        )
+        expected_account_fingerprint = read_account_fingerprint(account_fingerprint_file)
+        config_hash = ConfigHash(str(loaded.config_hash))
+        code_hash = CodeHash(deployment_code_hash(image_digest))
         database_url = migrate_sqlite_ledger(
             ledger,
             alembic_ini=root / "alembic.ini",
@@ -399,16 +449,47 @@ def run_connected_shadow_once(
         session_factory = async_session_factory(engine)
         observations = SqlPromotionObservationStore(session_factory)
         promotion_evidence = SqlPromotionEvidenceStore(session_factory)
+        research_evidence = SqlResearchEvidenceStore(session_factory)
         clock = SystemClock()
-        probe = ConnectedShadowProbe(
-            config=probe_config,
-            oauth_store_dir=oauth_store,
-            observations=observations,
-            clock=clock,
-        )
 
         async def run_probe() -> dict[str, object]:
             try:
+                strategy_eligibility = None
+                if strategy_version is not None and research_evidence_hash is not None:
+                    strategy_eligibility = await research_evidence.get_eligible(
+                        research_evidence_hash,
+                        strategy_version=strategy_version,
+                        config_hash=config_hash,
+                        code_hash=code_hash,
+                        as_of=clock.now(),
+                    )
+                    if strategy_eligibility is None:
+                        raise ConnectedShadowNotReady("pinned strategy research is not eligible")
+                probe = ConnectedShadowProbe(
+                    config=ConnectedShadowProbeConfig(
+                        expected_account_fingerprint=expected_account_fingerprint,
+                        config_hash=config_hash,
+                        code_hash=code_hash,
+                        account_equity_ceiling=(config.portfolio.live_account_equity_ceiling_usd),
+                        maximum_quote_age=_seconds(
+                            config.freshness.max_executable_quote_age_seconds
+                        ),
+                        recent_order_lookback=timedelta(
+                            seconds=config.runtime.remainder_order_max_age_seconds
+                        ),
+                        market_history_lookback=timedelta(
+                            days=config.equity_strategies.maximum_holding_bars
+                        ),
+                        probe_instrument=(
+                            None if probe_symbol is None else InstrumentId(probe_symbol)
+                        ),
+                        strategy_eligibility=strategy_eligibility,
+                        research_promotion_enabled=research_promotion_enabled,
+                    ),
+                    oauth_store_dir=oauth_store,
+                    observations=observations,
+                    clock=clock,
+                )
                 result = await probe.run()
                 durable = await observations.list_for_identity(result.observation.identity)
                 evaluated_at = clock.now()
@@ -436,6 +517,7 @@ def run_connected_shadow_once(
                     "promotion_evidence_hash": attestation.evidence_hash,
                     "promotion_eligible": attestation.eligible,
                     "status": "connected_shadow_nonpromotable",
+                    "strategy_eligible": result.observation.strategy_eligible,
                     "write_capabilities_present": False,
                     "zero_state_reconciliation": result.zero_state_reconciliation_clean,
                 }

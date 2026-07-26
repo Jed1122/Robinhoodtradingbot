@@ -26,7 +26,8 @@ trading-capable: a stolen token or compromised host could trade in the Agentic a
 connected client is write-incapable only because an SDK-session allowlist and a second transport
 allowlist admit seven reads and no review, place, or cancel adapter exists.
 
-Production promotion thresholds are exact and non-overridable:
+The release envelope sets these non-reducible promotion minimums; deployment configuration may
+make them stricter but cannot lower them:
 
 - Paper requires 100 unique eligible paper cycles.
 - Shadow requires eligible observations on seven distinct UTC calendar dates.
@@ -51,7 +52,8 @@ renew its expiry.
 Observation eligibility is derived rather than caller-selected. It requires verified identity and
 provider evidence, an eligible strategy, authenticated reads for connected stages, validated data,
 complete outcomes, clean reconciliation, non-fixture data, a valid runtime scope, and known order
-state. The current connected preflight intentionally fails those strategy/outcome requirements, so
-it is durable connection evidence but not qualifying promotion evidence. External promotion
-attestations carry explicit observed and expiry times; missing, future-dated, expired, mismatched,
-or incomplete evidence blocks promotion.
+state. The shipped connected preflight is diagnostic only: release configuration disables research
+promotion, and every run records invalid strategy data, incomplete outcomes, and an unverified
+runtime scope. It is durable connection evidence but not qualifying promotion evidence. External
+promotion attestations carry explicit observed and expiry times; missing, future-dated, expired,
+mismatched, or incomplete evidence blocks promotion.

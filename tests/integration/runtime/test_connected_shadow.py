@@ -22,9 +22,14 @@ from trading_bot.brokers.robinhood_mcp_sdk import (
     EncryptedFileTokenStorage,
 )
 from trading_bot.brokers.robinhood_mcp_transport import McpToolResult
+from trading_bot.config import load_config
+from trading_bot.domain import CodeHash, ConfigHash, StrategyEligibilityAttestation
+from trading_bot.market_data import content_hash
 from trading_bot.monitoring.promotion import PromotionObservation
 from trading_bot.persistence.base import PersistenceConfigurationError
 from trading_bot.persistence.migrations import migrate_sqlite_ledger
+from trading_bot.persistence.research import PersistedStrategyEligibility
+from trading_bot.research.validation import ResearchAssessment
 from trading_bot.runtime import connected_shadow
 from trading_bot.runtime.connected_shadow import (
     ConnectedShadowNotReady,
@@ -36,6 +41,8 @@ from trading_bot.runtime.connected_shadow import (
 
 NOW = datetime(2026, 7, 21, 18, tzinfo=UTC)
 ACCOUNT = "synthetic-agentic-account"
+ROOT = Path(__file__).parents[3]
+CONFIGS = ROOT / "configs"
 
 
 class FixedClock:
@@ -196,11 +203,219 @@ async def test_connected_probe_uses_only_authenticated_reads_and_records_ineligi
         "strategy_ineligible",
         "live_data_invalid",
         "outcomes_incomplete",
+        "runtime_scope_invalid",
     )
-    assert result.observation.runtime_scope_valid
+    assert not result.observation.runtime_scope_valid
     assert store.items == [result.observation]
     assert {name for name, _ in session.calls} <= set(EXPECTED_TOOL_ARGUMENTS)
     assert not any(name.startswith(("review_", "place_", "cancel_")) for name, _ in session.calls)
+
+
+@pytest.mark.asyncio
+async def test_exact_persisted_attestation_binds_connected_shadow_identity(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    oauth = tmp_path / "oauth"
+    oauth.mkdir(mode=0o700)
+    oauth.chmod(0o700)
+    store = ObservationStore()
+    session = ReadOnlySession()
+    FakeConnection.session_value = session
+    monkeypatch.setattr(connected_shadow, "RobinhoodMcpSdkConnection", FakeConnection)
+    attestation = StrategyEligibilityAttestation(
+        eligible=True,
+        strategy_version="equity_momentum-v1",
+        config_hash=ConfigHash("a" * 64),
+        code_hash=CodeHash("b" * 64),
+        research_manifest_hash="c" * 64,
+        report_hash="d" * 64,
+        observed_at=NOW,
+    )
+    assessment = ResearchAssessment(True, True, ())
+    evidence_hash = content_hash({"assessment": assessment, "attestation": attestation})
+    probe = ConnectedShadowProbe(
+        config=ConnectedShadowProbeConfig(
+            expected_account_fingerprint=account_fingerprint(ACCOUNT),
+            config_hash="a" * 64,
+            code_hash="b" * 64,
+            account_equity_ceiling=Decimal("150"),
+            maximum_quote_age=timedelta(seconds=5),
+            recent_order_lookback=timedelta(days=1),
+            market_history_lookback=timedelta(days=100),
+            strategy_eligibility=PersistedStrategyEligibility(
+                attestation,
+                evidence_hash,
+            ),
+            research_promotion_enabled=True,
+        ),
+        oauth_store_dir=oauth,
+        observations=store,  # type: ignore[arg-type]
+        clock=FixedClock(),
+    )
+
+    result = await probe.run()
+
+    assert result.observation.strategy_eligible
+    assert result.observation.identity.strategy_version == "equity_momentum-v1"
+    assert result.observation.identity.strategy_eligibility_hash == evidence_hash
+    assert result.observation.reason_codes == (
+        "live_data_invalid",
+        "outcomes_incomplete",
+        "runtime_scope_invalid",
+    )
+    assert not result.observation.eligible
+    assert not any(name.startswith(("review_", "place_", "cancel_")) for name, _ in session.calls)
+
+
+def test_strategy_attestation_must_match_exact_connected_build() -> None:
+    attestation = StrategyEligibilityAttestation(
+        eligible=True,
+        strategy_version="equity_momentum-v1",
+        config_hash=ConfigHash("c" * 64),
+        code_hash=CodeHash("b" * 64),
+        research_manifest_hash="d" * 64,
+        report_hash="e" * 64,
+        observed_at=NOW,
+    )
+    evidence_hash = content_hash(
+        {
+            "assessment": ResearchAssessment(True, True, ()),
+            "attestation": attestation,
+        }
+    )
+
+    with pytest.raises(ValueError, match="exact connected build"):
+        ConnectedShadowProbeConfig(
+            expected_account_fingerprint="f" * 64,
+            config_hash="a" * 64,
+            code_hash="b" * 64,
+            account_equity_ceiling=Decimal("150"),
+            maximum_quote_age=timedelta(seconds=5),
+            recent_order_lookback=timedelta(days=1),
+            market_history_lookback=timedelta(days=100),
+            strategy_eligibility=PersistedStrategyEligibility(
+                attestation,
+                evidence_hash,
+            ),
+            research_promotion_enabled=True,
+        )
+
+
+def test_strategy_attestation_cannot_bypass_disabled_research_promotion() -> None:
+    attestation = StrategyEligibilityAttestation(
+        eligible=True,
+        strategy_version="equity_momentum-v1",
+        config_hash=ConfigHash("a" * 64),
+        code_hash=CodeHash("b" * 64),
+        research_manifest_hash="c" * 64,
+        report_hash="d" * 64,
+        observed_at=NOW,
+    )
+    evidence_hash = content_hash(
+        {
+            "assessment": ResearchAssessment(True, True, ()),
+            "attestation": attestation,
+        }
+    )
+
+    with pytest.raises(ValueError, match="exact connected build"):
+        ConnectedShadowProbeConfig(
+            expected_account_fingerprint="e" * 64,
+            config_hash="a" * 64,
+            code_hash="b" * 64,
+            account_equity_ceiling=Decimal("150"),
+            maximum_quote_age=timedelta(seconds=5),
+            recent_order_lookback=timedelta(days=1),
+            market_history_lookback=timedelta(days=100),
+            strategy_eligibility=PersistedStrategyEligibility(
+                attestation,
+                evidence_hash,
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_future_strategy_attestation_is_rejected_before_broker_access(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    oauth = tmp_path / "oauth"
+    oauth.mkdir(mode=0o700)
+    store = ObservationStore()
+    session = ReadOnlySession()
+    FakeConnection.session_value = session
+    monkeypatch.setattr(connected_shadow, "RobinhoodMcpSdkConnection", FakeConnection)
+    attestation = StrategyEligibilityAttestation(
+        eligible=True,
+        strategy_version="equity_momentum-v1",
+        config_hash=ConfigHash("a" * 64),
+        code_hash=CodeHash("b" * 64),
+        research_manifest_hash="c" * 64,
+        report_hash="d" * 64,
+        observed_at=NOW + timedelta(microseconds=1),
+    )
+    eligibility = PersistedStrategyEligibility(
+        attestation,
+        content_hash(
+            {
+                "assessment": ResearchAssessment(True, True, ()),
+                "attestation": attestation,
+            }
+        ),
+    )
+    probe = ConnectedShadowProbe(
+        config=ConnectedShadowProbeConfig(
+            expected_account_fingerprint=account_fingerprint(ACCOUNT),
+            config_hash="a" * 64,
+            code_hash="b" * 64,
+            account_equity_ceiling=Decimal("150"),
+            maximum_quote_age=timedelta(seconds=5),
+            recent_order_lookback=timedelta(days=1),
+            market_history_lookback=timedelta(days=100),
+            strategy_eligibility=eligibility,
+            research_promotion_enabled=True,
+        ),
+        oauth_store_dir=oauth,
+        observations=store,  # type: ignore[arg-type]
+        clock=FixedClock(),
+    )
+
+    with pytest.raises(ConnectedShadowNotReady, match="future-dated"):
+        await probe.run()
+
+    assert session.calls == []
+    assert store.items == []
+
+
+def test_real_shadow_config_refuses_pinned_research_before_file_or_oauth_access(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    loaded = load_config(
+        base_path=CONFIGS / "base.yaml",
+        mode_path=CONFIGS / "shadow.yaml",
+        safety_path=CONFIGS / "safety-envelope.yaml",
+        environ={},
+    )
+
+    def unreached(*args: object, **kwargs: object) -> str:
+        del args, kwargs
+        raise AssertionError("private file access must remain unreachable")
+
+    monkeypatch.setattr(connected_shadow, "read_account_fingerprint", unreached)
+    with pytest.raises(ConnectedShadowNotReady, match="disabled by configuration"):
+        connected_shadow.run_connected_shadow_once(
+            loaded=loaded,
+            repository_root=ROOT,
+            oauth_store=tmp_path / "missing-oauth",
+            account_fingerprint_file=tmp_path / "missing-fingerprint",
+            ledger=tmp_path / "missing-evidence" / "ledger.db",
+            image_digest=f"sha256:{'a' * 64}",
+            probe_symbol=None,
+            strategy_version="equity_momentum-v1",
+            research_evidence_hash="b" * 64,
+        )
 
 
 def test_account_fingerprint_writer_rejects_symlinked_parent(tmp_path: Path) -> None:

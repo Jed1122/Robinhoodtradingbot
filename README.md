@@ -161,8 +161,12 @@ directory as a trading credential: stealing the token or compromising a host tha
 permit trades in the Agentic account. The probe emits only sanitized hashes and status.
 `make shadow-smoke` uses sanitized local evidence and is never promotable. The connected probe is
 also deliberately non-promotable today: it verifies locally constrained read connectivity and
-zero-state reconciliation but does not fabricate an accepted strategy attestation, complete trading
-outcomes, or elapsed shadow history.
+zero-state reconciliation. Code exists to consume one separately pinned, exact-build accepted
+research attestation from the append-only ledger, but the shipped base configuration and immutable
+safety envelope disable that path and reject it before credential or ledger access. The diagnostic
+probe always records data and runtime scope as unvalidated and outcomes as incomplete. It does not
+fabricate accepted research, complete trading outcomes, image provenance, or elapsed shadow
+history.
 
 Promotion progress is derived only from append-only observations matching the exact account,
 provider declaration, strategy, configuration, and image-code identity. The configured minimums

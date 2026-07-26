@@ -86,6 +86,7 @@ class ResearchAcceptanceEvidenceRow(Base):
     """Accepted or rejected research eligibility evidence for an exact strategy build."""
 
     __tablename__ = "research_acceptance_evidence"
+    __table_args__ = (UniqueConstraint("evidence_hash"),)
 
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True)
     strategy_version: Mapped[str] = mapped_column(String(NAME_LENGTH), nullable=False)
@@ -144,9 +145,7 @@ class PromotionObservationRow(Base):
     started_at: Mapped[datetime] = utc_datetime_column("started_at")
     completed_at: Mapped[datetime] = utc_datetime_column("completed_at")
     identity_verified: Mapped[bool] = exact_boolean_column("identity_verified")
-    provider_evidence_verified: Mapped[bool] = exact_boolean_column(
-        "provider_evidence_verified"
-    )
+    provider_evidence_verified: Mapped[bool] = exact_boolean_column("provider_evidence_verified")
     strategy_eligible: Mapped[bool] = exact_boolean_column("strategy_eligible")
     authenticated_reads: Mapped[bool] = exact_boolean_column("authenticated_reads")
     data_validated: Mapped[bool] = exact_boolean_column("data_validated")

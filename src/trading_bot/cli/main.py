@@ -99,11 +99,11 @@ def shadow(
     account_fingerprint_file: Annotated[Path, typer.Option()] = Path(
         "/var/lib/trading-bot/oauth/account-fingerprint"
     ),
-    ledger: Annotated[Path, typer.Option()] = Path(
-        "/var/lib/trading-bot/evidence/ledger.db"
-    ),
+    ledger: Annotated[Path, typer.Option()] = Path("/var/lib/trading-bot/evidence/ledger.db"),
     image_digest: Annotated[str | None, typer.Option(envvar="TRADING_BOT_IMAGE_DIGEST")] = None,
     probe_symbol: Annotated[str | None, typer.Option()] = None,
+    strategy_version: Annotated[str | None, typer.Option()] = None,
+    research_evidence_hash: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Run one authenticated, write-incapable connected-shadow evidence probe."""
     if not once:
@@ -119,6 +119,10 @@ def shadow(
         raise typer.BadParameter("connected shadow requires TRADING_BOT_IMAGE_DIGEST")
     if probe_symbol is not None and _PROBE_SYMBOL.fullmatch(probe_symbol) is None:
         raise typer.BadParameter("probe symbol must be an exact uppercase ticker")
+    if (strategy_version is None) != (research_evidence_hash is None):
+        raise typer.BadParameter(
+            "strategy version and research evidence hash must be supplied together"
+        )
 
     try:
         output = run_connected_shadow_once(
@@ -129,6 +133,8 @@ def shadow(
             ledger=ledger,
             image_digest=image_digest,
             probe_symbol=probe_symbol,
+            strategy_version=strategy_version,
+            research_evidence_hash=research_evidence_hash,
         )
     except ConnectedShadowNotReady:
         typer.echo("connected_shadow_not_ready", err=True)

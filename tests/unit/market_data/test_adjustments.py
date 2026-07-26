@@ -28,6 +28,10 @@ def test_manifest_hash_is_key_order_independent() -> None:
     assert content_hash({"b": 2, "a": 1}) == content_hash({"a": 1, "b": 2})
 
 
+def test_content_hash_encodes_timedeltas_exactly() -> None:
+    assert content_hash(timedelta(days=1, microseconds=1)) != content_hash(timedelta(days=1))
+
+
 def test_split_is_applied_only_after_announcement_is_known() -> None:
     action = CorporateAction(
         ID,

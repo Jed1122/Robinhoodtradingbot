@@ -11,6 +11,7 @@ from trading_bot.code_identity import (
     CodeIdentityError,
     InvalidImageDigest,
     UnsafeCodeIdentity,
+    deployed_image_code_hash,
     require_clean_live_identity,
     resolve_code_identity,
 )
@@ -247,6 +248,14 @@ def test_valid_immutable_image_digest_is_recorded(tmp_git_repo: Path) -> None:
 
     assert identity.image_digest == digest
     require_clean_live_identity(identity)
+
+
+def test_deployed_image_code_hash_is_canonical_and_changes_with_digest() -> None:
+    first = deployed_image_code_hash(f"sha256:{'a' * 64}")
+    second = deployed_image_code_hash(f"sha256:{'b' * 64}")
+
+    assert re.fullmatch(r"[0-9a-f]{64}", first)
+    assert first != second
 
 
 @pytest.mark.parametrize(

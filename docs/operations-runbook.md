@@ -123,11 +123,17 @@ the OAuth token remains trading-capable. Its successful sanitized status is
 `connected_shadow_nonpromotable`; hashes may be recorded, but no provider values should appear. A
 failure exits nonzero with a generic message.
 
-The present probe records a durable but ineligible shadow observation because strategy eligibility
-and complete outcomes are not yet established. Without a probe symbol, market data is also marked
-incomplete. It is connection evidence, not qualifying promotion evidence, and it cannot activate
-live trading. Qualifying evidence must eventually match the exact account, provider declarations,
-strategy, config, and image code identities. Production thresholds are 100 eligible paper cycles,
+The present probe records a durable but ineligible shadow observation. The shipped base
+configuration and immutable safety envelope keep research promotion disabled, so an operator
+cannot supply pinned research through this release. The probe always records
+`data_validated=false`, `outcomes_complete=false`, and `runtime_scope_valid=false`, and records
+`strategy_eligible=false` without a separately enabled and exact pinned attestation. A probe symbol
+only verifies that one diagnostic historical-data read completed; it is not a validated strategy
+universe or a complete decision cycle. The supplied image digest binds the record but is not
+independent proof of the executing image, so it cannot satisfy runtime scope. This is connection
+evidence, not qualifying promotion evidence, and it cannot activate live trading. Qualifying
+evidence must eventually match independently verified account, provider declarations, strategy,
+config, research, and deployed-image identities. Production thresholds are 100 eligible paper cycles,
 seven distinct UTC shadow dates, and—before normal live—at least 100 eligible combined
 paper/shadow/micro observations across 30 distinct UTC dates, at least one micro-live observation,
 and current micro-review, security-clearance, manual-acknowledgement, runtime-control, slippage,
@@ -142,3 +148,9 @@ Use loopback `/healthz`, `/readyz`, and `/metrics` plus `docker compose ps` for 
 Review reconciliation, alerts, clock synchronization, disk, heartbeat, and lease expiry before any
 future resume path. No current application composition can resume live trading or place an order.
 Tax exports are records, not tax advice.
+
+Do not install a cron job or systemd timer for the present connected preflight. Repeating an
+ineligible diagnostic does not advance promotion and unnecessarily increases exposure of the
+trading-capable OAuth bearer. A future recurring job requires a reviewed, configuration-bound
+strategy universe, complete durable outcomes, independently verified image identity, a
+deployment-shared lock, bounded execution, post-run checks, alerts, and ledger backups.
