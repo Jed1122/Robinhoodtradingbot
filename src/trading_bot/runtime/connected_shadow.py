@@ -27,6 +27,7 @@ from trading_bot.brokers.robinhood_equity_mapping import account_fingerprint
 from trading_bot.brokers.robinhood_equity_mcp import build_equity_read_adapter
 from trading_bot.brokers.robinhood_equity_schemas import AccountsResultDto
 from trading_bot.brokers.robinhood_mcp_sdk import (
+    OAUTH_FLOW_TIMEOUT_SECONDS,
     READ_ONLY_EQUITY_MCP_TOOLS,
     LoopbackOAuthCallback,
     RobinhoodMcpSdkConnection,
@@ -502,6 +503,7 @@ def bootstrap_read_only_oauth(
                 async with RobinhoodMcpSdkConnection(
                     oauth_store_dir=store,
                     callback=callback,
+                    timeout_seconds=OAUTH_FLOW_TIMEOUT_SECONDS,
                 ) as connection:
                     declarations = await connection.session.list_tools()
                     evidence_hash = validate_read_tool_declarations(declarations)

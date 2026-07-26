@@ -17,6 +17,7 @@ from trading_bot.brokers.robinhood_equity_evidence import EXPECTED_TOOL_ARGUMENT
 from trading_bot.brokers.robinhood_equity_mapping import account_fingerprint
 from trading_bot.brokers.robinhood_mcp_schema_gate import DeclaredMcpTool, JsonValue
 from trading_bot.brokers.robinhood_mcp_sdk import (
+    OAUTH_FLOW_TIMEOUT_SECONDS,
     ROBINHOOD_MCP_OAUTH_SCOPE,
     EncryptedFileTokenStorage,
 )
@@ -110,9 +111,11 @@ class FakeOAuthCallback:
 
 class BootstrapConnection:
     declarations_valid = True
+    timeout_seconds: object | None = None
 
     def __init__(self, **kwargs: object) -> None:
         self._store = Path(str(kwargs["oauth_store_dir"]))
+        type(self).timeout_seconds = kwargs.get("timeout_seconds")
         self.session = self
 
     async def __aenter__(self) -> BootstrapConnection:
@@ -235,6 +238,7 @@ def test_oauth_bootstrap_commits_credentials_and_fingerprint_together(
     destination = parent / "oauth"
     fingerprint = destination / "account-fingerprint"
     BootstrapConnection.declarations_valid = True
+    BootstrapConnection.timeout_seconds = None
     monkeypatch.setattr(connected_shadow, "LoopbackOAuthCallback", FakeOAuthCallback)
     monkeypatch.setattr(
         connected_shadow,
@@ -248,6 +252,7 @@ def test_oauth_bootstrap_commits_credentials_and_fingerprint_together(
     )
 
     assert result["status"] == "oauth_bootstrap_complete"
+    assert BootstrapConnection.timeout_seconds == OAUTH_FLOW_TIMEOUT_SECONDS
     assert destination.is_dir()
     assert fingerprint.is_file()
     assert (destination / "tokens.json.box").is_file()

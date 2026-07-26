@@ -44,6 +44,7 @@ from trading_bot.brokers.robinhood_mcp_transport import (
 
 READ_ONLY_EQUITY_MCP_TOOLS = frozenset(EXPECTED_TOOL_ARGUMENTS)
 ROBINHOOD_MCP_OAUTH_SCOPE = "internal"
+OAUTH_FLOW_TIMEOUT_SECONDS = 300.0
 OAUTH_CALLBACK_HOST = "127.0.0.1"
 OAUTH_CALLBACK_PORT = 18765
 OAUTH_CALLBACK_PATH = "/callback"
@@ -404,7 +405,7 @@ class LoopbackOAuthCallback:
         self,
         *,
         open_browser: Callable[[str], bool] = webbrowser.open,
-        timeout_seconds: float = 300.0,
+        timeout_seconds: float = OAUTH_FLOW_TIMEOUT_SECONDS,
     ) -> None:
         if type(timeout_seconds) not in {float, int} or timeout_seconds <= 0:
             raise ValueError("OAuth callback timeout must be positive")
@@ -583,7 +584,7 @@ class RobinhoodMcpSdkConnection:
             storage,
             redirect_handler=(None if self._callback is None else self._callback.redirect_handler),
             callback_handler=(None if self._callback is None else self._callback.callback_handler),
-            timeout=300.0,
+            timeout=OAUTH_FLOW_TIMEOUT_SECONDS,
         )
         stack = AsyncExitStack()
         self._stack = stack
@@ -651,6 +652,7 @@ async def bootstrap_oauth(
         async with RobinhoodMcpSdkConnection(
             oauth_store_dir=store,
             callback=callback,
+            timeout_seconds=OAUTH_FLOW_TIMEOUT_SECONDS,
         ) as connection:
             return await connection.session.list_tools()
     finally:
@@ -658,6 +660,7 @@ async def bootstrap_oauth(
 
 
 __all__ = [
+    "OAUTH_FLOW_TIMEOUT_SECONDS",
     "READ_ONLY_EQUITY_MCP_TOOLS",
     "ROBINHOOD_MCP_OAUTH_SCOPE",
     "EncryptedFileTokenStorage",
