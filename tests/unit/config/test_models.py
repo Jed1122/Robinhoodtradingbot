@@ -213,6 +213,20 @@ def test_operational_and_research_values_are_explicit_and_exact() -> None:
         Decimal("0.5"),
         Decimal("0"),
     )
+    assert config.equity_strategies.research_universe_symbols == (
+        "SPY",
+        "QQQ",
+        "IWM",
+        "DIA",
+    )
+    assert config.equity_strategies.research_candidate_strategy_ids == (
+        "equity_momentum",
+        "equity_relative_strength",
+    )
+    assert config.equity_strategies.research_relative_strength_top_n == (1, 2)
+    assert config.equity_strategies.research_rebalance_bars == 5
+    assert config.equity_strategies.research_unselected_symbols_exit_to_cash
+    assert config.equity_strategies.research_benchmark_symbol == "SPY"
     assert [item.value for item in config.market_data.canonical_bar_intervals] == [
         "one_minute",
         "five_minute",
@@ -226,6 +240,12 @@ def test_operational_and_research_values_are_explicit_and_exact() -> None:
         "one_day",
     ]
     assert config.research.seed == 20260710
+    assert config.research.history_calendar_days == 3650
+    assert config.research.minimum_history_bars == 750
+    assert config.research.minimum_test_bars_per_fold == 50
+    assert config.research.minimum_independent_opportunities == 30
+    assert config.research.maximum_stressed_drawdown_pct == Decimal("10")
+    assert config.research.minimum_positive_walk_forward_folds == 3
     assert config.prediction_research.seed == 20260710
     assert config.equities.reconciliation_quantity_tolerance == 0
     assert config.crypto.reconciliation_quantity_tolerance == 0
@@ -233,6 +253,40 @@ def test_operational_and_research_values_are_explicit_and_exact() -> None:
     assert not config.research.evidence_promotable
     assert not config.simulation.assumptions_validated
     assert not config.simulation.evidence_promotable
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    (
+        (("equity_strategies", "research_universe_symbols"), []),
+        (
+            ("equity_strategies", "research_universe_symbols"),
+            ["SPY", "SPY"],
+        ),
+        (
+            ("equity_strategies", "research_universe_symbols"),
+            ["spy", "QQQ"],
+        ),
+        (
+            ("equity_strategies", "research_candidate_strategy_ids"),
+            ["equity_mean_reversion"],
+        ),
+        (
+            ("equity_strategies", "research_candidate_strategy_ids"),
+            ["equity_momentum", "equity_momentum"],
+        ),
+        (
+            ("equity_strategies", "research_relative_strength_top_n"),
+            [1, 5],
+        ),
+    ),
+)
+def test_equity_research_scope_rejects_invalid_values(
+    path: tuple[str, ...],
+    value: object,
+) -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(_with_config_value(path, value))
 
 
 def test_prediction_live_is_always_false() -> None:

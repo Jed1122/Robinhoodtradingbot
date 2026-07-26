@@ -3,8 +3,23 @@
 - Historical and public data may contain gaps, licensing limits, survivorship bias, delayed
   corporate actions, or incomplete point-in-time membership. Missing evidence makes research
   ineligible rather than triggering substitution.
+- The configured `SPY`/`QQQ`/`IWM`/`DIA` tuple is a present-day research candidate list, not a
+  point-in-time universe and not an execution allowlist. Robinhood historical requests ask for
+  split adjustment, but complete dividend/distribution adjustment and corporate-action provenance
+  are not verified.
+- The authenticated equity historical shape does not include an explicit interpolation flag.
+  Omission is conservatively recorded as tainted rather than defaulted to clean. Tainted bars may
+  appear only in an explicitly rejected exploratory report and cannot satisfy market-data or
+  promotion validation.
 - Simulated spread, slippage, fees, latency, fills, and rejects cannot reproduce every market
   condition. Small accounts are especially sensitive to minimum order sizes and costs.
+- The connected ETF comparison currently assumes complete next-open target fills. It does not yet
+  integrate configured rejection, no-fill, partial-fill, latency, cancel-race, stop/target,
+  maximum-holding, or regime-exit policies, so this is an explicit promotion blocker.
+- The private report retains cleaned bars, its complete manifest, and hashes of raw provider
+  responses, but not the raw response bodies. The executing process also cannot independently prove
+  that the caller-supplied image digest identifies its own container. Both limitations are recorded
+  as promotion blockers.
 - Strategies are long-only, deterministic candidates and make no profitability claim.
 - Tax treatment varies by jurisdiction and requires professional review.
 - Prediction contracts are research-only; live prediction placement is unsupported.
@@ -23,7 +38,9 @@
   It therefore does not start the configured seven-distinct-UTC-date promotion clock.
 - The default deployable container is a paused monitoring process. An explicit `connected-shadow`
   profile can authenticate for one locally write-incapable probe, persist evidence, and exit.
-  Neither service runs complete strategy cycles or constructs place, review, or cancel adapters.
+  An independent `connected-research` profile can make four bounded single-symbol historical reads,
+  write a private comparison report, append its rejected assessment, and exit. Neither profile
+  schedules itself or constructs place, review, or cancel adapters.
 - Robinhood exposes the sole official OAuth scope `internal`; it is not a read-only broker scope.
   The connected client limits itself to reads with two local allowlists, but the bearer credential
   must be treated as trading-capable. A stolen token or compromised host could trade in the Agentic

@@ -249,7 +249,7 @@ def map_bar(
     if duration is None:
         raise EquityMappingError("historical interval identity changed")
     starts_at = _timestamp(dto.begins_at, "begins_at")
-    if dto.session not in {None, "reg"}:
+    if dto.session != "reg":
         raise EquityMappingError("connected shadow accepts regular-session bars only")
     return Bar(
         instrument_id=instrument_id,
@@ -263,7 +263,11 @@ def map_bar(
         volume=Decimal(dto.volume),
         source="robinhood_trading_mcp",
         data_hash=data_hash,
-        interpolated=dto.interpolated,
+        # The authenticated historical shape did not include an interpolation
+        # field. Treat absence as tainted rather than fabricating a verified
+        # non-interpolated bar. Research may inspect tainted bars, but its report
+        # remains ineligible and the general validator rejects them.
+        interpolated=dto.interpolated is not False,
     )
 
 

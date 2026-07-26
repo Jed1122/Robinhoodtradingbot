@@ -111,6 +111,15 @@ research:
   walk_forward_folds: 5
   embargo_bars: 1
   monte_carlo_iterations: 1000
+  history_calendar_days: 3650
+  minimum_history_bars: 750
+  minimum_test_bars_per_fold: 50
+  minimum_independent_opportunities: 30
+  maximum_stressed_drawdown_pct: 10
+  minimum_positive_walk_forward_folds: 3
+  maximum_single_opportunity_profit_contribution_pct: 50
+  maximum_monte_carlo_loss_probability_pct: 50
+  minimum_benchmark_excess_return_pct: 0
   assumptions_validated: false
   evidence_promotable: false
 

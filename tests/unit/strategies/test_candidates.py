@@ -26,6 +26,7 @@ def context() -> StrategyContext:
             ("total_return_pct", Decimal("10")),
             ("moving_average_short", Decimal("105")),
             ("moving_average_long", Decimal("100")),
+            ("latest_close", Decimal("110")),
             ("breakout_high", Decimal("110")),
         ),
         DataHash("a" * 64),
@@ -45,6 +46,25 @@ def test_momentum_candidate_is_deterministic_and_interpretable() -> None:
     decision = strategy.decide(context())[0]
     assert decision.action is StrategyAction.ENTER_LONG
     assert decision.reason_codes == ("momentum_confirmed",)
+
+
+def test_momentum_uses_latest_close_not_historical_high() -> None:
+    original = context()
+    values = tuple(
+        (name, Decimal("90") if name == "latest_close" else value)
+        for name, value in original.features.vectors[0].values
+    )
+    vector = dataclasses.replace(original.features.vectors[0], values=values)
+    changed = dataclasses.replace(
+        original,
+        features=dataclasses.replace(original.features, vectors=(vector,)),
+    )
+
+    decision = StrategyRegistry().get(
+        "equity_momentum", mode=ExecutionMode.PAPER
+    ).decide(changed)[0]
+
+    assert decision.action is StrategyAction.HOLD
 
 
 def test_mean_reversion_is_research_only() -> None:

@@ -34,6 +34,7 @@ class FeaturePipeline:
             raise ValueError("bars must be strictly ordered without duplicate end times")
         closes = tuple(bar.close for bar in bars)
         values: list[tuple[str, Decimal | int | bool | str | None]] = []
+        values.append(("latest_close", closes[-1] if closes else None))
         total_return = None
         if len(closes) >= 2:
             total_return = (closes[-1] / closes[0] - Decimal("1")) * Decimal("100")

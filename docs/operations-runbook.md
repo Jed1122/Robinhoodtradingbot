@@ -106,7 +106,8 @@ OAuth directory must be owned by `10001:10001` with mode `0700`, every file in i
 file owned by `10001:10001` with mode `0600`, and its fingerprint must be
 `/var/lib/trading-bot/oauth/account-fingerprint`. The evidence directory must be owned by
 `10001:10001` with mode `0750`; the ledger path is
-`/var/lib/trading-bot/evidence/ledger.db` and remains inside the encrypted backup scope.
+`/var/lib/trading-bot/evidence/ledger.db`. Both it and the private content-addressed reports under
+`/var/lib/trading-bot/evidence/research` remain inside the encrypted evidence-archive backup scope.
 
 After the credential installation has been reviewed and completed, an administrator with Docker
 access may run exactly one profile-gated probe from the deployment directory:
@@ -114,6 +115,19 @@ access may run exactly one profile-gated probe from the deployment directory:
 ```shell
 docker compose --profile connected-shadow run --rm --no-deps connected-shadow
 ```
+
+Run the four-ETF connected comparison separately:
+
+```shell
+docker compose --profile connected-research run --rm --no-deps connected-research
+```
+
+The command must report `write_capabilities_present=false`, `live_enabled=false`, and
+`promotion_eligible=false`. It also reports `code_identity_verified=false` until an independently
+verified executing-image attestation exists. It writes only a private content-addressed report below
+`/var/lib/trading-bot/evidence/research` plus an append-only accepted-or-rejected assessment in the
+ledger. The configured candidate symbols are research scope only. They do not change pretrade
+symbol allowlisting or any execution gate.
 
 The profile publishes no port, never restarts, retains the non-root, read-only-filesystem, and
 Linux-capability-free container restrictions, and sets both live flags false. An SDK-session

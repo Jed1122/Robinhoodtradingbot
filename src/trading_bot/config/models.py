@@ -1,5 +1,6 @@
 """Strict, immutable configuration models for every operating mode."""
 
+import re
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
@@ -78,6 +79,11 @@ StrictExecutionModeTuple = Annotated[
 ]
 Pct = ConfigDecimal
 Seconds = ConfigDecimal
+
+_RESEARCH_SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,14}\Z")
+_EQUITY_RESEARCH_CANDIDATES = frozenset(
+    {"equity_momentum", "equity_relative_strength"}
+)
 
 
 class StrictModel(BaseModel):
@@ -231,6 +237,17 @@ class ResearchSettings(StrictModel):
     walk_forward_folds: StrictInt = Field(ge=2)
     embargo_bars: StrictInt = Field(ge=0)
     monte_carlo_iterations: StrictInt = Field(ge=1)
+    history_calendar_days: StrictInt = Field(ge=1)
+    minimum_history_bars: StrictInt = Field(ge=2)
+    minimum_test_bars_per_fold: StrictInt = Field(ge=1)
+    minimum_independent_opportunities: StrictInt = Field(ge=1)
+    maximum_stressed_drawdown_pct: Pct = Field(ge=0, le=100)
+    minimum_positive_walk_forward_folds: StrictInt = Field(ge=1)
+    maximum_single_opportunity_profit_contribution_pct: Pct = Field(
+        ge=0, le=100
+    )
+    maximum_monte_carlo_loss_probability_pct: Pct = Field(ge=0, le=100)
+    minimum_benchmark_excess_return_pct: Pct = Field(ge=0, le=100)
     assumptions_validated: StrictBool
     evidence_promotable: StrictBool
 
@@ -238,6 +255,13 @@ class ResearchSettings(StrictModel):
     def unvalidated_research_is_not_promotable(self) -> Self:
         if self.evidence_promotable and not self.assumptions_validated:
             raise ValueError("research evidence cannot be promotable before assumptions validate")
+        if self.minimum_positive_walk_forward_folds > self.walk_forward_folds:
+            raise ValueError("positive research folds cannot exceed walk-forward folds")
+        if (
+            self.minimum_history_bars
+            < self.minimum_test_bars_per_fold * self.walk_forward_folds
+        ):
+            raise ValueError("research history cannot be smaller than the test-fold requirement")
         return self
 
 
@@ -372,6 +396,12 @@ class EquityStrategySettings(StrictModel):
     short_windows: StrictIntegerTuple = Field(min_length=1)
     long_windows: StrictIntegerTuple = Field(min_length=1)
     regime_multipliers: StrictDecimalTuple = Field(min_length=1)
+    research_universe_symbols: StrictStringTuple = Field(min_length=1)
+    research_candidate_strategy_ids: StrictStringTuple = Field(min_length=1)
+    research_relative_strength_top_n: StrictIntegerTuple = Field(min_length=1)
+    research_rebalance_bars: StrictInt = Field(ge=1)
+    research_unselected_symbols_exit_to_cash: StrictTrue
+    research_benchmark_symbol: StrictStr = Field(min_length=1)
     bar_interval: StrictBarInterval
     maximum_holding_bars: StrictInt = Field(ge=1)
     stop_loss_atr_multiplier: ConfigDecimal = Field(gt=0)
@@ -387,6 +417,32 @@ class EquityStrategySettings(StrictModel):
             raise ValueError("equity long windows must be unique and increasing")
         if max(self.short_windows) >= min(self.long_windows):
             raise ValueError("equity short windows must remain below long windows")
+        if len(set(self.research_universe_symbols)) != len(
+            self.research_universe_symbols
+        ) or any(
+            _RESEARCH_SYMBOL.fullmatch(symbol) is None
+            for symbol in self.research_universe_symbols
+        ):
+            raise ValueError(
+                "equity research universe must contain unique uppercase ticker symbols"
+            )
+        if len(set(self.research_candidate_strategy_ids)) != len(
+            self.research_candidate_strategy_ids
+        ) or not set(self.research_candidate_strategy_ids).issubset(
+            _EQUITY_RESEARCH_CANDIDATES
+        ):
+            raise ValueError("equity research candidates are unsupported or duplicated")
+        if (
+            tuple(sorted(set(self.research_relative_strength_top_n)))
+            != self.research_relative_strength_top_n
+            or max(self.research_relative_strength_top_n)
+            > len(self.research_universe_symbols)
+        ):
+            raise ValueError(
+                "relative-strength top-N values must be unique, increasing, and in universe"
+            )
+        if self.research_benchmark_symbol not in self.research_universe_symbols:
+            raise ValueError("equity research benchmark must be in the research universe")
         return self
 
 

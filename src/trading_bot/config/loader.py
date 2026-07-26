@@ -391,6 +391,21 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
             envelope.costs.max_slippage_pct,
         ),
         (
+            "research.maximum_stressed_drawdown_pct",
+            config.research.maximum_stressed_drawdown_pct,
+            envelope.research.maximum_stressed_drawdown_pct,
+        ),
+        (
+            "research.maximum_single_opportunity_profit_contribution_pct",
+            config.research.maximum_single_opportunity_profit_contribution_pct,
+            envelope.research.maximum_single_opportunity_profit_contribution_pct,
+        ),
+        (
+            "research.maximum_monte_carlo_loss_probability_pct",
+            config.research.maximum_monte_carlo_loss_probability_pct,
+            envelope.research.maximum_monte_carlo_loss_probability_pct,
+        ),
+        (
             "promotion.micro_order_review_interval",
             config.promotion.micro_order_review_interval,
             envelope.promotion.micro_order_review_interval,
@@ -469,6 +484,51 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
             "costs.stressed_cost_multiplier",
             config.costs.stressed_cost_multiplier,
             envelope.costs.stressed_cost_multiplier,
+        ),
+        (
+            "research.walk_forward_folds",
+            config.research.walk_forward_folds,
+            envelope.research.walk_forward_folds,
+        ),
+        (
+            "research.embargo_bars",
+            config.research.embargo_bars,
+            envelope.research.embargo_bars,
+        ),
+        (
+            "research.monte_carlo_iterations",
+            config.research.monte_carlo_iterations,
+            envelope.research.monte_carlo_iterations,
+        ),
+        (
+            "research.history_calendar_days",
+            config.research.history_calendar_days,
+            envelope.research.history_calendar_days,
+        ),
+        (
+            "research.minimum_history_bars",
+            config.research.minimum_history_bars,
+            envelope.research.minimum_history_bars,
+        ),
+        (
+            "research.minimum_test_bars_per_fold",
+            config.research.minimum_test_bars_per_fold,
+            envelope.research.minimum_test_bars_per_fold,
+        ),
+        (
+            "research.minimum_independent_opportunities",
+            config.research.minimum_independent_opportunities,
+            envelope.research.minimum_independent_opportunities,
+        ),
+        (
+            "research.minimum_positive_walk_forward_folds",
+            config.research.minimum_positive_walk_forward_folds,
+            envelope.research.minimum_positive_walk_forward_folds,
+        ),
+        (
+            "research.minimum_benchmark_excess_return_pct",
+            config.research.minimum_benchmark_excess_return_pct,
+            envelope.research.minimum_benchmark_excess_return_pct,
         ),
     )
     for name, actual, minimum in min_pairs:

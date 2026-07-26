@@ -5,6 +5,7 @@ from typing import Any
 
 from typer.testing import CliRunner
 
+from trading_bot.runtime.connected_research import ConnectedResearchNotReady
 from trading_bot.runtime.connected_shadow import ConnectedShadowNotReady
 
 main = import_module("trading_bot.cli.main")
@@ -152,3 +153,69 @@ def test_oauth_bootstrap_delegates_without_exposing_paths(
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == {"status": "oauth_bootstrap_complete"}
     assert str(tmp_path) not in result.stdout
+
+
+def test_research_command_delegates_to_sanitized_read_only_runtime(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    observed: dict[str, object] = {}
+
+    def run_once(**kwargs: object) -> dict[str, object]:
+        observed.update(kwargs)
+        return {
+            "live_enabled": False,
+            "promotion_eligible": False,
+            "status": "connected_research_recorded",
+            "write_capabilities_present": False,
+        }
+
+    monkeypatch.setattr(main, "run_connected_equity_research_once", run_once)
+    result = CliRunner().invoke(
+        main.app,
+        [
+            "research-equities",
+            "--config",
+            "configs/shadow.yaml",
+            "--once",
+            "--oauth-store",
+            str(tmp_path / "oauth"),
+            "--account-fingerprint-file",
+            str(tmp_path / "fingerprint"),
+            "--ledger",
+            str(tmp_path / "ledger.db"),
+            "--artifact-dir",
+            str(tmp_path / "research"),
+            "--image-digest",
+            f"sha256:{'a' * 64}",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["promotion_eligible"] is False
+    assert observed["image_digest"] == f"sha256:{'a' * 64}"
+    assert observed["loaded"].config.runtime.start_paused  # type: ignore[union-attr]
+    assert str(tmp_path) not in result.stdout
+
+
+def test_research_runtime_failure_emits_only_stable_status(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def fail(**kwargs: object) -> dict[str, object]:
+        del kwargs
+        raise ConnectedResearchNotReady("sensitive provider detail")
+
+    monkeypatch.setattr(main, "run_connected_equity_research_once", fail)
+    result = CliRunner().invoke(
+        main.app,
+        [
+            "research-equities",
+            "--config",
+            "configs/shadow.yaml",
+            "--once",
+            "--image-digest",
+            f"sha256:{'a' * 64}",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert result.output == "connected_research_not_ready\n"
+    assert "sensitive" not in result.output

@@ -12,17 +12,31 @@ from trading_bot.strategies.protocol import (
 
 
 class RelativeStrengthStrategy:
-    def __init__(self, *, top_n: int = 3) -> None:
+    def __init__(
+        self,
+        *,
+        lookback_window: int = 100,
+        top_n: int = 3,
+        version: str = "equity_relative_strength-v2",
+    ) -> None:
+        if lookback_window < 2:
+            raise ValueError("relative-strength lookback must be at least two bars")
         if top_n < 1:
             raise ValueError("top_n must be positive")
         self._top_n = top_n
         self._descriptor = StrategyDescriptor(
             "equity_relative_strength",
             "relative_strength",
-            "equity_relative_strength-v1",
+            version,
             "rank eligible liquid instruments by total return",
             False,
-            content_hash({"top_n": top_n}),
+            content_hash(
+                {
+                    "lookback_window": lookback_window,
+                    "top_n": top_n,
+                    "version": version,
+                }
+            ),
         )
 
     @property

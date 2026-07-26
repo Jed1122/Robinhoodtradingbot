@@ -167,10 +167,10 @@ class EquityBarDto(StrictMcpModel):
     begins_at: StrictStr
     close_price: StrictStr
     high_price: StrictStr
-    interpolated: StrictBool = False
+    interpolated: StrictBool | None = None
     low_price: StrictStr
     open_price: StrictStr
-    session: StrictStr | None = None
+    session: StrictStr
     volume: StrictInt
 
 

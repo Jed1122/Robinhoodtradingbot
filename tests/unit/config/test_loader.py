@@ -118,6 +118,32 @@ def test_lists_are_replaced_atomically_not_concatenated() -> None:
     assert loaded.config.crypto.initial_symbol_allowlist == ("BTC-USD",)
 
 
+def test_research_scope_is_config_hash_bound_and_lists_replace_atomically() -> None:
+    baseline = load()
+    changed_universe = load(
+        environ={
+            "TRADING_BOT__EQUITY_STRATEGIES__RESEARCH_UNIVERSE_SYMBOLS": (
+                '["SPY","QQQ","IWM"]'
+            )
+        }
+    )
+    changed_candidates = load(
+        environ={
+            "TRADING_BOT__EQUITY_STRATEGIES__RESEARCH_CANDIDATE_STRATEGY_IDS": (
+                '["equity_momentum"]'
+            )
+        }
+    )
+
+    assert changed_universe.config.equity_strategies.research_universe_symbols == (
+        "SPY",
+        "QQQ",
+        "IWM",
+    )
+    assert changed_universe.config_hash != baseline.config_hash
+    assert changed_candidates.config_hash != baseline.config_hash
+
+
 @pytest.mark.parametrize(
     "environ",
     [

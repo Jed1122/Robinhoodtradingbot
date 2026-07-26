@@ -50,6 +50,7 @@ def test_incomplete_bar_cannot_change_features() -> None:
 def test_features_are_canonical_and_unavailable_is_not_zero() -> None:
     result = FeaturePipeline(short_window=3, long_window=10).compute(history(), as_of=NOW)
     values = dict(result.values)
+    assert values["latest_close"] == Decimal("104")
     assert values["moving_average_short"] == Decimal("103")
     assert values["moving_average_long"] is None
     assert tuple(values) == tuple(sorted(values, key=lambda name: list(values).index(name)))

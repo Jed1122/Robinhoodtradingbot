@@ -16,6 +16,10 @@ from trading_bot.cli.status import locked_status
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.domain import ExecutionMode
 from trading_bot.market_data import content_hash
+from trading_bot.runtime.connected_research import (
+    ConnectedResearchNotReady,
+    run_connected_equity_research_once,
+)
 from trading_bot.runtime.connected_shadow import (
     ConnectedShadowNotReady,
     bootstrap_read_only_oauth,
@@ -156,6 +160,47 @@ def mcp_oauth_bootstrap(
         )
     except ConnectedShadowNotReady:
         typer.echo("oauth_bootstrap_failed", err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(output, sort_keys=True, separators=(",", ":")))
+
+
+@app.command("research-equities")
+def research_equities(
+    config: Annotated[Path, typer.Option()] = Path("configs/shadow.yaml"),
+    once: Annotated[bool, typer.Option("--once")] = False,
+    oauth_store: Annotated[Path, typer.Option()] = Path("/var/lib/trading-bot/oauth"),
+    account_fingerprint_file: Annotated[Path, typer.Option()] = Path(
+        "/var/lib/trading-bot/oauth/account-fingerprint"
+    ),
+    ledger: Annotated[Path, typer.Option()] = Path(
+        "/var/lib/trading-bot/evidence/ledger.db"
+    ),
+    artifact_dir: Annotated[Path, typer.Option()] = Path(
+        "/var/lib/trading-bot/evidence/research"
+    ),
+    image_digest: Annotated[
+        str | None, typer.Option(envvar="TRADING_BOT_IMAGE_DIGEST")
+    ] = None,
+) -> None:
+    """Record one authenticated, write-incapable ETF candidate comparison."""
+
+    if not once:
+        raise typer.BadParameter("connected equity research currently requires --once")
+    if image_digest is None:
+        raise typer.BadParameter("connected equity research requires TRADING_BOT_IMAGE_DIGEST")
+    loaded = _load_runtime_config(config)
+    try:
+        output = run_connected_equity_research_once(
+            loaded=loaded,
+            repository_root=config.resolve().parent.parent,
+            oauth_store=oauth_store,
+            account_fingerprint_file=account_fingerprint_file,
+            ledger=ledger,
+            artifact_dir=artifact_dir,
+            image_digest=image_digest,
+        )
+    except ConnectedResearchNotReady:
+        typer.echo("connected_research_not_ready", err=True)
         raise typer.Exit(2) from None
     typer.echo(json.dumps(output, sort_keys=True, separators=(",", ":")))
 

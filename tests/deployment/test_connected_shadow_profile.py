@@ -105,6 +105,45 @@ def test_connected_shadow_preserves_container_hardening() -> None:
     assert service["init"] is True
 
 
+def test_connected_research_is_explicit_read_only_and_never_changes_default() -> None:
+    service = _compose()["services"]["connected-research"]
+    command = service["command"]
+
+    assert service["profiles"] == ["connected-research"]
+    assert service["restart"] == "no"
+    assert command[0] == "research-equities"
+    assert "--once" in command
+    assert _command_value(command, "--config") == "/app/configs/shadow.yaml"
+    assert _command_value(command, "--artifact-dir").startswith(
+        "/var/lib/trading-bot/evidence/"
+    )
+    assert "enable-live" not in command
+    assert "run" not in command
+    assert "mcp-oauth-bootstrap" not in command
+    assert service["read_only"] is True
+    assert service["user"] == "10001:10001"
+    assert service["cap_drop"] == ["ALL"]
+    assert service["security_opt"] == ["no-new-privileges:true"]
+    assert "ports" not in service and "expose" not in service
+    assert service["environment"]["LIVE_TRADING_ENABLED"] == "false"
+    assert service["environment"]["PREDICTION_LIVE_ENABLED"] == "false"
+
+
+def test_connected_research_mounts_only_private_oauth_and_evidence_state() -> None:
+    service = _compose()["services"]["connected-research"]
+    command = service["command"]
+    oauth_target = _command_value(command, "--oauth-store")
+    fingerprint_target = _command_value(command, "--account-fingerprint-file")
+    ledger_target = str(Path(_command_value(command, "--ledger")).parent)
+
+    oauth = _volume_for_target(service, oauth_target)
+    fingerprint = _volume_for_target(service, fingerprint_target)
+    evidence = _volume_for_target(service, ledger_target)
+    assert oauth["type"] == "bind" and oauth.get("read_only") is not True
+    assert fingerprint["read_only"] is True
+    assert evidence["type"] == "bind" and evidence.get("read_only") is not True
+
+
 def test_shadow_image_contains_ledger_migration_assets() -> None:
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
 

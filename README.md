@@ -114,6 +114,11 @@ configuration against the immutable safety envelope and emit a canonical mode, s
 configuration hash, and result hash. See [strategy research](docs/strategy-research.md) and
 [limitations](docs/limitations.md). No result is a profitability claim.
 
+The canonical equity research scope is the long-only ETF tuple `SPY`, `QQQ`, `IWM`, and `DIA`,
+with momentum and relative-strength candidate families. This is a research candidate universe,
+not an execution allowlist. The offline commands above remain deterministic configuration/result
+hash checks; the real historical comparison is the separate authenticated one-shot command below.
+
 ## Robinhood read and shadow setup
 
 Bootstrap the standalone runtime against the official Trading MCP endpoint from a trusted
@@ -153,6 +158,23 @@ make shadow-smoke
 make live-readiness
 ```
 
+To collect the exact four-ETF history and persist one accepted-or-rejected comparison record, use
+the explicit profile:
+
+```shell
+docker compose --profile connected-research run --rm --no-deps connected-research
+```
+
+The profile uses four single-symbol historical reads, never constructs a broker write adapter,
+stores the full report and cleaned bar snapshot privately under
+`/var/lib/trading-bot/evidence/research`, and appends its
+assessment to `/var/lib/trading-bot/evidence/ledger.db`. The current release always remains
+non-promotable because point-in-time universe, complete corporate-action/interpolation provenance,
+PBO/multiple-testing resolution, independently verified executing-image identity, stage-independent
+paper configuration binding, and validated research assumptions are absent. Recording a report does
+not start paper or shadow promotion clocks. Encrypted evidence backups include the ledger and these
+private reports; OAuth credentials remain outside that backup.
+
 Crypto v2 reads use only `ROBINHOOD_CRYPTO_API_KEY_FILE` and
 `ROBINHOOD_CRYPTO_PRIVATE_KEY_FILE`; each referenced service-owned file must be mode `0600`.
 Raw credential environment variables are rejected. The OAuth directory must be service-owned mode
@@ -186,6 +208,8 @@ every opt-in live gate remain locked. The default deployable service is a health
 process with no host volumes or credential access and deliberately reports `/readyz` as unavailable.
 An explicit `connected-shadow` Compose profile runs one authenticated, locally write-incapable probe
 with no published port and then exits.
+An explicit `connected-research` profile similarly runs one bounded comparison, persists its report
+and assessment, and exits.
 The broker-neutral execution service accepts only injected capabilities; current adapter evidence
 does not grant permission to trade.
 

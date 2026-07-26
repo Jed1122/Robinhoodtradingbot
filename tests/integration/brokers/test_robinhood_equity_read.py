@@ -345,6 +345,109 @@ async def test_quote_and_historical_reads_validate_reviewed_shapes(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_missing_interpolation_field_is_tainted_not_defaulted_clear(
+    tmp_path: Path,
+) -> None:
+    raw_bars = historical_response()["data"]["results"][0]["bars"]  # type: ignore[index]
+    assert isinstance(raw_bars, list)
+    copied = [dict(item) for item in raw_bars]
+    for item in copied:
+        item.pop("interpolated")
+    transport, _ = transport_for(
+        tmp_path,
+        {"get_equity_historicals": historical_response(bars=copied)},
+    )
+    market_data = RobinhoodEquityMarketData(
+        transport,
+        FixedClock(),
+        maximum_quote_age=timedelta(seconds=5),
+    )
+
+    result = await market_data.get_research_bars(
+        INSTRUMENT,
+        BarInterval.ONE_DAY,
+        datetime(2026, 7, 19, tzinfo=UTC),
+        datetime(2026, 7, 21, tzinfo=UTC),
+    )
+
+    assert result.interpolation_status == "unknown"
+    assert all(bar.interpolated for bar in result.bars)
+
+
+@pytest.mark.asyncio
+async def test_missing_and_explicit_null_interpolation_have_distinct_hashes(
+    tmp_path: Path,
+) -> None:
+    raw_bars = historical_response()["data"]["results"][0]["bars"]  # type: ignore[index]
+    assert isinstance(raw_bars, list)
+    missing = [dict(item) for item in raw_bars]
+    explicit_null = [dict(item) for item in raw_bars]
+    for item in missing:
+        item.pop("interpolated")
+    for item in explicit_null:
+        item["interpolated"] = None
+    (tmp_path / "missing").mkdir()
+    (tmp_path / "null").mkdir()
+    missing_transport, _ = transport_for(
+        tmp_path / "missing",
+        {"get_equity_historicals": historical_response(bars=missing)},
+    )
+    null_transport, _ = transport_for(
+        tmp_path / "null",
+        {"get_equity_historicals": historical_response(bars=explicit_null)},
+    )
+    missing_market = RobinhoodEquityMarketData(
+        missing_transport,
+        FixedClock(),
+        maximum_quote_age=timedelta(seconds=5),
+    )
+    null_market = RobinhoodEquityMarketData(
+        null_transport,
+        FixedClock(),
+        maximum_quote_age=timedelta(seconds=5),
+    )
+    arguments = (
+        INSTRUMENT,
+        BarInterval.ONE_DAY,
+        datetime(2026, 7, 19, tzinfo=UTC),
+        datetime(2026, 7, 21, tzinfo=UTC),
+    )
+
+    missing_result = await missing_market.get_research_bars(*arguments)
+    null_result = await null_market.get_research_bars(*arguments)
+
+    assert missing_result.raw_response_hash != null_result.raw_response_hash
+
+
+@pytest.mark.asyncio
+async def test_historical_hash_binds_the_exact_request(tmp_path: Path) -> None:
+    transport, _ = transport_for(
+        tmp_path,
+        {"get_equity_historicals": historical_response()},
+    )
+    market_data = RobinhoodEquityMarketData(
+        transport,
+        FixedClock(),
+        maximum_quote_age=timedelta(seconds=5),
+    )
+
+    first = await market_data.get_research_bars(
+        INSTRUMENT,
+        BarInterval.ONE_DAY,
+        datetime(2026, 7, 19, tzinfo=UTC),
+        datetime(2026, 7, 21, tzinfo=UTC),
+    )
+    second = await market_data.get_research_bars(
+        INSTRUMENT,
+        BarInterval.ONE_DAY,
+        datetime(2026, 7, 18, tzinfo=UTC),
+        datetime(2026, 7, 21, tzinfo=UTC),
+    )
+
+    assert first.raw_response_hash != second.raw_response_hash
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "overrides",
     (

@@ -106,6 +106,15 @@ research:
   walk_forward_folds: 5 # Baseline assumption pending data-volume validation.
   embargo_bars: 1 # Baseline assumption pending overlap analysis.
   monte_carlo_iterations: 1000 # Baseline deterministic assumption.
+  history_calendar_days: 3650 # Exploratory range; provider completeness remains unverified.
+  minimum_history_bars: 750 # Requires roughly three years of daily observations.
+  minimum_test_bars_per_fold: 50
+  minimum_independent_opportunities: 30
+  maximum_stressed_drawdown_pct: 10
+  minimum_positive_walk_forward_folds: 3
+  maximum_single_opportunity_profit_contribution_pct: 50
+  maximum_monte_carlo_loss_probability_pct: 50
+  minimum_benchmark_excess_return_pct: 0
   assumptions_validated: false
   evidence_promotable: false
 
@@ -199,6 +208,21 @@ equity_strategies:
     - 1
     - 0.5
     - 0
+  # Research candidate scope only. This is not an execution symbol allowlist.
+  research_universe_symbols:
+    - SPY
+    - QQQ
+    - IWM
+    - DIA
+  research_candidate_strategy_ids:
+    - equity_momentum
+    - equity_relative_strength
+  research_relative_strength_top_n:
+    - 1
+    - 2
+  research_rebalance_bars: 5
+  research_unselected_symbols_exit_to_cash: true
+  research_benchmark_symbol: SPY
   bar_interval: one_day
   maximum_holding_bars: 100 # Baseline assumption pending research validation.
   stop_loss_atr_multiplier: 2.0 # Baseline assumption pending research validation.

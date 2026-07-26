@@ -12,14 +12,28 @@ from trading_bot.strategies.protocol import (
 
 
 class MomentumStrategy:
-    def __init__(self, *, version: str = "equity_momentum-v1") -> None:
+    def __init__(
+        self,
+        *,
+        short_window: int = 20,
+        long_window: int = 100,
+        version: str = "equity_momentum-v2",
+    ) -> None:
+        if short_window < 2 or long_window <= short_window:
+            raise ValueError("momentum windows must satisfy 2 <= short < long")
         self._descriptor = StrategyDescriptor(
             "equity_momentum",
             "momentum",
             version,
             "positive return, short average above long average, and price above long average",
             False,
-            content_hash({"version": version}),
+            content_hash(
+                {
+                    "long_window": long_window,
+                    "short_window": short_window,
+                    "version": version,
+                }
+            ),
         )
 
     @property
@@ -35,7 +49,7 @@ class MomentumStrategy:
             total = values.get("total_return_pct")
             short = values.get("moving_average_short")
             long = values.get("moving_average_long")
-            price = values.get("breakout_high")
+            price = values.get("latest_close")
             ready = all(isinstance(value, Decimal) for value in (total, short, long, price))
             enter = ready and total > 0 and short > long and price > long  # type: ignore[operator]
             action = StrategyAction.ENTER_LONG if enter else StrategyAction.HOLD

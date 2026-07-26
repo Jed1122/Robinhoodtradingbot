@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import TypeVar
@@ -48,6 +49,13 @@ _PROVIDER_INTERVAL = {
     BarInterval.FOUR_HOUR: "4hour",
     BarInterval.ONE_DAY: "day",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class EquityHistoricalRead:
+    bars: tuple[Bar, ...]
+    raw_response_hash: str
+    interpolation_status: str
 
 
 class RobinhoodEquityMarketData:
@@ -119,6 +127,19 @@ class RobinhoodEquityMarketData:
         start: datetime,
         end: datetime,
     ) -> tuple[Bar, ...]:
+        return (
+            await self.get_research_bars(instrument_id, interval, start, end)
+        ).bars
+
+    async def get_research_bars(
+        self,
+        instrument_id: InstrumentId,
+        interval: BarInterval,
+        start: datetime,
+        end: datetime,
+    ) -> EquityHistoricalRead:
+        """Return bars plus provenance that ordinary domain bars cannot express."""
+
         start = require_utc(start)
         end = require_utc(end)
         if start >= end:
@@ -137,9 +158,28 @@ class RobinhoodEquityMarketData:
         )
         if response.data.not_found or len(response.data.results) != 1:
             raise MarketDataCapabilityError("expected one equity historical result")
-        digest = content_hash(response.model_dump(mode="json"))
+        digest = content_hash(
+            {
+                "request": {
+                    "adjustment_type": "split",
+                    "bounds": "regular",
+                    "end_time": utc_text(end),
+                    "interval": _PROVIDER_INTERVAL[interval],
+                    "start_time": utc_text(start),
+                    "symbols": [str(instrument_id)],
+                },
+                "response": response.model_dump(mode="json"),
+                "shape_presence": {
+                    "bar_interpolated_fields": tuple(
+                        "interpolated" in item.model_fields_set
+                        for item in response.data.results[0].bars
+                    ),
+                    "not_found_field": "not_found" in response.data.model_fields_set,
+                },
+            }
+        )
         try:
-            return map_historical_result(
+            bars = map_historical_result(
                 response.data.results[0],
                 instrument_id=instrument_id,
                 interval=interval,
@@ -147,6 +187,20 @@ class RobinhoodEquityMarketData:
             )
         except EquityMappingError as exc:
             raise MarketDataCapabilityError("equity historical validation failed") from exc
+        interpolation_values = tuple(
+            item.interpolated for item in response.data.results[0].bars
+        )
+        if any(value is True for value in interpolation_values):
+            interpolation_status = "reported_interpolated"
+        elif all(value is False for value in interpolation_values):
+            interpolation_status = "verified_clear"
+        else:
+            interpolation_status = "unknown"
+        return EquityHistoricalRead(
+            bars=bars,
+            raw_response_hash=str(digest),
+            interpolation_status=interpolation_status,
+        )
 
     async def get_tradability(
         self,
@@ -213,4 +267,4 @@ class RobinhoodEquityMarketData:
         )
 
 
-__all__ = ["RobinhoodEquityMarketData"]
+__all__ = ["EquityHistoricalRead", "RobinhoodEquityMarketData"]

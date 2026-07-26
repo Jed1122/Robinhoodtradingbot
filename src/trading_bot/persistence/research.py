@@ -49,6 +49,14 @@ class SqlResearchEvidenceStore:
         attestation: StrategyEligibilityAttestation,
         assessment: ResearchAssessment,
     ) -> None:
+        if (
+            assessment.eligible != assessment.promotable
+            or attestation.eligible != assessment.promotable
+            or assessment.eligible == bool(assessment.reason_codes)
+        ):
+            raise PersistenceDataError(
+                "research assessment and attestation are inconsistent"
+            )
         evidence_hash = content_hash({"assessment": assessment, "attestation": attestation})
         async with self._factory.begin() as session:
             session.add(
