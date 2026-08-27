@@ -190,8 +190,15 @@ converted into a capture error. The async timeout can cancel a session implement
 yields to the event loop; it cannot preempt an implementation that blocks the event loop or
 never reaches a cancellation point. No background thread or process workaround is used.
 
-The older schema-capture command remains unauthenticated declaration evidence only. When no proven
-configured capture session is injected, it exits with status 2, writes
+The operator CLI can use the existing encrypted OAuth store to capture all `tools/list`
+declarations through a session with no `call_tool` method. OAuth authenticates the transport, but
+the resulting sanitized artifact remains schema-declaration evidence only and contains no account
+data. A declared review, place, or cancel schema does not implement or authorize that operation.
+The artifact destination must have a service-owned parent that is not writable by group or other
+users, and the file is written atomically with mode `0600`.
+
+The older injected-session schema-capture script remains unauthenticated declaration evidence
+only. When no proven configured capture session is injected, it exits with status 2, writes
 nothing, and prints:
 
 ```text

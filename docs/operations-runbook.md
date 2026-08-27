@@ -109,6 +109,22 @@ file owned by `10001:10001` with mode `0600`, and its fingerprint must be
 `/var/lib/trading-bot/evidence/ledger.db`. Both it and the private content-addressed reports under
 `/var/lib/trading-bot/evidence/research` remain inside the encrypted evidence-archive backup scope.
 
+To refresh schema-only capability evidence without invoking any provider operation, create a
+service-owned artifact directory that is not writable by group or other users and run:
+
+```shell
+mkdir -p "$HOME/.local/share/robinhood-trading-bot/evidence/capabilities"
+chmod 700 "$HOME/.local/share/robinhood-trading-bot/evidence/capabilities"
+PYTHONPATH=src uv run trader capture-mcp-capabilities \
+  --oauth-store "$HOME/.local/share/robinhood-trading-bot/oauth" \
+  --output \
+    "$HOME/.local/share/robinhood-trading-bot/evidence/capabilities/tools-list.json"
+```
+
+This uses OAuth for the transport but exposes only `tools/list` to the capture writer. The output
+is a sanitized mode-`0600` schema artifact with no account data. It remains schema-declaration
+evidence: the presence of write-tool schemas does not review, implement, or authorize a write.
+
 After the credential installation has been reviewed and completed, an administrator with Docker
 access may run exactly one profile-gated probe from the deployment directory:
 

@@ -16,6 +16,10 @@ from trading_bot.cli.status import locked_status
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.domain import ExecutionMode
 from trading_bot.market_data import content_hash
+from trading_bot.runtime.capability_capture import (
+    AuthenticatedCapabilityCaptureError,
+    run_authenticated_schema_capture,
+)
 from trading_bot.runtime.connected_research import (
     ConnectedResearchNotReady,
     run_connected_equity_research_once,
@@ -162,6 +166,24 @@ def mcp_oauth_bootstrap(
         typer.echo("oauth_bootstrap_failed", err=True)
         raise typer.Exit(2) from None
     typer.echo(json.dumps(output, sort_keys=True, separators=(",", ":")))
+
+
+@app.command("capture-mcp-capabilities")
+def capture_mcp_capabilities(
+    oauth_store: Annotated[Path, typer.Option()],
+    output: Annotated[Path, typer.Option()],
+) -> None:
+    """Capture sanitized authenticated tools/list declarations without invoking tools."""
+
+    try:
+        summary = run_authenticated_schema_capture(
+            oauth_store=oauth_store,
+            output=output,
+        )
+    except AuthenticatedCapabilityCaptureError:
+        typer.echo("authenticated_capability_capture_failed", err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(summary, sort_keys=True, separators=(",", ":")))
 
 
 @app.command("research-equities")

@@ -90,6 +90,38 @@ class PaperApplication:
         self._strategy_version = strategy_version
         self._code_hash = code_hash
 
+    @property
+    def strategy_version(self) -> str | None:
+        """Return the exact strategy version bound at composition time."""
+
+        return self._strategy_version
+
+    @property
+    def code_hash(self) -> CodeHash | None:
+        """Return the exact code identity bound at composition time."""
+
+        return self._code_hash
+
+    @property
+    def strategy_eligibility_hash(self) -> str | None:
+        """Return the accepted research evidence identity, when present."""
+
+        return None if self._eligibility is None else self._eligibility.evidence_hash
+
+    def cycle_id(self, request: DecisionCycleRequest) -> str:
+        """Derive the restart key before executing any simulated economic effect."""
+
+        return str(
+            content_hash(
+                {
+                    "code_hash": self._code_hash,
+                    "request": request,
+                    "strategy_eligibility_hash": self.strategy_eligibility_hash,
+                    "strategy_version": self._strategy_version,
+                }
+            )
+        )
+
     @staticmethod
     def _outcomes_complete(result: DecisionCycleResult) -> bool:
         if len(result.order_outcomes) != len(result.intents):
@@ -106,15 +138,8 @@ class PaperApplication:
         )
 
     async def run_cycle(self, request: DecisionCycleRequest) -> PaperCycleEvidence:
-        eligibility_hash = None if self._eligibility is None else self._eligibility.evidence_hash
-        cycle_id = content_hash(
-            {
-                "code_hash": self._code_hash,
-                "request": request,
-                "strategy_eligibility_hash": eligibility_hash,
-                "strategy_version": self._strategy_version,
-            }
-        )
+        eligibility_hash = self.strategy_eligibility_hash
+        cycle_id = self.cycle_id(request)
         async with self._store.claim(cycle_id):
             existing = await self._store.get(cycle_id)
             if existing is not None:

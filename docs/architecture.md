@@ -139,6 +139,13 @@ to the same account and instrument, and position rows can be bound to the accoun
 portfolio snapshot they comprise. Live authorization rows are limited to micro-live and
 normal-live stages.
 
+Paper promotion recording adds a non-waiting filesystem claim around one deterministic cycle ID.
+Inside that claim it checks the append-only observation ledger before any simulated economic
+effect, runs only the broker-incapable paper composition, derives the result-dependent eligibility
+facts, and appends the observation. A restart that finds the exact durable observation returns it
+without re-running the cycle. This recorder is infrastructure only until a concrete CLI or worker
+supplies an accepted strategy and validated non-fixture data.
+
 The next migration makes audit events, order transitions, risk evaluations, configuration
 versions, live authorizations, kill-switch events, and reconciliation events insert-only at
 the database boundary. Each table rejects updates and deletes and validates inserts so

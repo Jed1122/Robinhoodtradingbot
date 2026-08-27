@@ -41,7 +41,12 @@ The probe writes append-only, identity-bound promotion evidence to the ledger. T
 includes an Alembic-owned SQLite
 WAL ledger foundation with canonical Decimal and UTC storage, no-affinity safety-scalar
 checks, and database-bound provenance across authorization and economic-effect records. It
-does not yet implement a live trading application. A single-use async unit of work currently
+also includes a cross-process-locked paper promotion recorder that checks the durable observation
+ledger before simulated execution and derives eligibility only from an exact accepted strategy,
+completed terminal outcomes, validated data/runtime inputs, and matching account/config/code
+identity. The public paper CLI does not yet compose that recorder, so this infrastructure creates
+no qualifying observations by itself. The repository does not yet implement a live trading
+application. A single-use async unit of work currently
 supports lossless order-intent, risk-evaluation, review, lifecycle-transition, submission-attempt,
 broker-order, and secret-screened audit writes. Repository commands for fills, data quality,
 authorization, reconciliation, and evidence workflows remain deliberately absent until their
@@ -140,7 +145,20 @@ PYTHONPATH=src uv run trader mcp-oauth-bootstrap \
 
 mkdir -p "$HOME/.local/share/robinhood-trading-bot/evidence"
 chmod 700 "$HOME/.local/share/robinhood-trading-bot/evidence"
+
+mkdir -p "$HOME/.local/share/robinhood-trading-bot/evidence/capabilities"
+chmod 700 "$HOME/.local/share/robinhood-trading-bot/evidence/capabilities"
+PYTHONPATH=src uv run trader capture-mcp-capabilities \
+  --oauth-store "$HOME/.local/share/robinhood-trading-bot/oauth" \
+  --output \
+    "$HOME/.local/share/robinhood-trading-bot/evidence/capabilities/tools-list.json"
 ```
+
+The capability command authenticates with the existing encrypted OAuth store and captures every
+declared `tools/list` schema through a session that has no `call_tool` method. It invokes no
+provider tool, writes a sanitized mode-`0600` artifact, and emits only a count and hashes. Listing
+a review, placement, or cancellation schema is declaration evidence only; it neither constructs
+nor authorizes the corresponding operation.
 
 Then run one write-incapable connected probe with an immutable local image digest:
 

@@ -5,10 +5,81 @@ from typing import Any
 
 from typer.testing import CliRunner
 
+from trading_bot.runtime.capability_capture import AuthenticatedCapabilityCaptureError
 from trading_bot.runtime.connected_research import ConnectedResearchNotReady
 from trading_bot.runtime.connected_shadow import ConnectedShadowNotReady
 
 main = import_module("trading_bot.cli.main")
+
+
+def test_capability_capture_command_delegates_to_schema_only_runtime(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    observed: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> dict[str, object]:
+        observed.update(kwargs)
+        return {
+            "artifact_sha256": "a" * 64,
+            "method": "tools/list",
+            "status": "authenticated_schema_capture_complete",
+            "tool_count": 12,
+            "tools_invoked": False,
+            "transport_authenticated": True,
+        }
+
+    monkeypatch.setattr(main, "run_authenticated_schema_capture", capture, raising=False)
+    result = CliRunner().invoke(
+        main.app,
+        [
+            "capture-mcp-capabilities",
+            "--oauth-store",
+            str(tmp_path / "oauth"),
+            "--output",
+            str(tmp_path / "evidence" / "tools.json"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "artifact_sha256": "a" * 64,
+        "method": "tools/list",
+        "status": "authenticated_schema_capture_complete",
+        "tool_count": 12,
+        "tools_invoked": False,
+        "transport_authenticated": True,
+    }
+    assert observed == {
+        "oauth_store": tmp_path / "oauth",
+        "output": tmp_path / "evidence" / "tools.json",
+    }
+    assert str(tmp_path) not in result.stdout
+
+
+def test_capability_capture_failure_emits_only_stable_status(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    def fail(**kwargs: object) -> dict[str, object]:
+        del kwargs
+        raise AuthenticatedCapabilityCaptureError("sensitive provider detail")
+
+    monkeypatch.setattr(main, "run_authenticated_schema_capture", fail, raising=False)
+    result = CliRunner().invoke(
+        main.app,
+        [
+            "capture-mcp-capabilities",
+            "--oauth-store",
+            str(tmp_path / "oauth"),
+            "--output",
+            str(tmp_path / "evidence" / "tools.json"),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert result.output == "authenticated_capability_capture_failed\n"
+    assert "sensitive" not in result.output
 
 
 def test_shadow_command_delegates_to_sanitized_runtime_boundary(

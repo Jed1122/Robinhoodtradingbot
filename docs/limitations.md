@@ -48,10 +48,12 @@
 - SQLite triggers and content hashes make promotion records append-only and tamper-evident within
   the application/database boundary; they are not signed proof against a database owner or host
   compromise.
-- The paper-cycle store is in-memory and has only single-process overlap protection. Durable
-  cross-process claiming, durable paper promotion observations, verified build-to-image identity,
-  a complete broker-connected strategy cycle, and a recurring evidence scheduler are not
-  implemented.
+- The generic paper-cycle result store is in-memory. A cross-process-locked wrapper can now avoid
+  re-execution after finding an exact durable paper promotion observation and can append a derived
+  observation after a completed simulated cycle. The public paper CLI does not yet compose that
+  wrapper with an accepted strategy, validated current data, or a recurring worker. Verified
+  build-to-image identity, a complete broker-connected strategy cycle, and a recurring evidence
+  scheduler are still not implemented.
 - Single-host filesystem exclusion does not support multi-host active/active deployment. The
   Terraform and cloud-init templates are not a validated end-to-end provisioning path; manual hosts
   still require operator-supplied immutable images and independent hardening.

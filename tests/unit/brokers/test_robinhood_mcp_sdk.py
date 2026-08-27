@@ -10,6 +10,7 @@ from mcp import types
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
 from pydantic import AnyUrl
 
+from trading_bot.brokers import robinhood_mcp_sdk as sdk_module
 from trading_bot.brokers.robinhood_mcp_schema_gate import JsonValue
 from trading_bot.brokers.robinhood_mcp_sdk import (
     ROBINHOOD_MCP_OAUTH_SCOPE,
@@ -36,6 +37,27 @@ class LocalClientSession:
     ) -> types.CallToolResult:
         self.calls.append((name, dict(arguments)))
         return self.result
+
+
+class LocalSchemaClientSession:
+    def __init__(self, result: types.ListToolsResult) -> None:
+        self.result = result
+        self.list_calls = 0
+        self.tool_calls = 0
+
+    async def list_tools(
+        self,
+        *,
+        params: types.PaginatedRequestParams | None = None,
+    ) -> types.ListToolsResult:
+        assert params is None
+        self.list_calls += 1
+        return self.result
+
+    async def call_tool(self, name: str, arguments: object) -> types.CallToolResult:
+        del name, arguments
+        self.tool_calls += 1
+        raise AssertionError("schema discovery must never invoke a provider tool")
 
 
 def _private_mode(path: Path) -> int:
@@ -319,6 +341,32 @@ def test_oauth_store_rejects_symlinked_directory(tmp_path: Path) -> None:
 
     with pytest.raises(OAuthStoreError, match="service-owned directory"):
         initialize_private_oauth_store(linked)
+
+
+@pytest.mark.asyncio
+async def test_schema_only_session_lists_all_declarations_without_call_tool_authority() -> None:
+    declared = types.ListToolsResult(
+        tools=[
+            types.Tool(name="get_accounts", inputSchema={"type": "object"}),
+            types.Tool(name="review_equity_order", inputSchema={"type": "object"}),
+            types.Tool(name="place_equity_order", inputSchema={"type": "object"}),
+            types.Tool(name="cancel_equity_order", inputSchema={"type": "object"}),
+        ]
+    )
+    sdk_session = LocalSchemaClientSession(declared)
+
+    session = sdk_module.SchemaOnlyMcpClientSession(sdk_session)  # type: ignore[arg-type]
+    result = await session.list_tools()
+
+    assert [item.name for item in result.tools] == [
+        "get_accounts",
+        "review_equity_order",
+        "place_equity_order",
+        "cancel_equity_order",
+    ]
+    assert sdk_session.list_calls == 1
+    assert sdk_session.tool_calls == 0
+    assert not hasattr(session, "call_tool")
 
 
 @pytest.mark.asyncio

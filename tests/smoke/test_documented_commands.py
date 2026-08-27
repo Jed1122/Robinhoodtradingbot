@@ -4,6 +4,7 @@ from pathlib import Path
 def test_documented_commands_exist() -> None:
     readme = Path("README.md").read_text()
     assert "uv run trader mcp-oauth-bootstrap" in readme
+    assert "uv run trader capture-mcp-capabilities" in readme
     assert "TRADING_BOT_IMAGE_DIGEST=sha256:<64-lowercase-hex-image-id>" in readme
     assert "uv run trader shadow" in readme
     assert "make shadow-smoke" in readme

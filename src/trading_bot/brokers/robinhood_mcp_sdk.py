@@ -340,6 +340,29 @@ def _as_json(value: object) -> JsonValue:
     raise McpSdkConnectionError("MCP value is outside the reviewed JSON representation")
 
 
+class SchemaOnlyMcpClientSession:
+    """Expose only complete tools/list discovery from an initialized SDK session."""
+
+    __slots__ = ("__list_tools",)
+
+    def __init__(self, session: ClientSession) -> None:
+        self.__list_tools = session.list_tools
+
+    async def list_tools(
+        self,
+        cursor: str | None = None,
+        *,
+        params: types.PaginatedRequestParams | None = None,
+    ) -> types.ListToolsResult:
+        if cursor is not None:
+            if params is not None:
+                raise ValueError("tools/list cursor must use exactly one argument form")
+            params = types.PaginatedRequestParams(cursor=cursor)
+        if params is None:
+            return await self.__list_tools()
+        return await self.__list_tools(params=params)
+
+
 class ReadOnlyMcpClientSession(McpToolSession):
     """Narrow adapter that rejects every non-read tool before the SDK call."""
 
@@ -559,6 +582,7 @@ class RobinhoodMcpSdkConnection:
         self._timeout_seconds = timeout_seconds
         self._stack: AsyncExitStack | None = None
         self._read_only: ReadOnlyMcpClientSession | None = None
+        self._schema_only: SchemaOnlyMcpClientSession | None = None
 
     async def __aenter__(self) -> Self:
         if self._stack is not None:
@@ -612,6 +636,7 @@ class RobinhoodMcpSdkConnection:
             )
             await session.initialize()
             self._read_only = ReadOnlyMcpClientSession(session)
+            self._schema_only = SchemaOnlyMcpClientSession(session)
         except BaseException:
             await stack.aclose()
             self._stack = None
@@ -628,6 +653,7 @@ class RobinhoodMcpSdkConnection:
         stack = self._stack
         self._stack = None
         self._read_only = None
+        self._schema_only = None
         if stack is not None:
             await stack.aclose()
 
@@ -636,6 +662,54 @@ class RobinhoodMcpSdkConnection:
         if self._read_only is None:
             raise RuntimeError("MCP connection is not initialized")
         return self._read_only
+
+    @property
+    def schema_session(self) -> SchemaOnlyMcpClientSession:
+        if self._schema_only is None:
+            raise RuntimeError("MCP connection is not initialized")
+        return self._schema_only
+
+
+class RobinhoodMcpSchemaConnection:
+    """OAuth connection exposing tools/list without any tool invocation method."""
+
+    __slots__ = ("__connection", "__session")
+
+    def __init__(
+        self,
+        *,
+        oauth_store_dir: str | Path,
+        endpoint: str = OFFICIAL_MCP_ENDPOINT,
+        callback: LoopbackOAuthCallback | None = None,
+        timeout_seconds: float = 30.0,
+    ) -> None:
+        self.__connection = RobinhoodMcpSdkConnection(
+            oauth_store_dir=oauth_store_dir,
+            endpoint=endpoint,
+            callback=callback,
+            timeout_seconds=timeout_seconds,
+        )
+        self.__session: SchemaOnlyMcpClientSession | None = None
+
+    async def __aenter__(self) -> Self:
+        connection = await self.__connection.__aenter__()
+        self.__session = connection.schema_session
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.__session = None
+        await self.__connection.__aexit__(exc_type, exc, traceback)
+
+    @property
+    def session(self) -> SchemaOnlyMcpClientSession:
+        if self.__session is None:
+            raise RuntimeError("MCP connection is not initialized")
+        return self.__session
 
 
 async def bootstrap_oauth(
@@ -669,7 +743,9 @@ __all__ = [
     "OAuthStoreError",
     "PinnedScopeOAuthClientProvider",
     "ReadOnlyMcpClientSession",
+    "RobinhoodMcpSchemaConnection",
     "RobinhoodMcpSdkConnection",
+    "SchemaOnlyMcpClientSession",
     "bootstrap_oauth",
     "initialize_private_oauth_store",
 ]
