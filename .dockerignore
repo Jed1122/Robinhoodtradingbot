@@ -2,3 +2,11 @@
 .venv
 .env*
 **/__pycache__
+**/.mypy_cache
+.pytest_cache
+.ruff_cache
+.hypothesis
+.coverage
+htmlcov
+dist
+.superpowers
