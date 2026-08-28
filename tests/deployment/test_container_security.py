@@ -9,19 +9,20 @@ def test_container_is_nonroot_and_paused() -> None:
     assert '"serve"' in text
 
 
-def test_docker_context_excludes_local_work_products() -> None:
-    ignored = set(Path(".dockerignore").read_text().splitlines())
+def test_docker_context_is_an_explicit_release_input_allowlist() -> None:
+    patterns = Path(".dockerignore").read_text().splitlines()
 
-    assert {
-        ".git",
-        ".venv",
+    assert patterns == [
+        "**",
+        "!pyproject.toml",
+        "!uv.lock",
+        "!alembic.ini",
+        "!migrations",
+        "!migrations/**",
+        "!src",
+        "!src/**",
+        "!configs",
+        "!configs/**",
         "**/__pycache__",
         "**/.mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".hypothesis",
-        ".coverage",
-        "htmlcov",
-        "dist",
-        ".superpowers",
-    } <= ignored
+    ]
