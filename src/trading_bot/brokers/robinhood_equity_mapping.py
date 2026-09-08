@@ -33,7 +33,7 @@ from trading_bot.domain import (
     parse_decimal,
 )
 
-AUTHENTICATED_SHAPE_SHA256 = "27b009a26d590d74a12eed0e933ddb302ce623f06f44fc05270992e17df8825f"
+AUTHENTICATED_SHAPE_SHA256 = "5bd8d7f9f6868c8dd436c752e7879741d42915284dbbb85a011f16334e1d7227"
 AUTHENTICATED_SHAPE_PATH = (
     Path(__file__).parent / "schema_snapshots/robinhood_equity_mcp.authenticated_shapes.json"
 )

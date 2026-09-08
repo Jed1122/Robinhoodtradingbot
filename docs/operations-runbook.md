@@ -122,7 +122,8 @@ PYTHONPATH=src uv run trader capture-mcp-capabilities \
 ```
 
 This uses OAuth for the transport but exposes only `tools/list` to the capture writer. The output
-is a sanitized mode-`0600` schema artifact with no account data. It remains schema-declaration
+is a sanitized mode-`0600` schema artifact with no account data. It retains structural JSON Schema
+fields but omits provider-controlled tool and schema descriptions. It remains schema-declaration
 evidence: the presence of write-tool schemas does not review, implement, or authorize a write.
 
 After the credential installation has been reviewed and completed, an administrator with Docker

@@ -24,6 +24,7 @@ class EquityAccountDto(StrictMcpModel):
     rhs_account_number: StrictStr
     state: StrictStr
     type: StrictStr
+    unsettled_funds: StrictStr | None = None
 
 
 class AccountsDataDto(StrictMcpModel):

@@ -65,6 +65,14 @@ def parsed_account(**overrides: object):
     return response.data.accounts[0]
 
 
+def test_account_schema_accepts_only_string_unsettled_funds() -> None:
+    parsed = parsed_account(unsettled_funds="0.00")
+
+    assert parsed.unsettled_funds == "0.00"
+    with pytest.raises(ValidationError):
+        parsed_account(unsettled_funds=0)
+
+
 def test_strict_account_and_portfolio_shapes_map_exact_cash_values() -> None:
     portfolio = PortfolioResultDto.model_validate(portfolio_payload())
 

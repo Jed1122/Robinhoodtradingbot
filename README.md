@@ -156,9 +156,11 @@ PYTHONPATH=src uv run trader capture-mcp-capabilities \
 
 The capability command authenticates with the existing encrypted OAuth store and captures every
 declared `tools/list` schema through a session that has no `call_tool` method. It invokes no
-provider tool, writes a sanitized mode-`0600` artifact, and emits only a count and hashes. Listing
-a review, placement, or cancellation schema is declaration evidence only; it neither constructs
-nor authorizes the corresponding operation.
+provider tool, writes a sanitized mode-`0600` artifact, and emits only a count and hashes. The
+artifact retains validation structure while omitting provider-controlled tool and schema
+descriptions, so prose cannot be mistaken for trusted contract evidence. Listing a
+review, placement, or cancellation schema is declaration evidence only; it neither constructs nor
+authorizes the corresponding operation.
 
 Then run one write-incapable connected probe with an immutable local image digest:
 

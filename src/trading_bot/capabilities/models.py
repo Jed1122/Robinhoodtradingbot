@@ -18,6 +18,10 @@ _ALLOWED_HTTPS_HOSTS = frozenset({"robinhood.com", "docs.robinhood.com"})
 _ALLOWED_MCP_HOST = "robinhood-trading"
 _HOST_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\Z")
 _PATH_SEGMENT = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,127})?\Z")
+_DECLARED_OPERATION = re.compile(
+    r"(?:cancel|create|exercise|get|mark|place|preview|review|run|search|update)"
+    r"(?:_[a-z0-9]+)*\Z"
+)
 
 
 class CapabilityValidationError(ValueError):
@@ -160,7 +164,8 @@ class CapabilityRecord:
 
     def __post_init__(self) -> None:
         _require_nonempty_string(self.provider, "provider", InvalidCapabilityRecord)
-        _require_nonempty_string(self.operation, "operation", InvalidCapabilityRecord)
+        if not _is_operation_identifier(self.operation):
+            raise InvalidCapabilityRecord("operation must be a bounded identifier")
         if type(self.asset_class) is not AssetClass:
             raise InvalidCapabilityRecord("asset_class must be an AssetClass")
         if type(self.operation_kind) is not OperationKind:
@@ -248,7 +253,7 @@ class CapabilityManifest:
 
     def find(self, *, provider: str, operation: str) -> CapabilityRecord:
         """Find an exact manifest key without fuzzy or prose-based inference."""
-        if not _is_nonempty_string(provider) or not _is_nonempty_string(operation):
+        if not _is_nonempty_string(provider) or not _is_operation_identifier(operation):
             raise CapabilityNotFoundError(provider, operation)
         validated = _rebuild_manifest(self)
         if validated is None:
@@ -391,6 +396,12 @@ def _path_is_valid(value: str) -> bool:
 def _is_nonempty_string(value: object) -> bool:
     return (
         type(value) is str and bool(value.strip()) and not text_contains_sensitive_material(value)
+    )
+
+
+def _is_operation_identifier(value: object) -> bool:
+    return _is_nonempty_string(value) or (
+        type(value) is str and _DECLARED_OPERATION.fullmatch(value) is not None
     )
 
 

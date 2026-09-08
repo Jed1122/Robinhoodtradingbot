@@ -35,6 +35,15 @@ def test_unobserved_position_and_order_rows_remain_explicitly_empty_only() -> No
     )
 
 
+def test_authenticated_account_shape_tracks_declared_unsettled_funds_string() -> None:
+    artifact = json.loads(AUTHENTICATED_SHAPE_PATH.read_text(encoding="utf-8"))
+    fields = artifact["tools"]["get_accounts"]["fields"]["data"]["fields"][
+        "accounts"
+    ]["items"][0]["fields"]
+
+    assert fields["unsettled_funds"] == {"type": "string", "nullable": False}
+
+
 def test_authenticated_shape_artifact_lives_with_provider_adapter_not_fixtures() -> None:
     expected_parent = Path("src/trading_bot/brokers/schema_snapshots").resolve()
     assert AUTHENTICATED_SHAPE_PATH.resolve().parent == expected_parent

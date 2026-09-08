@@ -79,7 +79,11 @@ def run_authenticated_schema_capture(
             async with RobinhoodMcpSchemaConnection(
                 oauth_store_dir=oauth_store,
             ) as connection:
-                snapshot = await write_tools_snapshot(connection.session, destination)
+                snapshot = await write_tools_snapshot(
+                    connection.session,
+                    destination,
+                    omit_descriptions=True,
+                )
             _validate_private_artifact_path(destination, require_file=True)
             artifact = destination.read_bytes()
             return {
