@@ -58,6 +58,9 @@ complete domain records exist.
 - Authenticated, value-free equity MCP response-shape evidence has been captured for the reviewed
   read surface. Runtime OAuth state is never committed to the repository and must be bootstrapped
   explicitly by the operator.
+- Sanitized `tools/list` evidence pins the exact review, placement, and cancellation schema hashes
+  and argument sets without invoking those operations. This does not satisfy authenticated write
+  review, construct an equity write adapter, or authorize a trade.
 - Prediction live execution is unsupported.
 - No live order has been placed by this implementation or its tests.
 - Offline `backtest`, `simulate`, and one-cycle `paper` CLI commands are implemented with

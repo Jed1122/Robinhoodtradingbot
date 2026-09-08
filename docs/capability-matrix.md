@@ -1,11 +1,17 @@
 # Robinhood capability baseline
 
-Checked again on 2026-07-21. In addition to official public documentation, this repository now
+Checked again on 2026-09-08. In addition to official public documentation, this repository now
 contains a sanitized, value-free artifact from authenticated calls to the seven reviewed equity
 read tools. It contains response structure and type information only—no account identifiers,
 balances, symbols, order values, tokens, or other provider values. Runtime OAuth state remains
 operator-controlled outside Git. A public endpoint URL alone is still neither authentication nor
 capability evidence.
+
+The same date's authenticated `tools/list` capture declares exact structural contracts for
+`review_equity_order`, `place_equity_order`, and `cancel_equity_order`. Local code pins each full
+input/output schema digest and its exact argument set. This is schema-declaration evidence only;
+none of those three operations was invoked, no authenticated write behavior has been reviewed,
+and no equity write adapter can be constructed.
 
 Robinhood exposes the sole official OAuth scope `internal`. The client pins that scope, but it is
 not a broker-enforced read-only grant; its bearer credential must be treated as trading-capable. A
@@ -28,8 +34,9 @@ provider evidence level shown below.
   `get_equity_historicals`. Positions and orders accept only authenticated empty collections;
   any nonempty collection or pagination cursor fails closed until row shapes are reviewed.
 - Locked externally: Crypto authenticated operations and every equity review, submission, and
-  cancellation operation. Local schema fixtures, authenticated reads, and mock HTTP do not unlock
-  a write path.
+  cancellation operation. Exact equity write declarations are pinned, but local schema fixtures,
+  authenticated reads, and mock HTTP do not provide authenticated-write-reviewed evidence or
+  unlock a write path.
 - Unsupported: prediction-order placement. The official public evidence records no
   programmatic placement interface, so positive placement evidence is prohibited.
 - Implemented locally: a broker-neutral, non-live execution service that persists preliminary
@@ -40,8 +47,9 @@ provider evidence level shown below.
   allowlist rejects write tools before the MCP SDK call, and the provider transport's separate
   allowlist contains only the seven reads above. These are local restrictions, not OAuth scope.
   Prediction live operations always raise `UnsupportedCapabilityError`.
-  Equity review, placement, and cancellation therefore have no adapter classes: write argument
-  and result fields are not guessed from public operation names.
+  Equity review, placement, and cancellation therefore have no adapter classes: the declaration
+  gate detects contract drift, but write arguments and result semantics are not guessed from
+  schema names alone.
 
 `documented_locked_external_pending` means the public operation is named, but required
 schema/behavioral evidence and implementation are absent. `unsupported_locked` is a
@@ -60,7 +68,7 @@ terminal negative record, not a lower positive evidence rank.
 | robinhood-crypto-v2 | `POST /api/v2/crypto/trading/orders/` | crypto | place | documented | documented_locked_external_pending |
 | robinhood-crypto-v2 | `POST /api/v2/crypto/trading/orders/{id}/cancel/` | crypto | cancel | documented | documented_locked_external_pending |
 | robinhood-prediction | `place_prediction_order` | prediction | place | unsupported | unsupported_locked |
-| robinhood-trading | `cancel_equity_order` | equity | cancel | documented | documented_locked_external_pending |
+| robinhood-trading | `cancel_equity_order` | equity | cancel | schema-declared | schema_declared_locked |
 | robinhood-trading | `get_accounts` | equity | read | authenticated-read-verified | implemented_read_only |
 | robinhood-trading | `get_equity_fundamentals` | equity | read | documented | documented_locked_external_pending |
 | robinhood-trading | `get_equity_historicals` | equity | read | authenticated-read-verified | implemented_read_only |
@@ -70,8 +78,8 @@ terminal negative record, not a lower positive evidence rank.
 | robinhood-trading | `get_equity_technical_indicators` | equity | read | documented | documented_locked_external_pending |
 | robinhood-trading | `get_equity_tradability` | equity | read | authenticated-read-verified | implemented_read_only |
 | robinhood-trading | `get_portfolio` | equity | read | authenticated-read-verified | implemented_read_only |
-| robinhood-trading | `place_equity_order` | equity | place | documented | documented_locked_external_pending |
-| robinhood-trading | `review_equity_order` | equity | review | documented | documented_locked_external_pending |
+| robinhood-trading | `place_equity_order` | equity | place | schema-declared | schema_declared_locked |
+| robinhood-trading | `review_equity_order` | equity | review | schema-declared | schema_declared_locked |
 
 The `implemented_read_only` and `implemented_empty_only` states describe this repository's local
 adapter behavior. They do not describe or reduce the authority of the OAuth bearer credential.
