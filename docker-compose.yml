@@ -105,3 +105,34 @@ services:
     restart: "no"
     healthcheck:
       disable: true
+  promotion-status:
+    profiles: [promotion-status]
+    image: ${TRADING_BOT_IMAGE:-trading-bot:local}
+    pull_policy: ${TRADING_BOT_PULL_POLICY:-missing}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    command:
+      - promotion-status
+      - --config
+      - /app/configs/micro_live.yaml
+      - --ledger
+      - /var/lib/trading-bot/evidence/ledger.db
+    environment:
+      LIVE_TRADING_ENABLED: "false"
+      PREDICTION_LIVE_ENABLED: "false"
+    volumes:
+      - type: bind
+        source: ${TRADING_BOT_EVIDENCE_DIR:-/var/lib/trading-bot/evidence}
+        target: /var/lib/trading-bot/evidence
+        read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
+    cpus: "0.25"
+    pids_limit: 64
+    init: true
+    restart: "no"
+    healthcheck:
+      disable: true

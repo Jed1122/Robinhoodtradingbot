@@ -201,6 +201,21 @@ paper configuration binding, and validated research assumptions are absent. Reco
 not start paper or shadow promotion clocks. Encrypted evidence backups include the ledger and these
 private reports; OAuth credentials remain outside that backup.
 
+After every evidence run has exited, inspect the ledger without mounting OAuth credentials or
+opening a network namespace:
+
+```shell
+make promotion-status
+```
+
+The command opens a mode-`0600` service-owned ledger as an immutable read-only snapshot, verifies
+database integrity, and groups observations by a sanitized hash of the exact account/provider/
+strategy/config/code identity. It reports configuration-derived paper, shadow, micro-live, and
+normal-live previews plus aggregate artifact counts. These are previews only:
+`live_activation_permitted` is always false, the command never writes an observation or promotion
+decision, and it never creates an authorization or lease. It fails closed if a SQLite journal or
+WAL is present so uncheckpointed evidence cannot be silently omitted.
+
 Crypto v2 reads use only `ROBINHOOD_CRYPTO_API_KEY_FILE` and
 `ROBINHOOD_CRYPTO_PRIVATE_KEY_FILE`; each referenced service-owned file must be mode `0600`.
 Raw credential environment variables are rejected. The OAuth directory must be service-owned mode

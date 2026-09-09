@@ -12,6 +12,10 @@ import uvicorn
 from trading_bot.cli.kill_switch import validate_clear
 from trading_bot.cli.live import validate_acknowledgement
 from trading_bot.cli.preflight import locked_preflight
+from trading_bot.cli.promotion_status import (
+    PromotionStatusUnavailable,
+    read_promotion_status,
+)
 from trading_bot.cli.status import locked_status
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.domain import ExecutionMode
@@ -340,6 +344,24 @@ def run_live(
 @app.command()
 def status() -> None:
     typer.echo(locked_status())
+
+
+@app.command("promotion-status")
+def promotion_status(
+    config: Annotated[Path, typer.Option()] = Path("configs/micro_live.yaml"),
+    ledger: Annotated[Path, typer.Option()] = Path("/var/lib/trading-bot/evidence/ledger.db"),
+) -> None:
+    """Preview identity-bound promotion progress without mutating evidence."""
+
+    try:
+        output = read_promotion_status(
+            loaded=_load_runtime_config(config),
+            ledger=ledger,
+        )
+    except PromotionStatusUnavailable:
+        typer.echo("promotion_status_unavailable", err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(output, sort_keys=True, separators=(",", ":")))
 
 
 @app.command("activate-kill-switch")

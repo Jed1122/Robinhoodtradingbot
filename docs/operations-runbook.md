@@ -139,7 +139,21 @@ Run the four-ETF connected comparison separately:
 docker compose --profile connected-research run --rm --no-deps connected-research
 ```
 
-The command must report `write_capabilities_present=false`, `live_enabled=false`, and
+Once all evidence writers have exited, produce a sanitized, non-authoritative promotion preview:
+
+```shell
+docker compose --profile promotion-status run --rm --no-deps promotion-status
+```
+
+This profile has no network, OAuth, credential, or writable evidence mount. It verifies the
+immutable ledger and reports each exact identity series separately, so evidence from different
+accounts, provider declarations, strategies, configurations, or code images is never combined.
+`live_activation_permitted=false` is invariant. A journal or WAL sidecar makes the command exit
+nonzero; stop the evidence writer and resolve/checkpoint its transaction rather than reading a
+potentially stale snapshot.
+
+The connected research command must report `write_capabilities_present=false`,
+`live_enabled=false`, and
 `promotion_eligible=false`. It also reports `code_identity_verified=false` until an independently
 verified executing-image attestation exists. It writes only a private content-addressed report below
 `/var/lib/trading-bot/evidence/research` plus an append-only accepted-or-rejected assessment in the

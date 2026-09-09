@@ -144,6 +144,36 @@ def test_connected_research_mounts_only_private_oauth_and_evidence_state() -> No
     assert evidence["type"] == "bind" and evidence.get("read_only") is not True
 
 
+def test_promotion_status_profile_is_networkless_and_can_only_read_evidence() -> None:
+    service = _compose()["services"]["promotion-status"]
+    command = service["command"]
+
+    assert service["profiles"] == ["promotion-status"]
+    assert service["restart"] == "no"
+    assert service["network_mode"] == "none"
+    assert command == [
+        "promotion-status",
+        "--config",
+        "/app/configs/micro_live.yaml",
+        "--ledger",
+        "/var/lib/trading-bot/evidence/ledger.db",
+    ]
+    evidence = _volume_for_target(service, "/var/lib/trading-bot/evidence")
+    assert evidence["type"] == "bind"
+    assert evidence["read_only"] is True
+    assert "oauth" not in str(service).lower()
+    assert not any("KEY" in name or "SECRET" in name for name in service["environment"])
+    assert service["environment"] == {
+        "LIVE_TRADING_ENABLED": "false",
+        "PREDICTION_LIVE_ENABLED": "false",
+    }
+    assert service["read_only"] is True
+    assert service["user"] == "10001:10001"
+    assert service["cap_drop"] == ["ALL"]
+    assert service["security_opt"] == ["no-new-privileges:true"]
+    assert "ports" not in service and "expose" not in service
+
+
 def test_shadow_image_contains_ledger_migration_assets() -> None:
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
 

@@ -1,4 +1,4 @@
-.PHONY: setup format lint typecheck test test-unit test-integration test-chaos security backtest simulate paper shadow shadow-smoke live-readiness live-preflight build deploy status logs backup restore-test
+.PHONY: setup format lint typecheck test test-unit test-integration test-chaos security backtest simulate paper shadow shadow-smoke promotion-status live-readiness live-preflight build deploy status logs backup restore-test
 
 # Keep src-layout commands self-contained even when an editable-install .pth file is unavailable.
 export PYTHONPATH := $(CURDIR)/src
@@ -45,6 +45,9 @@ shadow:
 
 shadow-smoke:
 	uv run python scripts/run_shadow_smoke.py --config configs/shadow.yaml
+
+promotion-status:
+	docker compose --profile promotion-status run --rm --no-deps promotion-status
 
 live-readiness:
 	uv run python scripts/live_readiness.py --config configs/micro_live.yaml --mode micro_live
