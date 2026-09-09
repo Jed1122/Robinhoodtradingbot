@@ -130,6 +130,9 @@ def shadow(
     ),
     ledger: Annotated[Path, typer.Option()] = Path("/var/lib/trading-bot/evidence/ledger.db"),
     image_digest: Annotated[str | None, typer.Option(envvar="TRADING_BOT_IMAGE_DIGEST")] = None,
+    image_attestation: Annotated[Path, typer.Option()] = Path(
+        "/run/trading-bot/runtime-image-attestation.json"
+    ),
     probe_symbol: Annotated[str | None, typer.Option()] = None,
     strategy_version: Annotated[str | None, typer.Option()] = None,
     research_evidence_hash: Annotated[str | None, typer.Option()] = None,
@@ -161,6 +164,7 @@ def shadow(
             account_fingerprint_file=account_fingerprint_file,
             ledger=ledger,
             image_digest=image_digest,
+            image_attestation=image_attestation,
             probe_symbol=probe_symbol,
             strategy_version=strategy_version,
             research_evidence_hash=research_evidence_hash,
@@ -224,6 +228,9 @@ def research_equities(
     image_digest: Annotated[
         str | None, typer.Option(envvar="TRADING_BOT_IMAGE_DIGEST")
     ] = None,
+    image_attestation: Annotated[Path, typer.Option()] = Path(
+        "/run/trading-bot/runtime-image-attestation.json"
+    ),
 ) -> None:
     """Record one authenticated, write-incapable ETF candidate comparison."""
 
@@ -241,6 +248,7 @@ def research_equities(
             ledger=ledger,
             artifact_dir=artifact_dir,
             image_digest=image_digest,
+            image_attestation=image_attestation,
         )
     except ConnectedResearchNotReady:
         typer.echo("connected_research_not_ready", err=True)

@@ -38,9 +38,13 @@ services:
       - /var/lib/trading-bot/oauth/account-fingerprint
       - --ledger
       - /var/lib/trading-bot/evidence/ledger.db
+      - --image-attestation
+      - /run/trading-bot/runtime-image-attestation.json
     environment:
       LIVE_TRADING_ENABLED: "false"
       PREDICTION_LIVE_ENABLED: "false"
+      TRADING_BOT__MONITORING__HOST: "0.0.0.0"
+      TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH: "true"
       TRADING_BOT_IMAGE_DIGEST: ${TRADING_BOT_IMAGE:-}
     volumes:
       - type: bind
@@ -52,6 +56,10 @@ services:
       - type: bind
         source: ${TRADING_BOT_ACCOUNT_FINGERPRINT_FILE:-/var/lib/trading-bot/oauth/account-fingerprint}
         target: /var/lib/trading-bot/oauth/account-fingerprint
+        read_only: true
+      - type: bind
+        source: ${TRADING_BOT_RUNTIME_ATTESTATION_FILE:-/var/lib/trading-bot/runtime-image-attestation.json}
+        target: /run/trading-bot/runtime-image-attestation.json
         read_only: true
     tmpfs: [/tmp]
     mem_limit: 768m
@@ -82,9 +90,13 @@ services:
       - /var/lib/trading-bot/evidence/ledger.db
       - --artifact-dir
       - /var/lib/trading-bot/evidence/research
+      - --image-attestation
+      - /run/trading-bot/runtime-image-attestation.json
     environment:
       LIVE_TRADING_ENABLED: "false"
       PREDICTION_LIVE_ENABLED: "false"
+      TRADING_BOT__MONITORING__HOST: "0.0.0.0"
+      TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH: "true"
       TRADING_BOT_IMAGE_DIGEST: ${TRADING_BOT_IMAGE:-}
     volumes:
       - type: bind
@@ -96,6 +108,10 @@ services:
       - type: bind
         source: ${TRADING_BOT_ACCOUNT_FINGERPRINT_FILE:-/var/lib/trading-bot/oauth/account-fingerprint}
         target: /var/lib/trading-bot/oauth/account-fingerprint
+        read_only: true
+      - type: bind
+        source: ${TRADING_BOT_RUNTIME_ATTESTATION_FILE:-/var/lib/trading-bot/runtime-image-attestation.json}
+        target: /run/trading-bot/runtime-image-attestation.json
         read_only: true
     tmpfs: [/tmp]
     mem_limit: 768m

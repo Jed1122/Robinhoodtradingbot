@@ -125,6 +125,9 @@ def test_shadow_command_delegates_to_sanitized_runtime_boundary(
     assert observed["strategy_version"] is None
     assert observed["research_evidence_hash"] is None
     assert observed["image_digest"] == f"sha256:{'a' * 64}"
+    assert observed["image_attestation"] == Path(
+        "/run/trading-bot/runtime-image-attestation.json"
+    )
     assert observed["loaded"].config.crypto.enabled is False
 
 
@@ -265,6 +268,9 @@ def test_research_command_delegates_to_sanitized_read_only_runtime(
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["promotion_eligible"] is False
     assert observed["image_digest"] == f"sha256:{'a' * 64}"
+    assert observed["image_attestation"] == Path(
+        "/run/trading-bot/runtime-image-attestation.json"
+    )
     assert observed["loaded"].config.runtime.start_paused  # type: ignore[union-attr]
     assert str(tmp_path) not in result.stdout
 

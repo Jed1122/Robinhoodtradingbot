@@ -24,10 +24,11 @@ deterministic Monte Carlo opportunity resampling.
 The connected report binds the claimed image-derived code hash, exact resolved shadow configuration
 and safety envelope, complete data-manifest preimage, cleaned bar snapshot, request interval,
 provider declaration hash, raw-response hashes, parameter identities, stressed metrics,
-walk-forward results, benchmark result, and seeded Monte Carlo result. The current runtime cannot
-independently attest that the executing image matches the caller-supplied image digest, so it marks
-the code identity unverified. It does not produce feature, decision, order, fill, or execution-result
-records; use purged validation; retain raw provider response bodies; or calculate
+walk-forward results, benchmark result, and seeded Monte Carlo result. The deployed profile now
+requires a root-owned release artifact that binds the executing image ID, resolved configuration,
+Compose hash, and release key before it marks code identity verified. That identity evidence does
+not validate the research. The comparison does not produce feature, decision, order, fill, or
+execution-result records; use purged validation; retain raw provider response bodies; or calculate
 probability-of-backtest-overfitting. Those omissions are explicit blockers, not implied evidence.
 Research eligibility cannot activate paper, shadow, or live modes.
 

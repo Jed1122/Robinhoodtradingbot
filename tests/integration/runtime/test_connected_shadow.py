@@ -248,6 +248,7 @@ async def test_exact_persisted_attestation_binds_connected_shadow_identity(
                 evidence_hash,
             ),
             research_promotion_enabled=True,
+            runtime_scope_valid=True,
         ),
         oauth_store_dir=oauth,
         observations=store,  # type: ignore[arg-type]
@@ -262,8 +263,8 @@ async def test_exact_persisted_attestation_binds_connected_shadow_identity(
     assert result.observation.reason_codes == (
         "live_data_invalid",
         "outcomes_incomplete",
-        "runtime_scope_invalid",
     )
+    assert result.observation.runtime_scope_valid
     assert not result.observation.eligible
     assert not any(name.startswith(("review_", "place_", "cancel_")) for name, _ in session.calls)
 
@@ -412,9 +413,39 @@ def test_real_shadow_config_refuses_pinned_research_before_file_or_oauth_access(
             account_fingerprint_file=tmp_path / "missing-fingerprint",
             ledger=tmp_path / "missing-evidence" / "ledger.db",
             image_digest=f"sha256:{'a' * 64}",
+            image_attestation=tmp_path / "missing-attestation.json",
             probe_symbol=None,
             strategy_version="equity_momentum-v1",
             research_evidence_hash="b" * 64,
+        )
+
+
+def test_connected_shadow_requires_image_attestation_before_private_state(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    loaded = load_config(
+        base_path=CONFIGS / "base.yaml",
+        mode_path=CONFIGS / "shadow.yaml",
+        safety_path=CONFIGS / "safety-envelope.yaml",
+        environ={},
+    )
+
+    def unreached(*args: object, **kwargs: object) -> str:
+        del args, kwargs
+        raise AssertionError("private state must remain unreachable")
+
+    monkeypatch.setattr(connected_shadow, "read_account_fingerprint", unreached)
+    with pytest.raises(ConnectedShadowNotReady, match="failed closed"):
+        connected_shadow.run_connected_shadow_once(
+            loaded=loaded,
+            repository_root=ROOT,
+            oauth_store=tmp_path / "missing-oauth",
+            account_fingerprint_file=tmp_path / "missing-fingerprint",
+            ledger=tmp_path / "missing-evidence" / "ledger.db",
+            image_digest=f"sha256:{'a' * 64}",
+            image_attestation=tmp_path / "missing-attestation.json",
+            probe_symbol=None,
         )
 
 

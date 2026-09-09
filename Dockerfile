@@ -4,7 +4,9 @@ WORKDIR /build
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv==0.11.28 && uv sync --frozen --no-dev --no-install-project
 FROM ${PYTHON_BASE_IMAGE} AS runtime
-RUN groupadd --system --gid 10001 tradingbot && useradd --system --uid 10001 --gid tradingbot tradingbot
+RUN groupadd --system --gid 10001 tradingbot \
+    && useradd --system --uid 10001 --gid tradingbot tradingbot \
+    && install -d -m 0755 -o root -g root /run/trading-bot
 WORKDIR /app
 COPY --from=builder /build/.venv /app/.venv
 COPY alembic.ini /app/alembic.ini

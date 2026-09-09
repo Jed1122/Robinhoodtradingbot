@@ -24,8 +24,11 @@ probe and promotion-decision evidence. An SDK-session allowlist and a separate t
 contain no review, cancel, or place operation, and no provider write adapter exists. This incapability
 is enforced locally, not by OAuth: the sole official `internal` scope yields a bearer credential
 that must be treated as trading-capable. A stolen token or compromised host could trade in the
-Agentic account. The default process remains the paused loopback-published monitoring service and
-has no host volumes or credential access.
+Agentic account. Connected runs require a canonical root-owned, read-only release attestation that
+binds the immutable image ID, resolved configuration hash, Compose hash, and release key. The deploy
+helper creates it only after the default paused service passes image, configuration, health,
+readiness-denial, and live-disabled checks. The default process remains the paused
+loopback-published monitoring service and has no host volumes or credential access.
 Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 

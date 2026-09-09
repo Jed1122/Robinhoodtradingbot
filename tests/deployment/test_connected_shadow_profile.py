@@ -51,6 +51,9 @@ def test_connected_shadow_runs_only_the_one_shot_read_only_command() -> None:
     assert command[0] == "shadow"
     assert "--once" in command
     assert _command_value(command, "--config") == "/app/configs/shadow.yaml"
+    assert _command_value(command, "--image-attestation") == (
+        "/run/trading-bot/runtime-image-attestation.json"
+    )
     assert "mcp-oauth-bootstrap" not in command
     assert "enable-live" not in command
     assert "run" not in command
@@ -74,6 +77,7 @@ def test_connected_shadow_mounts_only_required_mutable_state() -> None:
     fingerprint_target = _command_value(command, "--account-fingerprint-file")
     ledger_path = _command_value(command, "--ledger")
     ledger_target = str(Path(ledger_path).parent)
+    attestation_target = _command_value(command, "--image-attestation")
 
     assert ledger_path == "/var/lib/trading-bot/evidence/ledger.db"
     assert ledger_path in Path("infra/digitalocean/backup.sh").read_text(encoding="utf-8")
@@ -81,10 +85,14 @@ def test_connected_shadow_mounts_only_required_mutable_state() -> None:
     oauth = _volume_for_target(service, oauth_target)
     fingerprint = _volume_for_target(service, fingerprint_target)
     ledger = _volume_for_target(service, ledger_target)
+    attestation = _volume_for_target(service, attestation_target)
 
     assert oauth["type"] == "bind" and oauth.get("read_only") is not True
     assert fingerprint["type"] == "bind" and fingerprint["read_only"] is True
     assert ledger["type"] == "bind" and ledger.get("read_only") is not True
+    assert attestation["type"] == "bind" and attestation["read_only"] is True
+    assert attestation["source"].startswith("${TRADING_BOT_RUNTIME_ATTESTATION_FILE:-")
+    assert "?" not in attestation["source"]
 
     for volume in (oauth, fingerprint):
         source = volume.get("source")
@@ -105,6 +113,22 @@ def test_connected_shadow_preserves_container_hardening() -> None:
     assert service["init"] is True
 
 
+def test_connected_profiles_share_the_attested_release_configuration() -> None:
+    services = _compose()["services"]
+    paused_environment = services["trading-bot"]["environment"]
+    identity_environment_names = (
+        "LIVE_TRADING_ENABLED",
+        "PREDICTION_LIVE_ENABLED",
+        "TRADING_BOT__MONITORING__HOST",
+        "TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH",
+    )
+
+    for profile in ("connected-shadow", "connected-research"):
+        environment = services[profile]["environment"]
+        for name in identity_environment_names:
+            assert environment[name] == paused_environment[name]
+
+
 def test_connected_research_is_explicit_read_only_and_never_changes_default() -> None:
     service = _compose()["services"]["connected-research"]
     command = service["command"]
@@ -114,6 +138,9 @@ def test_connected_research_is_explicit_read_only_and_never_changes_default() ->
     assert command[0] == "research-equities"
     assert "--once" in command
     assert _command_value(command, "--config") == "/app/configs/shadow.yaml"
+    assert _command_value(command, "--image-attestation") == (
+        "/run/trading-bot/runtime-image-attestation.json"
+    )
     assert _command_value(command, "--artifact-dir").startswith(
         "/var/lib/trading-bot/evidence/"
     )
@@ -135,13 +162,17 @@ def test_connected_research_mounts_only_private_oauth_and_evidence_state() -> No
     oauth_target = _command_value(command, "--oauth-store")
     fingerprint_target = _command_value(command, "--account-fingerprint-file")
     ledger_target = str(Path(_command_value(command, "--ledger")).parent)
+    attestation_target = _command_value(command, "--image-attestation")
 
     oauth = _volume_for_target(service, oauth_target)
     fingerprint = _volume_for_target(service, fingerprint_target)
     evidence = _volume_for_target(service, ledger_target)
+    attestation = _volume_for_target(service, attestation_target)
     assert oauth["type"] == "bind" and oauth.get("read_only") is not True
     assert fingerprint["read_only"] is True
     assert evidence["type"] == "bind" and evidence.get("read_only") is not True
+    assert attestation["type"] == "bind" and attestation["read_only"] is True
+    assert attestation["source"].startswith("${TRADING_BOT_RUNTIME_ATTESTATION_FILE:-")
 
 
 def test_promotion_status_profile_is_networkless_and_can_only_read_evidence() -> None:
@@ -179,6 +210,7 @@ def test_shadow_image_contains_ledger_migration_assets() -> None:
 
     assert "COPY alembic.ini /app/alembic.ini" in dockerfile
     assert "COPY migrations /app/migrations" in dockerfile
+    assert "install -d -m 0755 -o root -g root /run/trading-bot" in dockerfile
 
 
 def test_connected_shadow_profile_explicitly_disables_crypto() -> None:

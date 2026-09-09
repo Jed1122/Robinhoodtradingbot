@@ -37,12 +37,15 @@ from trading_bot.brokers.robinhood_mcp_transport import (
     RobinhoodMcpTransport,
 )
 from trading_bot.clock import Clock, SystemClock
-from trading_bot.code_identity import InvalidImageDigest, deployed_image_code_hash
+from trading_bot.code_identity import (
+    InvalidImageDigest,
+    deployed_image_code_hash,
+    verify_deployed_image_attestation,
+)
 from trading_bot.config import LoadedConfig
 from trading_bot.domain import (
     AssetClass,
     BarInterval,
-    CodeHash,
     ConfigHash,
     ExecutionMode,
     InstrumentId,
@@ -108,6 +111,7 @@ class ConnectedShadowProbeConfig:
     probe_instrument: InstrumentId | None = None
     strategy_eligibility: PersistedStrategyEligibility | None = None
     research_promotion_enabled: bool = False
+    runtime_scope_valid: bool = False
 
     def __post_init__(self) -> None:
         for name in ("expected_account_fingerprint", "config_hash", "code_hash"):
@@ -124,8 +128,9 @@ class ConnectedShadowProbeConfig:
             if getattr(self, name) <= timedelta(0):
                 raise ValueError(f"{name} must be positive")
         eligibility = self.strategy_eligibility
-        if type(self.research_promotion_enabled) is not bool:
-            raise TypeError("research_promotion_enabled must be an exact bool")
+        for name in ("research_promotion_enabled", "runtime_scope_valid"):
+            if type(getattr(self, name)) is not bool:
+                raise TypeError(f"{name} must be an exact bool")
         if eligibility is not None and (
             not self.research_promotion_enabled
             or not eligibility.attestation.eligible
@@ -383,7 +388,7 @@ class ConnectedShadowProbe:
             outcomes_complete=False,
             reconciliation_clean=zero_state_clean,
             fixture_data=False,
-            runtime_scope_valid=False,
+            runtime_scope_valid=self._config.runtime_scope_valid,
             order_state_known=not open_orders and not recent_orders,
         )
         persisted = await self._observations.append(observation)
@@ -404,6 +409,7 @@ def run_connected_shadow_once(
     account_fingerprint_file: str | Path,
     ledger: str | Path,
     image_digest: str,
+    image_attestation: str | Path,
     probe_symbol: str | None,
     strategy_version: str | None = None,
     research_evidence_hash: str | None = None,
@@ -437,9 +443,17 @@ def run_connected_shadow_once(
     engine = None
     try:
         root = Path(repository_root).resolve(strict=True)
+        deployed = verify_deployed_image_attestation(
+            image_attestation,
+            expected_image_digest=image_digest,
+        )
+        if deployed.deployment_config_hash != str(loaded.config_hash):
+            raise ConnectedShadowNotReady(
+                "deployment attestation does not match connected shadow configuration"
+            )
         expected_account_fingerprint = read_account_fingerprint(account_fingerprint_file)
         config_hash = ConfigHash(str(loaded.config_hash))
-        code_hash = CodeHash(deployment_code_hash(image_digest))
+        code_hash = deployed.code_hash
         database_url = migrate_sqlite_ledger(
             ledger,
             alembic_ini=root / "alembic.ini",
@@ -485,6 +499,7 @@ def run_connected_shadow_once(
                         ),
                         strategy_eligibility=strategy_eligibility,
                         research_promotion_enabled=research_promotion_enabled,
+                        runtime_scope_valid=True,
                     ),
                     oauth_store_dir=oauth_store,
                     observations=observations,
@@ -508,6 +523,7 @@ def run_connected_shadow_once(
                     "authenticated_reads": result.observation.authenticated_reads,
                     "broker_health": result.broker_health_healthy,
                     "calendar_clock_started": progress.evidence.calendar_days > 0,
+                    "code_identity_verified": result.observation.runtime_scope_valid,
                     "evidence_hash": result.observation.evidence_hash,
                     "evidence_eligible": result.observation.eligible,
                     "ineligible_reasons": result.observation.reason_codes,

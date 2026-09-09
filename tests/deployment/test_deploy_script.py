@@ -28,6 +28,22 @@ def test_deploy_never_enables_live() -> None:
     assert 'validate_resolved_images "$IMAGE" "$RESOLVED_IMAGES"' in text
 
 
+def test_remote_deploy_attests_only_a_verified_paused_release() -> None:
+    text = Path("infra/digitalocean/deploy-remote.sh").read_text()
+
+    assert "TRADING_BOT_RUNTIME_ATTESTATION_FILE=$CANDIDATE_ATTESTATION" in text
+    assert 'install -m 0444 -o root -g root "$ATTESTATION_TEMP"' in text
+    assert 'validate_release_attestation "$CANDIDATE_ATTESTATION"' in text
+    assert r'\"schema_version\":1}' in text
+    assert text.index('verify_paused_service "$IMAGE"') < text.index(
+        'write_release_attestation "$CANDIDATE_ATTESTATION"'
+    )
+    assert text.index('write_release_attestation "$CANDIDATE_ATTESTATION"') < text.index(
+        'write_last_good_pointer "$RELEASE_KEY"'
+    )
+    assert 'rm -f -- "$CANDIDATE_ATTESTATION"' in text
+
+
 def test_deploy_scripts_have_valid_shell_syntax() -> None:
     for path in ("infra/digitalocean/deploy.sh", "infra/digitalocean/deploy-remote.sh"):
         result = subprocess.run(["sh", "-n", path], check=False, capture_output=True, text=True)

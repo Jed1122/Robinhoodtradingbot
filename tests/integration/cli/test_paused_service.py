@@ -38,13 +38,20 @@ def test_serve_starts_only_as_paused_shadow(monkeypatch) -> None:  # type: ignor
     assert observed["access_log"] is False
 
 
-def test_serve_requires_explicit_paused_flag() -> None:
+def test_serve_requires_explicit_paused_flag(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    server_starts: list[object] = []
+
+    def record_server_start(application: object, **kwargs: object) -> None:
+        server_starts.append((application, kwargs))
+
+    monkeypatch.setattr(main.uvicorn, "run", record_server_start)
     result = CliRunner().invoke(
         main.app,
         ["serve", "--mode", "shadow", "--config", "configs/shadow.yaml"],
     )
-    assert result.exit_code != 0
-    assert "requires --paused" in result.output
+    assert result.exit_code == 2
+    assert "--paused" in result.output
+    assert server_starts == []
 
 
 def test_config_hash_uses_resolved_shadow_configuration() -> None:

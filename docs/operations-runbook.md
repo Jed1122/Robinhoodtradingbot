@@ -28,8 +28,13 @@ and record its exact local OCI image ID.
 
 The helper rejects an unexpected Compose content hash or unsafe path ownership. It creates a
 root-private release record and stores the last-good Compose and environment together for rollback.
-The Terraform and cloud-init templates are not a substitute for this checklist until their complete
-bootstrap path is independently validated.
+After the candidate paused service passes its image, resolved-configuration, health,
+readiness-denial, and live-disabled checks, the helper atomically installs a canonical root-owned
+mode-`0444` `runtime-image-attestation.json` inside that release record. The artifact binds the
+immutable image ID, resolved configuration hash, Compose hash, and release key. Only after verifying
+the artifact does the helper advance `last-good`; a failed deployment removes a newly created
+artifact during rollback. The Terraform and cloud-init templates are not a substitute for this
+checklist until their complete bootstrap path is independently validated.
 
 On the trusted build or image host, calculate the exact container-resolved shadow configuration
 hash using the same overrides as production:
@@ -69,7 +74,9 @@ and environment on failure or interruption. The container is non-root, read-only
 resource-limited, and publishes port 8080 only on host loopback.
 
 `make deploy` starts and validates only that default paused service. It does not authorize OAuth,
-run the connected profile, append promotion evidence, or activate trading.
+run the connected profile, append promotion evidence, or activate trading. The default service has
+no attestation mount. Explicit connected profiles mount only the exact current release artifact at
+`/run/trading-bot/runtime-image-attestation.json`, read-only.
 
 ## OAuth bootstrap and locally write-incapable connected probe
 
@@ -154,8 +161,9 @@ potentially stale snapshot.
 
 The connected research command must report `write_capabilities_present=false`,
 `live_enabled=false`, and
-`promotion_eligible=false`. It also reports `code_identity_verified=false` until an independently
-verified executing-image attestation exists. It writes only a private content-addressed report below
+`promotion_eligible=false`. On a correctly deployed release it reports
+`code_identity_verified=true` only after the mounted image/configuration/Compose attestation is
+verified. It writes only a private content-addressed report below
 `/var/lib/trading-bot/evidence/research` plus an append-only accepted-or-rejected assessment in the
 ledger. The configured candidate symbols are research scope only. They do not change pretrade
 symbol allowlisting or any execution gate.
@@ -171,12 +179,14 @@ failure exits nonzero with a generic message.
 The present probe records a durable but ineligible shadow observation. The shipped base
 configuration and immutable safety envelope keep research promotion disabled, so an operator
 cannot supply pinned research through this release. The probe always records
-`data_validated=false`, `outcomes_complete=false`, and `runtime_scope_valid=false`, and records
-`strategy_eligible=false` without a separately enabled and exact pinned attestation. A probe symbol
-only verifies that one diagnostic historical-data read completed; it is not a validated strategy
-universe or a complete decision cycle. The supplied image digest binds the record but is not
-independent proof of the executing image, so it cannot satisfy runtime scope. This is connection
-evidence, not qualifying promotion evidence, and it cannot activate live trading. Qualifying
+`data_validated=false` and `outcomes_complete=false`. The deployed profile requires the exact
+root-owned release artifact before private state or OAuth access and records
+`runtime_scope_valid=true` only when that artifact matches both the executing image ID supplied by
+Compose and the loaded configuration hash. It records `strategy_eligible=false` without separately
+enabled and exact pinned research evidence. A probe symbol only verifies that one diagnostic
+historical-data read completed; it is not a validated strategy universe or a complete decision
+cycle. This is connection evidence, not qualifying promotion evidence, and it cannot activate live
+trading. Qualifying
 evidence must eventually match independently verified account, provider declarations, strategy,
 config, research, and deployed-image identities. Production thresholds are 100 eligible paper cycles,
 seven distinct UTC shadow dates, and—before normal live—at least 100 eligible combined

@@ -17,9 +17,9 @@
   integrate configured rejection, no-fill, partial-fill, latency, cancel-race, stop/target,
   maximum-holding, or regime-exit policies, so this is an explicit promotion blocker.
 - The private report retains cleaned bars, its complete manifest, and hashes of raw provider
-  responses, but not the raw response bodies. The executing process also cannot independently prove
-  that the caller-supplied image digest identifies its own container. Both limitations are recorded
-  as promotion blockers.
+  responses, but not the raw response bodies. A deployed connected process verifies the helper's
+  root-owned image/configuration/Compose release attestation, but that local host-root assertion is
+  not a remotely signed transparency record and cannot validate research data or outcomes.
 - Strategies are long-only, deterministic candidates and make no profitability claim.
 - Tax treatment varies by jurisdiction and requires professional review.
 - Prediction contracts are research-only; live prediction placement is unsupported.
@@ -32,8 +32,9 @@
 - Shadow smoke evidence is explicitly non-promotable. The authenticated connected preflight is
   also deliberately non-promotable. Its exact-build research-binding path is disabled by both the
   shipped base configuration and immutable safety envelope. The diagnostic records
-  `data_validated=false`, `outcomes_complete=false`, and `runtime_scope_valid=false`; without
-  pinned evidence it also records `strategy_eligible=false`. A probe symbol can exercise one
+  `data_validated=false` and `outcomes_complete=false`; the deployed profile requires the verified
+  release attestation and records `runtime_scope_valid=true`. Without pinned research evidence it
+  still records `strategy_eligible=false`. A probe symbol can exercise one
   historical-data read but cannot upgrade that diagnostic into validated strategy data.
   It therefore does not start the configured seven-distinct-UTC-date promotion clock.
 - The default deployable container is a paused monitoring process. An explicit `connected-shadow`
@@ -54,8 +55,8 @@
   matching account/provider/strategy/config/code identities, validated market data, clean
   reconciliation, runtime-scope attestation, and a complete simulated strategy cycle. The runtime
   uses the existing SQLite observation/evidence stores and cross-process mutex only after such a
-  reviewed composition exists. Verified build-to-image identity, a complete broker-connected
-  strategy cycle, and a recurring evidence scheduler are still not implemented.
+  reviewed composition exists. A complete broker-connected strategy cycle and a recurring evidence
+  scheduler are still not implemented.
 - Single-host filesystem exclusion does not support multi-host active/active deployment. The
   Terraform and cloud-init templates are not a validated end-to-end provisioning path; manual hosts
   still require operator-supplied immutable images and independent hardening.

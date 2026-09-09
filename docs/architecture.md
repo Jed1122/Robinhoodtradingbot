@@ -11,7 +11,11 @@ safety attestations, strict configuration and hashing, capability evidence and s
 schema capture, least-privilege broker protocols, code identity, clocks, and structured
 logging with pre-serialization redaction. It also contains an equity-only Robinhood Trading MCP
 read adapter and one-shot connected-shadow probe. The connection owns a private encrypted OAuth
-store. Its OAuth client requests and pins the sole official `internal` scope; that bearer credential
+store. A connected run first verifies a canonical root-owned, non-writable release artifact binding
+its immutable image ID, resolved configuration hash, Compose hash, and release key. The deployment
+helper creates that artifact only after the paused candidate passes exact-image, configuration,
+health, readiness-denial, and live-disabled checks; the default service never mounts it. The OAuth
+client requests and pins the sole official `internal` scope; that bearer credential
 is trading-capable and is not a broker-enforced read-only grant. Local write incapability comes from
 an SDK-session read allowlist, a second transport read allowlist, and the absence of provider review,
 placement, and cancellation adapters. A stolen token or compromised host could trade in the

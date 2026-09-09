@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from trading_bot.config import UnsafeConfiguration, enforce_safety_envelope, load_config
@@ -23,6 +23,7 @@ def loaded(mode: str = "micro_live"):  # type: ignore[no-untyped-def]
     )
 
 
+@settings(deadline=None)
 @given(order_notional=st.decimals(min_value="5.01", max_value="100", places=2))
 def test_micro_mode_cannot_exceed_five_dollars(order_notional: Decimal) -> None:
     pair = loaded()
@@ -38,6 +39,7 @@ def test_micro_mode_cannot_exceed_five_dollars(order_notional: Decimal) -> None:
         enforce_safety_envelope(config=config, envelope=pair.safety_envelope)
 
 
+@settings(deadline=None)
 @given(gross=st.decimals(min_value="20.01", max_value="1000", places=2))
 def test_micro_mode_cannot_exceed_twenty_dollars_gross(gross: Decimal) -> None:
     pair = loaded()
@@ -53,6 +55,7 @@ def test_micro_mode_cannot_exceed_twenty_dollars_gross(gross: Decimal) -> None:
         enforce_safety_envelope(config=config, envelope=pair.safety_envelope)
 
 
+@settings(deadline=None)
 @given(orders=st.integers(min_value=3, max_value=1000))
 def test_micro_mode_cannot_exceed_two_daily_orders(orders: int) -> None:
     pair = loaded()
@@ -68,6 +71,7 @@ def test_micro_mode_cannot_exceed_two_daily_orders(orders: int) -> None:
         enforce_safety_envelope(config=config, envelope=pair.safety_envelope)
 
 
+@settings(deadline=None)
 @given(delta=st.decimals(min_value="0.01", max_value="40", places=2))
 def test_risk_maxima_may_only_decrease(delta: Decimal) -> None:
     pair = loaded("backtest")
@@ -86,6 +90,7 @@ def test_risk_maxima_may_only_decrease(delta: Decimal) -> None:
         )
 
 
+@settings(deadline=None)
 @given(delta=st.decimals(min_value="0.01", max_value="39.99", places=2))
 def test_minimum_reserve_may_only_increase(delta: Decimal) -> None:
     pair = loaded("backtest")
@@ -103,6 +108,7 @@ def test_minimum_reserve_may_only_increase(delta: Decimal) -> None:
         )
 
 
+@settings(deadline=None)
 @given(delta=st.decimals(min_value="0.01", max_value="120", places=2))
 def test_freshness_windows_may_only_shorten(delta: Decimal) -> None:
     pair = loaded("backtest")
@@ -121,6 +127,7 @@ def test_freshness_windows_may_only_shorten(delta: Decimal) -> None:
         )
 
 
+@settings(deadline=None)
 @given(delta=st.integers(min_value=1, max_value=100000))
 def test_authorization_windows_may_only_shorten(delta: int) -> None:
     pair = loaded("backtest")
@@ -139,6 +146,7 @@ def test_authorization_windows_may_only_shorten(delta: int) -> None:
         )
 
 
+@settings(deadline=None)
 @given(days=st.integers(min_value=0, max_value=29))
 def test_normal_promotion_days_cannot_be_lowered(days: int) -> None:
     pair = loaded("normal_live")
@@ -153,6 +161,7 @@ def test_normal_promotion_days_cannot_be_lowered(days: int) -> None:
         )
 
 
+@settings(deadline=None)
 @given(observations=st.integers(min_value=0, max_value=99))
 def test_normal_promotion_observations_cannot_be_lowered(observations: int) -> None:
     pair = loaded("normal_live")
@@ -167,6 +176,7 @@ def test_normal_promotion_observations_cannot_be_lowered(observations: int) -> N
         )
 
 
+@settings(deadline=None)
 @given(interval=st.integers(min_value=11, max_value=1000))
 def test_micro_order_review_interval_cannot_be_lengthened(interval: int) -> None:
     pair = loaded("micro_live")

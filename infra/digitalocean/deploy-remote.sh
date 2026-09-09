@@ -11,7 +11,7 @@ RELEASES_DIR="$COMPOSE_DIR/releases"
 LAST_GOOD_POINTER="$COMPOSE_DIR/last-good"
 RUNTIME_DIR=/run/trading-bot-deploy
 LOCK_FILE="$RUNTIME_DIR/deploy.lock"
-EXPECTED_COMPOSE_SHA256=a4b3bd1bfe174b0e592e22606429d51c8866756b232bce13b5f9ff4702c65a38
+EXPECTED_COMPOSE_SHA256=6ad9422f7d5e10280fcccef97a6703edb6deeb422e7fcd64f9e6d3d2c5a55c54
 SAFE_PATH=/usr/sbin:/usr/bin:/sbin:/bin
 PATH="$SAFE_PATH"
 export PATH
@@ -61,9 +61,19 @@ observe_config_hash() {
 
 validate_release_environment() (
   expected_image="$1"
-  release_env="$2"
-  # Accept the exact prior paused-release shape so the first no-volume release can
-  # still roll back transactionally. New releases always write the two-line form.
+  expected_config_hash="$2"
+  expected_compose_sha256="$3"
+  release_env="$4"
+  expected_release_key="${expected_image#sha256:}-$expected_config_hash-$expected_compose_sha256"
+  expected_attestation="$RELEASES_DIR/$expected_release_key/runtime-image-attestation.json"
+  printf '%s\n' \
+    "TRADING_BOT_IMAGE=$expected_image" \
+    "TRADING_BOT_PULL_POLICY=never" \
+    "TRADING_BOT_RUNTIME_ATTESTATION_FILE=$expected_attestation" \
+    | cmp -s "$release_env" - \
+    && exit 0
+  # Accept the exact prior paused-release shapes so the first no-volume release can
+  # still roll back transactionally. New releases always write the attested form.
   printf '%s\n' \
     "TRADING_BOT_IMAGE=$expected_image" \
     "TRADING_BOT_PULL_POLICY=never" \
@@ -76,6 +86,50 @@ validate_release_environment() (
     "TRADING_BOT_LOG_DIR=/var/log/trading-bot" \
     | cmp -s "$release_env" -
 )
+
+validate_release_attestation() (
+  artifact="$1"
+  expected_image="$2"
+  expected_config_hash="$3"
+  expected_compose_sha256="$4"
+  expected_release_key="$5"
+  [ -f "$artifact" ] && [ ! -L "$artifact" ] || exit 1
+  [ "$(stat -c '%u:%g:%a' "$artifact")" = "0:0:444" ] || exit 1
+  printf '%s\n' \
+    "{\"compose_sha256\":\"$expected_compose_sha256\",\"deployment_config_hash\":\"$expected_config_hash\",\"image_digest\":\"$expected_image\",\"release_key\":\"$expected_release_key\",\"schema_version\":1}" \
+    | cmp -s "$artifact" -
+)
+
+write_release_attestation() {
+  artifact="$1"
+  expected_image="$2"
+  expected_config_hash="$3"
+  expected_compose_sha256="$4"
+  expected_release_key="$5"
+  if [ -e "$artifact" ] || [ -L "$artifact" ]; then
+    validate_release_attestation "$artifact" "$expected_image" \
+      "$expected_config_hash" "$expected_compose_sha256" "$expected_release_key" \
+      || return 1
+    return 0
+  fi
+  ATTESTATION_TEMP="$(mktemp "$RUNTIME_DIR/attestation.XXXXXX")" || return 1
+  ATTESTATION_READY="$(mktemp "$CANDIDATE_DIR/.runtime-image-attestation.XXXXXX")" \
+    || return 1
+  printf '%s\n' \
+    "{\"compose_sha256\":\"$expected_compose_sha256\",\"deployment_config_hash\":\"$expected_config_hash\",\"image_digest\":\"$expected_image\",\"release_key\":\"$expected_release_key\",\"schema_version\":1}" \
+    > "$ATTESTATION_TEMP" || return 1
+  install -m 0444 -o root -g root "$ATTESTATION_TEMP" "$ATTESTATION_READY" \
+    || return 1
+  sync -f "$ATTESTATION_READY" || return 1
+  ATTESTATION_CREATED=1
+  mv "$ATTESTATION_READY" "$artifact" || return 1
+  ATTESTATION_READY=""
+  sync -f "$CANDIDATE_DIR" || return 1
+  rm -f -- "$ATTESTATION_TEMP" || return 1
+  ATTESTATION_TEMP=""
+  validate_release_attestation "$artifact" "$expected_image" \
+    "$expected_config_hash" "$expected_compose_sha256" "$expected_release_key"
+}
 
 validate_resolved_images() (
   expected_image="$1"
@@ -125,6 +179,10 @@ SNAPSHOT_DIR=""
 COMPOSE_SNAPSHOT=""
 RELEASE_TEMP=""
 POINTER_TEMP=""
+ATTESTATION_TEMP=""
+ATTESTATION_READY=""
+ATTESTATION_CREATED=0
+CANDIDATE_ATTESTATION=""
 MUTATED=0
 HAD_PREVIOUS=0
 LAST_GOOD_COMPOSE=""
@@ -140,6 +198,12 @@ cleanup() {
   fi
   if [ -n "$POINTER_TEMP" ]; then
     rm -f -- "$POINTER_TEMP"
+  fi
+  if [ -n "$ATTESTATION_TEMP" ]; then
+    rm -f -- "$ATTESTATION_TEMP"
+  fi
+  if [ -n "$ATTESTATION_READY" ]; then
+    rm -f -- "$ATTESTATION_READY"
   fi
   if [ -n "$RELEASE_TEMP" ]; then
     rm -rf -- "$RELEASE_TEMP"
@@ -158,6 +222,11 @@ stop_candidate() {
 
 rollback() {
   stop_candidate
+  if [ "$ATTESTATION_CREATED" -eq 1 ] && [ -n "$CANDIDATE_ATTESTATION" ]; then
+    rm -f -- "$CANDIDATE_ATTESTATION"
+    sync -f "$CANDIDATE_DIR" || true
+    ATTESTATION_CREATED=0
+  fi
   if [ "$HAD_PREVIOUS" -eq 1 ]; then
     if ! install -m 0644 -o root -g root "$LAST_GOOD_COMPOSE" "$COMPOSE_FILE"; then
       MUTATED=0
@@ -259,7 +328,16 @@ if [ -e "$LAST_GOOD_POINTER" ]; then
   [ "$(stat -c '%u:%g:%a' "$LAST_GOOD_ENV")" = "0:0:600" ] || exit 2
   [ "$(sha256sum "$LAST_GOOD_COMPOSE" | awk '{print $1}')" \
     = "$LAST_GOOD_COMPOSE_SHA256" ] || exit 2
-  validate_release_environment "$LAST_GOOD_IMAGE" "$LAST_GOOD_ENV" || exit 2
+  validate_release_environment "$LAST_GOOD_IMAGE" "$LAST_GOOD_CONFIG_HASH" \
+    "$LAST_GOOD_COMPOSE_SHA256" "$LAST_GOOD_ENV" || exit 2
+  LAST_GOOD_ATTESTATION="$LAST_GOOD_DIR/runtime-image-attestation.json"
+  if grep -Fqx \
+    "TRADING_BOT_RUNTIME_ATTESTATION_FILE=$LAST_GOOD_ATTESTATION" \
+    "$LAST_GOOD_ENV"; then
+    validate_release_attestation "$LAST_GOOD_ATTESTATION" "$LAST_GOOD_IMAGE" \
+      "$LAST_GOOD_CONFIG_HASH" "$LAST_GOOD_COMPOSE_SHA256" \
+      "$LAST_GOOD_RELEASE_KEY" || exit 2
+  fi
   ACTUAL_LAST_GOOD_IMAGE_ID="$(clean_docker image inspect --format '{{.Id}}' \
     "$LAST_GOOD_IMAGE")"
   [ "$ACTUAL_LAST_GOOD_IMAGE_ID" = "$LAST_GOOD_IMAGE" ] || exit 2
@@ -277,16 +355,19 @@ ACTUAL_IMAGE_ID="$(clean_docker image inspect --format '{{.Id}}' "$IMAGE")"
 OBSERVED_CONFIG_HASH="$(observe_config_hash "$IMAGE")"
 [ "$OBSERVED_CONFIG_HASH" = "$CONFIG_HASH" ] || exit 2
 
+RELEASE_KEY="${IMAGE#sha256:}-$CONFIG_HASH-$EXPECTED_COMPOSE_SHA256"
+CANDIDATE_DIR="$RELEASES_DIR/$RELEASE_KEY"
+CANDIDATE_ATTESTATION="$CANDIDATE_DIR/runtime-image-attestation.json"
+
 umask 077
 TEMP_ENV="$(mktemp "$COMPOSE_DIR/.env.XXXXXX")"
 printf '%s\n' \
   "TRADING_BOT_IMAGE=$IMAGE" \
   "TRADING_BOT_PULL_POLICY=never" \
+  "TRADING_BOT_RUNTIME_ATTESTATION_FILE=$CANDIDATE_ATTESTATION" \
   > "$TEMP_ENV"
 chmod 0600 "$TEMP_ENV"
 
-RELEASE_KEY="${IMAGE#sha256:}-$CONFIG_HASH-$EXPECTED_COMPOSE_SHA256"
-CANDIDATE_DIR="$RELEASES_DIR/$RELEASE_KEY"
 if [ -e "$CANDIDATE_DIR" ]; then
   [ -d "$CANDIDATE_DIR" ] && [ ! -L "$CANDIDATE_DIR" ] || exit 2
   [ "$(stat -c '%u:%g:%a' "$CANDIDATE_DIR")" = "0:0:700" ] || exit 2
@@ -301,6 +382,10 @@ if [ -e "$CANDIDATE_DIR" ]; then
   [ "$(sha256sum "$CANDIDATE_DIR/docker-compose.yml" | awk '{print $1}')" \
     = "$EXPECTED_COMPOSE_SHA256" ] || exit 2
   cmp -s "$TEMP_ENV" "$CANDIDATE_DIR/deployment.env" || exit 2
+  if [ -e "$CANDIDATE_ATTESTATION" ] || [ -L "$CANDIDATE_ATTESTATION" ]; then
+    validate_release_attestation "$CANDIDATE_ATTESTATION" "$IMAGE" \
+      "$CONFIG_HASH" "$EXPECTED_COMPOSE_SHA256" "$RELEASE_KEY" || exit 2
+  fi
 else
   RELEASE_TEMP="$(mktemp -d "$RELEASES_DIR/.candidate.XXXXXX")"
   chmod 0700 "$RELEASE_TEMP"
@@ -331,6 +416,11 @@ if ! compose_with "$ENV_FILE" "$COMPOSE_SNAPSHOT" up -d --wait --wait-timeout 60
   exit 2
 fi
 if ! verify_paused_service "$IMAGE" "$ENV_FILE" "$COMPOSE_SNAPSHOT"; then
+  rollback || true
+  exit 2
+fi
+if ! write_release_attestation "$CANDIDATE_ATTESTATION" "$IMAGE" \
+  "$CONFIG_HASH" "$EXPECTED_COMPOSE_SHA256" "$RELEASE_KEY"; then
   rollback || true
   exit 2
 fi

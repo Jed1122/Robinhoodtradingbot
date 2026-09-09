@@ -26,12 +26,12 @@ from trading_bot.brokers.robinhood_mcp_transport import (
     RobinhoodMcpTransport,
 )
 from trading_bot.clock import SystemClock
+from trading_bot.code_identity import verify_deployed_image_attestation
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.config.hashing import hash_loaded_config
 from trading_bot.domain import (
     Bar,
     BarInterval,
-    CodeHash,
     ConfigHash,
     DataHash,
     ExecutionMode,
@@ -54,7 +54,6 @@ from trading_bot.research.validation import (
     assess_research,
 )
 from trading_bot.runtime.connected_shadow import (
-    deployment_code_hash,
     read_account_fingerprint,
 )
 
@@ -70,6 +69,12 @@ _CONNECTED_RESEARCH_READ_TOOLS = frozenset(
         "get_portfolio",
     }
 )
+_APPROVED_CONNECTED_ENVIRONMENT = {
+    "LIVE_TRADING_ENABLED": "false",
+    "PREDICTION_LIVE_ENABLED": "false",
+    "TRADING_BOT__MONITORING__HOST": "0.0.0.0",  # nosec B104 - hashed config; no port
+    "TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH": "true",
+}
 
 
 class ConnectedResearchNotReady(RuntimeError):
@@ -165,6 +170,7 @@ def run_connected_equity_research_once(
     ledger: str | Path,
     artifact_dir: str | Path,
     image_digest: str,
+    image_attestation: str | Path,
 ) -> dict[str, object]:
     """Collect the configured ETF data and persist a non-activating assessment."""
 
@@ -174,7 +180,7 @@ def run_connected_equity_research_once(
             root / "configs/base.yaml",
             root / "configs/shadow.yaml",
             root / "configs/safety-envelope.yaml",
-            {},
+            _APPROVED_CONNECTED_ENVIRONMENT,
         )
         _validate_connected_read_scope()
         canonical, config_hash = hash_loaded_config(
@@ -217,9 +223,17 @@ def run_connected_equity_research_once(
     previous_umask = os.umask(0o077)
     engine = None
     try:
+        deployed = verify_deployed_image_attestation(
+            image_attestation,
+            expected_image_digest=image_digest,
+        )
+        if deployed.deployment_config_hash != str(loaded.config_hash):
+            raise ConnectedResearchNotReady(
+                "deployment attestation does not match connected research configuration"
+            )
         expected_account_fingerprint = read_account_fingerprint(account_fingerprint_file)
         config_hash = ConfigHash(str(loaded.config_hash))
-        code_hash = CodeHash(deployment_code_hash(image_digest))
+        code_hash = deployed.code_hash
         database_url = migrate_sqlite_ledger(
             ledger,
             alembic_ini=root / "alembic.ini",
@@ -339,7 +353,7 @@ def run_connected_equity_research_once(
                     EquityComparisonRequest(
                         loaded=loaded,
                         code_hash=str(code_hash),
-                        code_clean=False,
+                        code_clean=True,
                         run_id=run_id,
                         dataset=dataset,
                     )
@@ -389,7 +403,7 @@ def run_connected_equity_research_once(
                 return {
                     "artifact": str(artifact),
                     "authenticated_reads": True,
-                    "code_identity_verified": False,
+                    "code_identity_verified": True,
                     "comparison": _summary_attempts(
                         report.report_hash,
                         report.attempts,

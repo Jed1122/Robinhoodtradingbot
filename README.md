@@ -168,17 +168,13 @@ descriptions, so prose cannot be mistaken for trusted contract evidence. Listing
 review, placement, or cancellation schema is declaration evidence only; it neither constructs nor
 authorizes the corresponding operation.
 
-Then run one write-incapable connected probe with an immutable local image digest:
+The connected probes now require the root-owned per-release image attestation created by the
+deployment helper after the paused service has passed its image, configuration, health, readiness,
+and live-disabled checks. Do not hand-author that artifact. From the deployment directory on the
+reviewed host, run one write-incapable connected probe:
 
 ```shell
-TRADING_BOT_IMAGE_DIGEST=sha256:<64-lowercase-hex-image-id> \
-PYTHONPATH=src uv run trader shadow \
-  --config configs/shadow.yaml \
-  --once \
-  --oauth-store "$HOME/.local/share/robinhood-trading-bot/oauth" \
-  --account-fingerprint-file \
-    "$HOME/.local/share/robinhood-trading-bot/oauth/account-fingerprint" \
-  --ledger "$HOME/.local/share/robinhood-trading-bot/evidence/ledger.db"
+docker compose --profile connected-shadow run --rm --no-deps connected-shadow
 
 make shadow-smoke
 make live-readiness
@@ -196,10 +192,11 @@ stores the full report and cleaned bar snapshot privately under
 `/var/lib/trading-bot/evidence/research`, and appends its
 assessment to `/var/lib/trading-bot/evidence/ledger.db`. The current release always remains
 non-promotable because point-in-time universe, complete corporate-action/interpolation provenance,
-PBO/multiple-testing resolution, independently verified executing-image identity, stage-independent
-paper configuration binding, and validated research assumptions are absent. Recording a report does
-not start paper or shadow promotion clocks. Encrypted evidence backups include the ledger and these
-private reports; OAuth credentials remain outside that backup.
+PBO/multiple-testing resolution, stage-independent paper configuration binding, and validated
+research assumptions are absent. The attestation verifies release identity; it does not validate
+research data or outcomes. Recording a report does not start paper or shadow promotion clocks.
+Encrypted evidence backups include the ledger and these private reports; OAuth credentials remain
+outside that backup.
 
 After every evidence run has exited, inspect the ledger without mounting OAuth credentials or
 opening a network namespace:

@@ -7,8 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from trading_bot.brokers.robinhood_equity_mapping import account_fingerprint
+from trading_bot.code_identity import DeployedImageAttestation
 from trading_bot.config import load_config
 from trading_bot.domain import AccountId, Bar, BarInterval, DataHash, InstrumentId
 from trading_bot.market_data import content_hash
@@ -17,6 +19,17 @@ from trading_bot.runtime import connected_research
 
 ROOT = Path(__file__).parents[3]
 CONFIGS = ROOT / "configs"
+
+
+def _connected_research_environment() -> dict[str, str]:
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    environment = compose["services"]["connected-research"]["environment"]
+    allowed_aliases = {"LIVE_TRADING_ENABLED", "PREDICTION_LIVE_ENABLED"}
+    return {
+        name: value
+        for name, value in environment.items()
+        if name.startswith("TRADING_BOT__") or name in allowed_aliases
+    }
 
 
 class FakeSession:
@@ -124,7 +137,23 @@ def test_connected_research_persists_rejected_report_without_writes(
         CONFIGS / "base.yaml",
         CONFIGS / "shadow.yaml",
         CONFIGS / "safety-envelope.yaml",
-        {},
+        _connected_research_environment(),
+    )
+    image_digest = f"sha256:{'b' * 64}"
+    compose_sha256 = "c" * 64
+    verified = DeployedImageAttestation(
+        image_digest=image_digest,
+        deployment_config_hash=str(loaded.config_hash),
+        compose_sha256=compose_sha256,
+        release_key=(
+            f"{'b' * 64}-{loaded.config_hash}-{compose_sha256}"
+        ),
+    )
+    monkeypatch.setattr(
+        connected_research,
+        "verify_deployed_image_attestation",
+        lambda *_, **__: verified,
+        raising=False,
     )
 
     output = connected_research.run_connected_equity_research_once(
@@ -134,12 +163,13 @@ def test_connected_research_persists_rejected_report_without_writes(
         account_fingerprint_file=fingerprint,
         ledger=evidence / "ledger.db",
         artifact_dir=evidence / "research",
-        image_digest=f"sha256:{'b' * 64}",
+        image_digest=image_digest,
+        image_attestation=tmp_path / "runtime-image-attestation.json",
     )
 
     assert output["status"] == "connected_research_recorded"
     assert output["promotion_eligible"] is False
-    assert output["code_identity_verified"] is False
+    assert output["code_identity_verified"] is True
     assert output["write_capabilities_present"] is False
     assert "research_promotion_disabled" in output["ineligible_reasons"]
     artifact = Path(str(output["artifact"]))
@@ -179,6 +209,7 @@ def test_connected_research_rejects_environment_altered_candidate_scope(
             ledger=tmp_path / "ledger.db",
             artifact_dir=tmp_path / "research",
             image_digest=f"sha256:{'b' * 64}",
+            image_attestation=tmp_path / "missing-attestation.json",
         )
 
 
