@@ -29,6 +29,10 @@ from trading_bot.runtime.connected_shadow import (
     bootstrap_read_only_oauth,
     run_connected_shadow_once,
 )
+from trading_bot.runtime.paper_promotion_runtime import (
+    PaperPromotionNotReady,
+    run_paper_promotion_once,
+)
 from trading_bot.runtime.paused_service import build_paused_monitoring_service
 
 app = typer.Typer(no_args_is_help=True)
@@ -93,10 +97,23 @@ def simulate(
 def paper(
     config: Annotated[Path, typer.Option()] = Path("configs/paper.yaml"),
     once: Annotated[bool, typer.Option("--once")] = False,
+    ledger: Annotated[Path, typer.Option()] = Path("/var/lib/trading-bot/evidence/ledger.db"),
+    lock_directory: Annotated[Path, typer.Option()] = Path("/var/lib/trading-bot/paper-locks"),
 ) -> None:
     if not once:
         raise typer.BadParameter("paper currently requires --once")
-    _emit("paper", config, 20260710)
+    try:
+        output = run_paper_promotion_once(
+            loaded=_load_runtime_config(config),
+            repository_root=config.resolve().parent.parent,
+            ledger=ledger,
+            lock_directory=lock_directory,
+        )
+    except PaperPromotionNotReady as exc:
+        typer.echo("paper_promotion_not_ready")
+        typer.echo(",".join(exc.blockers), err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(output, sort_keys=True, separators=(",", ":")))
 
 
 @app.command()

@@ -5,10 +5,11 @@ from trading_bot.cli.main import app
 runner = CliRunner()
 
 
-def test_paper_once_returns_success() -> None:
+def test_paper_once_fails_closed_until_trusted_composition_exists() -> None:
     result = runner.invoke(app, ["paper", "--config", "configs/paper.yaml", "--once"])
-    assert result.exit_code == 0
-    assert '"mode":"paper"' in result.stdout
+    assert result.exit_code == 2
+    assert result.stdout == "paper_promotion_not_ready\n"
+    assert "accepted_research_evidence_unavailable" in result.stderr
 
 
 def test_backtest_is_deterministic() -> None:

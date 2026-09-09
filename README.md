@@ -117,15 +117,18 @@ arguments, or committed files; the safe template contains file references only.
 
 ## Offline research modes
 
-Run `make backtest`, `make simulate`, or `make paper`. These commands validate the selected
-configuration against the immutable safety envelope and emit a canonical mode, seed,
-configuration hash, and result hash. See [strategy research](docs/strategy-research.md) and
+Run `make backtest` or `make simulate` for deterministic offline configuration/result-hash
+checks. `make paper` is a one-shot durable-promotion entry point, but currently fails closed:
+it has no trusted accepted-research, account/provider identity, validated-data, reconciliation,
+runtime-scope, or complete strategy-cycle composition. It therefore creates no ledger, lock, or
+promotion observation. See [strategy research](docs/strategy-research.md) and
 [limitations](docs/limitations.md). No result is a profitability claim.
 
 The canonical equity research scope is the long-only ETF tuple `SPY`, `QQQ`, `IWM`, and `DIA`,
 with momentum and relative-strength candidate families. This is a research candidate universe,
 not an execution allowlist. The offline commands above remain deterministic configuration/result
-hash checks; the real historical comparison is the separate authenticated one-shot command below.
+hash checks; paper promotion cannot be advanced by the current public CLI, and the real historical
+comparison is the separate authenticated one-shot command below.
 
 ## Robinhood read and shadow setup
 
