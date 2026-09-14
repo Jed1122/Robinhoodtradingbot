@@ -191,9 +191,9 @@ Task: [Perform documentation-only infrastructure drift audit](https://chatgpt.co
 - **Verification:** focused identity/deployment/runtime tests, Ruff, mypy, then the full suite.
 - **Return contract:** commit SHA, findings, tests added, commands/results, and residual risks.
 
-### Dispatched Cloud task contract: CI-HARDENING-002
+### Returned and centrally reviewed Cloud task contract: CI-HARDENING-002
 
-Task: [Improve CI workflow for Robinhood trading system](https://chatgpt.com/codex/tasks/task_e_6aa8760eafd8832dbc1ab7b5cbcb7b1e). Dispatched from exact green base `32ab71fc3c845c56068179fed98cf4a9eb80461e`. This task owns only `.github/workflows/ci.yml`. Its output requires central review and fresh CI before integration; nothing from this task is part of the deployed release.
+Task: [Improve CI workflow for Robinhood trading system](https://chatgpt.com/codex/tasks/task_e_6aa8760eafd8832dbc1ab7b5cbcb7b1e). Dispatched from exact green base `32ab71fc3c845c56068179fed98cf4a9eb80461e`. The returned diff changes only `.github/workflows/ci.yml` and was reviewed centrally. Bandit, locked-dependency validation/audit, and shell/Compose validation run independently of the unchanged Python 3.12-3.14 quality matrix. The primary review tightened shell validation to each script's POSIX `sh` contract. Fresh CI remains the acceptance gate; these workflow/documentation changes do not change or redeploy the running application image.
 
 - **Objective:** keep security and lock checks observable when a test matrix leg fails, and add bounded secrets-free shell/Compose validation.
 - **Owner:** one Cloud task after `CI-PORTABILITY-001` is integrated.
@@ -295,7 +295,7 @@ These are snapshot facts, not completion claims.
 1. Finish the bounded connection diagnosis. Do not assume local credential validity means external authorization; do not repeat failed probes as a promotion strategy.
 2. Use the completed research review to define independent fixture/design contracts for point-in-time membership, corporate-action/interpolation provenance, and leakage/multiple-testing controls. Authoritative data selection and statistical acceptance remain primary-owner decisions.
 3. Use the completed IaC review to prepare a sanitized host-hardening and recovery evidence checklist. Do not import, rebuild, replace, resize, or apply Terraform without a separately reviewed plan and authority.
-4. Review the dispatched `CI-HARDENING-002` output when available, verify its ownership and failure propagation, and run fresh CI before integrating. A bounded attestation-test review can follow under its own exact-commit contract.
+4. Confirm fresh CI on the centrally reviewed `CI-HARDENING-002` change. A bounded attestation-test review can follow under its own exact-commit contract.
 5. Compose qualifying paper and shadow cycles only after their research/data/outcome interfaces and evidence are complete. Preserve all existing observation and elapsed-time gates.
 6. Keep broker writes, reconciliation, live runtime, and promotion decisions sequential under the primary owner.
 
