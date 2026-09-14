@@ -1,6 +1,9 @@
 from importlib import import_module
 from typing import Any
 
+import pytest
+from rich.text import Text
+from typer import rich_utils
 from typer.testing import CliRunner
 
 main = import_module("trading_bot.cli.main")
@@ -38,7 +41,14 @@ def test_serve_starts_only_as_paused_shadow(monkeypatch) -> None:  # type: ignor
     assert observed["access_log"] is False
 
 
-def test_serve_requires_explicit_paused_flag(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+@pytest.mark.parametrize("use_color", [False, True], ids=["plain", "color"])
+def test_serve_requires_explicit_paused_flag(
+    monkeypatch: pytest.MonkeyPatch, use_color: bool
+) -> None:
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(rich_utils, "FORCE_TERMINAL", use_color)
+    monkeypatch.setattr(rich_utils, "COLOR_SYSTEM", "standard" if use_color else None)
     server_starts: list[object] = []
 
     def record_server_start(application: object, **kwargs: object) -> None:
@@ -50,7 +60,9 @@ def test_serve_requires_explicit_paused_flag(monkeypatch) -> None:  # type: igno
         ["serve", "--mode", "shadow", "--config", "configs/shadow.yaml"],
     )
     assert result.exit_code == 2
-    assert "--paused" in result.output
+    assert ("\x1b[" in result.output) is use_color
+    # Rich may insert ANSI boundaries within an option name on CI terminals.
+    assert "paused service requires --paused" in Text.from_ansi(result.output).plain
     assert server_starts == []
 
 
