@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 
+from trading_bot.clock import require_utc
 from trading_bot.domain import Bar, CorporateAction
 from trading_bot.market_data.recording import content_hash
 
@@ -11,13 +12,22 @@ from trading_bot.market_data.recording import content_hash
 def adjust_bars(
     bars: tuple[Bar, ...], actions: tuple[CorporateAction, ...], *, as_of: datetime
 ) -> tuple[Bar, ...]:
-    available = tuple(action for action in actions if action.announced_at <= as_of)
+    as_of = require_utc(as_of)
+    # The canonical action carries a date, so effectivity uses the query's UTC date.
+    available = tuple(
+        action
+        for action in actions
+        if action.announced_at <= as_of and action.effective_date <= as_of.date()
+    )
     adjusted: list[Bar] = []
     for bar in bars:
         price_divisor = Decimal("1")
         cash_adjustment = Decimal("0")
         for action in available:
-            if action.effective_date <= bar.ends_at.date():
+            if (
+                action.instrument_id != bar.instrument_id
+                or action.effective_date <= bar.ends_at.date()
+            ):
                 continue
             if action.action_type == "split":
                 if action.split_ratio is None:

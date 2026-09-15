@@ -5,6 +5,16 @@ families include equity momentum, relative strength, regime scaling, research-on
 reversion, and long-only crypto trend/breakout. Every attempted parameter set is retained,
 including rejected attempts.
 
+The local `adjust_bars` primitive requires a canonical UTC `as_of`, including for empty input.
+It applies only an action for the bar's own instrument, whose announcement is known by `as_of`
+and whose effective date is on or before the query's UTC date. Bars ending on or after that
+effective date are not backward-adjusted. Date-only effectivity is a UTC-date convention, not
+proof of an exchange-session event timestamp. Exact synthetic split and cash-dividend tests cover
+these filters; they do not establish complete corporate-action history, chronological treatment
+of combined split/dividend sequences, source provenance, or provider adjustment correctness.
+This helper is not integrated into the connected comparison described below and does not make
+that comparison eligible for promotion.
+
 The current connected equity comparison has one exact config-bound research candidate universe:
 `SPY`, `QQQ`, `IWM`, and `DIA`. It compares only `equity_momentum` and
 `equity_relative_strength`. This tuple is not an execution allowlist and does not make any symbol
