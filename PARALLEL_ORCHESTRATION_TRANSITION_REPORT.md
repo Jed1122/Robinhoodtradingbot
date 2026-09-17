@@ -15,13 +15,16 @@ Latest CI-verified implementation: `14c29e26b760d6fb59a4514ae3f5b50f9e921d1d`
 Current work: the operator selected **free-only data** and approved **Alpaca Basic as the first
 data-validation candidate**, without moving the funded Robinhood account or changing trading
 safeguards. The [Alpaca free-data validation specification](docs/superpowers/specs/2026-09-17-alpaca-free-data-validation-design.md)
-is written for operator review. This is a documentation checkpoint, not an implemented or
-authenticated Alpaca capability. The operator confirmed that no Alpaca account exists; a free
-paper-only signup remains their prerequisite. Contractual and technical entitlement, retention
-rights, corporate-action coverage, and historical availability remain unverified.
-No account creation, credential access, data acquisition, purchase, production-ledger access,
-deployment, or live operation occurred in this checkpoint. The next approval is review of the
-written specification; an acquisition plan and external authority remain separate.
+was approved by the operator, who also confirmed creating a **paper-only Basic/free account**
+with no paid subscription or funded live account. These are operator-reported facts, not an
+authenticated account inspection. The [first-response diagnostic plan](docs/superpowers/plans/2026-09-17-alpaca-first-response-diagnostic.md)
+defines offline implementation followed by a separately authorized two-request sample capture.
+It is not an implemented capability or a complete-history acquisition plan. Contractual and
+technical entitlement, retention rights, corporate-action coverage, and historical availability
+remain unverified. Do not repeat the completed account-setup question.
+No agent credential access, data acquisition, purchase, production-ledger access, deployment,
+or live operation occurred in this planning checkpoint. Offline implementation execution and
+external acquisition authority remain separate; live trading is still NO-GO.
 
 Completed foundation: operator-approved data-first architecture, captured in the
 [verifiable local data and snapshot-loader design](docs/superpowers/specs/2026-09-17-research-data-bundle-design.md).
@@ -411,6 +414,23 @@ Shared interface changes in these areas require a sequential plan, explicit migr
 
 ## TEST STATUS
 
+### Alpaca account-confirmation and diagnostic-plan checkpoint (2026-09-17)
+
+- Based on `62cc33b2520124ead55aa8effe8aa24ea24cdedc`. The operator approved the written
+  specification and confirmed a created paper-only Basic/free account, no paid subscription
+  and no funded Alpaca live account. No authenticated verification is inferred.
+- Documentation only: updated specification status, bounded first-response implementation
+  plan, and this handoff. The new plan is not implemented. Its external capture remains gated.
+- A separate local read-only worker inventoried existing documentation checks; no edits,
+  provider data, credentials, network or Cloud execution were delegated. The primary checked
+  the plan against the approved specification and existing config/clock/storage interfaces.
+- Fresh documentation smoke selection passed **3 tests**. These checks do not validate the
+  new plan. An independent local-link check resolved **9 links across 3 changed documents**;
+  the primary reviewed the exact diff and `git diff --check` passed. No full suite or new CI
+  result is claimed for docs only.
+- No source/config/dependency/runtime changes, credential operation, authenticated request,
+  data capture, paid subscription, broker operation, ledger access, deployment or live activation.
+
 ### Alpaca free-data design checkpoint (2026-09-17)
 
 - Documentation only: a proposed validation specification and this handoff update, based on
@@ -587,10 +607,11 @@ On 2026-09-15, the operator separately authorized workstation browser authorizat
 ## RECOMMENDED NEXT WAVE
 
 1. The bounded broker connection was verified once on 2026-09-15 after credential rotation. Do not repeat ineligible probes as a promotion strategy or install recurring diagnostics; the critical path is validated research/data and complete outcomes.
-2. Review the written Alpaca Basic free-only validation specification. The operator confirmed
-   no Alpaca account exists; free paper-only signup remains their prerequisite, without funding
-   or a paid upgrade. Do not access credentials. Source choice is approved
-   only as a candidate. Resolve usage/retention and paper-only-versus-SIP entitlement ambiguity,
+2. The operator approved the written Alpaca Basic free-only validation specification and
+   confirmed completion of paper-only Basic/free account setup on 2026-09-17. The next
+   local step is execution of the bounded first-response diagnostic implementation plan, not
+   another signup or account confirmation. Do not access credentials. Source choice remains
+   a candidate. Resolve usage/retention and paper-only-versus-SIP entitlement ambiguity,
    then obtain separately scoped acquisition authority before any authenticated capture.
    Imported data stays unsupported in the synthetic bundle implementation. Collection and
    historical availability, membership, corporate-action/interpolation provenance, and explicit

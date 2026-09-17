@@ -2,9 +2,11 @@
 
 Date: 2026-09-17 (UTC)
 
-Status: the operator approved Alpaca Basic as the first $0 data-validation candidate.
-This written specification is proposed for operator review. No acquisition, credential
-access, provider implementation, research acceptance, or live operation is approved by it.
+Status: the operator approved this written specification on 2026-09-17 and confirmed that
+they created a paper-only account on Basic/free, with no paid subscription or funded live
+account. This is operator-reported account status, not an authenticated entitlement check.
+No acquisition, credential access, provider implementation, research acceptance, or live
+operation is approved by this specification.
 
 Inspected base: `d53d596e5e11b21938adbc2ac6adaa95e6a4284c`, branch
 `codex/continue-implementation-from-commit-7c4dcd1`.
@@ -25,15 +27,15 @@ converting trial, an exchange add-on, a funded-account workaround, or a subscrip
 upgrade. Existing hosting charges are separate. A denial must not trigger a paid fallback,
 a new brokerage account, or a change of provider/feed behind the operator's back.
 
-Current authority covers public-documentation review and this local design/handoff only.
-Account creation and agreement acceptance remain operator actions. Credential installation,
-authenticated requests, raw-data retention, and any provider communication require an
+Current authority covers public-documentation review and local design/planning/handoff only.
+The operator has completed account creation; agreement acceptance remains their action.
+Credential installation, authenticated requests, raw-data retention, and any provider communication require an
 explicit, separately reviewed acquisition scope before execution. Do not search for existing
 keys, read account pages, or inspect production state to discover those prerequisites.
 
-Dependency chain: source choice (approved) -> written specification review -> operator
-account/usage prerequisites -> separately authorized bounded capture -> primary review of
-authenticated response structure and coverage -> separately approved offline importer design.
+Dependency chain: source choice and written specification (approved) -> account creation
+(operator-confirmed) -> usage prerequisites -> separately authorized bounded capture -> primary
+review of authenticated response structure and coverage -> separately approved offline importer design.
 The critical path is access and source evidence, not additional synthetic tests or funding.
 
 ## 2. Public evidence and unresolved facts
@@ -59,12 +61,14 @@ Use a staged evidence review before building a provider adapter. A broad Alpaca 
 now would assume unverified shapes and rights. Combining several free feeds now would add
 unresolved identity, adjustment, and timestamp differences. Both alternatives are deferred.
 
-The operator confirmed on 2026-09-17 that no Alpaca account exists. The first stage is an
-operator prerequisite checklist, not a network command:
+The operator initially reported having no Alpaca account, then confirmed on 2026-09-17 that
+they created a paper-only Basic/free account without a paid subscription or funded live
+account. The remaining prerequisite checklist is not a network command:
 
-- The operator creates a free paper-only account if they wish to proceed, reviews the applicable
-  terms, and confirms the Basic/free-plan status. Record only account type and free-plan status
-  in the sanitized handoff. Do not create an account or accept its agreements on their behalf.
+- Account creation and account-type/free-plan confirmation are complete by operator report.
+  Review the applicable usage terms separately; do not infer entitlement or retention rights
+  from account creation. Record only account type and free-plan status in the sanitized
+  handoff. Do not accept agreements on the operator's behalf.
 - Do not fund or move assets. Do not select a paid plan, paid add-on, or live brokerage signup.
   If a required dataset needs one of those changes, stop and report the free-only limitation.
 - Resolve the permitted feed and intended private research/retention use. Unresolved rights
@@ -201,13 +205,17 @@ these checks as network, data, runtime, or full-suite verification.
 
 ## 6. Operator handoff and next approval
 
-The operator has confirmed that no Alpaca account exists. The next external prerequisite is
-their own free paper-only signup and confirmation of the account type and Basic/free plan.
+The operator has confirmed account creation, paper-only account type, and Basic/free plan.
+Do not ask them to repeat that setup or confirmation. Feed entitlement and intended private
+retention/use remain separate unresolved prerequisites, not facts established by this report.
 No key, account identifier, screenshot of a key page, payment detail, or brokerage balance is
 needed in the conversation. Do not request live-account creation or funding to unblock this work.
 
-After written-spec approval, prepare a bounded implementation/acquisition plan with exact
-local ownership, frozen interfaces, tests, and separately enumerated external operations.
+Written-spec approval is complete. The next bounded plan is the
+[first-response diagnostic implementation plan](../plans/2026-09-17-alpaca-first-response-diagnostic.md),
+with exact local ownership, frozen interfaces, tests, and separately enumerated external
+operations. Its two first-page samples cannot establish full-history coverage. Completing
+that diagnostic does not complete this broader source-feasibility specification.
 Follow the repository rule prohibiting a production provider implementation from public prose
 alone: authenticated shape evidence must be reviewed before implementing such an adapter.
 If legal entitlement remains ambiguous, resolve that prerequisite before acquiring data.
