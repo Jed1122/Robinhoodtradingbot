@@ -10,7 +10,7 @@ Attestation and Cloud-review base: `a58f6ebd548d8a9368c1dc90b6a98b48ee0e5908`
 
 Verified deployed source: `32ab71fc3c845c56068179fed98cf4a9eb80461e`
 
-Latest CI-verified implementation: `14c29e26b760d6fb59a4514ae3f5b50f9e921d1d`
+Latest CI-verified implementation: `001abc6e1cd85265e84c2a5c9c87cfedcf0482ba`
 
 Current work: the operator selected **free-only data** and approved **Alpaca Basic as the first
 data-validation candidate**, without moving the funded Robinhood account or changing trading
@@ -29,6 +29,16 @@ No real credential access, authenticated Alpaca request, data acquisition, purch
 ledger access, deployment or live operation occurred. No parallel/Cloud worker was dispatched
 for the operator-selected inline implementation. External acquisition authority remains
 separate; live trading is still NO-GO.
+
+The operator then authorized publishing the five Alpaca checkpoint commits to existing
+[PR #1](https://github.com/Jed1122/Robinhoodtradingbot/pull/1), preserving its base branch and
+original description. Exact implementation revision `001abc6e1cd85265e84c2a5c9c87cfedcf0482ba`
+passed [PR CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35272155521) and
+[push CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35272147974): all six jobs
+on each run, including Python 3.12, 3.13, and 3.14. This documentation checkpoint records
+those observed results; it does not change source, tests, configuration, or release authority.
+The PR remains open and unmerged, with auto-merge disabled. No deployment or authenticated
+capture was authorized or performed by publication.
 
 Completed foundation: operator-approved data-first architecture, captured in the
 [verifiable local data and snapshot-loader design](docs/superpowers/specs/2026-09-17-research-data-bundle-design.md).
@@ -418,6 +428,23 @@ Shared interface changes in these areas require a sequential plan, explicit migr
 
 ## TEST STATUS
 
+### Alpaca publication verification (2026-09-17)
+
+- Fresh pre-push verification at `001abc6` passed **4,223 tests**, **86.64% coverage with
+  branch measurement**, in 144.06 seconds on Python 3.12.13. The 80% floor is unchanged.
+- Ruff, strict mypy across **174 source files**, Bandit, `uv lock --check`, dependency
+  audit, **3 documentation smoke tests**, and `git diff --check` passed. The local project
+  package remains unauditable on PyPI; existing annotation/deprecation warnings were retained.
+- All six jobs in both exact-revision CI runs linked above passed: three Python quality
+  jobs, Bandit, locked-dependency validation/audit, and shell/Compose configuration checks.
+  Existing GitHub action-runtime deprecation annotations are non-failing and unchanged.
+- The integration branch was pushed without force, and the existing PR description was
+  preserved beneath a current checkpoint clarifying implemented versus externally unverified
+  behavior. The named worktree and unrelated untracked files were preserved.
+- This supersedes the implementation-time no-push status below, not its safety boundary.
+  Authenticated source evidence, data acceptance, promotion, merge, and deployment remain
+  outside this publication. The next external prerequisite remains the separate acquisition gate.
+
 ### Alpaca inline diagnostic implementation (2026-09-17)
 
 - Inline execution followed operator approval, starting at `9c71e63f0b549f063825633f1a0517ab922af759`.
@@ -647,8 +674,9 @@ On 2026-09-15, the operator separately authorized workstation browser authorizat
    and paper-only-versus-SIP entitlement ambiguity, agree the exact private paths and retention
    scope, then obtain one manifest-bound acquisition approval before authenticated capture.
    The probe will collect only two first-page samples; complete-history acquisition and an
-   importer still require follow-on source-shape review and design. Push/update of existing
-   PR #1 and new CI remain separate from local verification; no duplicate PR is needed.
+   importer still require follow-on source-shape review and design. Publication to existing
+   PR #1 and exact-implementation PR/push CI are complete as recorded above; the PR is not
+   merged and no duplicate PR is needed.
    Imported data stays unsupported in the synthetic bundle implementation. Collection and
    historical availability, membership, corporate-action/interpolation provenance, and explicit
    coverage remain primary-owned source checks. Hash consistency alone cannot accept a source.
