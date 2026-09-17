@@ -53,7 +53,9 @@ Observation eligibility is derived rather than caller-selected. It requires veri
 provider evidence, an eligible strategy, authenticated reads for connected stages, validated data,
 complete outcomes, clean reconciliation, non-fixture data, a valid runtime scope, and known order
 state. The shipped connected preflight is diagnostic only: release configuration disables research
-promotion, and every run records invalid strategy data, incomplete outcomes, and an unverified
-runtime scope. It is durable connection evidence but not qualifying promotion evidence. External
-promotion attestations carry explicit observed and expiry times; missing, future-dated, expired,
+promotion, and every run records unvalidated strategy data and incomplete outcomes. The deployed
+profile requires a verified release attestation and can record a valid runtime scope; that does
+not validate strategy data or outcomes. It is durable connection evidence but not qualifying
+promotion evidence. External promotion attestations carry explicit observed and expiry times;
+missing, future-dated, expired,
 mismatched, or incomplete evidence blocks promotion.
