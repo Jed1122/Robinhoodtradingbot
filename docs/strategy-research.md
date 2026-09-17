@@ -5,6 +5,32 @@ families include equity momentum, relative strength, regime scaling, research-on
 reversion, and long-only crypto trend/breakout. Every attempted parameter set is retained,
 including rejected attempts.
 
+## Synthetic bundle boundary
+
+The offline `research-bundle-v1` assembler and verifier retain exact synthetic source bodies,
+replay the single versioned synthetic normalizer, compare exact declared coverage slots, and
+preserve explicit point-in-time membership baselines and events. Verification establishes
+internal consistency only. Every bundle remains classified `synthetic` with mandatory
+`source_authenticity_unverified`, `source_history_unverified`, and `source_license_unverified`
+limitations; its legacy manifest keeps `point_in_time_universe=False` and
+`corporate_action_coverage="declared_unverified"`. No caller flag can promote this data.
+
+The loader requires gap-free visible declarations for the requested history window, waits for
+each completed bar's own availability, and refuses missing/excluded membership rather than
+shrinking the requested universe. Interpolation and adjusted/unknown price bases deny a query.
+An effective retained split or dividend between the earliest selected bar date and the query
+date also denies it, even when published later; that is conservative unsupported-history
+rejection, not a future-data adjustment. Existing adjustment primitives are unchanged.
+
+Snapshot identity includes selected source/record provenance, coverage, membership, explicit
+settings, and UTC query time rather than the whole bundle. Separate irrelevant future captures
+leave earlier snapshots and feature hashes unchanged. Synthetic no-intent integration tests and
+legacy report-hash compatibility checks do not establish real-source quality, statistical
+acceptance, calibrated outcomes, or qualifying paper/shadow evidence. A real-source contract
+review remains the next primary-owned dependency; no provider acquisition is added here.
+
+## Existing primitives and connected comparison
+
 The local `adjust_bars` primitive requires a canonical UTC `as_of`, including for empty input.
 It applies only an action for the bar's own instrument, whose announcement is known by `as_of`
 and whose effective date is on or before the query's UTC date. Bars ending on or after that

@@ -10,20 +10,44 @@ Attestation and Cloud-review base: `a58f6ebd548d8a9368c1dc90b6a98b48ee0e5908`
 
 Verified deployed source: `32ab71fc3c845c56068179fed98cf4a9eb80461e`
 
-Latest CI-verified implementation: `8785266866206b1e93f1f031794703d3ab8f106e`
+Latest CI-verified implementation: `5178406cdd65fc4f03f37fdafd8d857116d58075`
 
 Current work: operator-approved data-first architecture, captured in the
 [verifiable local data and snapshot-loader design](docs/superpowers/specs/2026-09-17-research-data-bundle-design.md).
 Written-spec approval is complete. The
 [six-task implementation plan](docs/superpowers/plans/2026-09-17-research-data-bundle.md)
-defines the v1 format, callable interfaces, tests, and two disjoint Cloud contracts. Execution
-handoff is next; no bundle/loader implementation or new Cloud test dispatch has started.
-The preceding membership and simulation input-validation wave is complete at
-`8785266`. No deployment or broker operation is part of this work.
+defines the v1 format, callable interfaces, tests, and two disjoint Cloud contracts. The operator
+approved primary-led execution with actual parallel Cloud test workers. Tasks 1-4 are committed
+at `5178406`: immutable codec/models, synthetic normalization, replay/coverage verification,
+and the existing-interface snapshot loader. Private artifact storage and no-intent integration
+are implemented locally and undergoing final central verification; the full wave is not yet
+declared complete. No deployment or broker operation is part of this work.
+
+The exact Task-4 base passed [PR CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35262696162)
+and [push CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35262690055).
+Two actual Cloud workers were dispatched against that exact pushed base:
+
+- `DATA-BUNDLE-TESTS-004`: `task_e_6aac39f084b0832db860bdbc63e48dbd`; returned a scoped
+  `READY_FOR_INTEGRATION` proposal with 21 synthetic tests. The primary reviewed the complete
+  two-file diff, applied it centrally, and reran all 21 successfully.
+- `SNAPSHOT-DATA-TESTS-004`: `task_e_6aac39f187ac832dbcb4f8b1bc8a4bd8`; returned a scoped
+  `READY_FOR_INTEGRATION` proposal with 21 synthetic tests. The primary reviewed its full
+  two-file diff and reran all 21 successfully. Both returned files pass together: **42 tests**.
+
+Task 5 is committed at `313f54e`: private no-overwrite artifact I/O, including bounded reads,
+pre-construction combined record limits, complete-write publication and retry durability.
+Task 6 integrates the real loader and feature pipeline in the existing decision cycle with
+incapable test stages, pins the unchanged legacy report/manifest/render hashes, and documents
+the synthetic-only boundary. The latest focused pre-final selection passed 420 tests before
+the 42 Cloud cases and final retry regression were added. Exact final baseline and CI results
+are recorded below when observed, not inferred from worker dispositions.
+
+Cloud workers own only their test/review files. All six production modules remain primary-owned.
+Local read-only reviews are separate supporting checks, not relabeled Cloud execution.
 
 Release state: **NO-GO for live trading**
 
-This design/planning work performs no new broker, ledger, credential, or host check. Operational
+This offline implementation work performs no new broker, ledger, credential, or host check. Operational
 facts below remain the separately authorized 2026-09-15 snapshot, not a fresh deployment assertion.
 
 This report transitions the existing system to centrally governed local and Codex Cloud orchestration. It does not restart or redesign the project. The executing-image-attestation release is committed, CI-verified, and deployed in paused mode. Two isolated Codex Cloud documentation reviews, one CI-hardening task, and two synthetic fixture tasks completed and were integrated centrally. Their point-in-time findings do not supersede the newer operational evidence recorded here. Operator-authorized workstation reauthorization and server credential rotation restored the bounded broker-read connection on 2026-09-15; live trading remains blocked.
@@ -113,8 +137,8 @@ The following are complete within the stated scope, not as proof of live readine
 7. No provider-connected live adapter, complete live application, durable host leadership path, or restart-safe live recovery composition exists.
 8. Current external security, manual review, and runtime-control attestations have not been assembled for live promotion.
 9. Codex Cloud CLI access works. `RESEARCH-GAPS-001`, `IAC-AUDIT-001`, `CI-HARDENING-002`,
-   `PIT-FIXTURES-002`, `SIM-FILL-FIXTURES-002`, `PIT-VALIDATION-003`, and `SIM-VALIDATION-003`
-   returned bounded diffs and were integrated
+   `PIT-FIXTURES-002`, `SIM-FILL-FIXTURES-002`, `PIT-VALIDATION-003`, `SIM-VALIDATION-003`,
+   `DATA-BUNDLE-TESTS-004`, and `SNAPSHOT-DATA-TESTS-004` returned bounded diffs and were integrated
    centrally. Remaining review findings and complete research/runtime implementation are not implied.
 10. The remote default branch is materially behind the integration branch; any future Cloud task launched from the default branch would start from stale architecture.
 
@@ -123,7 +147,7 @@ The following are complete within the stated scope, not as proof of live readine
 | Activity | State | Reason |
 |---|---|---|
 | Local implementation and deterministic tests | GO | No external side effects; existing guardrails remain active. |
-| Static/read-only audits and secrets-free Cloud tasks | GO | Seven Cloud tasks integrated; continue to require exact revision, isolated worktree, frozen interfaces, and bounded ownership. |
+| Static/read-only audits and secrets-free Cloud tasks | GO | Nine Cloud tasks integrated; continue to require exact revision, isolated worktree, frozen interfaces, and bounded ownership. |
 | Paused health-only service | Last verified GO on 2026-09-15 | Healthy, readiness-denied, live-disabled, and no credential/ledger mounts at that check; not rechecked by this wave. |
 | Explicit bounded read-only evidence probe | Verified once; separate authority required for another run | The post-rotation probe succeeded but remained non-promotable. The local client is write-incapable, but the OAuth token remains trading-capable. No recurring job is authorized or installed. |
 | Paper promotion | NO-GO | No accepted research composition or eligible 100-cycle evidence set. |
@@ -160,7 +184,7 @@ The primary orchestrator owns the integration branch, dependency graph, protecte
 | Corporate-action primitive filters | `93b28f4` | Primary correction locally verified | Existing interface retained; no provider/evidence integration. |
 | Simulation fill-model contract | `93b28f4` | Cloud tests integrated and locally verified | Tests/docs only; no pricing, strategy, risk, or execution changes. |
 | Membership and fill/cost input validation | `095e5c0` | Complete at `8785266`; two Cloud test diffs integrated; local verification and exact-commit CI passed | Independent synthetic tests only; primary owns all production validation. |
-| Verifiable local data and snapshot loader | Approved spec; plan at `0fd34b2` planning base; execution next | Plan only; Cloud dispatch after callable verifier/loader commit, alongside primary I/O and integration | Primary owns production; Cloud owns bounded synthetic tests only. |
+| Verifiable local data and snapshot loader | Approved plan; Task-4 Cloud base `5178406`; storage `313f54e` | Implemented; both Cloud test diffs centrally reviewed and 42 cases pass; final full-wave CI pending | Primary owns all six modules; Cloud owns bounded synthetic tests/reviews only. |
 | IaC drift and recovery audit | `a58f6eb` plus sanitized inventory | Cloud review completed | Read-only; no DigitalOcean or state mutation. |
 | Coverage/observability gap inventory | Committed base | Independent now | Read-only report or isolated non-risk tests. |
 | Paper composition | Accepted research/data interfaces | Sequential protected work | Primary owner only. |
@@ -370,14 +394,41 @@ Shared interface changes in these areas require a sequential plan, explicit migr
 
 ## TEST STATUS
 
-For the approved-spec implementation planning on 2026-09-17:
+For the synthetic research-bundle implementation wave on 2026-09-17:
+
+- The final local full suite, including both reviewed Cloud contributions, passed **4,073 tests**
+  in 130.26 seconds with **86.38% coverage with branch measurement enabled**, above the unchanged
+  80% threshold. This adds 314 tests to the prior 3,759-test implementation. One existing
+  Starlette `httpx` deprecation warning remains. The earlier 4,052-test run preceded integration
+  of the second Cloud file and is not used as the final count.
+- The final focused data/research/features/decision-cycle/paper/promotion/no-live-write selection
+  passed **463 tests**. Both Cloud-owned files passed separately and together (**42 tests**).
+  The real-loader decision-cycle test creates no decisions, intents, or execution outcomes;
+  legacy report, manifest, and rendered-value hashes remain unchanged.
+- Ruff passed; strict mypy passed across **171 source files**; Bandit found no issues; and
+  `uv lock --check` passed. Existing Bandit annotation warnings were not suppressed.
+  A fresh audit of exact locked requirements exported to an isolated temporary directory
+  reported **no known vulnerabilities**. No credential or production payload was exported.
+- DigitalOcean shell-script syntax and standalone `docker-compose config --quiet` passed.
+  The local Docker Compose plugin is absent; exact-commit CI runs its native `docker compose`
+  command. No container or deployment was started by configuration validation.
+- Tests used the verified clean Python 3.12.13 environment with `PYTHONPATH=src` from this
+  worktree. The final source/test suite was stable during the run; subsequent changes only
+  record verification in documentation. Final integration-commit CI is pending at this writing;
+  Task-4 CI at `5178406` is already green as linked above.
+- Primary regression tests reproduced parser, preflight, and retry-durability findings before
+  fixes. Process-local fault injections demonstrated that malformed-limit, duplicate-key,
+  exact hash, source-scope, blob integrity, membership, and real-loader integration assertions
+  detect disabled or incorrect behavior; none of those bypasses were retained in source.
+
+Historical pre-implementation planning snapshot on 2026-09-17:
 
 - Fresh offline artifact, report, research-validation, replay, feature, and decision-cycle
   verification passed **16 existing tests** in 0.67 seconds. Captured legacy synthetic
   report/manifest/rendered-value hashes are pinned in the plan as compatibility controls.
 - A read-only parallel inventory verified reusable fixture/test paths; the primary performed
-  the plan/spec coverage and signature review. No implementation task is marked complete,
-  and no Cloud worker has been dispatched for the new bundle milestone.
+  the plan/spec coverage and signature review. At that earlier planning checkpoint no
+  implementation task was complete and no bundle Cloud worker had been dispatched.
 - Fresh documentation smoke verification passed **1 test**; all **17 Python examples** in
   the plan parsed successfully under the clean Python 3.12 environment. Example syntax
   validation is not execution of the planned code. Diff whitespace checks passed.
@@ -500,11 +551,12 @@ On 2026-09-15, the operator separately authorized workstation browser authorizat
 ## RECOMMENDED NEXT WAVE
 
 1. The bounded broker connection was verified once on 2026-09-15 after credential rotation. Do not repeat ineligible probes as a promotion strategy or install recurring diagnostics; the critical path is validated research/data and complete outcomes.
-2. Continue from the bounded research-primitive wave: define validated point-in-time coverage,
-   complete corporate-action/interpolation provenance, and leakage/multiple-testing controls.
-   Input and same-key conflict validation are implemented locally; primitive tests still do not
-   supply authoritative source coverage or accepted evidence. Authoritative data selection
-   and statistical acceptance remain primary-owner decisions.
+2. Continue from the synthetic bundle/loader milestone with a primary-owned real-source
+   contract review: licensing, collection/availability semantics, point-in-time membership,
+   corporate-action/interpolation provenance, and explicit coverage. Do not treat synthetic
+   declarations or replay/hash consistency as authoritative source evidence. Leakage,
+   multiple-testing controls, authoritative source selection, and statistical acceptance
+   remain unresolved primary-owner decisions.
 3. Use the completed IaC review to prepare a sanitized host-hardening and recovery evidence checklist. Do not import, rebuild, replace, resize, or apply Terraform without a separately reviewed plan and authority.
 4. `CI-HARDENING-002` is integrated and verified green. A bounded attestation-test review can follow under its own exact-commit contract.
 5. Compose qualifying paper and shadow cycles only after their research/data/outcome interfaces and evidence are complete. Preserve all existing observation and elapsed-time gates.

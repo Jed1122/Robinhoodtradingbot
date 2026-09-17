@@ -399,7 +399,7 @@ rewriting selected provenance/coverage must leave the earlier snapshot hash unch
 `ResearchDataManifest`; produce all value types plus `decode_envelope`/`encode_envelope`.
 No file I/O, normalization, or application imports in these two modules.
 
-- [ ] Write exact-type/limit and duplicate-JSON-key tests first:
+- [x] Write exact-type/limit and duplicate-JSON-key tests first:
 
 ```python
 import pytest
@@ -418,11 +418,11 @@ def test_duplicate_key_is_rejected_before_schema_construction():
     assert caught.value.code == "bundle_json_invalid"
 ```
 
-- [ ] Run `uv run pytest tests/unit/market_data/test_bundle_models.py tests/unit/market_data/test_bundle_codec.py -q`.
+- [x] Run `uv run pytest tests/unit/market_data/test_bundle_models.py tests/unit/market_data/test_bundle_codec.py -q`.
   Initially missing modules are expected; record that as interface absence, not proof of a
   behavioral regression. Once callable, demonstrate the malformed-value tests fail when the
   relevant new check is locally disabled, restoring it before any commit.
-- [ ] Implement the frozen dataclasses and bounded codec. Use explicit field allowlists per
+- [x] Implement the frozen dataclasses and bounded codec. Use explicit field allowlists per
   kind, reconstruct existing Decimal/UTC/enum/domain values, then compare canonical scalar
   spellings. Essential duplicate/type guard shape:
 
@@ -441,12 +441,12 @@ def _positive_limit(value: object) -> int:
     return value
 ```
 
-- [ ] Add cases for every listed wire field/type, non-UTC time, unknown versions/keys,
+- [x] Add cases for every listed wire field/type, non-UTC time, unknown versions/keys,
   NaN/float/exponent Decimal, excessive nesting/bytes/records, invalid kind/value union,
   duplicate IDs/symbols, and safe errors. Add a fully populated codec round trip containing
   each record kind and a legacy manifest; a hash-shape-valid envelope need not be verified
   here because semantic/hash verification belongs to Task 3.
-- [ ] Run the two narrow files, `uv run ruff check src/trading_bot/market_data tests/unit/market_data`,
+- [x] Run the two narrow files, `uv run ruff check src/trading_bot/market_data tests/unit/market_data`,
   and `uv run mypy src`; correct failures without weakening checks. Commit only these four files:
   `git commit -m "Add immutable research bundle contract and strict codec"`.
 
@@ -456,7 +456,7 @@ def _positive_limit(value: object) -> int:
 **Interfaces:** Consume Task 1 types/codec; produce `assemble_bundle` using the exact raw and
 hash formulas above. No source autodetection, real imports, provider client, or I/O.
 
-- [ ] Add this complete minimal fixture helper in `_bundle_fixtures.py`. Other tests import
+- [x] Add this complete minimal fixture helper in `_bundle_fixtures.py`. Other tests import
   this helper; Cloud workers may read it but use their own locally owned mutation fixtures.
 
 ```python
@@ -498,7 +498,7 @@ def fixture_package():
                            instruments=(InstrumentMapping(ID, "SYNTH"),), limits=LIMITS)
 ```
 
-- [ ] Add deterministic identity and imported-source rejection tests:
+- [x] Add deterministic identity and imported-source rejection tests:
 
 ```python
 from dataclasses import replace
@@ -518,9 +518,9 @@ def test_imported_claim_does_not_reclassify_synthetic_source():
     assert caught.value.code == "bundle_source_unsupported"
 ```
 
-- [ ] Run `uv run pytest tests/unit/market_data/test_bundle_normalize.py -q` and record the
+- [x] Run `uv run pytest tests/unit/market_data/test_bundle_normalize.py -q` and record the
   failing test outcome before production normalization exists.
-- [ ] Implement canonical descriptor construction, strict raw decoding, kind-specific
+- [x] Implement canonical descriptor construction, strict raw decoding, kind-specific
   normalization, legacy bar-group manifest construction, envelope identity and sorted blobs.
   Use these core operations after field validation, without modifying legacy helpers:
 
@@ -536,11 +536,11 @@ cleaned_hash = content_hash({"bars": ordered_bars_for_symbol, "symbol": mapping.
   fields/preimages in the frozen contract, not arbitrary input dictionaries. Use separate
   branches for all five kinds. All branches bind source scope, normalizer version, locator
   and availability. No domain constructor is selected by data-supplied class names.
-- [ ] Add source/body key-order equivalence controls, exact raw-byte-versus-canonical-hash
+- [x] Add source/body key-order equivalence controls, exact raw-byte-versus-canonical-hash
   distinction, record-hash self-exclusion, all five record kinds, adjusted/interpolated
   classification, symbol order, multiple sources and raw-blob deduplication tests. Changing
   exact source bytes may change provenance even when decoded prices are unchanged.
-- [ ] Run Task 1–2 tests, `uv run pytest tests/unit/research/test_report.py tests/unit/research/test_validation.py tests/integration/market_data/test_recording_replay.py -q`,
+- [x] Run Task 1–2 tests, `uv run pytest tests/unit/research/test_report.py tests/unit/research/test_validation.py tests/integration/market_data/test_recording_replay.py -q`,
   Ruff and mypy. Commit only this task's three files:
   `git commit -m "Build deterministic synthetic research data bundles"`.
 
@@ -551,7 +551,7 @@ cleaned_hash = content_hash({"bars": ordered_bars_for_symbol, "symbol": mapping.
 produce `verify_bundle` and factory-created immutable `VerifiedBundle`. The verifier does
 not read files, query providers, accept research, or write observations.
 
-- [ ] Write one valid-bundle and one same-length byte-tamper test:
+- [x] Write one valid-bundle and one same-length byte-tamper test:
 
 ```python
 from dataclasses import replace
@@ -576,10 +576,10 @@ def test_raw_byte_tamper_rejected():
     assert caught.value.code == "bundle_blob_mismatch"
 ```
 
-- [ ] Run `uv run pytest tests/unit/market_data/test_bundle_verify.py -q` before the verifier
+- [x] Run `uv run pytest tests/unit/market_data/test_bundle_verify.py -q` before the verifier
   exists; after it exists, confirm deliberate local bypass of the byte-hash comparison makes
   the tamper case fail, then restore. Do not retain bypasses or weakened asserts.
-- [ ] Implement verification in this order: limits/shape → envelope decode → referenced blob
+- [x] Implement verification in this order: limits/shape → envelope decode → referenced blob
   set/byte lengths/digests → descriptor and outer hash → exact normalizer replay → manifest
   equality → derived classification → cross-record scope/conflicts/coverage. Each error code
   corresponds to this stage; malformed constructor values use `bundle_value_invalid`.
@@ -596,17 +596,17 @@ if len(body) != descriptor.byte_length or hashlib.sha256(body).hexdigest() != de
   hashes, not a caller's manifest-hash string. Reject extra/unreferenced blobs and normalized
   entries; every descriptor must resolve exactly one blob, and every raw locator exactly one
   normalized entry. Sharing identical blob bytes does not permit duplicate descriptors.
-- [ ] Implement complete-slot equality and nonoverlap checks from the frozen contract; raw
+- [x] Implement complete-slot equality and nonoverlap checks from the frozen contract; raw
   gap/unknown declarations are retained limitations, while contradictory complete declarations
   are rejected. Count equality is insufficient: compare exact instrument/interval/start/end
   keys and source scopes. Retain immutable records even when a query will later be denied.
-- [ ] Add a mutation matrix changing one layer at a time: raw bytes; digest/length; descriptor;
+- [x] Add a mutation matrix changing one layer at a time: raw bytes; digest/length; descriptor;
   normalized value/locator/source hash; stored domain hash; manifest body/hash; fixture flag;
   coverage slots; baseline conflicts; same-key conflicting memberships; duplicate bars/actions;
   deleted/extra rows/blobs; ordering and unknown fields. Rehash the outer envelope in selected
   cases to prove it does not mask a deeper mismatch. Include adjacent valid coverage segments
   and identical-event positive controls. Assert safe reason codes, not original values.
-- [ ] Run Task 1–3 tests and existing `test_universe.py`, `test_universe_contract.py`,
+- [x] Run Task 1–3 tests and existing `test_universe.py`, `test_universe_contract.py`,
   `test_universe_validation.py`, `test_universe_validation_contract.py` plus research artifact
   tests; run Ruff/mypy. Commit the two new files with
   `git commit -m "Verify research bundle provenance and declared coverage"`.
@@ -618,7 +618,7 @@ if len(body) != descriptor.byte_length or hashlib.sha256(body).hexdigest() != de
 `PointInTimeUniverse`, `HistoricalSlice`, and `ValidatedMarketSnapshot`; produce
 `BundleSnapshotLoader` exactly as specified. No strategy, runtime, config or promotion edits.
 
-- [ ] Write a successful load with exact values and the insufficient-history denial:
+- [x] Write a successful load with exact values and the insufficient-history denial:
 
 ```python
 import pytest
@@ -648,10 +648,10 @@ async def test_minimum_history_is_not_padded():
     assert caught.value.code == "snapshot_history_insufficient"
 ```
 
-- [ ] Run `uv run pytest tests/unit/market_data/test_snapshot_loader.py -q`; record the red
+- [x] Run `uv run pytest tests/unit/market_data/test_snapshot_loader.py -q`; record the red
   result before loader implementation. Add tests that observe selected bar identities, not
   only total counts, so a future bar substituted for a missing past bar cannot pass.
-- [ ] Implement query validation, visible coverage union, explicit baseline/event selection,
+- [x] Implement query validation, visible coverage union, explicit baseline/event selection,
   conservative action denial, available completed bar selection, ordered existing histories,
   and exact hash preimages. The only application output construction is:
 
@@ -664,20 +664,20 @@ snapshot = ValidatedMarketSnapshot(as_of, ordered_histories, str(snapshot_hash))
   derived by the frozen query rules, not passed in by the caller. Keep diagnostics at
   `loader.bundle_hash`/`loader.limitation_codes`; no mutable last-query state. Restrict imports
   to application value contracts and public data/domain helpers; no runtime factory imports.
-- [ ] Add two-instrument order/membership controls; baseline-only inclusion; removal and
+- [x] Add two-instrument order/membership controls; baseline-only inclusion; removal and
   re-inclusion; late announcements/availability; missing baselines; gap/unknown segments;
   adjacent complete windows; future bar ends; delayed bars; interval mismatch; interpolation;
   unknown/adjusted prices; effective split/dividend denial; no-action success; exact boundary
   times. For future-action denial use a separate test so it cannot be confused with the
   future-record invariance control.
-- [ ] Add a future-source invariance control by appending a **new separate capture** outside
+- [x] Add a future-source invariance control by appending a **new separate capture** outside
   the selected window with no changed earlier source/coverage. Assert different bundle hash,
   identical earlier snapshot and feature hashes, and changed later snapshot where that source
   becomes relevant. Mutating selected coverage/provenance must instead change identity or deny.
-- [ ] Run Task 1–4 tests, existing features/property-determinism and recording/replay tests;
+- [x] Run Task 1–4 tests, existing features/property-determinism and recording/replay tests;
   run Ruff/mypy. Commit the two files with
   `git commit -m "Load conservative synthetic snapshots through existing interface"`.
-- [ ] Resolve, record and push the exact passing Task-4 commit on the existing branch before
+- [x] Resolve, record and push the exact passing Task-4 commit on the existing branch before
   dispatching the two Cloud contracts below. Confirm the remote branch tip is that SHA.
   Do not restart tasks already completed in earlier waves. Primary proceeds with Task 5
   while both independent workers execute; no worker owns loader or verifier production code.
@@ -701,7 +701,7 @@ are `<blob_sha256>.raw` and `<bundle_hash>.json`. No arbitrary relative paths ar
 Supported platforms are the existing macOS development and Linux runtime; missing required
 no-follow, directory-descriptor or atomic no-overwrite capability must fail closed.
 
-- [ ] Write the complete private-directory round-trip test:
+- [x] Write the complete private-directory round-trip test:
 
 ```python
 from pathlib import Path
@@ -722,15 +722,15 @@ def test_private_bundle_round_trip(tmp_path: Path):
     assert result.envelope.classification == "synthetic"
 ```
 
-- [ ] Run `uv run pytest tests/integration/market_data/test_bundle_store.py -q` and observe
+- [x] Run `uv run pytest tests/integration/market_data/test_bundle_store.py -q` and observe
   failure before implementation. Reuse the existing report test's short-write technique,
   not its fixture that declares accepted research. New bundle I/O must remain separate.
-- [ ] Implement bounded same-file-descriptor reads with `O_NOFOLLOW`, `O_NONBLOCK` and regular
+- [x] Implement bounded same-file-descriptor reads with `O_NOFOLLOW`, `O_NONBLOCK` and regular
   file/owner/mode checks on `fstat`; use `O_NONBLOCK` so a FIFO cannot hang before rejection.
   Account cumulative bytes across envelope and distinct blobs, cap each read at its limit
   plus one, then pass only captured bytes to verification. Do not `lstat` and later read the
   same child by an unbound path. Do not retain raw bytes in the returned `VerifiedBundle`.
-- [ ] Implement publication using a private random-named temporary file inside the opened
+- [x] Implement publication using a private random-named temporary file inside the opened
   destination directory. Loop short writes, `fchmod(0600)`, `fsync` and verify the temp file;
   publish with a same-directory hard link that fails if the target exists, not overwrite-
   capable rename. Unlink only the exact temporary file created by this invocation. The
@@ -749,13 +749,13 @@ os.fsync(directory_fd)
   `bundle_storage_unavailable` (durability uncertain), not a success or destructive rollback;
   the complete artifact may exist, and a later explicit read/retry must reverify it. This is
   distinct from exposing a partially written envelope. No garbage collection is introduced.
-- [ ] Add tests for nonexistent/inside-repo/wrong-mode roots; symlink ancestor/root/subdir/file;
+- [x] Add tests for nonexistent/inside-repo/wrong-mode roots; symlink ancestor/root/subdir/file;
   invalid digest/traversal; wrong-owner simulated metadata; FIFO/nonregular files; oversized
   envelope/blob/total bytes; exact repeated writes; conflicting existing content; short writes;
   write returning zero; write/fsync/link failure before publication; post-publication durability
   uncertainty; reading a retained verified object after on-disk replacement. Assert failure
   messages contain only registered codes, not temp paths or payload markers.
-- [ ] Run the new I/O test, Task 1–4 tests, existing report-artifact tests, Ruff/mypy/Bandit.
+- [x] Run the new I/O test, Task 1–4 tests, existing report-artifact tests, Ruff/mypy/Bandit.
   Commit only this task's two files with
   `git commit -m "Persist research bundles with private atomic local I/O"`.
 
@@ -766,7 +766,7 @@ the four documentation paths in the file map, and integrate reviewed Cloud-owned
 **Interfaces:** Consume the real loader, real `FeaturePipeline`, and existing
 `DecisionCycleService`; no production interface changes. Primary owns integration.
 
-- [ ] Add a legacy identity test with these exact pre-change values, captured from the
+- [x] Add a legacy identity test with these exact pre-change values, captured from the
   existing complete synthetic report fixture at planning base `0fd34b2`:
 
 ```python
@@ -783,7 +783,7 @@ def test_existing_report_identity_is_unchanged():
 
   These are value-hash compatibility controls, not proof of a legacy deserializer (none is
   introduced). Also assert an old manifest alone is rejected by the new envelope decoder.
-- [ ] Build a test-only feature adapter and incapable execution stage:
+- [x] Build a test-only feature adapter and incapable execution stage:
 
 ```python
 from trading_bot.app import ValidatedMarketSnapshot
@@ -812,7 +812,7 @@ class NoExecution:
   passed `as_of`/config hash, no strategies (`strategies=()`), and an in-memory journal that
   captures the payload and returns a fixed synthetic audit ID. No real broker or database is
   instantiated. This proves data reaches the existing cycle, not profitable strategy behavior.
-- [ ] Write an async integration test constructing `DecisionCycleService` with the real
+- [x] Write an async integration test constructing `DecisionCycleService` with the real
   verified fixture loader, adapter and incapable test stages. Assert one history, the exact
   two selected closes, `spread_pct is None`, no decisions/intents/outcomes, fixed audit ID,
   captured `market_hash == result.market.data_hash`, and stable result hash across repeated
@@ -873,25 +873,25 @@ async def test_real_loader_and_features_feed_existing_cycle_without_execution():
 
   The `portfolio` field used here is verified in existing `portfolio/intents.py`; the example
   does not modify that dataclass. Keep test stages local to this new integration file.
-- [ ] Run the new integration file first. Existing green compatibility assertions are
+- [x] Run the new integration file first. Existing green compatibility assertions are
   expected; new integration must fail if the real loader is replaced with an empty snapshot
   or the feature adapter is not called. Restore deliberate fault injection before committing.
-- [ ] Integrate each Cloud diff only after verifying the exact base, path ownership, full
+- [x] Integrate each Cloud diff only after verifying the exact base, path ownership, full
   content and synthetic-only fixtures. Resolve mismatched expected behavior against this
   plan; workers cannot decide new semantics. Run each returned file independently and both
   together; no skipped tests, blanket xfails, or changes to primary/shared fixtures.
-- [ ] Run this focused selection with the unchanged default non-authenticated marker filter:
+- [x] Run this focused selection with the unchanged default non-authenticated marker filter:
 
 ```shell
 uv run pytest tests/unit/market_data tests/integration/market_data/test_bundle_store.py tests/integration/market_data/test_recording_replay.py tests/unit/research tests/unit/strategies tests/property/strategies/test_feature_determinism.py tests/integration/simulation/test_bundle_decision_cycle.py tests/integration/simulation/test_decision_cycle.py tests/integration/runtime/test_paper.py tests/integration/runtime/test_promotion_wiring.py tests/integration/runtime/test_no_live_writes.py -q
 ```
 
-- [ ] Update architecture/research/limitations/handoff docs with implemented module paths,
+- [x] Update architecture/research/limitations/handoff docs with implemented module paths,
   synthetic-only classification, no-action/unadjusted loader limit, new private storage
   contract, exact observed tests, Cloud task IDs/dispositions, and remaining live blockers.
   Do not remove static research blockers, amend operational observations to look current,
   claim accepted data, or describe a running paper/live application.
-- [ ] Run the complete baseline and existing CI-equivalent checks, without altering thresholds:
+- [x] Run the complete baseline and existing CI-equivalent checks, without altering thresholds:
 
 ```shell
 uv run ruff check .

@@ -5,6 +5,34 @@ outside the service host, and placement factories behind authorization and promo
 
 ## Implemented boundary
 
+### Offline synthetic research bundles
+
+The separate `market_data/bundle_models.py`, `bundle_codec.py`, `bundle_normalize.py`,
+`bundle_verify.py`, `snapshot_loader.py`, and `bundle_store.py` implement the approved
+`research-bundle-v1` offline format. Exact raw bytes, source descriptors, normalized records,
+legacy manifest preimages, and the envelope are content-addressed and replay-verified.
+Explicit coverage slots and membership baselines are source assertions, not authenticated
+coverage or accepted research. Imported sources and unknown normalizer versions are rejected.
+
+`BundleSnapshotLoader` implements the existing async snapshot interface without changing
+application or runtime composition. Queries require visible complete bar/membership/action
+coverage, visible baseline/event membership, and sufficient available completed bars. Only
+unadjusted, non-interpolated histories without effective retained actions are supported;
+spread remains unavailable. Hashes bind selected provenance and settings, so unrelated future
+captures cannot rewrite earlier snapshot or feature identities. The loader is deliberately
+not re-exported by `market_data/__init__.py`, preserving the application dependency direction.
+
+Artifact storage requires an existing current-owner `0700` root outside the explicit repository.
+Descriptor-relative no-follow reads and private `0600` regular files are bounded by explicit
+limits. No-overwrite publication writes/syncs blobs before the envelope; retries verify existing
+bytes and re-establish directory durability. A post-publication sync failure reports uncertainty
+without deleting the complete artifact. There is no garbage collector or evidence-ledger write.
+An in-memory synthetic integration test connects the real loader and feature pipeline to the
+existing decision cycle with no strategies, no planned intents, and an execution stage that
+raises if called. This is not production wiring or a complete paper, shadow, or live cycle.
+
+### Existing foundation and operational composition
+
 The repository is a paper-safe, fail-closed foundation, not a running trading system.
 Implemented code is limited to canonical domain primitives and immutable cross-layer
 safety attestations, strict configuration and hashing, capability evidence and sanitized

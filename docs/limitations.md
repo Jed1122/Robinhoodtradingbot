@@ -1,5 +1,21 @@
 # Limitations
 
+- The new offline research bundle and snapshot loader accept only `synthetic-market-v1`
+  captures normalized by `synthetic-normalizer-v1`. Stored raw bytes and replay/hash checks
+  establish internal consistency, not authenticity, license rights, complete source history,
+  or accepted research. Imported data is unsupported. No bundle can create promotion evidence.
+- Bundle snapshots require explicit visible complete coverage and visible included membership;
+  they reject unavailable bars, interpolation, adjusted/unknown prices, and effective retained
+  actions. Date-only corporate actions cause conservative denial, not inferred intraday timing.
+  The loader does not supply spreads, real-source ingestion, production runtime wiring, or
+  broker-connected outcome coverage. Its decision-cycle integration is an incapable test only.
+- Bundle storage is local, private, content-addressed artifact I/O outside the repository,
+  separate from production persistence. It requires macOS/Linux no-follow and atomic hard-link
+  capabilities and reports failed publication durability rather than assuming success. It does
+  not authenticate a compromised same-UID process or host root, provide remote attestation,
+  automatically collect orphaned blobs, or validate the deployed host. Existing deployment and
+  live-operation blockers are unchanged.
+
 - Historical and public data may contain gaps, licensing limits, survivorship bias, delayed
   corporate actions, or incomplete point-in-time membership. Missing evidence makes research
   ineligible rather than triggering substitution.
