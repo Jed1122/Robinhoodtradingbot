@@ -1,5 +1,6 @@
 """Plan candidate intents through production sizing without averaging down."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
@@ -9,6 +10,7 @@ from trading_bot.domain import (
     AccountId,
     Instrument,
     OrderIntent,
+    OrderIntentId,
     OrderPurpose,
     OrderType,
     PortfolioSnapshot,
@@ -35,6 +37,9 @@ class IntentPlanningContext:
 
 
 class IntentPlanner:
+    def __init__(self, *, id_factory: Callable[[], OrderIntentId] = new_order_intent_id) -> None:
+        self._id_factory = id_factory
+
     def plan(
         self, target: TargetPortfolio, context: IntentPlanningContext
     ) -> tuple[OrderIntent, ...]:
@@ -71,7 +76,7 @@ class IntentPlanner:
                     continue
                 intents.append(
                     OrderIntent(
-                        new_order_intent_id(),
+                        self._id_factory(),
                         context.account_id,
                         instrument.id,
                         instrument.asset_class,
@@ -93,7 +98,7 @@ class IntentPlanner:
             elif current is not None and current.quantity > 0:
                 intents.append(
                     OrderIntent(
-                        new_order_intent_id(),
+                        self._id_factory(),
                         context.account_id,
                         instrument.id,
                         instrument.asset_class,

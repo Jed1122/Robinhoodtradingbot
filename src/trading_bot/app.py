@@ -1,5 +1,6 @@
 """Single production decision-cycle composition used by every runtime mode."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -55,8 +56,15 @@ class DecisionCycleRequest:
     portfolio: PortfolioSnapshot
     strategy_context_config_hash: str
     exposure_multiplier: Decimal
-    exit_policy: ExitPolicy
+    exit_policy: ExitPolicy | None
     intent_context: IntentPlanningContext
+
+
+@dataclass(frozen=True, slots=True)
+class PerInstrumentDecisionCycleRequest(DecisionCycleRequest):
+    """Opt-in policy map without changing legacy request/restart hash preimages."""
+
+    exit_policies: tuple[tuple[InstrumentId, ExitPolicy], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +90,7 @@ class DecisionCycleService:
         intent_planner: IntentPlanner,
         execution: ExecutionStage,
         journal: CycleJournal,
+        outcome_encoder: Callable[[object], object] | None = None,
     ) -> None:
         self.snapshot_loader = snapshot_loader
         self.features = features
@@ -90,6 +99,7 @@ class DecisionCycleService:
         self.intent_planner = intent_planner
         self.execution = execution
         self.journal = journal
+        self.outcome_encoder = outcome_encoder
 
     async def run_cycle(self, request: DecisionCycleRequest) -> DecisionCycleResult:
         market = await self.snapshot_loader.load(request.universe, request.as_of)
@@ -103,6 +113,12 @@ class DecisionCycleService:
         decisions = tuple(
             decision for strategy in self.strategies for decision in strategy.decide(context)
         )
+        # Keep the legacy call shape for existing composition implementations.
+        policy_arguments = (
+            {"exit_policies": request.exit_policies}
+            if isinstance(request, PerInstrumentDecisionCycleRequest)
+            else {}
+        )
         target = self.portfolio.construct(
             decisions,
             request.portfolio,
@@ -110,6 +126,7 @@ class DecisionCycleService:
             config_hash=context.config_hash,
             exposure_multiplier=request.exposure_multiplier,
             exit_policy=request.exit_policy,
+            **policy_arguments,
         )
         intents = self.intent_planner.plan(target, request.intent_context)
         outcomes = tuple([await self.execution.execute(intent) for intent in intents])
@@ -118,7 +135,10 @@ class DecisionCycleService:
             "features": features,
             "intents": intents,
             "market_hash": market.data_hash,
-            "outcomes": tuple(str(item) for item in outcomes),
+            "outcomes": tuple(
+                str(item) if self.outcome_encoder is None else self.outcome_encoder(item)
+                for item in outcomes
+            ),
             "target": target,
         }
         audit_ids = await self.journal.finalize(payload)
@@ -139,5 +159,6 @@ __all__ = [
     "DecisionCycleResult",
     "DecisionCycleService",
     "MarketSnapshotLoader",
+    "PerInstrumentDecisionCycleRequest",
     "ValidatedMarketSnapshot",
 ]

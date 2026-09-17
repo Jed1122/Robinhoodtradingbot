@@ -5,6 +5,17 @@ outside the service host, and placement factories behind authorization and promo
 
 ## Implemented boundary
 
+### Offline replay integration seams
+
+`IntentPlanner` accepts an optional intent-ID factory while retaining UUID generation for
+existing callers. `DecisionCycleService` accepts an optional outcome encoder; the default
+string encoding and existing cycle-result hashes remain unchanged. A separate
+`PerInstrumentDecisionCycleRequest` carries explicit per-instrument exit policies, preserving
+the original request's serialized shape and paper restart keys. The portfolio constructor
+requires exactly one policy form and rejects duplicate or missing entry-policy mappings.
+These are composition seams only, not an implemented equity replay runner or a new risk gate.
+No production paper, shadow, live, broker or promotion composition is enabled by them.
+
 ### Configuration-driven synthetic order simulation
 
 `simulation/configured.py` composes a private virtual-time scheduler with the existing

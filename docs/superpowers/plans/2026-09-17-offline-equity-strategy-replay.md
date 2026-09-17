@@ -40,9 +40,9 @@ Baseline: 384 focused simulation, portfolio and offline-CLI tests passed before 
 
 **Files:** modify `src/trading_bot/portfolio/intents.py`, `src/trading_bot/portfolio/targets.py`, `src/trading_bot/app.py`; create `tests/unit/portfolio/test_replay_seams.py`, `tests/integration/simulation/test_cycle_outcome_encoding.py`.
 
-**Interfaces:** `IntentPlanner(*, id_factory: Callable[[], OrderIntentId] = new_order_intent_id)`; `DecisionCycleService(..., outcome_encoder: Callable[[object], object] | None = None)`; `DecisionCycleRequest.exit_policies: tuple[tuple[InstrumentId, ExitPolicy], ...] | None = None`. The existing `exit_policy` field becomes `ExitPolicy | None`; `PortfolioConstructor.construct` accepts exactly one policy form.
+**Interfaces:** `IntentPlanner(*, id_factory: Callable[[], OrderIntentId] = new_order_intent_id)`; `DecisionCycleService(..., outcome_encoder: Callable[[object], object] | None = None)`; `PerInstrumentDecisionCycleRequest(DecisionCycleRequest)` adds `exit_policies: tuple[tuple[InstrumentId, ExitPolicy], ...]`. The existing `exit_policy` field becomes `ExitPolicy | None`; `PortfolioConstructor.construct` accepts exactly one policy form. Keep the base request's fields unchanged: `PaperApplication.cycle_id` hashes that dataclass, so even a new field defaulted to None would invalidate legacy restart identities. This was reproduced by a failing regression test before selecting the subtype seam.
 
-- [ ] Write tests that exercise actual BUY and SELL planning with an injected ID sequence, missing/duplicate per-instrument policies, and real cycle journaling with a typed encoding. Legacy default invocation must retain its hash.
+- [x] Write tests that exercise actual BUY and SELL planning with an injected ID sequence, missing/duplicate per-instrument policies, and real cycle journaling with a typed encoding. Legacy default invocation must retain its hash.
 
 ```python
 ids = iter((OrderIntentId("replay-buy"), OrderIntentId("replay-sell")))
@@ -51,8 +51,8 @@ assert planner.plan(entry_target, flat_context)[0].id == "replay-buy"
 assert planner.plan(exit_target, held_context)[0].id == "replay-sell"
 ```
 
-- [ ] Run `python -m pytest tests/unit/portfolio/test_replay_seams.py tests/integration/simulation/test_cycle_outcome_encoding.py -q`; observe missing seams fail before edits.
-- [ ] Add constructor injection and replace both UUID call sites; validate exactly one exit-policy form before target calculation, unique policy keys, and coverage for every actual entry. Preserve exit-only semantics and legacy target hashes. Only pass the new keyword to the portfolio stage when the new request field is present.
+- [x] Run `python -m pytest tests/unit/portfolio/test_replay_seams.py tests/integration/simulation/test_cycle_outcome_encoding.py -q`; observe missing seams fail before edits. Observed 15 failures and one legacy compatibility pass; the separately added restart-key regression also failed before its fix.
+- [x] Add constructor injection and replace both UUID call sites; validate exactly one exit-policy form before target calculation, unique policy keys, and coverage for every actual entry. Preserve exit-only semantics and legacy target hashes. Only pass the new keyword for the explicit per-instrument request subtype.
 
 ```python
 encoded = tuple(
@@ -61,7 +61,7 @@ encoded = tuple(
 )
 ```
 
-- [ ] Rerun new tests, existing portfolio tests and simulation integration tests; lint/type-check changed source.
+- [x] Rerun new tests, existing portfolio tests and simulation integration tests; lint/type-check changed source. The expanded selection passed 70 tests (one existing Starlette/httpx warning); all-source Ruff and Mypy passed. Architecture documentation records that these are seams only.
 - [ ] Commit only Task 1 files with `feat: add deterministic offline cycle integration seams`.
 
 ## Task 2: Strict synthetic scenario and outcome contracts
