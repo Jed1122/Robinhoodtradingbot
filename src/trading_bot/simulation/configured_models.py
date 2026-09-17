@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal, DecimalException, localcontext
 from enum import StrEnum
-from typing import NoReturn
+from typing import Literal, NoReturn
 
 from trading_bot.clock import require_utc
 from trading_bot.config.models import CostSettings, SimulationSettings
@@ -20,7 +20,7 @@ from trading_bot.simulation.lifecycle_models import (
     LifecycleValidationError,
 )
 
-SOURCE_KIND = "synthetic-configured-order-v1"
+SOURCE_KIND: Literal["synthetic-configured-order-v1"] = "synthetic-configured-order-v1"
 GENERATED_PREFIX = "sim:"
 
 

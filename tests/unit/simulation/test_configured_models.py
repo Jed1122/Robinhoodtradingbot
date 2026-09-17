@@ -132,3 +132,19 @@ def test_forged_nested_record_revalidated():
     object.__setattr__(event, "cursor", EventCursor(0, at(1000)))
     with pytest.raises(ConfiguredValidationError):
         request(events=(event,))
+
+
+def test_nonrepresentable_latency_fails_as_safe_validation_error():
+    with pytest.raises(ConfiguredValidationError) as error:
+        request(simulation=settings(latency_milliseconds=10**40))
+    assert str(error.value) == "configured_input_invalid"
+    assert error.value.__suppress_context__
+
+
+def test_invalid_event_objects_and_hash_payloads_fail_safely():
+    from trading_bot.simulation.configured_codec import configured_hash
+
+    with pytest.raises(ConfiguredValidationError):
+        request(events=(object(),))
+    with pytest.raises(ConfiguredValidationError, match="hash"):
+        configured_hash("bad", object())

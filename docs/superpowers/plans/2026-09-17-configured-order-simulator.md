@@ -62,7 +62,7 @@ Package-index dependency audit remains unrun in this offline milestone, not a se
 - `validate_stream(request) -> tuple[IndexedEvent, ...]`; each indexed unique event has its digest, delivery index, and duplicate indices.
 - `configured_hash(kind: str, payload: object) -> DataHash`; `keyed_rng(base: DataHash, event: DataHash, purpose: str) -> random.Random`.
 
-- [ ] Write input contract tests before new modules. Catch unsafe flags, forged nested types,
+- [x] Write input contract tests before new modules. Catch unsafe flags, forged nested types,
   nonempty initial scripts, invalid times/windows/source, identity mismatch, sequence reversal,
   duplicate conflicts, multiple distinct cancels, and early cancellation. Reuse existing
   `_lifecycle_fixtures.make_request`; keep all identities synthetic.
@@ -79,8 +79,8 @@ def test_duplicate_does_not_create_another_unique_opportunity():
     assert indexed[0].duplicate_indices == (1,)
 ```
 
-- [ ] Run the new model tests and record the expected missing-module failure.
-- [ ] Implement exact-type frozen records and safe validation wrappers. Use
+- [x] Run the new model tests and record the expected missing-module failure.
+- [x] Implement exact-type frozen records and safe validation wrappers. Use
   `localcontext(_context(exact=True))` around settings validation and arithmetic;
   `SimulationSettings.model_validate(settings.model_dump())` creates the private copy.
   Revalidate nested records and bound every numeric field before content hashing.
@@ -98,9 +98,9 @@ for index, event in enumerate(request.events):
     seen[event.event_id] = digest
 ```
 
-- [ ] Validate unique ordering/windows and acknowledgement/expiry bounds before any draw.
+- [x] Validate unique ordering/windows and acknowledgement/expiry bounds before any draw.
   Generate no external actions; hashing errors use value-free reasons.
-- [ ] Run model tests, legacy simulation tests, targeted Ruff and mypy. Commit only new
+- [x] Run model tests, legacy simulation tests, targeted Ruff and mypy. Commit only new
   modules/tests and approved spec/plan updates after green checks.
 
 ## Task 2: Seeded outcomes and cost adaptation
@@ -115,7 +115,7 @@ for index, event in enumerate(request.events):
 `plan_fill(request, event, remaining, base_hash, event_hash) -> ConfiguredFillPlan`.
 `ConfiguredFillPlan` contains outcome, percentage, and optional existing `PlannedFill`.
 
-- [ ] Write boundary tests against a test-only fixed-bit RNG, plus real seeded replay tests.
+- [x] Write boundary tests against a test-only fixed-bit RNG, plus real seeded replay tests.
   Catch wrong normalization, inclusive-boundary mistakes, fixed-half partials, liquidity
   overfill, incorrect fee mapping, and ambient-context dependence.
 
@@ -127,8 +127,8 @@ def test_crypto_costs_charge_fee_on_slipped_price():
     assert execution_fee(D("1"), price, costs) == D("0.4962375")
 ```
 
-- [ ] Run new fill tests and record missing implementation failure.
-- [ ] Implement exact `Fraction(rng.getrandbits(53), 2**53)` comparisons; accepted outcome
+- [x] Run new fill tests and record missing implementation failure.
+- [x] Implement exact `Fraction(rng.getrandbits(53), 2**53)` comparisons; accepted outcome
   intervals are N/(100-R), then (N+F)/(100-R), then partial. R=100 never enters this path.
 
 ```python
@@ -137,9 +137,9 @@ target = remaining if outcome is SimulatedOutcome.FULL else remaining * percenta
 quantity = min(target, event.available_quantity)
 ```
 
-- [ ] Reuse existing price/fee helpers under fixed exact context. No spread duplication,
+- [x] Reuse existing price/fee helpers under fixed exact context. No spread duplication,
   stress simulation, price clamping, affordability resizing, or legacy FillModel changes.
-- [ ] Run new/legacy fill tests, Ruff and mypy; commit the green isolated adapter.
+- [x] Run new/legacy fill tests, Ruff and mypy; commit the green isolated adapter.
 
 ## Task 3: Virtual scheduler, lifecycle composition, and auditable results
 
@@ -153,7 +153,7 @@ fixed source kind and false evidence/assumptions flags. Audit decisions retain s
 digest/ID, time, reason, nominal/realized outcome, percentage, emitted IDs, snapshot hash,
 delivery index, and original decision reference for duplicates.
 
-- [ ] Write tests proving ack latency, no same-bar fills, all session guards, BUY/SELL
+- [x] Write tests proving ack latency, no same-bar fills, all session guards, BUY/SELL
   limits, partial/full accounting, no-fill, nonterminal horizon, GFD expiry, race allowance
   0/100, first eligible no-fill consumption, and deterministic tie priority.
 
@@ -164,8 +164,8 @@ def test_cancel_acknowledgement_wins_at_equal_timestamp():
     assert result.lifecycle.snapshot.order.filled_quantity == D("0")
 ```
 
-- [ ] Run scheduler tests and record missing implementation failure.
-- [ ] Schedule using `(UTC time, priority, input sequence)`; priorities are expiry=0,
+- [x] Run scheduler tests and record missing implementation failure.
+- [x] Schedule using `(UTC time, priority, input sequence)`; priorities are expiry=0,
   submission ack=1, cancel request=2, cancel ack=3, market=4. Filter generated actions by
   horizon. Assign consecutive lifecycle cursors only to emitted events.
 
@@ -175,20 +175,49 @@ lifecycle = replay_order_lifecycle(replace(request.initial, events=candidate))
 generated = candidate  # publish only after authoritative replay succeeds
 ```
 
-- [ ] Implement ordered guards and one pending-cancel allowance. No outcome draw on failed
+- [x] Implement ordered guards and one pending-cancel allowance. No outcome draw on failed
   guards; consume allowance on first fully eligible opportunity even if no-fill. Terminal
   control events become audit-only no-ops; no reopening or synthetic forced completion.
-- [ ] Add adversarial tests for duplicate/conflict identity, future-suffix causality,
+- [x] Add adversarial tests for duplicate/conflict identity, future-suffix causality,
   context/trap preservation, safe error wrapping, all output labels, no external side effects,
   generated script replay equivalence, and input/result hash binding. Observe a red test
   before each additional guard or error-path implementation.
-- [ ] Run all simulation tests, Ruff, mypy, full branch-coverage suite, Bandit, offline lock
+- [x] Run all simulation tests, Ruff, mypy, full branch-coverage suite, Bandit, offline lock
   check. Perform focused in-memory mutation checks on timing/session/duplicate/limit guards.
-- [ ] Update docs with actual implemented boundaries and remaining strategy/research/live
+- [x] Update docs with actual implemented boundaries and remaining strategy/research/live
   blockers; preserve older dirty hunks. Self-review all new code against spec sections 1-9.
-- [ ] Commit verified task-owned files locally. No push, merge, deployment, or broker action.
+- [x] Commit verified task-owned files locally. No push, merge, deployment, or broker action.
 
 ## Execution record
 
-Pending execution. Tasks above map to spec sections 3-4/7 (Task 1), 5 (Task 2),
-and 6-9 (Task 3). No spec requirements are intentionally deferred within this milestone.
+Completed inline on 2026-09-17 UTC. Tasks map to spec sections 3-4/7 (Task 1),
+5 (Task 2), and 6-9 (Task 3). No in-scope specification requirement was intentionally
+deferred; the explicitly listed strategy/runtime/source limitations remain.
+
+- Baseline: 289 existing simulation tests passed before implementation.
+- Task 1: new tests first failed collection because the input modules did not exist;
+  21 focused cases and 310 simulation cases then passed. Committed as `5b0de7b`.
+- Task 2: new tests first failed collection because the adapter did not exist. A SELL
+  fixture's ENTRY purpose was corrected to the canonical exit fixture; then 22 new
+  adapter cases plus 13 legacy fill cases passed. Committed as `e3d8a78`.
+- Task 3: scheduler/adversarial tests first failed collection before the module existed.
+  Review found a cancel-ack identity gap; an added test demonstrated the failure before
+  binding the acknowledgement to its triggering request. The focused suite subsequently
+  passed with 375 cases, including 86 new configured-simulator cases in total.
+- Final full non-authenticated suite after the identity fix: **4,426 passed**, one existing
+  Starlette/httpx deprecation warning, in 141.20 seconds. Combined line/branch coverage
+  **87.24%**, with the 80% floor unchanged. The configured scheduler measured 98% coverage.
+- Repository-wide Ruff passed; mypy passed for 184 source files. Bandit reported no
+  findings, with existing comment/suppression warnings. Offline lock check resolved
+  105 packages successfully. Package-index vulnerability audit and remote CI were not run.
+- Eight in-memory mutation checks were caught: same-bar bypass, closed-session bypass,
+  cancellation tie reversal, BUY limit bypass, duplicate bypass, omitted accounting
+  publication, waived fill fee, and unconsumed race allowance. Mutations existed only
+  in child-process Python module definitions; no mutated source file was written.
+- Architecture, limitations, and handoff now distinguish this synthetic component from
+  complete strategy outcomes. Mixed pre-existing limitations/handoff edits are preserved
+  locally and are not folded wholesale into the simulator commits.
+- Final primary review: no hidden order-size increase, weakened risk/promotion guard,
+  secret logging, broker capability, production wiring, or config-schema change. All
+  new results remain synthetic/non-promotable. No network, credentials, account reads,
+  production ledger, purchase, push, merge, or deployment operation was performed.

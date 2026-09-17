@@ -5,6 +5,38 @@ outside the service host, and placement factories behind authorization and promo
 
 ## Implemented boundary
 
+### Configuration-driven synthetic order simulation
+
+`simulation/configured.py` composes a private virtual-time scheduler with the existing
+single-order lifecycle. Its input models and whole-stream validation live in
+`configured_models.py` and `configured_validation.py`; `configured_fills.py` adapts canonical
+simulation/cost settings, `configured_codec.py` derives event-keyed random streams and hashes,
+and `configured_results.py` owns immutable audit/results. There is no provider, broker,
+runtime, persistence, or promotion composition dependency.
+
+Submission rejection is sampled once at the configured acknowledgement time. Accepted
+orders receive conditional no-fill/full/partial opportunities only after latency, next-bar,
+quote/session, cancellation-race, liquidity, and cost-adjusted limit checks. Partial sizes
+use the configured range against remaining quantity. The configured cancel-race percentage
+allows at most one eligible pending-cancel opportunity; it is not a measured fill rate.
+Virtual-time ties prioritize expiry, submission acknowledgement, cancel request, cancel
+acknowledgement, then market input. Synthetic GFD expiry is explicit, not inferred from a
+real session calendar. A finite horizon may leave orders pending or partially filled.
+
+Each generated event prefix is replayed through the unchanged lifecycle authority before
+publication. Exact duplicate input delivery is audit-only; conflicting duplicates fail
+before scheduling. Random streams and generated IDs are independent of future market inputs;
+cancel acknowledgements also bind their triggering request. Full input/result hashes retain
+all inputs, no-fill decisions, duplicates, settings, horizon, and accounting outcomes.
+
+Only fresh in-memory synthetic equity/crypto LIMIT scenarios are accepted. Assumption and
+promotion flags must be false and are fixed false on output. Money must be exact in the
+lifecycle's fixed Decimal context. Spread comes from supplied quotes, while slippage and
+per-fill fees use the canonical costs; stressed costs, exchange increments, shared liquidity,
+and real calendars remain unsupported. This is not a strategy runner or a qualifying paper
+cycle. The legacy `FillModel` API and production execution/risk gates remain unchanged.
+See the [configured simulator design](superpowers/specs/2026-09-17-configured-order-simulator-design.md).
+
 ### Offline scripted single-order lifecycle
 
 `simulation/lifecycle.py` replays one synthetic equity or crypto LIMIT order from a

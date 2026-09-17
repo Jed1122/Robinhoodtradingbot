@@ -14,4 +14,5 @@ def configured_hash(kind: str, payload: object) -> DataHash:
 
 def keyed_rng(base: DataHash, event: DataHash, purpose: str) -> random.Random:
     digest = configured_hash("random_stream", {"base": base, "event": event, "purpose": purpose})
-    return random.Random(int(digest, 16))  # nosec B311 -- synthetic modeling, never security tokens.
+    # Synthetic modeling only; never used for security tokens or capabilities.
+    return random.Random(int(digest, 16))  # nosec B311

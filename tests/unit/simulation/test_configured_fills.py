@@ -126,6 +126,8 @@ def test_seeded_streams_repeat_without_mutating_global_random():
     before = random.getstate()
     base, event = DataHash("a" * 64), DataHash("b" * 64)
     first = keyed_rng(base, event, "outcome").getrandbits(53)
+    # Independently computed SHA-256 + stdlib Random reference for the versioned format.
+    assert first == 4682424882139304
     assert keyed_rng(base, event, "outcome").getrandbits(53) == first
     assert keyed_rng(base, event, "partial_size").getrandbits(53) != first
     assert random.getstate() == before
