@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from decimal import Decimal, DecimalException
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, NoReturn
 
 from trading_bot.domain import (
     AccountId,
@@ -47,7 +47,7 @@ class LifecycleValidationError(ValueError):
         super().__init__(self.reason.value)
 
 
-def deny(reason: LifecycleErrorReason = LifecycleErrorReason.INPUT) -> None:
+def deny(reason: LifecycleErrorReason = LifecycleErrorReason.INPUT) -> NoReturn:
     raise LifecycleValidationError(reason) from None
 
 
