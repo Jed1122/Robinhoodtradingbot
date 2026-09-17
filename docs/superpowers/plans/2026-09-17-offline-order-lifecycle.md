@@ -67,8 +67,8 @@ Read-only dependencies: `domain/orders.py`, `domain/accounts.py`, `domain/order_
 `LifecycleErrorReason` defines INPUT, IDENTITY, DUPLICATE, ORDERING, TRANSITION, ACCOUNTING, HASH;
 `LifecycleValidationError(reason)` renders only the enum's fixed value.
 
-- [ ] Write fixture builders `make_request(events=(), *, side=Side.BUY, quantity="1", cash="1000", position_quantity="0", average_price=None)`, `control(event_id, sequence, event)`, and `execution(event_id, sequence, quantity, *, price="100", fee="0.01", side=Side.BUY)`. Use a fixed UTC origin, `synthetic-account`, `SYNTH-USD`, and `synthetic-order`; never read files/accounts.
-- [ ] Add failing tests. The missing boundary must reject mutable lists, floats, unsupported controls, mismatched identities, filled initial orders, and inconsistent position averages. Example:
+- [x] Write fixture builders `make_request(events=(), *, side=Side.BUY, quantity="1", cash="1000", position_quantity="0", average_price=None)`, `control(event_id, sequence, event)`, and `execution(event_id, sequence, quantity, *, price="100", fee="0.01", side=Side.BUY)`. Use a fixed UTC origin, `synthetic-account`, `SYNTH-USD`, and `synthetic-order`; never read files/accounts.
+- [x] Add failing tests. The missing boundary must reject mutable lists, floats, unsupported controls, mismatched identities, filled initial orders, and inconsistent position averages. Example:
 
 ```python
 def test_request_rejects_mutable_event_collection():
@@ -81,8 +81,8 @@ def test_request_rejects_cross_account_position():
         replace(request, position=replace(request.position, account_id="other-synthetic"))
 ```
 
-- [ ] Run `PYTHONPATH=src "$LIFECYCLE_PY" -m pytest tests/unit/simulation/test_lifecycle_models.py -q`; confirm missing module/feature, not a test typo.
-- [ ] Implement exact-type checks before attribute access; rerun canonical record/cursor validation at this boundary. Check every monetary field with `require_bounded_decimal`; reject unsupported state/order/TIF/asset and inconsistent initial position/time/identity. Validate event timestamp against fill time. Convert known domain failures to fixed lifecycle errors with `from None`. Outputs validate fields and immutable tuple contents; labels are `field(init=False)` and terminal status is derived, not supplied.
+- [x] Run `PYTHONPATH=src "$LIFECYCLE_PY" -m pytest tests/unit/simulation/test_lifecycle_models.py -q`; confirm missing module/feature, not a test typo.
+- [x] Implement exact-type checks before attribute access; rerun canonical record/cursor validation at this boundary. Check every monetary field with `require_bounded_decimal`; reject unsupported state/order/TIF/asset and inconsistent initial position/time/identity. Validate event timestamp against fill time. Convert known domain failures to fixed lifecycle errors with `from None`. Outputs validate fields and immutable tuple contents; labels are `field(init=False)` and terminal status is derived, not supplied.
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -97,8 +97,8 @@ class LifecycleRequest:
 # Use type(value) is ExpectedType before any nested validation.
 ```
 
-- [ ] Rerun the model tests, existing simulation validation tests, Ruff on owned files, and mypy on `src`.
-- [ ] Commit only this task's files plus the approved spec/plan: `feat: add validated synthetic lifecycle records`.
+- [x] Rerun the model tests, existing simulation validation tests, Ruff on owned files, and mypy on `src`.
+- [x] Commit only this task's files plus the approved spec/plan: `feat: add validated synthetic lifecycle records`.
 
 ## Task 2: Exact accounting and stable encoding
 
@@ -108,9 +108,9 @@ class LifecycleRequest:
 **Produces:** `apply_lifecycle_fill(snapshot, fill) -> FillAccounting`, where frozen `FillAccounting` contains `position`, `filled_quantity`, `remaining_quantity`, `cash`, `fees`;
 `lifecycle_hash(kind: str, payload: object) -> DataHash` for validated internal payloads.
 
-- [ ] Write failing BUY/SELL tests with literal amounts, zero/insufficient cash, overfill, shorting, limit violation, and nonterminating average. For a BUY of 0.25 at 100 with 0.01 fee from cash 1000: quantity=0.25, cash=974.99, fees=0.01, remaining=0.75. A SELL of 0.25 at 100 with 0.01 fee closes a starting 0.25 position and adds 24.99 cash.
-- [ ] Run `PYTHONPATH=src "$LIFECYCLE_PY" -m pytest tests/unit/simulation/test_lifecycle_accounting.py -q`; confirm the feature is missing.
-- [ ] Implement two fresh Decimal contexts, one exact and one allowing average rounding:
+- [x] Write failing BUY/SELL tests with literal amounts, zero/insufficient cash, overfill, shorting, limit violation, and nonterminating average. For a BUY of 0.25 at 100 with 0.01 fee from cash 1000: quantity=0.25, cash=974.99, fees=0.01, remaining=0.75. A SELL of 0.25 at 100 with 0.01 fee closes a starting 0.25 position and adds 24.99 cash.
+- [x] Run `PYTHONPATH=src "$LIFECYCLE_PY" -m pytest tests/unit/simulation/test_lifecycle_accounting.py -q`; confirm the feature is missing.
+- [x] Implement two fresh Decimal contexts, one exact and one allowing average rounding:
 
 ```python
 context = Context(prec=28, rounding=ROUND_HALF_EVEN, Emin=-999999,
@@ -129,9 +129,9 @@ account/instrument/side/broker ID or limit violations. Call the unchanged helper
 rounding context; compare its cash, fee, remaining, quantity and mark fields with the exact
 results, then validate its average/position. Do not duplicate its weighted-average formula.
 
-- [ ] Encode hashes using `content_hash({"namespace": "synthetic-order-lifecycle-v1", "kind": kind, "payload": payload})`; wrap known serialization/Decimal failures as HASH, without rendering inputs. Never include a hash field in its own preimage.
-- [ ] Verify changed ambient precision/rounding/traps produce identical results, while inexact monetary operations are rejected. Confirm context flags outside the function are unchanged. Verify hashes distinguish kind/payload and canonicalize equivalent Decimal notation.
-- [ ] Rerun owned tests plus `tests/unit/execution/test_partial_fills.py`, Ruff, and mypy; commit owned files as `feat: add checked synthetic fill accounting`.
+- [x] Encode hashes using `content_hash({"namespace": "synthetic-order-lifecycle-v1", "kind": kind, "payload": payload})`; wrap known serialization/Decimal failures as HASH, without rendering inputs. Never include a hash field in its own preimage.
+- [x] Verify changed ambient precision/rounding/traps produce identical results, while inexact monetary operations are rejected. Confirm context flags outside the function are unchanged. Verify hashes distinguish kind/payload and canonicalize equivalent Decimal notation.
+- [x] Rerun owned tests plus `tests/unit/execution/test_partial_fills.py`, Ruff, and mypy; commit owned files as `feat: add checked synthetic fill accounting`.
 
 ## Task 3: Pure lifecycle replay
 
@@ -140,7 +140,7 @@ results, then validate its average/position. Do not duplicate its weighted-avera
 **Consumes:** Tasks 1-2 and canonical `transition(current, event)`.
 **Produces:** `replay_order_lifecycle(request: LifecycleRequest) -> LifecycleResult`.
 
-- [ ] Add failing end-to-end tests with literal outcomes. Core example:
+- [x] Add failing end-to-end tests with literal outcomes. Core example:
 
 ```python
 def test_complete_buy_is_terminal_but_not_flat_or_promotable():
@@ -155,11 +155,11 @@ def test_complete_buy_is_terminal_but_not_flat_or_promotable():
     assert not result.evidence_promotable
 ```
 
-- [ ] Run the replay test file and observe RED for the missing replay function.
-- [ ] Implement initial snapshot/hash, private event/fill registries, and receipt list. For each event validate identity, hash full envelope plus initial digest, and check duplicates before cursor/state/remainder. Exact duplicate adds only a duplicate receipt; conflicting event or fill ID raises DUPLICATE.
-- [ ] Reject stale/equal sequence or backward UTC time; fills require time strictly after submission. Derive FILL/PARTIAL_FILL from checked cumulative accounting. Run every control/fill transition through the canonical function. Update candidate immutable records only after validation; control events do not touch position/cash/fees. Fill events bind updated order/position data hashes to their computed event digest.
-- [ ] Hash snapshots with initial digest, current records/balances/cursor, and applied-event digests; hash results with initial/final snapshot digests and ordered receipts. Return no result on failure. No runtime hooks or I/O.
-- [ ] Add cancellation-race, rejection, expiration, empty/pending, terminal replay and duplicate assertions:
+- [x] Run the replay test file and observe RED for the missing replay function.
+- [x] Implement initial snapshot/hash, private event/fill registries, and receipt list. For each event validate identity, hash full envelope plus initial digest, and check duplicates before cursor/state/remainder. Exact duplicate adds only a duplicate receipt; conflicting event or fill ID raises DUPLICATE.
+- [x] Reject stale/equal sequence or backward UTC time; fills require time strictly after submission. Derive FILL/PARTIAL_FILL from checked cumulative accounting. Run every control/fill transition through the canonical function. Update candidate immutable records only after validation; control events do not touch position/cash/fees. Fill events bind updated order/position data hashes to their computed event digest.
+- [x] Hash snapshots with initial digest, current records/balances/cursor, and applied-event digests; hash results with initial/final snapshot digests and ordered receipts. Return no result on failure. No runtime hooks or I/O.
+- [x] Add cancellation-race, rejection, expiration, empty/pending, terminal replay and duplicate assertions:
 
 ```python
 assert replay_order_lifecycle(request) == replay_order_lifecycle(request)
@@ -168,7 +168,7 @@ assert duplicated.result_hash != original.result_hash
 assert duplicated.receipts[-1].reason_code == "duplicate_event"
 ```
 
-- [ ] Run all lifecycle tests and existing simulation/state-machine tests; Ruff/mypy; commit only owned files as `feat: replay offline synthetic order lifecycles`.
+- [x] Run all lifecycle tests and existing simulation/state-machine tests; Ruff/mypy; commit only owned files as `feat: replay offline synthetic order lifecycles`.
 
 ## Task 4: Adversarial verification and truthful documentation
 
@@ -176,8 +176,8 @@ assert duplicated.receipts[-1].reason_code == "duplicate_event"
 
 **Interfaces:** Frozen public lifecycle API from Tasks 1-3; no expansion.
 
-- [ ] Write parameterized behavioral attacks for account/instrument/order/side/cursor/economic/source-hash changes. Reuse event IDs with changed payload, reuse fill IDs under new envelope IDs, and replay exact events after completion. Each mutation must either be a no-op exact duplicate or raise safely before any returned result.
-- [ ] Test immutable request and prior successful result after a later failing replay; no registries survive between calls. Test malformed types, booleans, non-UTC times, unsafe Decimals, unsupported initial orders/events, and altered ambient contexts. Assert errors omit a synthetic sentinel string and suppress raw chained exception display.
+- [x] Write parameterized behavioral attacks for account/instrument/order/side/cursor/economic/source-hash changes. Reuse event IDs with changed payload, reuse fill IDs under new envelope IDs, and replay exact events after completion. Each mutation must either be a no-op exact duplicate or raise safely before any returned result.
+- [x] Test immutable request and prior successful result after a later failing replay; no registries survive between calls. Test malformed types, booleans, non-UTC times, unsafe Decimals, unsupported initial orders/events, and altered ambient contexts. Assert errors omit a synthetic sentinel string and suppress raw chained exception display.
 
 ```python
 before = replay_order_lifecycle(valid_request)
@@ -186,9 +186,9 @@ with pytest.raises(LifecycleValidationError):
 assert replay_order_lifecycle(valid_request) == before
 ```
 
-- [ ] Run new tests before any fix. For uncovered behavior follow RED/GREEN in the owning module, never weaken an assertion to fit an implementation.
-- [ ] Update docs with the isolated synthetic capability, single-order LIMIT scope, exact-money precision bound and rounded average, mark-at-last-fill, no production wiring, and unchanged source/research/promotion/live blockers. Merge only our new paragraphs into preexisting dirty docs; do not revert their previous content.
-- [ ] Run narrow tests followed by the full baseline:
+- [x] Run new tests before any fix. For uncovered behavior follow RED/GREEN in the owning module, never weaken an assertion to fit an implementation.
+- [x] Update docs with the isolated synthetic capability, single-order LIMIT scope, exact-money precision bound and rounded average, mark-at-last-fill, no production wiring, and unchanged source/research/promotion/live blockers. Merge only our new paragraphs into preexisting dirty docs; do not revert their previous content.
+- [x] Run narrow tests followed by the full baseline:
 
 ```bash
 PYTHONPATH=src "$LIFECYCLE_PY" -m pytest tests/unit/simulation tests/unit/execution tests/property/execution tests/replay tests/smoke -q
@@ -203,8 +203,8 @@ Record dependency-index audit and remote CI as not run unless separately execute
 claim `make security` completed from Bandit alone. No package-index request is required by
 this offline milestone. Do not run CLI paper/shadow/live commands or deployment checks.
 
-- [ ] Review diff for hidden exposure, weakened guards, credential/logging risk, duplicate config, and false completion claims. Check `git diff --check` and exact path ownership. Commit clean task-owned files only; preserve dirty preexisting documentation unstaged if separating its prior hunks is unsafe.
-- [ ] Record exact counts/results and remaining blockers here, then follow verification-before-completion and finishing-a-development-branch. Keep the local branch/worktree; the approved scope excludes pushing/merging/deploying.
+- [x] Review diff for hidden exposure, weakened guards, credential/logging risk, duplicate config, and false completion claims. Check `git diff --check` and exact path ownership. Commit clean task-owned files only; preserve dirty preexisting documentation unstaged if separating its prior hunks is unsafe.
+- [x] Record exact counts/results and remaining blockers here, then follow verification-before-completion and finishing-a-development-branch. Keep the local branch/worktree; the approved scope excludes pushing/merging/deploying.
 
 ## Self-review mapping
 
@@ -215,4 +215,35 @@ existing worktree are already selected, so no new delegation/workspace choice is
 
 ## Execution record
 
-Pending. Mark steps only after observed verification; do not count synthetic runs as promotion evidence.
+Completed locally on 2026-09-17; no synthetic run counts as promotion evidence.
+
+- Initial existing simulation/state-machine baseline: 182 passed.
+- Model slice: 29 new tests passed; model plus existing input-validation selection: 192 passed.
+- Model/accounting/shared partial-fill selection: 45 passed.
+- Replay slice: 20 passed; simulation/state-machine selection: 245 passed.
+- Adversarial slice: 48 passed. Total new lifecycle tests: 112.
+- Broader simulation/execution/replay/smoke selection: 731 passed.
+- Full suite with branch measurement: **4340 passed, 1 warning in 133.89 seconds**;
+  total coverage **86.90%**, unchanged required floor **80%**.
+- Ruff: passed. Mypy: passed, 178 source files. Offline lock check: passed, 105 packages.
+- Bandit: exit 0, no findings; existing comment/suppression warnings remain.
+- Seven in-memory mutations were caught: accepting conflicting duplicates, accepting equal
+  sequences, removing control identity validation, removing duplicate detection, dropping
+  fee accumulation, omitting the cash debit, and allowing inexact monetary calculations.
+  The mutations ran only in a separate Python process; no production file was rewritten.
+- Dependency-index vulnerability audit and remote CI were not run. No dependency changed,
+  no external account/provider request was made, and no claim of completed `make security`
+  is made from Bandit alone.
+
+Task commits: `aa666fc` (models/plan), `321262e` (accounting/codec), `5a495cc`
+(replay). The final test/documentation commit records this execution result. The updated
+limitations and orchestration handoff remain local alongside their preexisting dirty edits;
+those earlier edits were not folded into a lifecycle commit. Other preexisting dirty files
+and artifacts were preserved.
+
+Review disposition: local isolated lifecycle scope complete. Only four new simulation
+modules were added to production code; shared helpers, broker/risk/runtime/configuration,
+dependencies, and deployment files are unchanged. Branch and worktree remain in place.
+No push, merge, live operation, qualifying observation, or deployment occurred. Follow-on
+work must separately address realistic execution assumptions, complete strategy outcomes,
+real-source/research acceptance, and reviewed paper/shadow composition.

@@ -5,6 +5,30 @@ outside the service host, and placement factories behind authorization and promo
 
 ## Implemented boundary
 
+### Offline scripted single-order lifecycle
+
+`simulation/lifecycle.py` replays one synthetic equity or crypto LIMIT order from a
+submission-pending fixture through explicitly scripted acknowledgements, partial/full fills,
+cancel requests/confirmations, and expiration. Frozen records and boundary validation live in
+`lifecycle_models.py`; checked arithmetic and domain-separated hashing are isolated in
+`lifecycle_accounting.py` and `lifecycle_codec.py`. The component reuses the unchanged domain
+state machine and partial-fill helper. It does not implement a broker capability or call the
+production execution service.
+
+Each replay starts from fresh in-memory state. Exact duplicate events add a receipt but do not
+change balances, cursor, or snapshot hash; conflicting identities or reused fill IDs fail
+closed. New events cannot reopen terminal orders. Money and quantity calculations must be
+exact within the fixed 28-significant-digit Decimal context; the existing weighted-average
+formula may round. Position market value is marked at the last scripted fill, not a fresh
+market quote. No realized/unrealized P&L or buying-power attestation is manufactured.
+
+Results and receipts are deterministic and permanently labeled synthetic/non-promotable.
+An order being terminal does not establish a flat position or complete strategy outcomes.
+There is no file/ledger I/O, CLI, concurrent-order reservation, random fill-model integration,
+provider access, or production runtime wiring. See the
+[approved lifecycle design](superpowers/specs/2026-09-17-offline-order-lifecycle-design.md)
+for exact supported inputs and failure behavior.
+
 ### Offline synthetic research bundles
 
 The separate `market_data/bundle_models.py`, `bundle_codec.py`, `bundle_normalize.py`,
