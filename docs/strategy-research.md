@@ -1,6 +1,6 @@
 # Strategy research
 
-Research uses content-addressed, point-in-time market data and completed bars only. Candidate
+Promotion-eligible research requires content-addressed, point-in-time market data and completed bars only. Candidate
 families include equity momentum, relative strength, regime scaling, research-only mean
 reversion, and long-only crypto trend/breakout. Every attempted parameter set is retained,
 including rejected attempts.
@@ -14,6 +14,25 @@ these filters; they do not establish complete corporate-action history, chronolo
 of combined split/dividend sequences, source provenance, or provider adjustment correctness.
 This helper is not integrated into the connected comparison described below and does not make
 that comparison eligible for promotion.
+
+The separate `PointInTimeUniverse` primitive validates nonblank instrument IDs, exact boolean
+flags, immutable record tuples, and timezone-aware UTC membership/query timestamps. Contradictory
+inclusion values at the same instrument/effective/announcement key are rejected instead of being
+resolved by input order. Identical duplicates and legitimate late announcements remain valid;
+visibility still requires both timestamps to be at or before the query. `history_complete` is a
+strictly typed caller declaration, not verified interval coverage or source provenance. This
+primitive is not connected to the comparison and cannot establish accepted membership evidence.
+
+The separate seeded fill primitive validates exact bounded finite Decimal inputs, positive order
+quantities and bid/ask prices, nonnegative available quantity and costs, uncrossed quotes, exact
+cursor/side/boolean/cost types, and each independent conditional probability in `[0,1]`. Invalid
+request fields fail at construction before evaluation can consume randomness. Direct price and
+fee helpers enforce the same boundaries and reject invalid arithmetic results; slippage cannot
+produce a zero or negative execution price. Zero liquidity remains a valid no-liquidity outcome,
+zero costs and equal bid/ask remain valid, and existing arithmetic and seeded outcomes are
+unchanged for valid inputs. These checks reuse domain numeric bounds, not new strategy thresholds
+or a second config schema. They do not establish fill calibration, latency/exit lifecycles,
+provider realism, or qualifying execution outcomes, and are not a complete simulation composition.
 
 The current connected equity comparison has one exact config-bound research candidate universe:
 `SPY`, `QQQ`, `IWM`, and `DIA`. It compares only `equity_momentum` and

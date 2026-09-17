@@ -4,8 +4,19 @@ import random
 from dataclasses import dataclass
 from decimal import Decimal
 
+from trading_bot.clock import DomainValidationError
 from trading_bot.domain import Side
-from trading_bot.simulation.costs import SimulatedCosts, execution_fee, execution_price
+from trading_bot.domain.decimal_utils import (
+    InvalidDecimal,
+    _require_exact_bool,
+    require_bounded_decimal,
+)
+from trading_bot.simulation.costs import (
+    SimulatedCosts,
+    _validate_execution_inputs,
+    execution_fee,
+    execution_price,
+)
 from trading_bot.simulation.events import EventCursor
 
 
@@ -23,6 +34,22 @@ class FillRequest:
     partial_fill_probability: Decimal
     market_open: bool
     costs: SimulatedCosts
+
+    def __post_init__(self) -> None:
+        if type(self.submitted) is not EventCursor or type(self.market) is not EventCursor:
+            raise DomainValidationError("submitted and market must be EventCursor values")
+        _require_exact_bool(self.market_open, "market_open")
+        require_bounded_decimal(self.quantity, "quantity", positive=True)
+        require_bounded_decimal(self.available_quantity, "available_quantity", nonnegative=True)
+        _validate_execution_inputs(side=self.side, bid=self.bid, ask=self.ask, costs=self.costs)
+        for field_name, probability in (
+            ("rejection_probability", self.rejection_probability),
+            ("fill_probability", self.fill_probability),
+            ("partial_fill_probability", self.partial_fill_probability),
+        ):
+            require_bounded_decimal(probability, field_name, nonnegative=True)
+            if probability > 1:
+                raise InvalidDecimal(f"{field_name} must not exceed one")
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,6 +1,6 @@
 # Parallel Orchestration Transition Report
 
-Snapshot date: 2026-09-15 (UTC)
+Snapshot date: 2026-09-17 (UTC)
 
 Repository: `Jed1122/Robinhoodtradingbot`
 
@@ -10,12 +10,15 @@ Attestation and Cloud-review base: `a58f6ebd548d8a9368c1dc90b6a98b48ee0e5908`
 
 Verified deployed source: `32ab71fc3c845c56068179fed98cf4a9eb80461e`
 
-Previous CI-verified integration base: `93b28f484f1968f415d2d765a2d50143831ad3e4`
+Previous CI-verified integration base: `095e5c02b01aea95fd7858a549a7765e7b0488c0`
 
-Current implementation wave: research-data correctness and synthetic primitive contracts from
-the exact `93b28f4` base; no deployment or broker operation is part of this wave.
+Current implementation wave: operator-approved, fail-closed membership and simulation input
+validation from exact base `095e5c0`; no deployment or broker operation is part of this wave.
 
 Release state: **NO-GO for live trading**
+
+This implementation wave performs no new broker, ledger, credential, or host check. Operational
+facts below remain the separately authorized 2026-09-15 snapshot, not a fresh deployment assertion.
 
 This report transitions the existing system to centrally governed local and Codex Cloud orchestration. It does not restart or redesign the project. The executing-image-attestation release is committed, CI-verified, and deployed in paused mode. Two isolated Codex Cloud documentation reviews, one CI-hardening task, and two synthetic fixture tasks completed and were integrated centrally. Their point-in-time findings do not supersede the newer operational evidence recorded here. Operator-authorized workstation reauthorization and server credential rotation restored the bounded broker-read connection on 2026-09-15; live trading remains blocked.
 
@@ -65,11 +68,15 @@ The following are complete within the stated scope, not as proof of live readine
 - Primary-owned corporate-action filtering correction: instrument isolation, effective-as-of UTC
   dates, and canonical UTC query validation. Regression tests first reproduced 11 failures; the
   corrected adjustment suite now has 23 passing cases, including independent late-announcement tests.
-- Centrally reviewed and passing Cloud membership contract tests using synthetic events only;
-  equal-time conflict rules, timestamp validation, source provenance, and interval coverage remain open.
+- Centrally reviewed Cloud membership tests and primary-owned strict input validation: UTC
+  membership/lookup times, exact booleans and immutable tuple records, nonblank IDs, and rejection
+  of contradictory same-key events. Identical duplicates and distinct-time changes remain valid;
+  source provenance and interval coverage remain open.
 - Centrally reviewed Cloud fill-contract tests with exact BUY/SELL accounting, forced branches,
   mixed seeded outcomes, distinct-seed control, and restored global RNG state. Full simulation
-  lifecycle, calibration, invalid-input contracts, and outcome evidence remain incomplete.
+  lifecycle, calibration, and outcome evidence remain incomplete. Primary-owned fill/cost input
+  validation now rejects malformed numeric/typed inputs and invalid arithmetic results without
+  changing valid seeded outcomes or cost formulas.
 - Operator-authorized credential rotation with account-match and private-permission verification, a retained root-private previous store, and one successful write-incapable server probe.
 - Read-only health, metrics, status, live-readiness, and promotion-preview surfaces.
 - CI definition for Python 3.12, 3.13, and 3.14 with Ruff, strict mypy, branch coverage, Bandit, and lock validation.
@@ -94,13 +101,14 @@ The following are complete within the stated scope, not as proof of live readine
 1. The broker connection is restored, but connected-shadow evidence remains non-promotable. The single post-rotation probe verified authenticated reads, broker health, executing-image identity, and zero-state reconciliation, while reporting `strategy_ineligible`, `live_data_invalid`, and `outcomes_incomplete`. No diagnostic market-history probe was requested. Repeating this probe would not resolve the missing research/data/outcome evidence.
 2. Verification is complete for the paused release, not for live operation. Host hardening, infrastructure-as-code conformance, off-host backup, and a full operator-observed recovery drill still require their own evidence.
 3. Research/data requirements and accepted research identity are incomplete.
-4. The current read-only promotion preview reports an intact ledger with five ineligible shadow observations across four separate identity series, two rejected research assessments, zero eligible observations, and zero live authorizations, live leases, execution leases, or submission attempts. Inventory totals do not combine identities for promotion.
+4. The 2026-09-15 read-only promotion preview reported an intact ledger with five ineligible shadow observations across four separate identity series, two rejected research assessments, zero eligible observations, and zero live authorizations, live leases, execution leases, or submission attempts. Inventory totals do not combine identities for promotion.
 5. Paper requires 100 eligible observations; shadow requires eligible observations on seven distinct UTC dates. These elapsed evidence gates cannot be compressed or fabricated.
 6. Nonempty equity response mappings and authenticated review/place/cancel provider evidence are absent.
 7. No provider-connected live adapter, complete live application, durable host leadership path, or restart-safe live recovery composition exists.
 8. Current external security, manual review, and runtime-control attestations have not been assembled for live promotion.
 9. Codex Cloud CLI access works. `RESEARCH-GAPS-001`, `IAC-AUDIT-001`, `CI-HARDENING-002`,
-   `PIT-FIXTURES-002`, and `SIM-FILL-FIXTURES-002` returned bounded diffs and were integrated
+   `PIT-FIXTURES-002`, `SIM-FILL-FIXTURES-002`, `PIT-VALIDATION-003`, and `SIM-VALIDATION-003`
+   returned bounded diffs and were integrated
    centrally. Remaining review findings and complete research/runtime implementation are not implied.
 10. The remote default branch is materially behind the integration branch; any future Cloud task launched from the default branch would start from stale architecture.
 
@@ -109,8 +117,8 @@ The following are complete within the stated scope, not as proof of live readine
 | Activity | State | Reason |
 |---|---|---|
 | Local implementation and deterministic tests | GO | No external side effects; existing guardrails remain active. |
-| Static/read-only audits and secrets-free Cloud tasks | GO | Five Cloud tasks integrated; continue to require exact revision, isolated worktree, frozen interfaces, and bounded ownership. |
-| Paused health-only service | GO | Current service is healthy, readiness-denied, live-disabled, and has no credential/ledger mounts. |
+| Static/read-only audits and secrets-free Cloud tasks | GO | Seven Cloud tasks integrated; continue to require exact revision, isolated worktree, frozen interfaces, and bounded ownership. |
+| Paused health-only service | Last verified GO on 2026-09-15 | Healthy, readiness-denied, live-disabled, and no credential/ledger mounts at that check; not rechecked by this wave. |
 | Explicit bounded read-only evidence probe | Verified once; separate authority required for another run | The post-rotation probe succeeded but remained non-promotable. The local client is write-incapable, but the OAuth token remains trading-capable. No recurring job is authorized or installed. |
 | Paper promotion | NO-GO | No accepted research composition or eligible 100-cycle evidence set. |
 | Shadow promotion | NO-GO | No qualifying paper promotion and no eligible seven-UTC-date shadow set. |
@@ -145,6 +153,7 @@ The primary orchestrator owns the integration branch, dependency graph, protecte
 | Point-in-time membership contract | `93b28f4` | Cloud fixture tests integrated and locally verified | Tests/docs only; source coverage and provenance remain unverified. |
 | Corporate-action primitive filters | `93b28f4` | Primary correction locally verified | Existing interface retained; no provider/evidence integration. |
 | Simulation fill-model contract | `93b28f4` | Cloud tests integrated and locally verified | Tests/docs only; no pricing, strategy, risk, or execution changes. |
+| Membership and fill/cost input validation | `095e5c0` | Two Cloud test diffs centrally integrated; full local verification passed | Independent synthetic tests only; primary owns all production validation. |
 | IaC drift and recovery audit | `a58f6eb` plus sanitized inventory | Cloud review completed | Read-only; no DigitalOcean or state mutation. |
 | Coverage/observability gap inventory | Committed base | Independent now | Read-only report or isolated non-risk tests. |
 | Paper composition | Accepted research/data interfaces | Sequential protected work | Primary owner only. |
@@ -255,6 +264,60 @@ provider, promotion, or deployment code changed. Corporate-action sequence chron
 source provenance remain unresolved. These are primitive correctness changes, not accepted
 research, a complete paper composition, elapsed observations, or a live release.
 
+### Bounded input-validation wave (2026-09-16)
+
+The affected membership and simulation primitives are **partial**, not connected research or
+promotion evidence. The approved dependency chain is: independent failing regression tests →
+primary-owned validation → central Cloud diff review → focused and full verification → existing
+branch/PR CI. Production validation and central verification are the critical path. No new
+provider, research acceptance, strategy threshold, evidence gate, deployment, or live operation
+is included. The prior `095e5c0` wave passed both
+[PR CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35019194133) and
+[push CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35019186906).
+
+Two independent actual Codex Cloud tasks were dispatched from exact committed base
+`095e5c02b01aea95fd7858a549a7765e7b0488c0` on the integration branch. Each must verify or detach
+that exact revision in its isolated checkout, otherwise return `NOT_READY`.
+
+- **PIT-VALIDATION-003**, owner: [Cloud task](https://chatgpt.com/codex/tasks/task_e_6aaae8e47a28832da3c46160f25c5a9b).
+  Objective: independent synthetic membership validation tests. Owned paths only:
+  `tests/unit/market_data/test_universe_validation_contract.py` and
+  `docs/reviews/pit-validation-003.md`. Read-only dependencies: universe source, shared validators,
+  existing membership tests, and project/research documentation. Frozen interfaces: membership
+  fields, universe constructor, lookup, and eligibility reason. Acceptance: reject invalid UTC,
+  blank/non-string IDs, nonboolean flags, invalid tuple/record shapes, and contradictory values
+  at the same instrument/effective/announcement key; retain identical duplicates, late
+  announcements, sorted outputs, and existing valid boundaries. No claim of historical completeness.
+  Verification: `uv run pytest tests/unit/market_data/test_universe_validation_contract.py -q`,
+  Ruff on that file, then the existing `test_universe.py` and `test_universe_contract.py` tests.
+- **SIM-VALIDATION-003**, owner: [Cloud task](https://chatgpt.com/codex/tasks/task_e_6aaae8e50fa8832d833020b834350eaa).
+  Objective: independent synthetic fill/cost input tests. Owned paths only:
+  `tests/unit/simulation/test_input_validation_contract.py` and
+  `docs/reviews/sim-validation-003.md`. Read-only dependencies: fill/cost/event sources, shared
+  validators, existing simulation tests, and project/research documentation. Frozen interfaces:
+  existing constructors, fill evaluation, cost helpers, arithmetic, and seeded valid outcomes.
+  Acceptance: exact bounded finite Decimals, positive order quantities/prices, nonnegative
+  liquidity/costs, uncrossed quotes, independent probabilities in `[0,1]`, exact cursor/cost/side/
+  boolean types, and positive execution results. Zero liquidity/costs, equal quotes, and probability
+  endpoints remain valid. No new fee/slippage cap, timing model, or config schema.
+  Verification: `uv run pytest tests/unit/simulation/test_input_validation_contract.py -q`,
+  Ruff on that file, then existing `test_fills.py` and `test_fill_contract.py` tests.
+
+Both contracts prohibit production/config edits, external broker/data/deployment operations,
+secrets, live/risk/evidence changes, skipped/xfail tests, mocks, and source-text assertions.
+Their review documents must return exact base, commands/results, expected-red explanations,
+assumptions, risks/blockers, and an explicit integration disposition alongside the bounded diff.
+Expected-red tests against the permissive base are TDD evidence, not release approval. The primary
+owns `universe.py`, `costs.py`, `fills.py`, separate core regression tests, documentation, and all
+integration/release decisions. Both tasks returned only their owned two-file diffs. The primary
+inspected all four files, reproduced 140 expected failures and 8 valid passes on the exact old
+base, and verified all 148 originally returned Cloud cases against the patch. Redundant unrelated-RNG assertions
+were removed and separate primary controls now verify each membership timestamp independently.
+The original primary regression run reproduced 30 failures before implementation. Further review
+strengthened the Cloud-owned files to 176 cases; 38 separate primary cases bring the added total
+to 214. The final new-test set produced 202 expected failures and 12 valid-boundary passes on the
+old base. The full patched suite passed locally on 2026-09-17, as recorded below.
+
 ## LOCAL-ONLY TASKS
 
 - OAuth bootstrap, refresh-token handling, and any authenticated broker evidence capture.
@@ -300,6 +363,31 @@ Shared interface changes in these areas require a sequential plan, explicit migr
 
 ## TEST STATUS
 
+For the input-validation wave, verified on 2026-09-17:
+
+- A fresh secrets-free archive of staged tree `fe4d74c0a66b9b1898e88b5ded328f25509fc0b9`
+  passed **3,759 tests** in 137.37 seconds, with **85.64% coverage with branch measurement
+  enabled**, above the unchanged 80% threshold. The existing Starlette `httpx` deprecation warning
+  remains. The interrupted September 16 full run is not counted as passing.
+- This wave adds 214 cases to the 3,545-test base. The expanded market-data, simulation, and
+  paper/decision-cycle integration selection passed 288 tests. The final new tests independently
+  produced 202 expected failures and 12 valid-boundary passes on exact base `095e5c0`.
+- Fresh Ruff, strict mypy across 165 source files, Bandit, and `uv lock --check` passed on the
+  archived snapshot. A fresh audit of the exact locked requirements found no known vulnerabilities.
+  Existing Bandit annotation and audit invocation warnings were not suppressed.
+- POSIX shell syntax checks and standalone `docker-compose config --quiet` passed. No container
+  build, deployment, account access, credential operation, production-ledger access, or live check
+  was performed.
+- Verification used the existing clean locked Python 3.12.13 environment with `PYTHONPATH=src`
+  against the archive. The final documentation-only edits record results, clarify historical
+  observations, and reconcile the original and strengthened Cloud test counts; production and
+  tests remain identical to the verified tree. The user's pre-existing coverage/error files are
+  not included or altered.
+- The verified changes are prepared for the existing branch and
+  [pull request](https://github.com/Jed1122/Robinhoodtradingbot/pull/1). Exact post-push CI results
+  will be reported in the subsequent task handoff; no new CI success is claimed in this pre-push
+  documentation snapshot.
+
 For the research-primitive implementation wave on 2026-09-15:
 
 - A secrets-free archive of staged tree `93a9b8a0e817aa9a56823f38c46f3cd623d23095` passed
@@ -316,14 +404,14 @@ For the research-primitive implementation wave on 2026-09-15:
 - Verification used the existing clean locked Python 3.12.13 environment and `PYTHONPATH=src`
   against the archived edited source, avoiding the reusable project environment and slow source
   reads in the Documents worktree. Earlier interrupted full runs are not counted as passing.
-- The source/test snapshot is ready for commit and push to the existing
-  [pull request](https://github.com/Jed1122/Robinhoodtradingbot/pull/1). Exact post-push CI results
-  belong to the subsequent task handoff and PR checks; they are not claimed in this pre-push snapshot.
+- This prior wave was committed as `095e5c02b01aea95fd7858a549a7765e7b0488c0` and passed
+  [PR CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35019194133) and
+  [push CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35019186906).
 
 For deployed source `32ab71fc3c845c56068179fed98cf4a9eb80461e`:
 
 - The CI failure was reproduced with a color-capable terminal. A plain/color parametrized regression failed before ANSI normalization and passed afterward; it still requires exit code 2, the specific missing-flag diagnostic, and no server start. Production CLI code was unchanged.
-- The full local suite passes: 3,498 tests, 85.45% branch coverage, and one existing Starlette deprecation warning.
+- The full local suite passed: 3,498 tests, 85.45% coverage with branch measurement enabled, and one existing Starlette deprecation warning.
 - Ruff passes; strict mypy passes across 165 source files; Bandit reports no issues; `uv lock --check` passes.
 - A fresh audit of the exact locked requirements reports no known vulnerabilities. Stale metadata in the reusable local virtual environment is not used as the dependency inventory.
 - Compose rendering, deployment-script syntax checks, and `git diff --check` pass.
@@ -376,10 +464,11 @@ On 2026-09-15, the operator separately authorized workstation browser authorizat
 
 ## RECOMMENDED NEXT WAVE
 
-1. The bounded broker connection is now verified after credential rotation. Do not repeat ineligible probes as a promotion strategy or install recurring diagnostics; the critical path is validated research/data and complete outcomes.
-2. Continue from the bounded research-primitive wave: define validated point-in-time coverage and
-   conflict rules, complete corporate-action/interpolation provenance, and leakage/multiple-testing
-   controls. The added primitive tests do not supply these contracts. Authoritative data selection
+1. The bounded broker connection was verified once on 2026-09-15 after credential rotation. Do not repeat ineligible probes as a promotion strategy or install recurring diagnostics; the critical path is validated research/data and complete outcomes.
+2. Continue from the bounded research-primitive wave: define validated point-in-time coverage,
+   complete corporate-action/interpolation provenance, and leakage/multiple-testing controls.
+   Input and same-key conflict validation are implemented locally; primitive tests still do not
+   supply authoritative source coverage or accepted evidence. Authoritative data selection
    and statistical acceptance remain primary-owner decisions.
 3. Use the completed IaC review to prepare a sanitized host-hardening and recovery evidence checklist. Do not import, rebuild, replace, resize, or apply Terraform without a separately reviewed plan and authority.
 4. `CI-HARDENING-002` is integrated and verified green. A bounded attestation-test review can follow under its own exact-commit contract.
