@@ -921,7 +921,7 @@ docker compose config --quiet
   the lock before use. When using it, set `PYTHONPATH=src` from the intended worktree/archive
   because its editable installation points elsewhere. Use a clean staged-tree archive for
   the full suite if Documents filesystem delays recur; bind results to its exact tree hash.
-- [ ] Stage only intended source/tests/docs, review `git diff --cached --check` and the full
+- [x] Stage only intended source/tests/docs, review `git diff --cached --check` and the full
   diff, commit, then push the existing branch and observe exact-commit CI. Do not merge,
   deploy, read an account, or enable live mode. Finish with actual test counts, identities,
   remaining blockers, and the next primary-owned dependency (real-source contract review),
@@ -1018,3 +1018,18 @@ Cloud test workers (recommended, consistent with the operator's parallel-work pr
 or entirely local inline execution if the operator no longer wants Cloud tasks. Generic
 fresh-subagent-per-production-task execution is not appropriate for this repository's
 primary-owned integration boundary. Begin execution only after that handoff is accepted.
+
+## Execution completion — 2026-09-17 UTC
+
+The operator approved primary-led execution with actual parallel Cloud test workers.
+All six tasks are complete at implementation commit `14c29e26b760d6fb59a4514ae3f5b50f9e921d1d`.
+Tasks 1-5 were separately committed as `e090b2f`, `59d3e73`, `d425152`, `5178406`, and `313f54e`.
+Both Cloud workers used exact base `5178406cdd65fc4f03f37fdafd8d857116d58075`; their two-file
+proposals were reviewed in full and applied centrally, yielding 42 additional passing cases.
+The final local baseline passed 4,073 tests with 86.38% coverage with branch measurement;
+the focused integration selection passed 463 tests. Ruff, mypy (171 source files), Bandit,
+lock validation, exact locked-dependency audit, shell syntax, and standalone Compose checks
+passed. Exact-commit PR CI `35264185795` and push CI `35264174224` passed all six jobs each.
+Detailed results and remaining live blockers are recorded in the transition report.
+No broker, credential, ledger, deployment, live-mode, or risk/configuration changes were made.
+Real-source contract review remains the next primary-owned dependency, not part of this wave.

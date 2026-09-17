@@ -10,7 +10,7 @@ Attestation and Cloud-review base: `a58f6ebd548d8a9368c1dc90b6a98b48ee0e5908`
 
 Verified deployed source: `32ab71fc3c845c56068179fed98cf4a9eb80461e`
 
-Latest CI-verified implementation: `5178406cdd65fc4f03f37fdafd8d857116d58075`
+Latest CI-verified implementation: `14c29e26b760d6fb59a4514ae3f5b50f9e921d1d`
 
 Current work: operator-approved data-first architecture, captured in the
 [verifiable local data and snapshot-loader design](docs/superpowers/specs/2026-09-17-research-data-bundle-design.md).
@@ -19,9 +19,9 @@ Written-spec approval is complete. The
 defines the v1 format, callable interfaces, tests, and two disjoint Cloud contracts. The operator
 approved primary-led execution with actual parallel Cloud test workers. Tasks 1-4 are committed
 at `5178406`: immutable codec/models, synthetic normalization, replay/coverage verification,
-and the existing-interface snapshot loader. Private artifact storage and no-intent integration
-are implemented locally and undergoing final central verification; the full wave is not yet
-declared complete. No deployment or broker operation is part of this work.
+and the existing-interface snapshot loader. Private artifact storage, no-intent integration,
+both Cloud contributions, documentation, and final central verification complete the six-task
+wave at `14c29e2`. No deployment or broker operation is part of this work.
 
 The exact Task-4 base passed [PR CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35262696162)
 and [push CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35262690055).
@@ -41,6 +41,12 @@ incapable test stages, pins the unchanged legacy report/manifest/render hashes, 
 the synthetic-only boundary. The latest focused pre-final selection passed 420 tests before
 the 42 Cloud cases and final retry regression were added. Exact final baseline and CI results
 are recorded below when observed, not inferred from worker dispositions.
+
+The complete integration commit `14c29e26b760d6fb59a4514ae3f5b50f9e921d1d` passed
+[PR CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35264185795) and
+[push CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35264174224): all six jobs
+on each run, including Python 3.12, 3.13, and 3.14. This final documentation checkpoint only
+records those observed outcomes and closes the plan; source and tests are unchanged.
 
 Cloud workers own only their test/review files. All six production modules remain primary-owned.
 Local read-only reviews are separate supporting checks, not relabeled Cloud execution.
@@ -184,7 +190,7 @@ The primary orchestrator owns the integration branch, dependency graph, protecte
 | Corporate-action primitive filters | `93b28f4` | Primary correction locally verified | Existing interface retained; no provider/evidence integration. |
 | Simulation fill-model contract | `93b28f4` | Cloud tests integrated and locally verified | Tests/docs only; no pricing, strategy, risk, or execution changes. |
 | Membership and fill/cost input validation | `095e5c0` | Complete at `8785266`; two Cloud test diffs integrated; local verification and exact-commit CI passed | Independent synthetic tests only; primary owns all production validation. |
-| Verifiable local data and snapshot loader | Approved plan; Task-4 Cloud base `5178406`; storage `313f54e` | Implemented; both Cloud test diffs centrally reviewed and 42 cases pass; final full-wave CI pending | Primary owns all six modules; Cloud owns bounded synthetic tests/reviews only. |
+| Verifiable local data and snapshot loader | Approved plan; Task-4 Cloud base `5178406`; complete wave `14c29e2` | Complete; both Cloud test diffs centrally reviewed; 4,073 local tests and exact-commit PR/push CI pass | Primary owns all six modules; Cloud owns bounded synthetic tests/reviews only. |
 | IaC drift and recovery audit | `a58f6eb` plus sanitized inventory | Cloud review completed | Read-only; no DigitalOcean or state mutation. |
 | Coverage/observability gap inventory | Committed base | Independent now | Read-only report or isolated non-risk tests. |
 | Paper composition | Accepted research/data interfaces | Sequential protected work | Primary owner only. |
@@ -414,8 +420,9 @@ For the synthetic research-bundle implementation wave on 2026-09-17:
   command. No container or deployment was started by configuration validation.
 - Tests used the verified clean Python 3.12.13 environment with `PYTHONPATH=src` from this
   worktree. The final source/test suite was stable during the run; subsequent changes only
-  record verification in documentation. Final integration-commit CI is pending at this writing;
-  Task-4 CI at `5178406` is already green as linked above.
+  record verification in documentation. Exact integration-commit PR and push CI at `14c29e2`
+  passed all six jobs each; Task-4 CI at `5178406` also passed. Existing Node 20 action-runtime
+  deprecation annotations are warnings, not failures; no workflow check was bypassed.
 - Primary regression tests reproduced parser, preflight, and retry-durability findings before
   fixes. Process-local fault injections demonstrated that malformed-limit, duplicate-key,
   exact hash, source-scope, blob integrity, membership, and real-loader integration assertions
