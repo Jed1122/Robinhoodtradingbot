@@ -10,14 +10,17 @@ Attestation and Cloud-review base: `a58f6ebd548d8a9368c1dc90b6a98b48ee0e5908`
 
 Verified deployed source: `32ab71fc3c845c56068179fed98cf4a9eb80461e`
 
-Previous CI-verified integration base: `095e5c02b01aea95fd7858a549a7765e7b0488c0`
+Latest CI-verified implementation: `8785266866206b1e93f1f031794703d3ab8f106e`
 
-Current implementation wave: operator-approved, fail-closed membership and simulation input
-validation from exact base `095e5c0`; no deployment or broker operation is part of this wave.
+Current work: operator-approved data-first architecture, now captured in the
+[verifiable local data and snapshot-loader design](docs/superpowers/specs/2026-09-17-research-data-bundle-design.md).
+Written-spec review is pending; no bundle/loader implementation or new Cloud test dispatch
+has started. The preceding membership and simulation input-validation wave is complete at
+`8785266`. No deployment or broker operation is part of this work.
 
 Release state: **NO-GO for live trading**
 
-This implementation wave performs no new broker, ledger, credential, or host check. Operational
+This design work performs no new broker, ledger, credential, or host check. Operational
 facts below remain the separately authorized 2026-09-15 snapshot, not a fresh deployment assertion.
 
 This report transitions the existing system to centrally governed local and Codex Cloud orchestration. It does not restart or redesign the project. The executing-image-attestation release is committed, CI-verified, and deployed in paused mode. Two isolated Codex Cloud documentation reviews, one CI-hardening task, and two synthetic fixture tasks completed and were integrated centrally. Their point-in-time findings do not supersede the newer operational evidence recorded here. Operator-authorized workstation reauthorization and server credential rotation restored the bounded broker-read connection on 2026-09-15; live trading remains blocked.
@@ -153,7 +156,8 @@ The primary orchestrator owns the integration branch, dependency graph, protecte
 | Point-in-time membership contract | `93b28f4` | Cloud fixture tests integrated and locally verified | Tests/docs only; source coverage and provenance remain unverified. |
 | Corporate-action primitive filters | `93b28f4` | Primary correction locally verified | Existing interface retained; no provider/evidence integration. |
 | Simulation fill-model contract | `93b28f4` | Cloud tests integrated and locally verified | Tests/docs only; no pricing, strategy, risk, or execution changes. |
-| Membership and fill/cost input validation | `095e5c0` | Two Cloud test diffs centrally integrated; full local verification passed | Independent synthetic tests only; primary owns all production validation. |
+| Membership and fill/cost input validation | `095e5c0` | Complete at `8785266`; two Cloud test diffs integrated; local verification and exact-commit CI passed | Independent synthetic tests only; primary owns all production validation. |
+| Verifiable local data and snapshot loader | `8785266`; written-spec approval and interface freeze next | Design only; two disjoint Cloud test contracts prepared, not dispatched | Primary owns production; Cloud owns bounded synthetic tests only. |
 | IaC drift and recovery audit | `a58f6eb` plus sanitized inventory | Cloud review completed | Read-only; no DigitalOcean or state mutation. |
 | Coverage/observability gap inventory | Committed base | Independent now | Read-only report or isolated non-risk tests. |
 | Paper composition | Accepted research/data interfaces | Sequential protected work | Primary owner only. |
@@ -363,6 +367,18 @@ Shared interface changes in these areas require a sequential plan, explicit migr
 
 ## TEST STATUS
 
+For the data-first architecture review on 2026-09-17:
+
+- Before writing the spec, the existing promotion-wiring, paper, and no-live-write
+  integration tests passed: **21 tests**, using the clean locked environment with
+  `PYTHONPATH=src`. These are boundary checks, not eligible paper observations.
+- The new spec and this handoff update are documentation only. Full implementation-suite
+  and CI results below belong to `8785266`, not to a later documentation commit.
+- The primary self-reviewed the spec for scope, compatibility, coverage/time ambiguity,
+  and non-promotable boundaries. An independent read-only call-site inventory corroborated
+  the legacy constructor/hash constraints. Fresh documentation smoke verification passed
+  **1 test**; no new source implementation or external verification is claimed.
+
 For the input-validation wave, verified on 2026-09-17:
 
 - A fresh secrets-free archive of staged tree `fe4d74c0a66b9b1898e88b5ded328f25509fc0b9`
@@ -383,10 +399,12 @@ For the input-validation wave, verified on 2026-09-17:
   observations, and reconcile the original and strengthened Cloud test counts; production and
   tests remain identical to the verified tree. The user's pre-existing coverage/error files are
   not included or altered.
-- The verified changes are prepared for the existing branch and
-  [pull request](https://github.com/Jed1122/Robinhoodtradingbot/pull/1). Exact post-push CI results
-  will be reported in the subsequent task handoff; no new CI success is claimed in this pre-push
-  documentation snapshot.
+- Committed and pushed as `8785266866206b1e93f1f031794703d3ab8f106e` on the existing branch and
+  [pull request](https://github.com/Jed1122/Robinhoodtradingbot/pull/1).
+  Exact-commit [PR CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35255574816)
+  and [push CI](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/35255569133) both
+  passed all six jobs: Python 3.12/3.13/3.14, Bandit, locked dependencies, and configuration.
+  Existing Node 20 action-runtime deprecation warnings were not failures.
 
 For the research-primitive implementation wave on 2026-09-15:
 
