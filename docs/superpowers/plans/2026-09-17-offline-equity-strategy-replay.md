@@ -68,25 +68,27 @@ encoded = tuple(
 
 **Files:** create `simulation/equity_replay_models.py`, `simulation/equity_replay_codec.py`, `tests/unit/simulation/test_equity_replay_models.py`, `tests/unit/simulation/_equity_replay_fixtures.py` under the existing source/test roots.
 
-**Interfaces:** frozen `ReplayCandidate(strategy_id, short_window, long_window, top_n, exposure_multiplier)`; `ReplaySession(instrument_id, window, opportunity_times)`; `ReplayDecision(event_id, cursor)`; `EquityStrategyReplayRequest(namespace, config, config_hash, seed, bundle, snapshot_settings, instruments, sessions, decisions, markets, starts_at, end_at, initial_cash)` plus candidate; frozen `ReplayOrderOutcome(intent_id, accepted, reasons, order_id)` with no eligibility fields; `EquityStrategyReplayResult` with validity, terminal/flat/completion facts, cycles, order results, portfolio snapshots, reason codes, hashes and immutable false flags.
+**Interfaces:** frozen `ReplayCandidate(strategy_id, short_window, long_window, top_n, exposure_multiplier)`; `ReplaySession(instrument_id, window, opportunity_times)`; `ReplayDecision(event_id, cursor)`; `EquityStrategyReplayRequest(namespace, loaded, seed, candidate, bundle, snapshot_settings, instruments, sessions, decisions, markets, starts_at, end_at, initial_cash)`; frozen `ReplayOrderOutcome(intent_id, accepted, reasons, order_id)` with no eligibility fields. Reuse and detach the existing `LoadedConfig` to bind both canonical config and its safety envelope, rather than introducing a separate config/hash carrier. The aggregate `EquityStrategyReplayResult` remains pending: derive its terminal/flat/completion facts from Task 4's authoritative portfolio/order records, not independent caller-selected booleans.
 
-- [ ] Write construction tests for wrong exact types, live mode, enabled evidence flags, candidate outside canonical grids, non-UTC dates, duplicate instrument IDs, unknown instrument/session references, negative cash and conflicting duplicate delivery. Include a false-flag mutation rejection test.
+- [x] Write request/outcome construction tests for wrong exact types, live mode, enabled evidence flags, candidate outside canonical grids, non-UTC dates, duplicate instrument IDs, unknown instrument/session references, negative cash and conflicting duplicate delivery. Include false-flag mutation rejection tests. Add aggregate-result tests when portfolio records are available; that part is not complete.
 
 ```python
-result = replace(valid_result, positions_flat=False)
-assert not result.strategy_outcomes_complete
-assert result.evidence_promotable is False
+assert request.evidence_promotable is False
+assert replay_identity(request).input_hash == replay_identity(redelivered).input_hash
+assert replay_identity(request).delivery_hash != replay_identity(redelivered).delivery_hash
 ```
 
-- [ ] Observe failures with `python -m pytest tests/unit/simulation/test_equity_replay_models.py -q`.
-- [ ] Validate a detached `AppConfig` and its `config_hash`, existing verified bundle and domain metadata. Synthetic account ID derives internally from a constrained `synthetic:` namespace. Sessions declare finite strictly ordered opportunity times, each inside its window; each market delivery must occupy its instrument's declared slot. Deduplicate deliveries by ID and canonical payload before economic hashing; keep delivery receipts separately. Reject arbitrary objects before serialization, never call their `str`/`repr`.
+- [x] Observe failures with `python -m pytest tests/unit/simulation/test_equity_replay_models.py -q`. Initial collection failed on the missing codec. A later adversarial warning-capture test reproduced Pydantic attempting to format an injected unknown object; the config-tree preflight now denies before serialization with no warning.
+- [x] Validate a detached `LoadedConfig` and its config/envelope identity, existing verified bundle and domain metadata. Synthetic account ID derives internally from a constrained `synthetic:` namespace. Sessions declare finite strictly ordered opportunity times, each inside its window; each market delivery must occupy its instrument's declared slot. Deduplicate deliveries by ID and canonical payload before economic hashing; keep delivery receipts separately. Reject arbitrary objects before serialization, never call their `str`/`repr`.
 
 ```python
 payload = {"domain": "synthetic-equity-replay-v1", "value": validated_value}
 digest = content_hash(payload)
 ```
 
-- [ ] Rerun model tests plus existing bundle/configured model tests; commit scoped files.
+- [x] Rerun model tests plus existing bundle/configured model tests: 43 new contract tests and 539 tests in the expanded selection passed; all-source Ruff and Mypy (186 source files) passed.
+- [ ] Derive and test the aggregate result contract alongside portfolio coordination; do not mark Task 2 wholly complete until then.
+- [x] Commit the verified input/identity slice and document its remaining boundary (`feat: add strict synthetic equity replay input contracts`).
 
 ## Task 3: Incremental configured-order transition seam
 
@@ -201,6 +203,18 @@ assert "completed_offline" not in response.values()
 First integration checkpoint: the full local suite initially reported 4,446 passed and one
 README phrase-contract failure, with 87.44% combined coverage. The README now preserves that
 contract while explicitly describing configuration-only behavior; all 29 CLI/documentation
-checks passed after the correction. Full verification will be repeated after the next slice.
+checks passed after the correction.
+
+Input/identity checkpoint on 2026-09-17 UTC: the full local suite passed **4,490 tests** with
+**87.56% combined line/branch coverage**, above the unchanged 80% floor. Ruff, Mypy (186 source
+files), Bandit and `uv lock --check --offline` passed. The frozen dependency audit earlier in
+this implementation turn found no known vulnerabilities; dependencies were not changed.
+The existing Starlette/httpx deprecation and Bandit comment warnings remain. Both standalone
+simulation/backtest scripts returned `configuration_only` and `executed=false`. No remote
+CI, broker, provider, deployment or production-ledger checks were performed.
+
+This verifies the implemented slices only, not completion of Tasks 2-8. The aggregate result
+contract, incremental simulator, portfolio funding, configured exits/economic checks,
+decision coordinator, private scenario CLI and their end-to-end/adversarial tests remain open.
 
 Every spec section maps to Tasks 1-8: interfaces (1), contracts/identity/time (2-3), funding (4), configured risk/exits (5), strategy composition/completion (6), operator surface (7), verification (8). Session opportunity declarations separate structural capacity from future market delivery. No new broker, persistence or promotion implementation is included. All protected changes remain primary-owned.

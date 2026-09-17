@@ -16,6 +16,21 @@ requires exactly one policy form and rejects duplicate or missing entry-policy m
 These are composition seams only, not an implemented equity replay runner or a new risk gate.
 No production paper, shadow, live, broker or promotion composition is enabled by them.
 
+`simulation/equity_replay_models.py` now defines strict synthetic scenario inputs: a detached
+canonical `LoadedConfig`, a configuration-grid candidate, verified synthetic bundle, instrument
+metadata, explicit UTC decisions and finite session opportunity declarations. Account identity
+is derived only from the reserved `synthetic:` namespace. Non-simulation/live-enabled settings,
+lowered history requirements, conflicting deliveries and undeclared quote opportunities are
+rejected with stable local reason codes. This validates the scenario contract; it does not
+assert that a future snapshot has sufficient visible history or that an order passes risk.
+
+`equity_replay_codec.py` separates the stable run key, deduplicated economic-input audit hash
+and delivery-receipt hash. The run key excludes future deliveries and the full bundle digest;
+the future coordinator must additionally bind each cycle/order to its visible as-of inputs.
+The closed outcome encoder never serializes arbitrary objects. All request eligibility flags
+are immutable false. Shared portfolio accounting, aggregate result derivation, incremental
+execution, configured exits, the coordinator and `simulate --scenario` remain unimplemented.
+
 ### Configuration-driven synthetic order simulation
 
 `simulation/configured.py` composes a private virtual-time scheduler with the existing

@@ -4,8 +4,9 @@ Date: 2026-09-17 UTC.
 Source reviewed: `a447de05da54e078b1b28859cdb5a04085d46e2b`.
 Status: **written design approved by the operator on 2026-09-17 UTC; implementation in progress**.
 
-The integration seams and truthful configuration-only CLI status are implemented. The full
-scenario/event/portfolio replay and its CLI path remain incomplete; see the
+The integration seams, strict scenario-input/outcome contracts, separated audit/receipt identities,
+and truthful configuration-only CLI status are implemented. The full event/portfolio replay,
+aggregate result derivation and scenario CLI path remain incomplete; see the
 [implementation checklist](../plans/2026-09-17-offline-equity-strategy-replay.md).
 
 The operator selected offline strategy replay and then approved this written design. This document
@@ -272,5 +273,7 @@ deployment remains paused and live trading remains unavailable.
 
 Self-review checked source interfaces, legacy-compatibility boundaries, duplicate-delivery
 identity, future-data isolation, cash reservation, exit races, incomplete outcomes, and the
-permanent non-promotable boundary. This is a design review only; implementation tests do not yet
-exist. Operator approval of this written specification was received before the implementation plan.
+permanent non-promotable boundary. This paragraph records the original design review, not completion
+of the runner. Implementation tests now cover the initial integration and contract slices; the
+implementation checklist tracks the still-missing replay and final verification. Operator approval
+of this written specification was received before the implementation plan.
