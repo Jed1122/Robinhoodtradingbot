@@ -2,9 +2,10 @@
 
 Date: 2026-09-17 (UTC)
 
-Status: the operator approved the in-chat architectural scope. This written specification
-is awaiting operator review; implementation has not started. All behavior below is proposed,
-unless explicitly identified as an existing dependency.
+Status: the operator approved the in-chat architectural scope and subsequently approved this
+written specification. Implementation status is tracked in the companion
+[implementation plan](../plans/2026-09-17-offline-order-lifecycle.md). Behavior below is a
+contract, not a claim that every requirement has already been implemented.
 
 Inspected base: `5a854edc18ccc0415f6254f5a8c3d3cf9aa34aa2`, branch
 `codex/continue-implementation-from-commit-7c4dcd1`. Earlier provider-neutral documentation
