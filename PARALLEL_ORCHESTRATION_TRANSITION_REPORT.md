@@ -12,15 +12,18 @@ Verified deployed source: `32ab71fc3c845c56068179fed98cf4a9eb80461e`
 
 Latest CI-verified implementation: `8785266866206b1e93f1f031794703d3ab8f106e`
 
-Current work: operator-approved data-first architecture, now captured in the
+Current work: operator-approved data-first architecture, captured in the
 [verifiable local data and snapshot-loader design](docs/superpowers/specs/2026-09-17-research-data-bundle-design.md).
-Written-spec review is pending; no bundle/loader implementation or new Cloud test dispatch
-has started. The preceding membership and simulation input-validation wave is complete at
+Written-spec approval is complete. The
+[six-task implementation plan](docs/superpowers/plans/2026-09-17-research-data-bundle.md)
+defines the v1 format, callable interfaces, tests, and two disjoint Cloud contracts. Execution
+handoff is next; no bundle/loader implementation or new Cloud test dispatch has started.
+The preceding membership and simulation input-validation wave is complete at
 `8785266`. No deployment or broker operation is part of this work.
 
 Release state: **NO-GO for live trading**
 
-This design work performs no new broker, ledger, credential, or host check. Operational
+This design/planning work performs no new broker, ledger, credential, or host check. Operational
 facts below remain the separately authorized 2026-09-15 snapshot, not a fresh deployment assertion.
 
 This report transitions the existing system to centrally governed local and Codex Cloud orchestration. It does not restart or redesign the project. The executing-image-attestation release is committed, CI-verified, and deployed in paused mode. Two isolated Codex Cloud documentation reviews, one CI-hardening task, and two synthetic fixture tasks completed and were integrated centrally. Their point-in-time findings do not supersede the newer operational evidence recorded here. Operator-authorized workstation reauthorization and server credential rotation restored the bounded broker-read connection on 2026-09-15; live trading remains blocked.
@@ -157,7 +160,7 @@ The primary orchestrator owns the integration branch, dependency graph, protecte
 | Corporate-action primitive filters | `93b28f4` | Primary correction locally verified | Existing interface retained; no provider/evidence integration. |
 | Simulation fill-model contract | `93b28f4` | Cloud tests integrated and locally verified | Tests/docs only; no pricing, strategy, risk, or execution changes. |
 | Membership and fill/cost input validation | `095e5c0` | Complete at `8785266`; two Cloud test diffs integrated; local verification and exact-commit CI passed | Independent synthetic tests only; primary owns all production validation. |
-| Verifiable local data and snapshot loader | `8785266`; written-spec approval and interface freeze next | Design only; two disjoint Cloud test contracts prepared, not dispatched | Primary owns production; Cloud owns bounded synthetic tests only. |
+| Verifiable local data and snapshot loader | Approved spec; plan at `0fd34b2` planning base; execution next | Plan only; Cloud dispatch after callable verifier/loader commit, alongside primary I/O and integration | Primary owns production; Cloud owns bounded synthetic tests only. |
 | IaC drift and recovery audit | `a58f6eb` plus sanitized inventory | Cloud review completed | Read-only; no DigitalOcean or state mutation. |
 | Coverage/observability gap inventory | Committed base | Independent now | Read-only report or isolated non-risk tests. |
 | Paper composition | Accepted research/data interfaces | Sequential protected work | Primary owner only. |
@@ -366,6 +369,20 @@ The following must not have concurrent implementation owners:
 Shared interface changes in these areas require a sequential plan, explicit migration, focused tests, architecture documentation, and primary-owner integration.
 
 ## TEST STATUS
+
+For the approved-spec implementation planning on 2026-09-17:
+
+- Fresh offline artifact, report, research-validation, replay, feature, and decision-cycle
+  verification passed **16 existing tests** in 0.67 seconds. Captured legacy synthetic
+  report/manifest/rendered-value hashes are pinned in the plan as compatibility controls.
+- A read-only parallel inventory verified reusable fixture/test paths; the primary performed
+  the plan/spec coverage and signature review. No implementation task is marked complete,
+  and no Cloud worker has been dispatched for the new bundle milestone.
+- Fresh documentation smoke verification passed **1 test**; all **17 Python examples** in
+  the plan parsed successfully under the clean Python 3.12 environment. Example syntax
+  validation is not execution of the planned code. Diff whitespace checks passed.
+- This pass changes only the implementation plan, approved-spec status, and handoff report.
+  The full-suite/CI evidence below still belongs to implementation commit `8785266`.
 
 For the data-first architecture review on 2026-09-17:
 

@@ -2,8 +2,10 @@
 
 Date: 2026-09-17 (UTC)
 
-Status: high-level architecture approved by the operator; written specification awaiting
-operator review. This is a design, not an implemented capability or release approval.
+Status: high-level architecture and written specification approved by the operator on
+2026-09-17. The [implementation plan](../plans/2026-09-17-research-data-bundle.md) records the
+execution sequence and Cloud test contracts. This is a design, not an implemented capability
+or release approval.
 
 Inspected implementation base: `8785266866206b1e93f1f031794703d3ab8f106e`, on
 `codex/continue-implementation-from-commit-7c4dcd1`.
@@ -328,5 +330,5 @@ execution/reconciliation, host/runtime controls, recovery, security, manual revi
 separate live authority remain required. Existing additional normal-live requirements are
 unchanged. No repeated diagnostic probe or added account funding substitutes for this work.
 
-Written-spec approval is the next process gate. After approval, create the implementation
-plan and freeze test contracts; do not start production implementation during this review.
+Written-spec approval is complete. The implementation plan freezes task contracts; production
+implementation has not started in this design/planning pass.
