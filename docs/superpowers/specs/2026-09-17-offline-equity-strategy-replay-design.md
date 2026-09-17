@@ -2,10 +2,10 @@
 
 Date: 2026-09-17 UTC.
 Source reviewed: `a447de05da54e078b1b28859cdb5a04085d46e2b`.
-Status: **proposed design, awaiting written-spec review; not implemented**.
+Status: **written design approved by the operator on 2026-09-17 UTC; implementation pending**.
 
-The operator selected offline strategy replay as the next implementation scope. This document
-defines that scope for review. Selection does not authorize broker calls, real-data capture,
+The operator selected offline strategy replay and then approved this written design. This document
+defines that implementation scope. Approval does not authorize broker calls, real-data capture,
 deployment, live activation, new risk thresholds, or promotion claims.
 
 ## 1. Objective and alternatives
@@ -269,4 +269,4 @@ deployment remains paused and live trading remains unavailable.
 Self-review checked source interfaces, legacy-compatibility boundaries, duplicate-delivery
 identity, future-data isolation, cash reservation, exit races, incomplete outcomes, and the
 permanent non-promotable boundary. This is a design review only; implementation tests do not yet
-exist. Operator review of this written specification is required before the implementation plan.
+exist. Operator approval of this written specification was received before the implementation plan.
