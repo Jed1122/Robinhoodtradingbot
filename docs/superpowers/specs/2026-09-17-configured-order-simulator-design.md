@@ -2,8 +2,10 @@
 
 Date: 2026-09-17 (UTC)
 
-Status: the operator approved the in-chat architectural scope. This written specification
-is pending operator review; it describes proposed behavior, not completed implementation.
+Status: the operator approved the in-chat architectural scope and this written specification.
+Implementation progress and verification are tracked in the companion
+[implementation plan](../plans/2026-09-17-configured-order-simulator.md). This document
+defines the contract; it does not by itself assert completed implementation.
 
 Inspected base: `083f53f398ffad2e13b58ebe536b18b2b17e7a57`, branch
 `codex/continue-implementation-from-commit-7c4dcd1`. Existing dirty provider documentation,
