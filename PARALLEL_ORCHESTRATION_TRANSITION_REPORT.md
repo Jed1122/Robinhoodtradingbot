@@ -12,7 +12,18 @@ Verified deployed source: `32ab71fc3c845c56068179fed98cf4a9eb80461e`
 
 Latest CI-verified implementation: `14c29e26b760d6fb59a4514ae3f5b50f9e921d1d`
 
-Current work: operator-approved data-first architecture, captured in the
+Current work: the operator selected **free-only data** and approved **Alpaca Basic as the first
+data-validation candidate**, without moving the funded Robinhood account or changing trading
+safeguards. The [Alpaca free-data validation specification](docs/superpowers/specs/2026-09-17-alpaca-free-data-validation-design.md)
+is written for operator review. This is a documentation checkpoint, not an implemented or
+authenticated Alpaca capability. The operator confirmed that no Alpaca account exists; a free
+paper-only signup remains their prerequisite. Contractual and technical entitlement, retention
+rights, corporate-action coverage, and historical availability remain unverified.
+No account creation, credential access, data acquisition, purchase, production-ledger access,
+deployment, or live operation occurred in this checkpoint. The next approval is review of the
+written specification; an acquisition plan and external authority remain separate.
+
+Completed foundation: operator-approved data-first architecture, captured in the
 [verifiable local data and snapshot-loader design](docs/superpowers/specs/2026-09-17-research-data-bundle-design.md).
 Written-spec approval is complete. The
 [six-task implementation plan](docs/superpowers/plans/2026-09-17-research-data-bundle.md)
@@ -400,6 +411,24 @@ Shared interface changes in these areas require a sequential plan, explicit migr
 
 ## TEST STATUS
 
+### Alpaca free-data design checkpoint (2026-09-17)
+
+- Documentation only: a proposed validation specification and this handoff update, based on
+  `d53d596e5e11b21938adbc2ac6adaa95e6a4284c`. The operator selected Alpaca Basic as the first
+  $0 candidate and confirmed that no Alpaca account exists.
+- The primary reviewed current official public documentation and self-reviewed the specification
+  for authority, cost, source/time ambiguity, compatibility, and unsupported acceptance claims.
+  A parallel read-only inventory checked the existing documentation-test boundary; it made no edits
+  and is not a Codex Cloud implementation result.
+- Fresh `tests/smoke/test_documentation.py` execution passed **1 test**. This existing test does
+  not inspect the new specification or handoff, so both changed Markdown documents also received
+  a separate local-link check: **6 local links resolved**. `git diff --check` passed.
+- No source, tests, configuration, dependencies, runtime, or deployment changed. The full test
+  suite and new-commit CI were not run for this design-only checkpoint; earlier baseline and CI
+  results below remain attached to their original implementation commits.
+- No authenticated API request, account creation, credential operation, paid subscription,
+  production-ledger access, data acquisition, source acceptance, or trading operation occurred.
+
 For the synthetic research-bundle implementation wave on 2026-09-17:
 
 - The final local full suite, including both reviewed Cloud contributions, passed **4,073 tests**
@@ -558,12 +587,15 @@ On 2026-09-15, the operator separately authorized workstation browser authorizat
 ## RECOMMENDED NEXT WAVE
 
 1. The bounded broker connection was verified once on 2026-09-15 after credential rotation. Do not repeat ineligible probes as a promotion strategy or install recurring diagnostics; the critical path is validated research/data and complete outcomes.
-2. Continue from the synthetic bundle/loader milestone with a primary-owned real-source
-   contract review: licensing, collection/availability semantics, point-in-time membership,
-   corporate-action/interpolation provenance, and explicit coverage. Do not treat synthetic
-   declarations or replay/hash consistency as authoritative source evidence. Leakage,
-   multiple-testing controls, authoritative source selection, and statistical acceptance
-   remain unresolved primary-owner decisions.
+2. Review the written Alpaca Basic free-only validation specification. The operator confirmed
+   no Alpaca account exists; free paper-only signup remains their prerequisite, without funding
+   or a paid upgrade. Do not access credentials. Source choice is approved
+   only as a candidate. Resolve usage/retention and paper-only-versus-SIP entitlement ambiguity,
+   then obtain separately scoped acquisition authority before any authenticated capture.
+   Imported data stays unsupported in the synthetic bundle implementation. Collection and
+   historical availability, membership, corporate-action/interpolation provenance, and explicit
+   coverage remain primary-owned source checks. Hash consistency alone cannot accept a source.
+   Leakage, multiple-testing controls, source acceptance, and statistical acceptance remain open.
 3. Use the completed IaC review to prepare a sanitized host-hardening and recovery evidence checklist. Do not import, rebuild, replace, resize, or apply Terraform without a separately reviewed plan and authority.
 4. `CI-HARDENING-002` is integrated and verified green. A bounded attestation-test review can follow under its own exact-commit contract.
 5. Compose qualifying paper and shadow cycles only after their research/data/outcome interfaces and evidence are complete. Preserve all existing observation and elapsed-time gates.
