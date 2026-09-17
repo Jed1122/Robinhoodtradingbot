@@ -63,8 +63,10 @@ complete domain records exist.
   review, construct an equity write adapter, or authorize a trade.
 - Prediction live execution is unsupported.
 - No live order has been placed by this implementation or its tests.
-- Offline `backtest`, `simulate`, and one-cycle `paper` CLI commands are implemented with
-  deterministic hashes and no live placement capability.
+- The offline `backtest`, `simulate`, and one-cycle `paper` CLI surfaces remain paper-safe.
+  `backtest` and `simulate` currently return deterministic configuration summaries, not
+  strategy outcomes. The one-cycle `paper` command fails closed without trusted composition.
+  None of these public commands can place a live order.
 - Official Crypto v2 read DTOs, exact signing, and read adapters are implemented against
   reviewed schema fixtures and mock HTTP; no authenticated account read is claimed.
 - The connected client invokes equity reads only because of two local allowlists and the absence of
@@ -118,7 +120,11 @@ arguments, or committed files; the safe template contains file references only.
 ## Offline research modes
 
 Run `make backtest` or `make simulate` for deterministic offline configuration/result-hash
-checks. `make paper` is a one-shot durable-promotion entry point, but currently fails closed:
+checks. They return `status="configuration_only"` and `executed=false`; the `result_hash`
+binds configuration, mode and seed, not a backtest, fill or strategy outcome. A zero exit code
+only confirms the configuration summary succeeded. The synthetic strategy-replay runner is
+not yet wired into these commands. `make paper` is a one-shot durable-promotion entry point,
+but currently fails closed:
 it has no trusted accepted-research, account/provider identity, validated-data, reconciliation,
 runtime-scope, or complete strategy-cycle composition. It therefore creates no ledger, lock, or
 promotion observation. See [strategy research](docs/strategy-research.md) and

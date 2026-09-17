@@ -2,7 +2,11 @@
 
 Date: 2026-09-17 UTC.
 Source reviewed: `a447de05da54e078b1b28859cdb5a04085d46e2b`.
-Status: **written design approved by the operator on 2026-09-17 UTC; implementation pending**.
+Status: **written design approved by the operator on 2026-09-17 UTC; implementation in progress**.
+
+The integration seams and truthful configuration-only CLI status are implemented. The full
+scenario/event/portfolio replay and its CLI path remain incomplete; see the
+[implementation checklist](../plans/2026-09-17-offline-equity-strategy-replay.md).
 
 The operator selected offline strategy replay and then approved this written design. This document
 defines that implementation scope. Approval does not authorize broker calls, real-data capture,

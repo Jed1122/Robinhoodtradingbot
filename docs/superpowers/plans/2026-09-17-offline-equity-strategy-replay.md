@@ -62,7 +62,7 @@ encoded = tuple(
 ```
 
 - [x] Rerun new tests, existing portfolio tests and simulation integration tests; lint/type-check changed source. The expanded selection passed 70 tests (one existing Starlette/httpx warning); all-source Ruff and Mypy passed. Architecture documentation records that these are seams only.
-- [ ] Commit only Task 1 files with `feat: add deterministic offline cycle integration seams`.
+- [x] Commit only Task 1 files with `feat: add deterministic offline cycle integration seams` (`5e1be75`).
 
 ## Task 2: Strict synthetic scenario and outcome contracts
 
@@ -175,7 +175,7 @@ assert short_run.cycles == extended_run.cycles[: len(short_run.cycles)]
 
 - [ ] Test JSON unknown keys, duplicate keys, NaN/floats/noncanonical decimals, unsafe permissions, oversized data, provider kinds and symlinks; errors contain only stable codes, not file content or paths. Observe failures before implementation.
 - [ ] Test the CLI on a temporary private synthetic scenario: complete run exits 0, incomplete run exits 2 with sanitized reason codes, malformed input exits 2 without raw exceptions.
-- [ ] Test configuration-only commands and implement the deliberate response correction:
+- [x] Test configuration-only commands and implement the deliberate response correction. This independent substep was pulled forward before the runner: two regression tests failed on `completed_offline`, then passed with `configuration_only` and `executed=false`. The scenario-loading/runner substeps remain incomplete.
 
 ```python
 assert response["status"] == "configuration_only"
@@ -197,5 +197,10 @@ assert "completed_offline" not in response.values()
 - [ ] Commit final task files only; leave unrelated pre-existing modifications intact. Report local verification, remaining blockers and exact commits. Do not push, merge or deploy without separate authority.
 
 ## Plan self-review
+
+First integration checkpoint: the full local suite initially reported 4,446 passed and one
+README phrase-contract failure, with 87.44% combined coverage. The README now preserves that
+contract while explicitly describing configuration-only behavior; all 29 CLI/documentation
+checks passed after the correction. Full verification will be repeated after the next slice.
 
 Every spec section maps to Tasks 1-8: interfaces (1), contracts/identity/time (2-3), funding (4), configured risk/exits (5), strategy composition/completion (6), operator surface (7), verification (8). Session opportunity declarations separate structural capacity from future market delivery. No new broker, persistence or promotion implementation is included. All protected changes remain primary-owned.

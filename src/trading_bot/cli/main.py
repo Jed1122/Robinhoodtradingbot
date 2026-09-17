@@ -73,7 +73,8 @@ def _summary(mode: str, config: Path, seed: int) -> dict[str, object]:
         "mode": mode,
         "result_hash": result_hash,
         "seed": seed,
-        "status": "completed_offline",
+        "status": "configuration_only",
+        "executed": False,
     }
 
 
@@ -86,6 +87,7 @@ def backtest(
     config: Annotated[Path, typer.Option()] = Path("configs/backtest.yaml"),
     seed: Annotated[int, typer.Option()] = 20260710,
 ) -> None:
+    """Validate offline configuration; no strategy backtest is executed yet."""
     _emit("backtest", config, seed)
 
 
@@ -94,6 +96,7 @@ def simulate(
     config: Annotated[Path, typer.Option()] = Path("configs/simulation.yaml"),
     seed: Annotated[int, typer.Option()] = 20260710,
 ) -> None:
+    """Validate offline configuration; no strategy simulation is executed yet."""
     _emit("simulation", config, seed)
 
 

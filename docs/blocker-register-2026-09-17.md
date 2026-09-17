@@ -15,9 +15,10 @@ Existing host and authenticated capability facts remain historical unless explic
 
 - The configuration-driven simulator is implemented for **one synthetic order**. It is not yet
   integrated with a complete strategy entry/exit lifecycle or multi-order portfolio accounting.
-- `backtest` and `simulate` in `src/trading_bot/cli/main.py` call `_summary`, which hashes the
-  configuration, mode, and seed and emits `completed_offline`. These commands do **not** execute
-  a strategy backtest or the new simulator. Their exit status is not outcome evidence.
+- At the audited revision, `backtest` and `simulate` in `src/trading_bot/cli/main.py` called
+  `_summary` and misleadingly emitted `completed_offline`. The approved replay implementation
+  now corrects the summary to `configuration_only` with `executed=false`. These commands still
+  do **not** execute a strategy backtest or the new simulator; exit status is not outcome evidence.
 - The public paper command intentionally has no trusted `PaperPromotionComposition`. It fails
   before creating a ledger or lock and reports seven missing inputs. Passing this negative test
   verifies the guard, not paper readiness.
@@ -157,7 +158,8 @@ touch production persistence, or create promotable evidence in this slice.
 
 The operator selected this scope during the review. The
 [written replay design](superpowers/specs/2026-09-17-offline-equity-strategy-replay-design.md)
-is proposed and awaits written-spec approval before implementation. Source-first work can continue
+was approved by the operator. The [implementation plan](superpowers/plans/2026-09-17-offline-equity-strategy-replay.md)
+records completed integration seams and the remaining replay work. Source-first work can continue
 after the external rights issue is resolved; broker-first work requires separately scoped
 authenticated evidence and is not a shortcut around the offline lifecycle. Existing inline and
 primary-owner boundaries remain in force. No new parallel or Cloud task was dispatched.
