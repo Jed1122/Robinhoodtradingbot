@@ -33,9 +33,18 @@ Worktree: `/Users/jedweinstein/Documents/robinhood-multi-asset-trading-system/wo
 Preserve the unrelated untracked `.coverage 2`, `.coverage 3`, `.coverage 4`, and `error.log`.
 Check actual branch/base/status before execution; the desktop Polymarket cwd is not this project.
 
-Classification: diagnostic **not implemented**; account **operator-confirmed**; feed entitlement,
+Classification at planning: diagnostic **not implemented**; account **operator-confirmed**; feed entitlement,
 retention rights, authenticated response shapes, and usable history **unverified**.
 Written-spec approval and paper-only Basic/free confirmation were received on 2026-09-17.
+
+Execution authorized inline on 2026-09-17. Primary-owned local implementation is complete;
+final verification is recorded in the project handoff. Task 4 has not been executed.
+Task 1 is committed at `2777c5d`; Task 2 at `0aae197`. The critical review clarified that
+the two-request limit must apply to a single approved manifest across invocations, not just
+within one process. Task 3 therefore consumes a private, exclusive `<manifest-sha256>.attempt`
+marker before reading credentials or sending requests. Existing or durability-uncertain
+markers block replay, including after a failed attempt; they are not automatically deleted.
+This is diagnostic quarantine bookkeeping, not production persistence or promotion evidence.
 
 Critical path: offline implementation and tests (Tasks 1-3) -> resolve feed/use prerequisites
 and approve an exact manifest -> primary-only capture (Task 4) -> inspect actual shapes ->
@@ -193,7 +202,7 @@ on 2026-09-17. They are request definitions, not verified response semantics or 
 and `Clock.now() -> datetime`. Produce the immutable manifest types and four preparation/codec
 functions above. No credential file is opened; no network client is constructed.
 
-- [ ] **Step 1: Write the failing deterministic preparation test.** Use this complete setup:
+- [x] **Step 1: Write the failing deterministic preparation test.** Use this complete setup:
 
 ```python
 from dataclasses import dataclass
@@ -229,22 +238,22 @@ def test_prepare_is_offline_and_preserves_research_scope(tmp_path: Path) -> None
     assert json.loads(encode_manifest(manifest))["schema_version"] == "alpaca-first-response-v1"
 ```
 
-- [ ] **Step 2: Run the test and confirm the new-module import fails.**
+- [x] **Step 2: Run the test and confirm the new-module import fails.**
   Run `uv run pytest tests/unit/diagnostics/test_alpaca_probe.py -q`.
-- [ ] **Step 3: Implement immutable values, exact scope validation, canonical encoding and decoding.**
+- [x] **Step 3: Implement immutable values, exact scope validation, canonical encoding and decoding.**
   Calculate `requested_start = requested_end - timedelta(days=loaded.config.research.history_calendar_days)`;
   construct only the two query tuples in the bounds table. Serialize via
   `json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()`.
   Validate the full lowercase 40-character commit and 64-character config digest, strict integers
   (not booleans), UTC times and lexical absolute paths without `..`; do not stat secret paths here.
   Reconstruct and compare the canonical requests against loaded config at capture time as well.
-- [ ] **Step 4: Add and run parameterized negative tests.** Mutate each encoded field independently:
+- [x] **Step 4: Add and run parameterized negative tests.** Mutate each encoded field independently:
   unknown schema/key, duplicate JSON key, method/base-URL injection, extra/duplicate path,
   `limit=2`, `feed=iex`, `adjustment=all`, page token, non-UTC time, expiry beyond 30 minutes,
   limit boolean, negative/oversized bounds, invalid digest, relative path and `..` component.
   Each raises `ProbeError("probe_manifest_invalid")`; a scope mismatch against loaded config
   raises `probe_scope_mismatch`. Repeat encode/decode and assert identical bytes and digest.
-- [ ] **Step 5: Run narrow tests, Ruff and mypy; commit only these paths.**
+- [x] **Step 5: Run narrow tests, Ruff and mypy; commit only these paths.**
   Commit message: `feat: prepare bounded offline Alpaca diagnostic manifest`.
 
 ## Task 2: Private credential and quarantine I/O
@@ -256,7 +265,7 @@ def test_prepare_is_offline_and_preserves_research_scope(tmp_path: Path) -> None
 and `publish_probe_receipt`.
 The root is explicitly operator-selected, pre-existing, owner-only, and never auto-discovered.
 
-- [ ] **Step 1: Write the failing synthetic byte-storage test.**
+- [x] **Step 1: Write the failing synthetic byte-storage test.**
 
 ```python
 import hashlib
@@ -276,8 +285,8 @@ def test_blob_is_exact_private_and_content_addressed(tmp_path: Path) -> None:
     assert publish_probe_blob(root, body, repository_root=repo) == digest
 ```
 
-- [ ] **Step 2: Run `uv run pytest tests/integration/diagnostics/test_alpaca_probe_io.py -q`; confirm import failure.**
-- [ ] **Step 3: Implement the thin I/O wrappers, without a second storage framework.**
+- [x] **Step 2: Run `uv run pytest tests/integration/diagnostics/test_alpaca_probe_io.py -q`; confirm import failure.**
+- [x] **Step 3: Implement the thin I/O wrappers, without a second storage framework.**
   For blobs, reject more than 1,048,576 bytes, compute `hashlib.sha256(body).hexdigest()`,
   open the existing private root with `_open_root`, publish `digest + ".raw"` using `_publish`,
   close descriptors in `finally`, and translate `BundleError`/`OSError` into safe codes.
@@ -291,12 +300,12 @@ def test_blob_is_exact_private_and_content_addressed(tmp_path: Path) -> None:
   Hashes/reason codes/times/statuses/counts are the only receipt contents; no response fields,
   request headers, credential file paths or arbitrary strings are admitted. A blob followed
   by a failed receipt write is incomplete evidence, not a successful capture.
-- [ ] **Step 4: Parameterize private-filesystem failures and safe-error assertions.** Cover root/file
+- [x] **Step 4: Parameterize private-filesystem failures and safe-error assertions.** Cover root/file
   symlink, intermediate symlink, repository-contained root/file, traversal, 0644 credential,
   0755 root, FIFO, oversized body/credential, conflicting digest filename, partial writes and
   failed publication. Confirm all public errors/reprs omit synthetic key/secret/body strings.
   Preserve existing complete artifacts on uncertainty; never recursively delete a root.
-- [ ] **Step 5: Run both new modules' tests plus `tests/integration/market_data/test_bundle_store.py`,
+- [x] **Step 5: Run both new modules' tests plus `tests/integration/market_data/test_bundle_store.py`,
   Ruff and mypy.** Commit message: `feat: isolate Alpaca diagnostic private capture files`.
 
 ## Task 3: One-shot mocked transport, entry point, and honest report
@@ -307,14 +316,14 @@ def test_blob_is_exact_private_and_content_addressed(tmp_path: Path) -> None:
 **Interfaces:** Consume Tasks 1-2. Implement `capture_probe` exactly as frozen, plus
 `main(argv: Sequence[str] | None = None) -> int` in the script. No production CLI registration.
 
-- [ ] **Step 1: Write the fail-before-credentials test.** Construct the Task-1 manifest using the
+- [x] **Step 1: Write the fail-before-credentials test.** Construct the Task-1 manifest using the
   same fixed-clock fixture and absent credential path; run
   `asyncio.run(capture_probe(manifest, approved_manifest_sha256="0" * 64, loaded=loaded,
   active_code_revision="a" * 40, clock=FixedClock()))` inside
   `pytest.raises(ProbeError, match="probe_scope_mismatch")`. Mock the credential-read and
   `httpx.AsyncClient` constructors to raise `AssertionError` if reached.
-- [ ] **Step 2: Run the targeted test and confirm capture is absent.**
-- [ ] **Step 3: Implement capture with fail-closed ordering.** Validate manifest/config/revision/hash,
+- [x] **Step 2: Run the targeted test and confirm capture is absent.**
+- [x] **Step 3: Implement capture with fail-closed ordering.** Validate manifest/config/revision/hash,
   expiry, and private destinations before any credential read. The approval digest is an
   operator confirmation mechanism, not an unforgeable security capability. Use an explicit
   `httpx.AsyncHTTPTransport(retries=0)` and `httpx.AsyncClient(verify=True, trust_env=False,
@@ -332,14 +341,14 @@ def test_blob_is_exact_private_and_content_addressed(tmp_path: Path) -> None:
   Persist a safe failure receipt if the validated destination is still usable; then raise
   the safe `ProbeError`. If even that write fails, report only `probe_storage_failed`. Never
   let cleanup or receipt failure expose raw network exceptions.
-- [ ] **Step 4: Exercise the transport with synthetic mocked responses only.** With `respx`, bind the
+- [x] **Step 4: Exercise the transport with synthetic mocked responses only.** With `respx`, bind the
   exact host/path and assert GET, expected query, no redirect follow, and call counts. Test
   two 200 JSON objects; then parameterize 301, 400, 401, 403, 429 and 500 for the first call
   and assert exactly one send. Test first success/second failure, timeout, expired clock,
   malformed/non-object/duplicate-key/nonfinite JSON, compressed body, overflowing streamed
   bytes, credential echo (including JSON escapes), and arbitrary `next_page_token` text.
   Assert there is never a third send, retry, token follow, fallback or provider error-body log.
-- [ ] **Step 5: Implement and test the offline-default command surface.** Freeze these flags:
+- [x] **Step 5: Implement and test the offline-default command surface.** Freeze these flags:
   `--prepare` (default), `--capture` (mutually exclusive), `--manifest-file`,
   `--approved-manifest-sha256`, `--credential-file`, `--quarantine-root`, `--requested-end`.
   Both modes determine the full current Git revision locally and load the three canonical
@@ -355,14 +364,14 @@ def test_blob_is_exact_private_and_content_addressed(tmp_path: Path) -> None:
   writing. Recheck the concrete credential/quarantine parents immediately before capture.
   Exit 0 means the diagnostic command completed, not source acceptance; invalid invocation or
   failed capture exits 2. In either mode no result is `READY_FOR_IMPORTER_DESIGN_REVIEW`.
-- [ ] **Step 6: Implement the assessment as a diagnostic document, not a promotion type.** It must
+- [x] **Step 6: Implement the assessment as a diagnostic document, not a promotion type.** It must
   include every row from spec section 5. Successful sample HTTP access is `observed_pass` only
   for technical access and retained-byte integrity. Account/free plan remains operator-reported;
   contractual entitlement and rights cite the separately reviewed basis. Identity, numeric
   semantics, full history, slots, interpolation, session timing, vintages, actions and historical
   universe remain `not_checked` or `unresolved`; successful samples overall mean
   `INSUFFICIENT_SOURCE_EVIDENCE`. Do not print an arbitrary provider string as a status/code.
-- [ ] **Step 7: Document exactly the implemented flags and the operator gate below.** Assert script
+- [x] **Step 7: Document exactly the implemented flags and the operator gate below.** Assert script
   `--help` exposes no host, arbitrary URL, order, retry, paid-upgrade or live switch. Run all new
   tests, existing data-bundle tests and documentation smoke checks, then the full baseline:
 
@@ -384,6 +393,9 @@ git diff --check
 
 This is an external execution gate, not permission contained in this plan and not an automatic
 continuation of Tasks 1-3. Do not install keys, read private account pages, or send requests now.
+Tasks 1-3 passed the final local 4,223-test suite (86.64% branch-measured coverage), Ruff,
+strict mypy, Bandit, dependency audit and lock validation. No new-commit CI is claimed.
+Task 4 remains blocked on its explicit prerequisites and separate operator authority.
 
 - [ ] **Step 1: Resolve the actual paper-only feed entitlement and private retention/use.** Use
   public/account-specific terms supplied by the operator or a separately authorized provider

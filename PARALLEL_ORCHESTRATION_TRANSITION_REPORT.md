@@ -17,14 +17,18 @@ data-validation candidate**, without moving the funded Robinhood account or chan
 safeguards. The [Alpaca free-data validation specification](docs/superpowers/specs/2026-09-17-alpaca-free-data-validation-design.md)
 was approved by the operator, who also confirmed creating a **paper-only Basic/free account**
 with no paid subscription or funded live account. These are operator-reported facts, not an
-authenticated account inspection. The [first-response diagnostic plan](docs/superpowers/plans/2026-09-17-alpaca-first-response-diagnostic.md)
-defines offline implementation followed by a separately authorized two-request sample capture.
-It is not an implemented capability or a complete-history acquisition plan. Contractual and
+authenticated account inspection. The operator selected inline execution of the
+[first-response diagnostic plan](docs/superpowers/plans/2026-09-17-alpaca-first-response-diagnostic.md).
+Its local manifest, private I/O, bounded transport and standalone command are now implemented
+and tested with synthetic inputs; [operator instructions](docs/alpaca-data-diagnostic.md) describe
+the default offline preparation and separate capture gate. This is not an authenticated data
+capability, complete-history acquisition, provider adapter or accepted source. Contractual and
 technical entitlement, retention rights, corporate-action coverage, and historical availability
 remain unverified. Do not repeat the completed account-setup question.
-No agent credential access, data acquisition, purchase, production-ledger access, deployment,
-or live operation occurred in this planning checkpoint. Offline implementation execution and
-external acquisition authority remain separate; live trading is still NO-GO.
+No real credential access, authenticated Alpaca request, data acquisition, purchase, production-
+ledger access, deployment or live operation occurred. No parallel/Cloud worker was dispatched
+for the operator-selected inline implementation. External acquisition authority remains
+separate; live trading is still NO-GO.
 
 Completed foundation: operator-approved data-first architecture, captured in the
 [verifiable local data and snapshot-loader design](docs/superpowers/specs/2026-09-17-research-data-bundle-design.md).
@@ -414,6 +418,34 @@ Shared interface changes in these areas require a sequential plan, explicit migr
 
 ## TEST STATUS
 
+### Alpaca inline diagnostic implementation (2026-09-17)
+
+- Inline execution followed operator approval, starting at `9c71e63f0b549f063825633f1a0517ab922af759`.
+  Task 1 is committed as `2777c5d`; Task 2 as `0aae197`; Task 3 adds bounded mocked transport,
+  standalone offline-default command, safe assessment, documentation and anti-replay marker.
+- Fresh starting selection: **133 tests**. New diagnostic tests demonstrate the missing
+  implementation first, then pass after the matching implementation. Edge cases reproduced
+  and fixed numeric-exponent exception leakage, repeated use of an approved manifest, and
+  an incorrect zero-sample count on potentially partial failure.
+- Final focused diagnostic selection passed **150 tests**. New source modules measured
+  96% and 97% coverage with branch measurement in the first full run. No real provider response
+  or credential is used in those tests. CLI smoke tests write only synthetic temporary files.
+- The final full run passed **4,223 tests**, **86.64% coverage with branch measurement**,
+  in 139.15 seconds, above the unchanged 80% floor. This includes 150 new diagnostic tests
+  on top of the prior 4,073-test implementation. The earlier 4,221-test run preceded the
+  final two partial-report assertions and is not the final count.
+- Ruff passed; strict mypy passed across **174 source files**; Bandit found no issues;
+  `uv lock --check` passed; `pip-audit` found no known vulnerabilities among auditable
+  dependencies and skipped the local project package because it is not on PyPI. Existing
+  Bandit annotation warnings and the Starlette/httpx deprecation warning were not suppressed.
+- Documentation smoke selection passed **3 tests**; changed-document links and exact staged
+  scope were checked locally. The named worktree and unrelated untracked files are preserved.
+  Existing PR #1 targets `codex/robinhood-system-implementation`; no push, merge, deployment or
+  new PR was performed. Local completion does not substitute for new-commit CI.
+- These are local results, not new-commit CI or authenticated source evidence. No risk,
+  strategy, broker, production persistence, configuration, dependency, runtime or deployment
+  behavior changed. No live order, paid subscription or real credential operation occurred.
+
 ### Alpaca account-confirmation and diagnostic-plan checkpoint (2026-09-17)
 
 - Based on `62cc33b2520124ead55aa8effe8aa24ea24cdedc`. The operator approved the written
@@ -608,11 +640,15 @@ On 2026-09-15, the operator separately authorized workstation browser authorizat
 
 1. The bounded broker connection was verified once on 2026-09-15 after credential rotation. Do not repeat ineligible probes as a promotion strategy or install recurring diagnostics; the critical path is validated research/data and complete outcomes.
 2. The operator approved the written Alpaca Basic free-only validation specification and
-   confirmed completion of paper-only Basic/free account setup on 2026-09-17. The next
-   local step is execution of the bounded first-response diagnostic implementation plan, not
-   another signup or account confirmation. Do not access credentials. Source choice remains
-   a candidate. Resolve usage/retention and paper-only-versus-SIP entitlement ambiguity,
-   then obtain separately scoped acquisition authority before any authenticated capture.
+   confirmed completion of paper-only Basic/free account setup on 2026-09-17. Inline local
+   implementation of the bounded first-response diagnostic is complete; the next external
+   step is its separately authorized capture gate, not another signup or more funding.
+   Do not access credentials. Source choice remains a candidate. Resolve usage/retention
+   and paper-only-versus-SIP entitlement ambiguity, agree the exact private paths and retention
+   scope, then obtain one manifest-bound acquisition approval before authenticated capture.
+   The probe will collect only two first-page samples; complete-history acquisition and an
+   importer still require follow-on source-shape review and design. Push/update of existing
+   PR #1 and new CI remain separate from local verification; no duplicate PR is needed.
    Imported data stays unsupported in the synthetic bundle implementation. Collection and
    historical availability, membership, corporate-action/interpolation provenance, and explicit
    coverage remain primary-owned source checks. Hash consistency alone cannot accept a source.

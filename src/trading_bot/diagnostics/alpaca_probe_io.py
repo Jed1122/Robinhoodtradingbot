@@ -14,11 +14,42 @@ from trading_bot.diagnostics.alpaca_probe import (
     ProbeReceipt,
     _canonical,
     _check,
+    _digest,
     _json_object,
     _path,
 )
 from trading_bot.market_data.bundle_models import BundleError
 from trading_bot.market_data.bundle_store import _open_root, _publish, _read
+
+
+def _claim_probe_attempt(root: Path, digest: str, *, repository_root: Path) -> None:
+    """Consume one scope before credentials/egress; uncertainty never permits replay."""
+    _check(_digest(digest), "probe_scope_mismatch")
+    code = "probe_storage_failed"
+    try:
+        parent = _open_root(root, repository_root)
+        try:
+            descriptor = os.open(
+                digest + ".attempt",
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=parent,
+            )
+            try:
+                os.fchmod(descriptor, 0o600)
+                # The empty marker's exclusive name is the durable claim; no data goes in it.
+                os.fsync(descriptor)
+                os.fsync(parent)
+            finally:
+                os.close(descriptor)
+        finally:
+            os.close(parent)
+        return
+    except FileExistsError:
+        code = "probe_scope_mismatch"
+    except (BundleError, OSError):
+        pass
+    raise ProbeError(code)
 
 
 def _read_private_file(path: Path, *, repository_root: Path, max_bytes: int, code: str) -> bytes:

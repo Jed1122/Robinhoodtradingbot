@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
+import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Final, Literal, cast
+
+import httpx
 
 from trading_bot.clock import Clock, require_utc
 from trading_bot.config.hashing import hash_loaded_config
@@ -121,8 +128,10 @@ def _json_object(body: bytes, *, max_bytes: int, code: str) -> dict[str, object]
                     pending.extend((v, depth + 1) for v in value.values())
                 elif type(value) is list:
                     pending.extend((v, depth + 1) for v in value)
+                elif isinstance(value, Decimal) and not value.is_finite():
+                    raise ValueError("nonfinite JSON number")
             return cast(dict[str, object], result)
-    except (ValueError, TypeError, RecursionError, OverflowError):
+    except (ValueError, TypeError, RecursionError, ArithmeticError):
         pass
     raise ProbeError(code)
 
@@ -404,3 +413,233 @@ def decode_manifest(body: bytes) -> ProbeManifest:
 
 def manifest_sha256(manifest: ProbeManifest) -> str:
     return hashlib.sha256(encode_manifest(manifest)).hexdigest()
+
+
+def _capture_time(manifest: ProbeManifest, clock: Clock, *, minimum: datetime) -> datetime:
+    value = _utc(clock.now(), "probe_expired")
+    _check(minimum <= value < manifest.expires_at, "probe_expired")
+    return value
+
+
+@contextmanager
+def _quiet_http_logging() -> Iterator[None]:
+    # Standalone diagnostics only: suppress library diagnostics while credentials are in scope.
+    names = {
+        "httpx",
+        "httpcore",
+        "httpcore.connection",
+        "httpcore.http11",
+        "httpcore.http2",
+        "httpcore.proxy",
+        "httpcore.socks",
+    }
+    names.update(
+        name
+        for name in logging.Logger.manager.loggerDict
+        if name.startswith(("httpx.", "httpcore."))
+    )
+    loggers = [(logging.getLogger(name), logging.getLogger(name).disabled) for name in names]
+    try:
+        for logger, _ in loggers:
+            logger.disabled = True
+        yield
+    finally:
+        for logger, disabled in loggers:
+            logger.disabled = disabled
+
+
+def _screen_response(body: bytes, credential: ProbeCredential) -> None:
+    values = _json_object(body, max_bytes=MAX_RESPONSE_BYTES, code="probe_response_invalid")
+    forbidden = (credential.key_id, credential.secret_key, "APCA-API-KEY-ID", "APCA-API-SECRET-KEY")
+    _check(not any(s.encode() in body for s in forbidden), "probe_secret_echo")
+    pending: list[object] = [values]
+    while pending:
+        value = pending.pop()
+        if type(value) is str:
+            _check(
+                not any(s.casefold() in value.casefold() for s in forbidden), "probe_secret_echo"
+            )
+        elif type(value) is dict:
+            pending.extend(value.keys())
+            pending.extend(value.values())
+        elif type(value) is list:
+            pending.extend(value)
+
+
+async def _sample(
+    client: httpx.AsyncClient,
+    manifest: ProbeManifest,
+    credential: ProbeCredential,
+    index: int,
+    digest: str,
+    clock: Clock,
+    minimum: datetime,
+) -> ProbeReceipt:
+    from trading_bot.diagnostics.alpaca_probe_io import publish_probe_blob, publish_probe_receipt
+
+    started = _capture_time(manifest, clock, minimum=minimum)
+    status: int | None = None
+    failure: str | None = None
+    completed: datetime | None = None
+    body = b""
+    request = manifest.requests[index]
+    try:
+        async with client.stream(
+            "GET",
+            "https://data.alpaca.markets" + request.path,
+            params=request.query,
+            headers={
+                "APCA-API-KEY-ID": credential.key_id,
+                "APCA-API-SECRET-KEY": credential.secret_key,
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+            },
+        ) as response:
+            status = response.status_code
+            if status in (401, 403):
+                raise ProbeError("probe_access_denied")
+            if status == 429:
+                raise ProbeError("probe_rate_limited")
+            _check(status == 200, "probe_http_failed")
+            _check(
+                response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                == "application/json",
+                "probe_response_invalid",
+            )
+            _check(
+                response.headers.get("content-encoding", "identity").strip().lower() == "identity",
+                "probe_response_invalid",
+            )
+            declared = response.headers.get("content-length")
+            if declared is not None:
+                _check(
+                    declared.isascii() and declared.isdecimal() and len(declared) <= 10,
+                    "probe_response_invalid",
+                )
+                _check(int(declared) <= manifest.max_response_bytes, "probe_response_too_large")
+            pieces: list[bytes] = []
+            count = 0
+            async for piece in response.aiter_raw(chunk_size=65_536):
+                count += len(piece)
+                _check(count <= manifest.max_response_bytes, "probe_response_too_large")
+                pieces.append(piece)
+            _check(declared is None or int(declared) == count, "probe_response_invalid")
+            body = b"".join(pieces)
+        completed = _capture_time(manifest, clock, minimum=started)
+        _screen_response(body, credential)
+    except ProbeError as error:
+        failure = error.code
+    except (httpx.TimeoutException, TimeoutError):
+        failure = "probe_timeout"
+    except Exception:
+        failure = "probe_http_failed"
+    if failure is not None:
+        # Do not fabricate a completion instant if the injected clock is invalid or regresses.
+        failed_at = _utc(clock.now(), "probe_expired")
+        _check(failed_at >= started, "probe_expired")
+        receipt = ProbeReceipt(digest, index, started, failed_at, status, None, 0, failure)
+        publish_probe_receipt(
+            manifest.quarantine_root, receipt, repository_root=manifest.repository_root
+        )
+        raise ProbeError(failure)
+    _check(completed is not None, "probe_response_invalid")
+    _capture_time(manifest, clock, minimum=cast(datetime, completed))
+    blob_hash = publish_probe_blob(
+        manifest.quarantine_root, body, repository_root=manifest.repository_root
+    )
+    receipt = ProbeReceipt(
+        digest,
+        index,
+        started,
+        cast(datetime, completed),
+        status,
+        blob_hash,
+        len(body),
+        "probe_sample_retained",
+    )
+    publish_probe_receipt(
+        manifest.quarantine_root, receipt, repository_root=manifest.repository_root
+    )
+    return receipt
+
+
+async def capture_probe(
+    manifest: ProbeManifest,
+    *,
+    approved_manifest_sha256: str,
+    loaded: LoadedConfig,
+    active_code_revision: str,
+    clock: Clock,
+) -> tuple[ProbeReceipt, ...]:
+    """One approved diagnostic only; the caller must separately resolve entitlement/rights.
+
+    A supplied digest is confirmation of reviewed scope, not a security capability or legal
+    clearance. This function is never wired to a runtime, scheduler or broker.
+    """
+    from trading_bot.diagnostics.alpaca_probe_io import _claim_probe_attempt, read_probe_credential
+    from trading_bot.market_data.bundle_models import BundleError
+    from trading_bot.market_data.bundle_store import _open_root
+
+    digest = manifest_sha256(manifest)
+    _loaded_identity(loaded)
+    _check(
+        type(approved_manifest_sha256) is str and approved_manifest_sha256 == digest,
+        "probe_scope_mismatch",
+    )
+    _check(
+        active_code_revision == manifest.code_revision
+        and loaded.config_hash == manifest.config_hash,
+        "probe_scope_mismatch",
+    )
+    bars_query = dict(manifest.requests[0].query)
+    end = _parse_time(bars_query["end"])
+    try:
+        start = end - timedelta(days=loaded.config.research.history_calendar_days)
+    except OverflowError:
+        pass
+    else:
+        expected = _requests(
+            ",".join(loaded.config.equity_strategies.research_universe_symbols), start, end
+        )
+        _check(manifest.requests == expected, "probe_scope_mismatch")
+        _capture_time(manifest, clock, minimum=manifest.prepared_at)
+        code = "probe_path_invalid"
+        try:
+            for path in (manifest.quarantine_root, manifest.credential_file.parent):
+                descriptor = _open_root(path, manifest.repository_root)
+                os.close(descriptor)
+            _claim_probe_attempt(
+                manifest.quarantine_root, digest, repository_root=manifest.repository_root
+            )
+            with _quiet_http_logging():
+                async with asyncio.timeout(manifest.total_timeout_seconds):
+                    credential = read_probe_credential(
+                        manifest.credential_file, repository_root=manifest.repository_root
+                    )
+                    transport = httpx.AsyncHTTPTransport(verify=True, trust_env=False, retries=0)
+                    async with httpx.AsyncClient(
+                        verify=True,
+                        trust_env=False,
+                        follow_redirects=False,
+                        timeout=10.0,
+                        transport=transport,
+                    ) as client:
+                        receipts: list[ProbeReceipt] = []
+                        minimum = manifest.prepared_at
+                        for index in range(2):
+                            receipt = await _sample(
+                                client, manifest, credential, index, digest, clock, minimum
+                            )
+                            receipts.append(receipt)
+                            minimum = receipt.completed_at
+                        return tuple(receipts)
+        except ProbeError as error:
+            code = error.code
+        except (httpx.TimeoutException, TimeoutError):
+            code = "probe_timeout"
+        except (BundleError, OSError):
+            code = "probe_path_invalid"
+        except Exception:
+            code = "probe_http_failed"
+        raise ProbeError(code)
+    raise ProbeError("probe_scope_mismatch")

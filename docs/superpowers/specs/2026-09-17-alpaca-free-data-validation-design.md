@@ -8,6 +8,11 @@ account. This is operator-reported account status, not an authenticated entitlem
 No acquisition, credential access, provider implementation, research acceptance, or live
 operation is approved by this specification.
 
+Subsequent approval: the operator selected inline implementation of the separately written
+diagnostic plan. Its local Tasks 1-3 are implemented and tested; see the
+[diagnostic guide](../../alpaca-data-diagnostic.md). No authenticated capture has occurred,
+and that separate implementation approval does not resolve usage rights or authorize acquisition.
+
 Inspected base: `d53d596e5e11b21938adbc2ac6adaa95e6a4284c`, branch
 `codex/continue-implementation-from-commit-7c4dcd1`.
 
@@ -27,7 +32,8 @@ converting trial, an exchange add-on, a funded-account workaround, or a subscrip
 upgrade. Existing hosting charges are separate. A denial must not trigger a paid fallback,
 a new brokerage account, or a change of provider/feed behind the operator's back.
 
-Current authority covers public-documentation review and local design/planning/handoff only.
+This specification's approval covers public-documentation review and local design/planning/handoff.
+The separately approved diagnostic plan covers its local implementation and synthetic tests only.
 The operator has completed account creation; agreement acceptance remains their action.
 Credential installation, authenticated requests, raw-data retention, and any provider communication require an
 explicit, separately reviewed acquisition scope before execution. Do not search for existing
@@ -85,7 +91,8 @@ It binds the code revision of any capture helper, permitted host/method/paths, f
 date range, adjustment and mapping settings, UTC run cutoff, request/page/byte/time limits,
 credential-file location, private artifact location, and permitted retention scope.
 These are diagnostic authorization bounds, not new strategy thresholds or an alternative
-application configuration schema. There is no executable Alpaca command in this milestone.
+application configuration schema. The companion diagnostic has an offline-default command;
+its existence does not authorize an authenticated acquisition in this milestone.
 
 Only the official HTTPS market-data host `data.alpaca.markets` and these proposed GET paths
 are within the future capture's maximum scope:
