@@ -28,17 +28,35 @@ assert that a future snapshot has sufficient visible history or that an order pa
 and delivery-receipt hash. The run key excludes future deliveries and the full bundle digest;
 the future coordinator must additionally bind each cycle/order to its visible as-of inputs.
 The closed outcome encoder never serializes arbitrary objects. All request eligibility flags
-are immutable false. Shared portfolio accounting, aggregate result derivation, incremental
-execution, configured exits, the coordinator and `simulate --scenario` remain unimplemented.
+are immutable false. Shared portfolio accounting, aggregate result derivation, configured
+exits, the coordinator and `simulate --scenario` remain unimplemented.
 
 ### Configuration-driven synthetic order simulation
 
-`simulation/configured.py` composes a private virtual-time scheduler with the existing
-single-order lifecycle. Its input models and whole-stream validation live in
+`simulation/configured.py` is the backward-compatible one-shot wrapper over
+`ConfiguredOrderSession` in `configured_session.py`. That module owns the single virtual-time
+scheduler and existing lifecycle integration. Its input models and whole-stream validation live in
 `configured_models.py` and `configured_validation.py`; `configured_fills.py` adapts canonical
 simulation/cost settings, `configured_codec.py` derives event-keyed random streams and hashes,
 and `configured_results.py` owns immutable audit/results. There is no provider, broker,
 runtime, persistence, or promotion composition dependency.
+
+An incremental session publishes immutable `result` snapshots, advances through an explicit UTC
+time with `advance_to`, accepts append-only future inputs with `deliver`, and exposes the next
+in-horizon queued time through `next_event_at`. Queue/decision mutations are staged before an
+advance is published. A failed fill cannot leak an acknowledgement or consume a queued event.
+Inputs must arrive before their timestamp is published, including exact duplicate deliveries;
+pending duplicates are audit-only. Delivery replays the existing prefix in fresh private state
+to preserve the same validated input/decision identities as the one-shot wrapper. This favors
+small deterministic fixtures, not production throughput. The API is synchronous and single-owner.
+
+`InstrumentConfiguredOrderRequest` explicitly opts into `synthetic-equity-increments-v1`.
+This equity LIMIT/GFD-only subtype validates identity, tick/lot alignment, size bounds and metadata
+time, and binds the instrument and version into settings/RNG identity. Quantities round down through
+canonical quantization; sub-lot outcomes do not fill or charge a commission. Cost-adjusted BUY prices
+round up and SELL prices round down to the supplied tick, then face the existing limit guard.
+Fees are recalculated from the rounded quantity/price through the existing cost function. The
+legacy request schema, fixture semantics and pinned full/partial/cancel/expiry hashes are unchanged.
 
 Submission rejection is sampled once at the configured acknowledgement time. Accepted
 orders receive conditional no-fill/full/partial opportunities only after latency, next-bar,
@@ -58,8 +76,9 @@ all inputs, no-fill decisions, duplicates, settings, horizon, and accounting out
 Only fresh in-memory synthetic equity/crypto LIMIT scenarios are accepted. Assumption and
 promotion flags must be false and are fixed false on output. Money must be exact in the
 lifecycle's fixed Decimal context. Spread comes from supplied quotes, while slippage and
-per-fill fees use the canonical costs; stressed costs, exchange increments, shared liquidity,
-and real calendars remain unsupported. This is not a strategy runner or a qualifying paper
+per-fill fees use the canonical costs. Exchange increments require the explicit equity subtype;
+legacy fixtures are still unconstrained. Stressed costs, shared liquidity and real calendars
+remain unsupported. This is not a strategy runner or a qualifying paper
 cycle. The legacy `FillModel` API and production execution/risk gates remain unchanged.
 See the [configured simulator design](superpowers/specs/2026-09-17-configured-order-simulator-design.md).
 

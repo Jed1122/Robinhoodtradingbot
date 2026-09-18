@@ -7,11 +7,13 @@ from enum import StrEnum
 from fractions import Fraction
 
 from trading_bot.config.models import CostSettings, SimulationSettings
-from trading_bot.domain import AssetClass, DataHash
+from trading_bot.domain import AssetClass, DataHash, Side
+from trading_bot.domain.decimal_utils import quantize_down, require_bounded_decimal
 from trading_bot.simulation.configured_codec import keyed_rng
 from trading_bot.simulation.configured_models import (
     ConfiguredErrorReason,
     ConfiguredOrderRequest,
+    InstrumentConfiguredOrderRequest,
     SyntheticMarketEvent,
     checked,
     deny,
@@ -91,10 +93,31 @@ def plan_fill(
             )
             target = remaining * percentage / Decimal(100)
         quantity = min(target, event.available_quantity)
+        if type(request) is InstrumentConfiguredOrderRequest:
+            quantity = quantize_down(quantity, request.instrument.quantity_increment)
+            if quantity == 0:
+                return ConfiguredFillPlan(outcome, percentage, None)
         costs = costs_for(request.initial.position.asset_class, request.costs)
-        price = execution_price(
-            side=request.initial.order.side, bid=event.quote.bid, ask=event.quote.ask, costs=costs
-        )
+        price = price_for_request(request, event)
         return ConfiguredFillPlan(
             outcome, percentage, PlannedFill(quantity, price, execution_fee(quantity, price, costs))
         )
+
+
+def price_for_request(request: ConfiguredOrderRequest, event: SyntheticMarketEvent) -> Decimal:
+    """Share adverse tick rounding between the execution guard and fill calculation."""
+    with checked(ConfiguredErrorReason.ARITHMETIC):
+        side = request.initial.order.side
+        price = execution_price(
+            side=side,
+            bid=event.quote.bid,
+            ask=event.quote.ask,
+            costs=costs_for(request.initial.position.asset_class, request.costs),
+        )
+        if type(request) is InstrumentConfiguredOrderRequest:
+            tick = request.instrument.price_increment
+            rounded = quantize_down(price, tick)
+            if side is Side.BUY and rounded < price:
+                rounded += tick
+            price = require_bounded_decimal(rounded, "rounded_price", positive=True)
+        return price

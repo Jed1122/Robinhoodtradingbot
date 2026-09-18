@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal, DecimalException, localcontext
 from enum import StrEnum
@@ -10,8 +10,12 @@ from typing import Literal, NoReturn
 
 from trading_bot.clock import require_utc
 from trading_bot.config.models import CostSettings, SimulationSettings
-from trading_bot.domain import MarketClock, Quote, TimeInForce
-from trading_bot.domain.decimal_utils import _require_nonempty, require_bounded_decimal
+from trading_bot.domain import AssetClass, Instrument, MarketClock, Quote, TimeInForce
+from trading_bot.domain.decimal_utils import (
+    _require_nonempty,
+    quantize_down,
+    require_bounded_decimal,
+)
 from trading_bot.simulation.events import EventCursor
 from trading_bot.simulation.lifecycle_accounting import _context
 from trading_bot.simulation.lifecycle_models import (
@@ -202,3 +206,54 @@ class ConfiguredOrderRequest:
             from trading_bot.simulation.configured_validation import validate_stream
 
             validate_stream(self)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class InstrumentConfiguredOrderRequest(ConfiguredOrderRequest):
+    """Explicit equity-only increment semantics; never changes the legacy request shape."""
+
+    instrument: Instrument
+    execution_version: Literal["synthetic-equity-increments-v1"] = field(
+        default="synthetic-equity-increments-v1",
+        init=False,
+    )
+
+    def __post_init__(self) -> None:
+        ConfiguredOrderRequest.__post_init__(self)
+        with checked():
+            if type(self.instrument) is not Instrument:
+                deny()
+            self.instrument.__post_init__()
+            order, position = self.initial.order, self.initial.position
+            if (
+                self.instrument.id != order.instrument_id
+                or self.instrument.asset_class is not AssetClass.EQUITY
+                or position.asset_class is not AssetClass.EQUITY
+                or order.time_in_force is not TimeInForce.GOOD_FOR_DAY
+                or self.instrument.observed_at > self.initial.submitted.occurred_at
+            ):
+                deny(ConfiguredErrorReason.IDENTITY)
+            for amount in (
+                self.instrument.price_increment,
+                self.instrument.quantity_increment,
+                self.instrument.minimum_quantity,
+                self.instrument.minimum_notional,
+                self.instrument.maximum_quantity,
+            ):
+                if amount is not None:
+                    require_bounded_decimal(amount, "instrument_value", positive=True)
+            quantity, price = order.requested_quantity, order.limit_price
+            if (
+                price is None
+                or quantize_down(price, self.instrument.price_increment) != price
+                or quantize_down(quantity, self.instrument.quantity_increment) != quantity
+                or quantize_down(position.quantity, self.instrument.quantity_increment)
+                != position.quantity
+                or quantity < self.instrument.minimum_quantity
+                or quantity * price < self.instrument.minimum_notional
+                or (
+                    self.instrument.maximum_quantity is not None
+                    and quantity > self.instrument.maximum_quantity
+                )
+            ):
+                deny(ConfiguredErrorReason.UNSUPPORTED)

@@ -8,6 +8,7 @@ from trading_bot.simulation.configured_codec import configured_hash
 from trading_bot.simulation.configured_models import (
     ConfiguredErrorReason,
     ConfiguredOrderRequest,
+    InstrumentConfiguredOrderRequest,
     SyntheticCancelRequest,
     SyntheticInputEvent,
     SyntheticMarketEvent,
@@ -26,7 +27,10 @@ class IndexedEvent:
 
 def validate_stream(request: ConfiguredOrderRequest) -> tuple[IndexedEvent, ...]:
     with checked():
-        if type(request) is not ConfiguredOrderRequest or type(request.events) is not tuple:
+        if (
+            type(request) not in (ConfiguredOrderRequest, InstrumentConfiguredOrderRequest)
+            or type(request.events) is not tuple
+        ):
             deny()
         records: list[IndexedEvent] = []
         seen: dict[str, int] = {}

@@ -92,11 +92,16 @@ digest = content_hash(payload)
 
 ## Task 3: Incremental configured-order transition seam
 
+Continuation at `a9cea06`: **completed and verified on 2026-09-18 UTC**. The existing linked worktree and all unrelated
+dirty paths were preserved; 428 simulation unit/integration tests passed before edits.
+First add forward-only incremental scheduling and atomic publication, then opt-in versioned
+instrument constraints. The public one-shot API must retain its exact default hashes.
+
 **Files:** modify `simulation/configured.py`, `configured_models.py`, `configured_fills.py`; create `simulation/configured_session.py`, `tests/unit/simulation/test_configured_session.py`.
 
 **Interfaces:** `ConfiguredOrderSession(request)`; `advance_to(now) -> ConfiguredOrderResult`; `deliver(event) -> None`; `next_event_at: datetime | None`. Optional instrument-aware replay execution settings are explicit and versioned; default wrapper behavior stays unchanged.
 
-- [ ] Pin existing representative partial/full/cancel/expiry result hashes, then test splitting an input into deliveries/advances against the existing complete-run result. Verify late/backdated deliveries reject without changing published state.
+- [x] Pin existing representative partial/full/cancel/expiry result hashes, then test splitting an input into deliveries/advances against the existing complete-run result. Verify late/backdated deliveries reject without changing published state. All four pinned legacy hashes remain unchanged.
 
 ```python
 session = ConfiguredOrderSession(request)
@@ -105,9 +110,18 @@ incremental = session.advance_to(request.end_at)
 assert incremental == simulate_configured_order(request)
 ```
 
-- [ ] Observe missing-session failures. Extract the existing queue/processing logic, preserve priorities and generated event IDs, and avoid dropping a queued event when advancing only to an earlier horizon. Stage candidate changes before publishing them. Reuse configured outcome sampling, costs and lifecycle replay.
-- [ ] Add lot/tick tests before instrument-aware changes: quantity floors through canonical quantization, zero-size becomes no-fill, adverse price rounding is rechecked against the limit. Legacy requests have no new instrument behavior.
-- [ ] Run `python -m pytest tests/unit/simulation -q`, then commit the extraction and tests.
+- [x] Observe missing-session failures: 15 new session tests failed before implementation and four baseline hash tests passed. Extract the queue/processing logic, preserve priorities and generated event IDs, and avoid dropping a queued event when advancing only to an earlier horizon. Stage candidate changes before publishing them. Reuse configured outcome sampling, costs and lifecycle replay.
+- [x] Add lot/tick tests before instrument-aware changes: 15 tests failed on the missing opt-in request before implementation. Quantities floor through canonical quantization, zero-size becomes no-fill, and adverse price rounding is rechecked against the limit. A subsequent failing audit regression proved that the sampled partial percentage must survive a sub-lot no-fill; it is now retained. Legacy requests have no new instrument behavior.
+- [x] Run the simulation unit/integration suite: 466 tests passed, including 38 new session/increment cases. Ruff and Mypy (187 source files) passed. Additional cases check immutable future-extension prefixes, ambient Decimal precision and disabled network/SQLite boundaries.
+- [x] Commit the verified extraction, opt-in increment behavior and documentation (`feat: add incremental configured equity order simulation`).
+
+Session timing contract: a timestamp becomes closed when `advance_to` publishes through it.
+`deliver` cannot insert a later-discovered control or market input into that closed timestamp,
+including duplicate redelivery. The eventual coordinator must give newly generated same-time
+actions an explicit causal phase with bound audit identity; it must not backdate a cancel,
+silently reorder an already-applied quote, or invent a later timestamp. This integration detail
+remains part of Task 6, not an implemented scheduler capability. Current session delivery
+rebuilds a private prefix for correctness, not production-scale throughput.
 
 ## Task 4: Shared funding and portfolio state
 
@@ -213,8 +227,24 @@ The existing Starlette/httpx deprecation and Bandit comment warnings remain. Bot
 simulation/backtest scripts returned `configuration_only` and `executed=false`. No remote
 CI, broker, provider, deployment or production-ledger checks were performed.
 
-This verifies the implemented slices only, not completion of Tasks 2-8. The aggregate result
-contract, incremental simulator, portfolio funding, configured exits/economic checks,
-decision coordinator, private scenario CLI and their end-to-end/adversarial tests remain open.
+That checkpoint verified the implemented slices only, not completion of Tasks 2-8. The subsequent
+Task 3 checkpoint below supersedes its incremental-simulator status.
+
+Incremental/instrument checkpoint on **2026-09-18 UTC**: **4,528 tests passed**, with **87.63%**
+combined coverage and the unchanged 80% floor. Ruff, Mypy (187 source files), Bandit, offline
+lock verification and the frozen dependency audit passed; no known dependency vulnerabilities
+were reported. Existing Starlette/httpx and Bandit comment warnings remain. The audit tool also
+printed its general pinned-dependency hashing guidance. Dependencies were not modified.
+
+Three isolated in-memory mutation probes were detected at their intended assertions: discarded
+future queue entries, omitted commission, and quantities rounded upward. No mutated source was
+written to disk. The unmodified targeted tests were rerun after the probes. Prefix compatibility,
+control ordering, atomic failures, lot/tick behavior and false eligibility flags were reviewed.
+No broker, credential, production-ledger, deployment, remote CI, push or merge action occurred.
+
+The aggregate result contract, shared portfolio funding, configured exits/economic checks,
+decision coordinator (including same-time causal phases), private scenario CLI and their
+whole-strategy end-to-end/adversarial tests remain open. Task 4 is the next implementation step;
+the complete offline replay milestone and live readiness are not claimed.
 
 Every spec section maps to Tasks 1-8: interfaces (1), contracts/identity/time (2-3), funding (4), configured risk/exits (5), strategy composition/completion (6), operator surface (7), verification (8). Session opportunity declarations separate structural capacity from future market delivery. No new broker, persistence or promotion implementation is included. All protected changes remain primary-owned.
