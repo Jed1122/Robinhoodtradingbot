@@ -158,3 +158,30 @@ free/sample path, advertised prices and all-in cost uncertainty. No API login, d
 restricted datasets, subscription or provider selection. Unknown rights/costs stay unknown;
 do not infer automated-use rights from retail display pricing. Draft findings under this
 plan's ignored workspace; coordinator verifies sources and publishes docs/data-providers.md.
+
+## Completion sequence from dde6e46
+
+Continue Tasks4-7 through tested slices, retaining coordinator ownership of all financial,
+canonical and production-boundary code. Tasks1,8,9,10 are complete. Public documentation
+and deployment reuse audits are read-only parallel work; never duplicate implementation.
+
+1. Freeze point-in-time options data records/import contracts; exact Parquet/DuckDB
+   storage in a separately locked local research environment. Synthetic tests only.
+2. Validate pinned QuantLib European analytical/American finite-difference pricing,
+   explicit dividend/rate/time conventions, Greek units and full-repricing stress.
+3. Complete matched long/debit/credit/condor payoff economics and research candidates,
+   preregistered walk-forward/cost/dependence scorecards with permanent synthetic NO_GO.
+4. Add durable options trial/lifecycle tables and journals with restart reconstruction,
+   idempotent events, incident detection, expiry deadlines and latched entry halts.
+5. Extend existing capability evidence dimensions and credential-free official schema
+   contracts; keep real adapter construction locked and submission unavailable.
+6. Wire offline research/paper operator commands and bounded continuous scheduling,
+   reuse paused deployment, backup/restore and monitoring facilities where applicable.
+7. Review all added code, run complete validation, and report evidence blockers separately
+   from engineering gaps. No external evidence is assumed or manufactured.
+
+The additional numerical/history dependencies live in research/pyproject.toml and its own
+lock, referencing the existing local Python package. This separates heavy research from
+production and preserves the user's staged root lockfile. It does not create a second
+trading config or risk policy. No existing dirty main CLI/docs file is overwritten; additive
+operator composition remains separate until its integration can preserve existing work.

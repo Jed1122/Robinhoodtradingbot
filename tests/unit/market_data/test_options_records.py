@@ -46,6 +46,22 @@ def test_sources_are_not_silently_blended() -> None:
     assert len(point_in_time((first, second), as_of=NOW)) == 2
 
 
+def test_conflicting_older_revisions_are_rejected_in_every_input_order() -> None:
+    from itertools import permutations
+
+    first = record(quote())
+    conflict = replace(first, raw_hash="b" * 64)
+    newer = replace(first, available_at=NOW + timedelta(seconds=1))
+    for ordering in permutations((first, conflict, newer)):
+        with pytest.raises(DomainValidationError, match="ambiguous"):
+            point_in_time(ordering, as_of=newer.available_at)
+
+
+def test_nested_future_underlying_observation_is_not_available() -> None:
+    with pytest.raises(DomainValidationError):
+        record(quote(underlying_event_at=NOW + timedelta(days=1)))
+
+
 def test_chain_requires_known_members_and_cannot_look_forward() -> None:
     c = contract(available_at=NOW)
     chain = record(ChainSnapshot("SYN", (c.contract_id,)))

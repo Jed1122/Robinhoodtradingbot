@@ -71,7 +71,8 @@ class OptionsDataRecord:
         ):
             raise DomainValidationError("unsupported options record value")
         if isinstance(value, OptionQuote) and (
-            value.event_at != self.event_at or value.received_at > self.available_at
+            value.event_at != self.event_at
+            or max(value.received_at, value.underlying_event_at) > self.available_at
         ):
             raise DomainValidationError("inconsistent option quote provenance")
         if isinstance(value, Quote) and value.observed_at != self.event_at:
@@ -125,6 +126,7 @@ def point_in_time(
     if type(records) is not tuple or len(records) > 100000:
         raise DomainValidationError("options records require a bounded tuple")
     selected: dict[tuple[str, str, str], OptionsDataRecord] = {}
+    revisions: dict[tuple[str, str, str, datetime, datetime], OptionsDataRecord] = {}
     for record in records:
         if type(record) is not OptionsDataRecord:
             raise DomainValidationError("invalid options record")
@@ -133,10 +135,13 @@ def point_in_time(
         key = (record.source, record.kind, record.entity_id)
         previous = selected.get(key)
         stamp = (record.event_at, record.available_at)
+        revision_key = (*key, *stamp)
+        duplicate = revisions.get(revision_key)
+        if duplicate is not None and record != duplicate:
+            raise DomainValidationError("ambiguous point-in-time options revision")
+        revisions[revision_key] = record
         if previous is not None:
             old_stamp = (previous.event_at, previous.available_at)
-            if stamp == old_stamp and record != previous:
-                raise DomainValidationError("ambiguous point-in-time options revision")
             if stamp <= old_stamp:
                 continue
         selected[key] = record

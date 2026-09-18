@@ -1,0 +1,22 @@
+[project]
+name = "options-research-environment"
+version = "0.1.0"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "robinhood-multi-asset-trading-system",
+  "QuantLib==1.43",
+  "duckdb==1.5.5",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+robinhood-multi-asset-trading-system = { path = "..", editable = true }
+
+[dependency-groups]
+dev = [
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov==7.1.0",
+]

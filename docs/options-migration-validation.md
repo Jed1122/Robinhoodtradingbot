@@ -50,7 +50,8 @@ $2,500, pays $10 plus $0.50, receives $15 less $0.50, then settles to $2,504. Th
 fixture settles to $2,494 and consumes $6 of trial capacity. These are independently
 calculated engineering expectations, not market observations or return forecasts.
 Prior completed profits do not replenish consumed losses; incomplete episodes retain
-their full reserved risk. Durable reconstruction and deposit/rolling handling are pending.
+their full reserved risk. The later foundation checkpoint adds a separate durable synthetic
+trial journal; replay/service integration and deposit/rolling reconciliation remain pending.
 
 Review found and fixed three replay correctness defects using failing regressions:
 re-wrapped old quotes could fill, close orders inherited entry expiry, and zero-net closing
@@ -111,14 +112,14 @@ restart, production schema migration or production-state inspection occurred.
 | --- | --- |
 | 1 Migration contract and foundation | Initial foundation implemented and tested; not evidence that all downstream use is ready. |
 | 2 Complete offline single-leg slice | Working synthetic single-unit long-call path and bounded saved-input replay/report commands. Historical/vendor imports, puts, partial/package scenarios and complete common risk composition remain unfinished. |
-| 3 Historical data and economic research | Public provider documentation comparison delivered; actual rights and total costs unverified. Pending: import contracts, provenance/storage, QuantLib compatibility, Greeks/stress, research families, preregistration and empirical scorecards. No data purchased/acquired. |
-| 4 Official capabilities and locked integration | Pending: four evidence dimensions, options schemas/fake contracts, operation-specific capability composition and standalone runtime authentication evidence. No broker/account calls. |
-| 5 Durable lifecycle and operation | Pending: additive options ledger migrations, durable trial history, restart/lease integration, reconciliation, expiry/assignment incidents and continuous options scheduling. No production migration. |
-| 6 Deployment preparation and handoff | Pending: options-specific benchmark, encrypted restore/rollback validation, deployment-plan output, current costs, heartbeat and complete operational reports. Existing DigitalOcean files preserved. |
+| 3 Historical data and economic research | Provider comparison, strict six-kind point-in-time record codec, exact Parquet/DuckDB storage, pinned QuantLib pricing/Greeks/stress and terminal package payoff research implemented. Pending: provider-specific acquisition/import mapping and licensing, economic hypotheses, package execution, full risk integration and empirical scorecards. No market data acquired. |
+| 4 Official capabilities and locked integration | Dated public/session evidence audit documents four independent dimensions and single-leg limits. Manifest integration, options schemas/fake transports, operation-specific composition and account/runtime evidence remain pending. No broker/account calls. |
+| 5 Durable lifecycle and operation | Additive synthetic trial journal, immutable history, restart reconstruction and lease fencing fixes implemented. Full normalized options ledger, replay/service wiring, reconciliation, expiry/assignment incidents, recovery and continuous scheduling remain pending. No production migration. |
+| 6 Deployment preparation and handoff | Deterministic credential-free deployment preparation report and research CI definition implemented. Options runtime benchmark, encrypted restore drill, live costs, heartbeat and complete operator surface remain pending. Existing DigitalOcean deployment manifests preserved. |
 
 All other limitations in [options research](options-research.md) remain binding.
-Identity records for verticals/condors do not establish payoff-model validation, package
-execution, native multi-leg support or account permission. Standalone `trader` integration
+Exact terminal payoff tests for verticals/condors do not establish package execution,
+native multi-leg support or account permission. Standalone `trader` integration
 is pending to avoid overwriting the pre-existing unfinished main CLI changes.
 
 ## Separate readiness verdicts
@@ -195,6 +196,70 @@ results, including preserved pre-existing work, not remote CI or a clean-checkou
 | `docker compose config --quiet` | Unavailable in installed Docker CLI; rendered Compose validation not claimed. |
 | `git diff --check`; preserved lock/SBOM SHA256 checks | Passed; original staged/dirty artifacts unchanged. |
 
-No protected production behavior, monetary limits or authorization changed. Historical
-import contracts/fixtures are the next credential-free work item; numerical pricing,
-empirical research, durable options lifecycle and live capability evidence remain pending.
+No protected production behavior, monetary limits or authorization changed. The following
+foundation continuation supersedes that checkpoint's pending engineering inventory.
+
+## Data, numerical research and durable-history foundation continuation
+
+Baseline `dde6e4610d951502b3fc5846f4fe518a897b2dcc`; records interface checkpoint
+`a7ed602d06aa390362720ccc69be2a0f9fd2da33`. Verification date: 2026-09-18.
+
+Implemented immutable point-in-time options records, a strict versioned six-kind codec,
+content-addressed exact-value Parquet storage, and a separately locked Python 3.12 research
+environment with QuantLib 1.43 and DuckDB 1.5.5. Numerical research now includes bounded
+European analytical and American finite-difference pricing, dividend-aware inputs, explicit
+Greek units, convergence checks, full repricing stress and exact terminal structure payoffs.
+These are engineering models and fabricated fixtures, not historical trading evidence.
+
+The additive `0006_options_trial_history` migration provides an immutable, account-scoped
+synthetic trial journal. Restart reconstruction preserves consumed losses; profits cannot
+replenish them, incomplete reservations cannot shrink, and populated history blocks downgrade.
+Lease release now preserves monotonically increasing fencing tokens. Journal writes recheck
+lease freshness after acquiring the database lock and again before commit. Only temporary
+test databases were migrated. Replay and production lifecycle integration remain unfinished.
+
+Independent review and failing regressions exposed and corrected point-in-time revision
+ambiguity, future nested quote availability, unresolvable numerical bumps, unstable
+finite-difference outputs, stale lease timing, and compressed-dataset budget bypasses.
+Publication and read validation now use symmetric record/manifest limits and a global decoded
+byte budget. The architecture import guard was preserved; pricing uses explicit typed field
+access rather than dynamic access. Existing append-only tests now require all 49 guards.
+
+Also added a deterministic static deployment-plan command, a dated public/session capability
+audit, and a research CI definition. The deployment report reports missing runtime evidence,
+costs and authorization honestly. CI was not dispatched remotely. Three local workers
+performed isolated parser, storage, CI, documentation and read-only review work; coordinator
+review/integration retained ownership of numerical, economic, persistence and lease changes.
+
+### Fresh local verification
+
+Tests include preserved pre-existing working-tree changes, not a clean-checkout result.
+The core interpreter remains Python 3.12.13 in the temporary verification environment;
+the separate research interpreter is also Python 3.12.13. Python 3.13/3.14 were not tested.
+
+| Check | Result |
+| --- | --- |
+| Full suite, branch measurement and unchanged 80% gate | **5,008 passed, 11 skipped**, **86.80%** overall, 284.47 seconds. |
+| Explicit per-file critical branch gate | Passed; inventory now includes execution leases and the durable trial journal. |
+| Mandatory isolated QuantLib/DuckDB research tests | **92 passed**, with both pinned backends available; no backend skips. |
+| Focused lease/journal branch run | 13 passed; lease 100% branches, trial journal 41/42 branches. |
+| Architecture checks after explicit-field pricing correction | 168 passed. |
+| Append-only migration checks | 53 passed. |
+| Deployment and non-mutating SBOM checks | 24 passed. |
+| Ruff and Mypy | Passed; 216 source files. |
+| Bandit | No findings; existing `nosec` comment warnings remain. |
+| Root and research locked dependency audits | No known vulnerabilities; this is not a vulnerability-free guarantee. |
+| Temporary root/research CycloneDX validation | Both schema 1.6 inventories valid; incomplete-root-graph warnings remain. |
+| Source distribution and wheel | Built to a temporary destination. |
+| Diff whitespace and preserved artifact hashes | Passed; staged root lockfile and dirty tracked SBOM unchanged. |
+
+The 11 core-suite skips are the deliberately optional DuckDB storage module and QuantLib
+numerical cases; the research suite separately executes them. The existing Starlette/httpx
+deprecation warning remains. Verification artifacts reside in
+`/private/tmp/robinhood-options-foundations.tUIbHH`. No tracked SBOM was regenerated.
+`age` is unavailable locally, so an end-to-end encrypted backup/restore drill is not claimed.
+Prior Docker Compose availability limitations remain; static tests are not deployment proof.
+
+All six milestone status rows and separate readiness verdicts above remain binding. No broker
+or account calls, orders, paid services, Cloud jobs, infrastructure changes, production-state
+inspection, deployment or production migrations occurred.

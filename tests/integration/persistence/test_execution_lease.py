@@ -9,7 +9,7 @@ from alembic.config import Config
 
 from trading_bot.domain import AccountId, CodeHash, ConfigHash, DataHash
 from trading_bot.persistence import async_session_factory, create_engine
-from trading_bot.persistence.lease import LeaseRepository, StaleFencingToken
+from trading_bot.persistence.lease import LeaseRepository, LeaseUnavailable, StaleFencingToken
 from trading_bot.persistence.models import AccountRow
 
 ROOT = Path(__file__).parents[3]
@@ -61,9 +61,23 @@ async def test_stale_fencing_token_cannot_renew(database_url: str) -> None:
     clock = Clock()
     repository = LeaseRepository(factory, clock, timedelta(seconds=1))
     first = await repository.acquire(AccountId("account-1"), owner="one")
+    with pytest.raises(LeaseUnavailable):
+        await repository.acquire(AccountId("account-1"), owner="other")
+    renewed = await repository.renew(first)
+    assert renewed.fencing_token == first.fencing_token
     clock.current += timedelta(seconds=2)
     second = await repository.take_over_expired(AccountId("account-1"), owner="two")
     with pytest.raises(StaleFencingToken):
         await repository.renew(first)
     assert second.fencing_token > first.fencing_token
+    await repository.release(second)
+    third = await repository.acquire(AccountId("account-1"), owner="one")
+    assert third.fencing_token > second.fencing_token
+    with pytest.raises(StaleFencingToken):
+        await repository.renew(first)
+    with pytest.raises(StaleFencingToken):
+        await repository.release(second)
+    await repository.release(third)
+    with pytest.raises(StaleFencingToken):
+        await repository.renew(third)
     await engine.dispose()

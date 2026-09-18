@@ -70,6 +70,23 @@ def test_fails_when_a_discovered_critical_file_is_missing_from_report(tmp_path: 
     assert errors == ["missing branch coverage for src/trading_bot/risk/missing.py"]
 
 
+def test_requires_options_trial_history_and_execution_lease_branches(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    _source(root, "src/trading_bot/risk/anchor.py")
+    _source(root, "src/trading_bot/persistence/options_trial.py")
+    _source(root, "src/trading_bot/persistence/lease.py")
+    report = _report(
+        tmp_path / "coverage.json",
+        {
+            "src/trading_bot/risk/anchor.py": _entry(0, 0),
+        },
+    )
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        "missing branch coverage for src/trading_bot/persistence/lease.py",
+        "missing branch coverage for src/trading_bot/persistence/options_trial.py",
+    ]
+
+
 def test_requires_discovered_simulation_lifecycle_modules(tmp_path: Path) -> None:
     root = tmp_path / "project"
     _source(root, "src/trading_bot/risk/anchor.py")

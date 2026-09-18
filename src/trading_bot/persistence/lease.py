@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -109,10 +109,22 @@ class LeaseRepository:
         )
 
     async def release(self, lease: ExecutionLease) -> None:
-        statement = delete(ExecutionLeaseRow).where(
-            ExecutionLeaseRow.account_id == lease.account_id,
-            ExecutionLeaseRow.owner_id == lease.owner,
-            ExecutionLeaseRow.fencing_token == lease.fencing_token,
+        now = require_utc(self._clock.now())
+        # Retain the fencing high-water mark. Deleting this row lets a later owner
+        # reuse token 1, making an old same-owner lease valid again (the ABA problem).
+        statement = (
+            update(ExecutionLeaseRow)
+            .where(
+                ExecutionLeaseRow.account_id == lease.account_id,
+                ExecutionLeaseRow.owner_id == lease.owner,
+                ExecutionLeaseRow.fencing_token == lease.fencing_token,
+                ExecutionLeaseRow.expires_at > now,
+            )
+            .values(
+                heartbeat_at=now,
+                expires_at=now,
+                evidence_hash=self._hash(lease.account_id, lease.owner, lease.fencing_token, now),
+            )
         )
         async with self._factory.begin() as session:
             result = cast(CursorResult[Any], await session.execute(statement))

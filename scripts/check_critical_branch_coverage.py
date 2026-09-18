@@ -24,6 +24,11 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
     if order_state_machine.is_file():
         modules.append(order_state_machine)
 
+    for filename in ("lease.py", "options_trial.py"):
+        persistence_module = source_root / "persistence" / filename
+        if persistence_module.is_file():
+            modules.append(persistence_module)
+
     simulation_directory = source_root / "simulation"
     if simulation_directory.is_dir():
         modules.extend(simulation_directory.glob("lifecycle*.py"))
