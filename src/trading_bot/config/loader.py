@@ -269,6 +269,28 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
     if config.prediction_markets.live_enabled or envelope.prediction_live_permitted:
         raise UnsafeConfiguration("prediction live execution is always prohibited")
 
+    for name in (
+        "max_per_trade_loss_usd",
+        "cumulative_trial_loss_limit_usd",
+        "max_total_payoff_risk_pct",
+        "max_underlying_group_payoff_risk_pct",
+        "max_open_strategy_positions",
+        "max_new_positions_per_session",
+        "max_structure_units_per_entry",
+    ):
+        _require_at_most(
+            f"options.{name}", getattr(config.options, name), getattr(envelope.options, name)
+        )
+    _require_at_least(
+        "options.min_unencumbered_cash_pct",
+        config.options.min_unencumbered_cash_pct,
+        envelope.options.min_unencumbered_cash_pct,
+    )
+    for name in ("enabled", "allow_locked_quotes"):
+        _require_not_enabled(
+            f"options.{name}", getattr(config.options, name), getattr(envelope.options, name)
+        )
+
     max_pairs = (
         (
             "portfolio.expected_starting_equity_usd",

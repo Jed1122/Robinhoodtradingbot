@@ -1,5 +1,21 @@
 # Robinhood Multi-Asset Trading System Implementation Plan
 
+## Current governing migration (2026-09-18)
+
+The [options-only master specification](options-only-build-spec.md) and approved
+[migration implementation plan](superpowers/plans/2026-09-18-options-only-migration.md)
+supersede conflicting multi-asset and earlier long-options-only requirements. See the
+[migration map](migration-map.md) and [current validation/progress report](options-migration-validation.md).
+Development is authorized; broker calls, account inspection, production migration,
+Cloud jobs, paid services, deployment and live activation are not.
+
+The initial options domain/configuration foundation and single-unit synthetic replay
+are implemented locally. Complete production pretrade composition, historical research,
+capability integration, durable options lifecycle and deployment handoff remain unfinished.
+No options live capability or economic readiness is established by this progress.
+
+## Historical implementation plan
+
 This repository is being implemented incrementally from the approved plans. The capability
 foundation and the first safety-kernel tasks are executable, but no composed trading
 application, broker write, qualifying promotion history, or live order is represented as complete
