@@ -6,8 +6,9 @@ Status: **written design approved by the operator on 2026-09-17 UTC; implementat
 
 The integration seams, strict scenario-input/outcome contracts, separated audit/receipt identities,
 incremental single-order sessions, opt-in equity tick/lot handling, shared synthetic portfolio
-funding/accounting, and truthful configuration-only CLI status are implemented. The full strategy replay,
-aggregate result derivation and scenario CLI path remain incomplete; see the
+funding/accounting, configured exit policies, canonical synthetic economic checks, and truthful
+configuration-only CLI status are implemented. The full strategy replay, aggregate result
+derivation and scenario CLI path remain incomplete; see the
 [implementation checklist](../plans/2026-09-17-offline-equity-strategy-replay.md).
 
 The operator selected offline strategy replay and then approved this written design. This document
@@ -172,6 +173,16 @@ baseline state denies entry. Count simulated submissions conservatively for acti
 rejected submissions. Reservations count toward projected entry exposure. No new entry while
 an existing position or entry remainder exists in that instrument.
 
+Implemented adapter boundary: `ReplayRiskState` starts with the request's flat synthetic book
+and binds its complete scenario identity. The coordinator must observe every intervening
+lifecycle event and exposed quote, and use the latest visible recorded quote by timestamp,
+not delivery position. A daily/weekly reset baseline requires an observation exactly at its
+UTC boundary; missing history is not synthesized. Initial synthetic equity is the fixed
+authorized risk-equity ceiling. Maximum observed drawdown cannot clear after a recovery.
+Terminal flat round-trip cash flows supply consecutive-loss history; rejected/no-fill and
+break-even outcomes do not reset that streak. These state observations feed the existing
+pure risk functions, never production reconciliation or promotion persistence.
+
 The replay does not fabricate accepted research, provider health, live leases, or production
 reconciliation to make `PretradeEngine` pass. Its results explicitly say
 `production_pretrade_eligible=false`; missing external attestations remain missing. Exercising
@@ -183,6 +194,12 @@ and entry limit as the position's policy basis. Stop and reward target are entry
 distance and entry-limit plus distance times configured reward-to-risk. Nonpositive thresholds
 or nonrepresentable arithmetic deny entry. Never move the stop
 farther away after a loss or partial fill. Record actual fill prices separately.
+
+The implemented policy interface takes a validated request and timestamped `FeatureVector`.
+Its exit evaluator takes a typed `Quote` and explicit UTC `as_of`, not a bare bid value, so
+freshness and synthetic-source checks cannot be accidentally omitted. A separate lifecycle
+observer owns first-fill time and completed-bar count; the coordinator still owns the
+provenance of those visible bars/features and orchestration of any resulting order.
 
 Evaluate configured exits against fresh visible quote bids, never future bar highs/lows:
 

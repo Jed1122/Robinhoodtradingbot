@@ -154,13 +154,13 @@ remains deferred until Task 6 supplies decisions, exit reasons and completion co
 
 ## Task 5: Configured exits and canonical economic checks
 
-**Files:** create `simulation/equity_replay_policy.py`, `simulation/equity_replay_risk.py`, `tests/unit/simulation/test_equity_replay_policy.py`, `tests/unit/simulation/test_equity_replay_risk.py`.
+**Files:** create `simulation/equity_replay_policy.py`, `simulation/equity_replay_risk.py`, `simulation/equity_replay_risk_state.py`, `tests/unit/simulation/test_equity_replay_policy.py`, `tests/unit/simulation/test_equity_replay_risk.py`; expose the portfolio's immutable scenario identity in `simulation/equity_replay_portfolio.py`.
 
-**Interfaces:** immutable `ReplayEntryPolicy(entry_limit, stop_distance, target_price, stop_price, first_fill_at, holding_bars, version)`; `derive_entry_policy(config, features, entry_limit)`; `exit_reason(policy, bid, holding_bars, selected, config) -> str | None`; `economic_checks(intent, portfolio_state, request, now) -> tuple[CheckResult, ...]`.
+**Implemented interfaces:** immutable `ReplayEntryPolicy` carries the instrument/config/feature identity, observation time, frozen price basis and observed first-fill/holding state, with a derived immutable `version`; `derive_entry_policy(request, features, entry_limit)`; `observe_entry(policy, entry, bars, as_of, request)`; `exit_reason(policy, quote, selected, as_of, request) -> str | None`; `planning_policy(policy, request)`; `selected_instruments(request, context, completed_bars=...)`; `ReplayRiskState(request, portfolio)`; `economic_checks(intent, portfolio_state, request, now) -> tuple[CheckResult, ...]`. Typed quotes and explicit time replace the planned bare-bid seam so source/freshness cannot be omitted. The observed history is separated from the projection adapter to keep each module focused.
 
-- [ ] Test hand-derived entry limit 10, ATR 1 and configured multiplier 2: stop 8; configured reward-to-risk 2: target 14. Partial entry fills do not widen the stop. Stop priority wins simultaneous conditions; stale/missing bid does not trigger a fabricated fill.
-- [ ] Test exact max-holding boundary, momentum predicate loss, scheduled relative-strength deselection, missing ATR and negative stop. Observe failures; call existing features/strategies and canonical config only.
-- [ ] Test economic denial against existing `evaluate_exposure_limits`, `evaluate_loss_limits`, and `evaluate_activity_limits`; derive their snapshots from synthetic state without claiming production evidence. Freeze authorized risk equity at initial cash, use fresh current equity and reservations, maintain UTC baselines from observed history, and deny unknown reset state.
+- [x] Test hand-derived entry limit 10, ATR 1 and configured multiplier 2: stop 8; configured reward-to-risk 2: target 14. Partial entry fills do not widen the stop. Stop priority wins simultaneous conditions; stale/missing bid does not trigger a fabricated fill.
+- [x] Test exact max-holding boundary, momentum predicate loss, scheduled relative-strength deselection, missing ATR and negative stop. Observe failures; call existing features/strategies and canonical config only. The initial policy selection produced 23 missing-module failures before implementation.
+- [x] Test economic denial against existing `evaluate_exposure_limits`, `evaluate_loss_limits`, and `evaluate_activity_limits`; derive their snapshots from synthetic state without claiming production evidence. Freeze authorized risk equity at initial cash, use fresh current equity and reservations, maintain UTC baselines from observed history, and deny unknown reset state. Initially 16 risk-adapter tests failed on the missing module while the policy/planner seam passed.
 
 ```python
 checks = evaluate_exposure_limits(
@@ -172,8 +172,14 @@ checks = evaluate_exposure_limits(
 allowed = all(check.allowed for check in checks)
 ```
 
-- [ ] Activity counts entry submissions, including simulated rejection, once per unique intent. Follow canonical purpose-aware loss rules for exits; hard-stop never creates a liquidation.
-- [ ] Rerun policy/risk tests and existing `tests/unit/risk`; commit scoped files.
+- [x] Activity counts entry submissions, including simulated rejection, once per unique intent. Follow canonical purpose-aware loss rules for exits; hard-stop never creates a liquidation. Tests cover exact daily/weekly reset, daily/symbol caps, 30-minute spacing, lifecycle-derived consecutive losses and the configured pause boundary.
+- [x] Rerun policy/risk tests and existing `tests/unit/risk`; commit scoped files. The 57 new cases and expanded 324-case risk selection pass; full verification is recorded below. The pre-existing dirty handoff and unrelated files are excluded from this commit.
+
+The focused Task 5 selection passes 57 cases. Additional audit regressions first reproduced
+skipped mark/fill history, an older fresh mark hiding a later visible quote, drawdown clearing
+after recovery, stale quote redelivery displacing a current mark, and entry-record identity
+drift. The state/policy adapters now deny those inconsistencies or preserve the required
+history. Full-suite and final checkpoint verification is recorded below.
 
 ## Task 6: Full offline decision/event coordinator
 
@@ -271,9 +277,32 @@ The complete local suite, focused checks, and scoped review found no changed bro
 risk, execution or configuration files. No remote CI, external broker/provider, credentials,
 production ledger, deployment, push, merge, account changes or spending occurred.
 
-Task 4 is complete. **Task 5 (configured exits and canonical economic checks) is next.** The
+At that checkpoint, Task 4 was complete and Task 5 (configured exits and canonical economic
+checks) was next. The
 aggregate strategy result, decision coordinator (including same-time causal phases), private
 scenario CLI and whole-strategy end-to-end/adversarial tests remain open. The complete offline
 replay milestone and live readiness are not claimed.
+
+Configured-policy/economic-check checkpoint on **2026-09-18 UTC**: **4,628 tests passed**, with
+**87.72% combined coverage**, retaining the 80% floor. The 57 new tests and expanded 324-case
+risk selection passed independently. Ruff, Mypy (192 source files), Bandit, offline lock
+verification and the frozen pinned-dependency audit passed; no known vulnerabilities were
+reported. Existing Starlette/httpx, Bandit comment and audit hashing-guidance warnings remain.
+No dependencies or canonical risk thresholds were changed.
+
+Four isolated in-memory mutation probes were caught at their intended assertions: ignored
+pending correlated exposure, erased loss observations, skipped history completeness, and a
+maximum-holding exit overriding stop/target priority. No source file was mutated; the
+unmodified 324-case risk selection was rerun afterward. Test-first audit corrections also
+preserve drawdown hard-stops after recovery, select current marks despite old quote redelivery,
+and bind observed entry state back to its submitted identity and quantity.
+
+**Task 5 is complete. Task 6 (the full offline decision/event coordinator) is next.** Aggregate
+result derivation, same-time causal phases, cancel-race-aware exits, strict private scenario
+CLI, and whole-strategy end-to-end/adversarial verification remain open. No real provider,
+broker, credential, production-ledger, remote CI, deployment, push, merge, account, subscription
+or live operation was performed. No new plugin or spending is required for the next offline
+task. All protected strategy/risk work remained primary-owned and inline; unrelated dirty
+paths were preserved.
 
 Every spec section maps to Tasks 1-8: interfaces (1), contracts/identity/time (2-3), funding (4), configured risk/exits (5), strategy composition/completion (6), operator surface (7), verification (8). Session opportunity declarations separate structural capacity from future market delivery. No new broker, persistence or promotion implementation is included. All protected changes remain primary-owned.

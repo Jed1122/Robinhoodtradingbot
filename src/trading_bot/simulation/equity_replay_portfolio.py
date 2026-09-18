@@ -24,7 +24,7 @@ from trading_bot.domain import (
 from trading_bot.domain.decimal_utils import require_bounded_decimal
 from trading_bot.market_data.recording import content_hash
 from trading_bot.simulation.configured_results import ConfiguredOrderResult
-from trading_bot.simulation.equity_replay_codec import replay_identity
+from trading_bot.simulation.equity_replay_codec import ReplayIdentity, replay_identity
 from trading_bot.simulation.equity_replay_models import (
     SOURCE_KIND,
     EquityStrategyReplayRequest,
@@ -68,7 +68,8 @@ class ReplayPortfolio:
             if type(request) is not EquityStrategyReplayRequest:
                 deny()
             self._request = replace(request)
-            self._run_key = replay_identity(self._request).run_key
+            self._identity = replay_identity(self._request)
+            self._run_key = self._identity.run_key
             self._cash = self._request.initial_cash
             self._orders: dict[str, ReplayOrderRecord] = {}
             self._intents: dict[str, tuple[OrderIntent, int, ReplayOrderOutcome]] = {}
@@ -88,6 +89,10 @@ class ReplayPortfolio:
         except ReplayValidationError:
             self._invalid = True
             raise
+
+    @property
+    def request_identity(self) -> ReplayIdentity:
+        return self._identity
 
     @property
     def valid(self) -> bool:

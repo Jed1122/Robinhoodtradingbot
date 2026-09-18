@@ -29,8 +29,9 @@ and delivery-receipt hash. The run key excludes future deliveries and the full b
 the future coordinator must additionally bind each cycle/order to its visible as-of inputs.
 The closed outcome encoder never serializes arbitrary objects. All request eligibility flags
 are immutable false. Shared synthetic portfolio accounting is implemented below. Aggregate
-strategy-result derivation, configured exits, the coordinator and `simulate --scenario` remain
-unimplemented.
+strategy-result derivation, the coordinator and `simulate --scenario` remain unimplemented.
+Configured exit policies and the synthetic economic adapter are implemented below; they do
+not yet form a runnable whole-strategy replay.
 
 ### Shared synthetic equity portfolio funding
 
@@ -66,6 +67,47 @@ realized only when a traced position returns flat and its order is terminal; par
 fees stay in the remaining open-flow mark. These fields are not tax-lot or broker-settlement
 accounting. Terminal orders and flat positions are separate facts. The module performs no
 provider, ledger, credential or deployment I/O, and does not implement the strategy runner.
+
+### Configured synthetic exits and economic checks
+
+`equity_replay_policy.py` freezes a candidate's entry limit and positive ATR-derived stop
+distance from the canonical configuration. Its immutable policy version binds the instrument,
+config, feature identity, timestamp and thresholds; fills and completed holding bars do not
+reprice that basis. `observe_entry` validates the entry's identity against its recomputed
+lifecycle and derives first-fill time and completed-bar count. `exit_reason` requires a fresh
+synthetic bid and returns a reason only: stop, target, maximum holding, then configured regime
+exit/deselection. It has no fill, cancellation or order-submission capability. Completed-bar
+provenance and visible feature/quote selection remain the coordinator's responsibility.
+
+Momentum predicates and relative-strength ranking call the existing strategy classes. The
+relative-strength wrapper returns no new selection between canonical rebalance boundaries;
+an intervening HOLD is not silently converted into an exit. The policy adapter supplies the
+existing planner's `ExitPolicy`, with the same configured stop, reward/risk and holding limit.
+
+`equity_replay_risk_state.py` binds observations to one initially flat synthetic portfolio and
+the full validated scenario identity. Every intervening lifecycle event and exposed quote
+must be observed; skipped history is rejected. Held positions must use the latest visible
+recorded mark by observation time, so duplicate delivery of an older quote cannot replace it.
+Synthetic daily/weekly baselines reset only at an explicitly observed UTC boundary. Missing
+baselines invoke canonical reset denials. Maximum observed drawdown remains latched through
+a recovery. Consecutive losses derive from terminal, flat lifecycle cash flows; no-fill,
+rejected and break-even outcomes do not clear the streak. Distinct BUY intents consume
+activity capacity, including pending and simulated-rejected submissions, but funding denials
+that never create an order do not. These are synthetic observations, not broker evidence.
+
+`equity_replay_risk.py` projects current bid-marked positions, remaining pending BUY notional,
+candidate exposure, and cash after existing allocations and declared commission capacity.
+It delegates limits, purpose-aware loss decisions, activity and final sizing to the existing
+canonical functions. Authorized risk equity stays fixed at initial synthetic cash; gains
+cannot enlarge it. Each evaluation rechecks that the observation still matches the book.
+An entry cannot average down or overlap an active order; an exit cannot oversell. Entry-only
+activity limits do not apply to exits, while the canonical loss/drawdown rules still do.
+Drawdown requests a hard-stop disposition, never a liquidation or automatic recovery.
+
+Neither adapter calls `PretradeEngine`, mutates an order, or mints production attestations;
+`evidence_promotable` and `production_pretrade_eligible` stay false. The future coordinator
+must consume all denials and cancellation/hard-stop dispositions, sequence same-time causal
+events, refresh checks before admission, and own partial-entry cancellation before any exit.
 
 ### Configuration-driven synthetic order simulation
 
