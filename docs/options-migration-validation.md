@@ -111,11 +111,11 @@ restart, production schema migration or production-state inspection occurred.
 | Approved milestone | Current checkpoint |
 | --- | --- |
 | 1 Migration contract and foundation | Initial foundation implemented and tested; not evidence that all downstream use is ready. |
-| 2 Complete offline single-leg slice | Working synthetic single-unit long-call path and bounded saved-input replay/report commands. Historical/vendor imports, puts, partial/package scenarios and complete common risk composition remain unfinished. |
-| 3 Historical data and economic research | Provider comparison, strict six-kind point-in-time record codec, exact Parquet/DuckDB storage, pinned QuantLib pricing/Greeks/stress and terminal package payoff research implemented. Pending: provider-specific acquisition/import mapping and licensing, economic hypotheses, package execution, full risk integration and empirical scorecards. No market data acquired. |
+| 2 Complete offline single-leg slice | Working synthetic single-unit call/put path, bounded saved-input replay/report commands and explicitly stepped durable recorded sessions. Complete historical/vendor domain imports, partial/package scenarios and full common risk composition remain unfinished. |
+| 3 Historical data and economic research | Provider comparison, strict six-kind point-in-time record codec, exact Parquet/DuckDB storage, pinned QuantLib pricing/Greeks/stress, terminal package payoff research and a bounded Massive REST quote-row parser implemented. Pending: complete vendor-to-domain provenance/identity mapping and licensing, economic hypotheses, package execution, full risk integration and empirical scorecards. No market data acquired. |
 | 4 Official capabilities and locked integration | Dated public/session audit, version-2 scoped manifest history, four-dimensional evidence assessment and locked options declaration classification implemented. Official response schemas/fake transports, execution-owner composition and actual account/runtime evidence remain pending. No broker/account calls. |
-| 5 Durable lifecycle and operation | Additive synthetic trial journal, immutable history, restart reconstruction and lease fencing fixes implemented. Full normalized options ledger, replay/service wiring, reconciliation, expiry/assignment incidents, recovery and continuous scheduling remain pending. No production migration. |
-| 6 Deployment preparation and handoff | Deterministic credential-free deployment preparation report and research CI definition implemented. Options runtime benchmark, encrypted restore drill, live costs, heartbeat and complete operator surface remain pending. Existing DigitalOcean deployment manifests preserved. |
+| 5 Durable lifecycle and operation | Additive synthetic trial journal, immutable history, exact-head compare-and-append, restart reconstruction and recorded-script replay wiring implemented. Full normalized options ledger, broker reconciliation, expiry/assignment incidents, production recovery and continuous scheduling remain pending. No production migration. |
+| 6 Deployment preparation and handoff | Static preparation report, research CI, dated public cost assumptions and actual local age backup/restore helper tests implemented. Full options artifact backup, runtime benchmark, off-host restore, actual costs, heartbeat and complete operator surface remain pending. Existing DigitalOcean manifests preserved. |
 
 All other limitations in [options research](options-research.md) remain binding.
 Exact terminal payoff tests for verticals/condors do not establish package execution,
@@ -303,3 +303,80 @@ remain production-ineligible and the economic verdict remains `ECONOMIC_NO_GO`.
 Existing staged root `uv.lock`, the dirty tracked SBOM and all unrelated working-tree files
 were preserved. Local checkpoints were not pushed. No external account/broker activity,
 Cloud jobs, deployment, production migrations or real-money actions occurred.
+
+## Call/put and durable recorded-session continuation
+
+Baseline `7155612d708ab59642791adfc827bb088e8c9c42`; local verification 2026-09-18.
+This continuation is still partial implementation, not completion of all six milestones.
+
+- Long puts now use the common underlying features and purchased-option lifecycle. All
+  three bearish conditions are required; invalid, missing, mixed and flat signals hold.
+  `options-replay` and `export-options-fixture` accept `--option-kind call|put`. Eighteen
+  independent golden tests retain the original call result hashes across nine scenarios
+  and two research-capital tiers.
+- Pure replay can evaluate an immutable script prefix without consuming future events or
+  changing its v1 identity. The new recorded-session API connects that same replay to the
+  existing journal, reserving risk before simulated acceptance and reconstructing exact
+  cash/order state after restart. Every checkpoint is paused; explicit resume and expected
+  count are required for one next event. One script per isolated account is intentional.
+- Journal snapshots bind verified events, trial state and exact head hash. Compare-and-append
+  is atomic under the existing execution lease. Independent review found and reproduced a
+  state-preserving-writer race and cross-account checkpoint-ID collision; test-first fixes
+  bind the exact journal head and account identity. Reviewers rechecked both corrections.
+  No historical replay hashes, journal payload schemas, ledger migrations or risk limits changed.
+- Added a strict fixture-only [Massive REST row parser](options-import-contracts.md). It
+  preserves Decimal prices and raw provider size units and nanosecond integers. It neither
+  converts ambiguous sizes to contracts nor fabricates contract/availability context.
+  Direct construction's Decimal invariant was corrected after a failing review regression.
+- Added [dated public cost assumptions](options-operating-costs.md) and real local
+  [encrypted helper tests](options-backup-validation.md). The latter uses an official,
+  digest-verified age v1.3.2 binary in a temporary directory, ephemeral keys and synthetic
+  SQLite/research artifacts. Independent decryption checks recovered data, while wrong-key
+  and damaged-ciphertext tests deny restoration. No installed service or host was changed.
+
+The coordinator owns every strategy, risk, persistence and runtime change. Local workers
+handled only provider parsing, docs, isolated tests and independent review; no Cloud job ran.
+Failed tests preceded core put/prefix/session implementation and the two concurrency/identity
+corrections. The additional adversarial/golden tests are explicitly post-implementation
+acceptance tests, not misrepresented as the original red phase.
+
+### Verification for this continuation
+
+Selected independent review suite: 127 passed. Initial focused branch run: 139 passed.
+Final full core suite: **5,211 passed, 11 optional-backend skips**, **87.02% overall
+coverage**, 324.59 seconds. The expanded **90% per-file critical branch gate passed**:
+recorded-session runtime **26/26**, trial journal **51/52**, and replay **45/48** branches.
+The socket-denied runtime/parser/CLI selection subsequently passed **65 tests**.
+Ruff, Mypy (221 source modules plus the branch checker) and Bandit pass, with the existing
+Bandit comment warnings. Both locked dependency audits report no known vulnerabilities;
+both offline lock checks pass. Separate pinned QuantLib/DuckDB research: 92 passed without
+skips. Actual encryption plus deployment/SBOM checks: 28 passed. DigitalOcean shell syntax
+passes; installed Docker still lacks usable Compose, so rendered Compose verification is
+not claimed. Both temporary CycloneDX 1.6 inventories validate (104 core, 58 research
+components); the final source distribution and wheel build passed. Inventories are not
+claimed to establish a complete dependency graph. Working-tree results include preserved
+pre-existing changes; no remote CI or clean-checkout run is claimed. The existing
+Starlette/httpx warning remains. Coverage artifacts are `full.json` and `full-pytest.log`
+under the temporary directory below. User lock/SBOM hashes remain unchanged.
+
+A separate-process saved put export/replay settles the fabricated $2,500 fixture to $2,504,
+with $1 fees and false production/promotion flags. These are exact engineering expectations,
+not actual or expected trading returns. Artifacts are under
+`/private/tmp/robinhood-options-completion.5UUs9v`, not tracked evidence destinations.
+
+### Remaining engineering versus external evidence
+
+Still unfinished credential-free engineering: complete options pretrade composition and
+multi-episode portfolio accounting; normalized legs/collateral/settlement persistence;
+expiry, assignment and unexpected-share incidents; full options reconciliation; official
+response parsers/fake execution transports; continuous scheduling/monitoring/operator CLI;
+complete options artifact backup/rollback; package execution; preregistered research and
+uncertainty scorecards. This is not an assertion that only permissions remain.
+
+Separately unresolved external evidence: approved/licensed point-in-time market history,
+empirical economic validity, account-specific official capability and deployed authentication,
+real calendars/fees/restrictions, actual runtime benchmark, off-host recovery and alert delivery.
+Their absence cannot be repaired by fabricated fixtures, extra capital, a plugin, or passing CI.
+No broker/account calls, paid data, purchases, Cloud dispatch, deployment, production migration
+or live activation was authorized or performed. Technical readiness remains NOT_READY;
+economic readiness ECONOMIC_NO_GO; account/runtime capability UNVERIFIED; live NOT_AUTHORIZED.

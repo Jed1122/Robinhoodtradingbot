@@ -14,6 +14,7 @@ PYTHONPATH=src uv run python -m trading_bot.cli.options_research capital-feasibi
 PYTHONPATH=src uv run python -m trading_bot.cli.options_research capital-feasibility --premium 0.10
 PYTHONPATH=src uv run python -m trading_bot.cli.options_research options-replay
 PYTHONPATH=src uv run python -m trading_bot.cli.options_research options-replay --research-capital 2500
+PYTHONPATH=src uv run python -m trading_bot.cli.options_research options-replay --research-capital 2500 --option-kind put
 PYTHONPATH=src uv run python -m trading_bot.cli.options_research options-replay --research-capital 2500 --scenario unknown
 ```
 
@@ -29,6 +30,12 @@ Scenarios: `completed`, `loss`, `open`, `unfilled`, `unknown`, `unsettled`, `can
 1 with a value-free error; completed/no-trade outcomes return 0. No end-of-input exit
 is invented. Reports include exact cash/receivables, fees, transition history, hashes,
 trial reservation, and permanently false promotion/production eligibility.
+
+`--option-kind call|put` is also accepted by `export-options-fixture`. Calls retain the
+original v1 fixture and result bytes. Puts use explicitly fabricated descending underlying
+prices and put-specific contract IDs. Put entry requires negative return, short moving
+average below long, and latest price below long; missing, mixed or flat signals do not
+become a put merely because they are not bullish. Both hypotheses remain unvalidated.
 
 Fill eligibility is tied to a new quote observation after acceptance and configured
 latency, not merely a later replay envelope carrying an old quote. Closing orders get
@@ -103,18 +110,42 @@ New required fields intentionally change the config identity; there is no silent
 
 ## Known limits
 
-This slice handles one synthetic long-call unit per episode. Spreads/condors have validated
-identity records only, not validated payoff engines or execution. It does not yet support
-historical/vendor data imports, bearish/put selection, partial complete-package quantities,
-continuous/restarted episodes, real calendars, real fee schedules, dividends, exercise,
+This slice handles one synthetic long-call or long-put unit per episode. Separate terminal
+payoff research exists for spreads/condors, but not validated package execution or strategies.
+It does not yet support complete historical/vendor domain imports, partial complete-package
+quantities, continuous operation, real calendars, real fee schedules, exercise,
 assignment, settlement calendars or broker intervention. Fixture bars deliberately are
 fabricated daily observations, including non-market dates; they are not exchange history.
 
 An episode is complete only when flat, orders terminal, and settlement/fees final. The
 in-memory trial state retains all supplied prior episodes and sums their losses without
-offsetting profits. Durable append-only persistence, event deduplication across restarts,
-deposit/rolling tests and live reconciliation are separate unfinished milestones.
+offsetting profits. The recorded-session API below now connects this simulator to the
+durable journal. Deposit/rolling reconciliation and production lifecycle remain unfinished.
 
 The simulator's risk/review transitions are explicitly simulated stages: they are not
 full 24-check production pretrade passes, broker reviews, executable pricing or evidence
 that any account is connected. Every result remains `ECONOMIC_NO_GO`.
+
+## Durable recorded-session API (not a broker service)
+
+`runtime.options_recorded_session.RecordedOptionsSession` accepts the existing
+`OptionsTrialJournal`, an existing isolated synthetic account/lease, and the immutable
+saved replay request. `start` commits the full reservation before any simulated acceptance.
+`restore` returns the exact cash, orders, fills and trial history reconstructed from the
+saved input and validated journal checkpoints. Both are paused; `advance` consumes exactly
+one event only when `resume_recorded_replay=True` and the expected prior count matches.
+
+The original full-script identity stays fixed while processing prefixes. Future events are
+not executed when reconstructing earlier checkpoints. Each write checks the account-wide
+trial snapshot and exact journal-head hash atomically under the existing fenced lease.
+Checkpoint IDs are account-scoped without changing historical replay hashes. Stale steps, other writers,
+changed input/config, mismatched checkpoints and storage failures stop progress. Unknown
+acceptance, open units, cancellation races and unsettled proceeds retain the reservation.
+No end-of-input close is created, and completed episodes cannot reopen.
+
+This first composition allows only one immutable script per isolated trial account. It
+does not infer cross-episode portfolio/session counters or reset them for a second script.
+The caller must retain the original saved input with the ledger; a database-only backup
+cannot reconstruct its cash flows. No operator CLI, automatic database migration, account
+creation, credentials, transport, continuous scheduler or production capability is added
+by this API. It is local engineering evidence, not live reconciliation or readiness.

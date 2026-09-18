@@ -45,6 +45,13 @@ class TrialJournalEvent:
             raise DomainValidationError("exact trial episode required")
 
 
+@dataclass(frozen=True, slots=True)
+class TrialJournalSnapshot:
+    events: tuple[TrialJournalEvent, ...]
+    state: TrialLossState
+    head_hash: str
+
+
 def _payload(event: TrialJournalEvent) -> str:
     result = canonical_json(
         {"schema": "options-trial-event-v1", "source_kind": "synthetic", "event": event}
@@ -165,12 +172,36 @@ class OptionsTrialJournal:
         return rows
 
     async def restore(self, account_id: AccountId) -> TrialLossState:
-        async with self._factory() as session:
-            return _reconstruct(await self._rows(session, account_id))
+        return (await self.snapshot(account_id)).state
 
-    async def append(self, lease: ExecutionLease, event: TrialJournalEvent) -> str:
+    async def events(self, account_id: AccountId) -> tuple[TrialJournalEvent, ...]:
+        return (await self.snapshot(account_id)).events
+
+    async def snapshot(self, account_id: AccountId) -> TrialJournalSnapshot:
+        """Read one bounded, integrity-checked snapshot for deterministic reconstruction."""
+        async with self._factory() as session:
+            rows = await self._rows(session, account_id)
+            state = _reconstruct(rows)
+            return TrialJournalSnapshot(
+                tuple(_decode(row.payload_json) for row in rows),
+                state,
+                rows[-1].event_hash if rows else _GENESIS,
+            )
+
+    async def append(
+        self,
+        lease: ExecutionLease,
+        event: TrialJournalEvent,
+        *,
+        expected_state: TrialLossState | None = None,
+        expected_head: str | None = None,
+    ) -> str:
         if type(event) is not TrialJournalEvent or type(lease) is not ExecutionLease:
             raise DomainValidationError("invalid trial journal append")
+        if expected_state is not None and type(expected_state) is not TrialLossState:
+            raise DomainValidationError("invalid expected trial state")
+        if expected_head is not None:
+            _require_sha256_hex(expected_head, "expected trial head")
         now = require_utc(self._clock.now())
         if event.occurred_at > now:
             raise DomainValidationError("future trial event")
@@ -190,11 +221,21 @@ class OptionsTrialJournal:
                 raise StaleFencingToken("trial journal writer is not the current lease owner")
             rows = await self._rows(session, lease.account_id)
             state = _reconstruct(rows)
+            current_head = rows[-1].event_hash if rows else _GENESIS
             duplicate = await session.get(OptionsTrialEventRow, event.event_id)
             if duplicate is not None:
                 if duplicate.account_id != lease.account_id or duplicate.payload_json != payload:
                     raise DomainValidationError("conflicting trial event identity")
+                if expected_head is not None and current_head not in (
+                    expected_head,
+                    duplicate.event_hash,
+                ):
+                    raise DomainValidationError("trial history changed after duplicate event")
                 return duplicate.event_hash
+            if expected_head is not None and current_head != expected_head:
+                raise DomainValidationError("trial history changed before append")
+            if expected_state is not None and state != expected_state:
+                raise DomainValidationError("trial state changed before append")
             if len(rows) == self._max_events:
                 raise DomainValidationError("trial journal append capacity reached")
             if rows and event.occurred_at < _decode(rows[-1].payload_json).occurred_at:

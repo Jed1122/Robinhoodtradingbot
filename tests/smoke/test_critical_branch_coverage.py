@@ -96,6 +96,15 @@ def test_requires_scoped_capability_verification_branches(tmp_path: Path) -> Non
     ]
 
 
+def test_requires_durable_recorded_options_runtime_branches(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    _source(root, "src/trading_bot/runtime/options_recorded_session.py")
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        "missing branch coverage for src/trading_bot/runtime/options_recorded_session.py",
+    ]
+
+
 def test_requires_discovered_simulation_lifecycle_modules(tmp_path: Path) -> None:
     root = tmp_path / "project"
     _source(root, "src/trading_bot/risk/anchor.py")

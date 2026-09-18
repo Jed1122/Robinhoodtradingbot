@@ -13,6 +13,7 @@ import typer
 
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.domain.decimal_utils import parse_decimal, require_bounded_decimal
+from trading_bot.domain.options import OptionKind
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.risk.options_economics import (
     OptionsCapitalState,
@@ -52,12 +53,16 @@ def export_options_fixture(
     output_dir: Annotated[Path, typer.Option()],
     research_capital: Annotated[str, typer.Option()] = "100",
     scenario: Annotated[str, typer.Option()] = "completed",
+    option_kind: Annotated[str, typer.Option()] = "call",
     config_dir: Annotated[Path, typer.Option()] = Path("configs"),
 ) -> None:
     """Save fabricated inputs in an existing private directory outside the repository."""
     try:
         request = synthetic_options_request(
-            _load(config_dir), parse_decimal(research_capital), scenario
+            _load(config_dir),
+            parse_decimal(research_capital),
+            scenario,
+            option_kind=OptionKind(option_kind),
         )
         digest = write_options_replay_input(
             output_dir,
@@ -105,12 +110,18 @@ def replay_file(
 def options_replay(
     research_capital: Annotated[str, typer.Option()] = "100",
     scenario: Annotated[str, typer.Option()] = "completed",
+    option_kind: Annotated[str, typer.Option()] = "call",
     config_dir: Annotated[Path, typer.Option()] = Path("configs"),
 ) -> None:
     """Run a fabricated engineering fixture, never real market or broker evidence."""
     try:
         result = replay_options(
-            synthetic_options_request(_load(config_dir), parse_decimal(research_capital), scenario)
+            synthetic_options_request(
+                _load(config_dir),
+                parse_decimal(research_capital),
+                scenario,
+                option_kind=OptionKind(option_kind),
+            )
         )
         payload = asdict(result)
         payload["result_hash"] = content_hash(result)

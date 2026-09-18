@@ -200,3 +200,65 @@ operator composition remains separate until its integration can preserve existin
 The migration remains partial. Every externally blocked item is separate from unfinished
 credential-free engineering in the tracked migration validation report. No approval for
 broker/account access, purchases, Cloud execution, deployment or live trading is inferred.
+
+## Task 13: Public import-schema mapping audit
+
+Base 7155612d708ab59642791adfc827bb088e8c9c42. Read-only public technical documentation audit
+while the coordinator implements replay/lifecycle. Use only official Databento, ThetaData
+and Massive sources, browsed currently, without accounts, APIs, sample downloads, credentials,
+subscriptions or acquisition. Map one documented quote export format per provider onto the
+existing OptionQuote and OptionsDataRecord. Record exact field names, units, timestamp/timezone
+semantics, bid/ask size semantics, symbol/contract mapping prerequisites and missing metadata.
+Never infer contract identity, availability, adjusted deliverables or licensed-use rights.
+Report which strict fixture parsers can be implemented without inventing fields. Include URLs,
+retrieval date and unresolved questions. Owned output only: this plan workspace's
+task-13-report.md. No source/docs/config changes or commits. No subagents.
+
+## Task 14: Current hosting and backup cost assumptions
+
+Base 7155612d708ab59642791adfc827bb088e8c9c42. Public-source documentation only; do not inspect
+the user's DigitalOcean account, provision anything, make purchases or deploy. Check current
+official DigitalOcean pricing for the existing Basic 1vCPU/2GB target and public backup/storage
+costs; distinguish quoted infrastructure assumptions from actual bills. Read existing
+infra/digitalocean manifests and docs/options-deployment-plan.md to identify what is included
+and not included. No hardware recommendation without a runtime benchmark. Data/monitoring/model
+costs remain unknown where not established; zero purchase does not imply zero economic cost.
+Owned output: docs/options-operating-costs.md and this plan workspace's task-14-report.md.
+Use dated direct primary-source links, exact units and conditional arithmetic; no code changes,
+broker/account access, credentials, network probes to the droplet, or commits. No subagents.
+
+## Task 15: Stateful offline options continuation
+
+Coordinator owns this work. Extend the shared feature/decision path to directional long puts;
+reuse full premium risk, canonical limits, shared transitions and versioned serializers.
+Build a durable synthetic event-driven path with stable episode identity and persisted trial
+reservations before simulated transport, retaining exact cash flows and restart reconstruction.
+Unknown acceptance, pending cancels and unsettled cash cannot release risk. Add lifecycle and
+expiry/assignment incident handling using explicit contract sessions, no invented closeouts or
+automatic exercise/stock remediation. Tests precede implementation; broaden only after narrow
+checks and independent review. Preserve v1 evidence interpretation and all production locks.
+
+### Task 15 implemented subset and deliberate limit
+
+The call/put slice and recorded-script journal composition are implemented. Prefix replay
+retains the original full-script identity and reconstructs cash/orders from saved input;
+checkpoint identifiers additionally bind the isolated account. Journal-head and trial-state
+compare-and-append share the existing fenced transaction. Restart is paused and steps require
+explicit resumption. One immutable script per isolated account prevents invented cross-episode
+session/portfolio counts. This is not the continuous broker runtime. Expiry/assignment incidents,
+normalized legs/collateral/settlements, complete risk and broker reconciliation remain unfinished.
+
+### Follow-on isolated task scopes executed locally
+
+- Task 13 parser follow-on: frozen provider-row-only Massive REST contract, synthetic fixtures,
+  exact Decimal/native size units/nanoseconds and strict bounds. No executable quote conversion,
+  acquisition, entitlement or identity assumptions. Owned module/test/docs centrally reviewed.
+- Task 14 validation follow-on: temporary synthetic SQLite/research encrypted with verified
+  official age v1.3.2, recovered payload checked independently, wrong identity and damaged
+  ciphertext denied. Existing helper scripts/manifests unchanged. Full options artifact backup
+  and deployed restore remain incomplete.
+- Independent tests/reviews: call-hash compatibility, adversarial put features, offline import
+  guard, journal races and account identity. All protected implementations remain main-owned.
+
+No Cloud execution, broker/account calls, purchases, deployment or live activation is authorized
+by these follow-ons. Current local verification is recorded in options-migration-validation.md.

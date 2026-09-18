@@ -33,6 +33,10 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         if persistence_module.is_file():
             modules.append(persistence_module)
 
+    recorded_options_runtime = source_root / "runtime" / "options_recorded_session.py"
+    if recorded_options_runtime.is_file():
+        modules.append(recorded_options_runtime)
+
     simulation_directory = source_root / "simulation"
     if simulation_directory.is_dir():
         modules.extend(simulation_directory.glob("lifecycle*.py"))

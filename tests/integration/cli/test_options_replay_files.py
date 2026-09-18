@@ -20,7 +20,9 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket.socket, "connect_ex", denied)
 
 
-def export(tmp_path: Path, scenario: str = "completed", capital: str = "2500") -> Path:
+def export(
+    tmp_path: Path, scenario: str = "completed", capital: str = "2500", kind: str = "call"
+) -> Path:
     tmp_path.chmod(0o700)
     result = CliRunner().invoke(
         app,
@@ -32,6 +34,8 @@ def export(tmp_path: Path, scenario: str = "completed", capital: str = "2500") -
             scenario,
             "--research-capital",
             capital,
+            "--option-kind",
+            kind,
         ],
     )
     assert result.exit_code == 0, result.output
@@ -39,6 +43,18 @@ def export(tmp_path: Path, scenario: str = "completed", capital: str = "2500") -
     assert report["source_kind"] == "synthetic-options-v1"
     assert report["production_eligible"] is False
     return tmp_path / "inputs" / (report["document_hash"] + ".json")
+
+
+def test_saved_put_fixture_preserves_contract_identity_and_replays_exactly(tmp_path: Path) -> None:
+    path = export(tmp_path, kind="put")
+    payload = json.loads(path.read_text())["payload"]
+    assert payload["contract"]["kind"] == "put"
+    assert payload["contract"]["contract_id"] == "synthetic-put-100"
+    assert payload["contract"]["standardized_id"] == "SYN261016P00100000"
+    assert payload["initial_quote"]["contract_id"] == "synthetic-put-100"
+    run = CliRunner().invoke(app, ["replay-file", str(path)])
+    assert run.exit_code == 0, run.output
+    assert json.loads(run.output)["result"]["cash"] == "2504"
 
 
 @pytest.mark.parametrize(

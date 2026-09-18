@@ -26,7 +26,7 @@ from trading_bot.persistence.options_trial import (
     _payload,
     _reconstruct,
 )
-from trading_bot.risk.options_economics import TrialEpisode
+from trading_bot.risk.options_economics import TrialEpisode, TrialLossState
 
 D = Decimal
 
@@ -89,6 +89,46 @@ async def test_trial_loss_survives_restart_and_wins_do_not_replenish(journal_url
     assert restored.reserved_risk == 0
     assert restored.remaining(D("50")) == D("44")
     await restarted_engine.dispose()
+
+
+async def test_compare_and_append_denies_stale_snapshot_and_retains_exact_retry(
+    journal_url: str,
+) -> None:
+    engine = create_engine(journal_url)
+    factory = async_session_factory(engine)
+    clock = Clock()
+    lease = await LeaseRepository(factory, clock).acquire(AccountId("account-1"), owner="paper")
+    journal = OptionsTrialJournal(factory, clock)
+    empty = TrialLossState(())
+    with pytest.raises(ValueError, match="expected trial"):
+        await journal.append(lease, event(), expected_state={})  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        await journal.append(lease, event(), expected_head="not-a-hash")
+    receipt = await journal.append(lease, event(), expected_state=empty)
+    assert await journal.append(lease, event(), expected_state=empty) == receipt
+    with pytest.raises(ValueError, match="changed"):
+        await journal.append(lease, event("stale"), expected_state=empty)
+    assert await journal.events(AccountId("account-1")) == (event(),)
+    await engine.dispose()
+
+
+async def test_head_guard_supports_exact_tip_retry_but_denies_intervening_history(
+    journal_url: str,
+) -> None:
+    engine = create_engine(journal_url)
+    factory = async_session_factory(engine)
+    clock = Clock()
+    lease = await LeaseRepository(factory, clock).acquire(AccountId("account-1"), owner="paper")
+    journal = OptionsTrialJournal(factory, clock)
+    genesis = (await journal.snapshot(AccountId("account-1"))).head_hash
+    receipt = await journal.append(lease, event(), expected_head=genesis)
+    assert await journal.append(lease, event(), expected_head=genesis) == receipt
+    await journal.append(lease, event("same-state"), expected_head=receipt)
+    with pytest.raises(ValueError, match="changed"):
+        await journal.append(lease, event(), expected_head=genesis)
+    with pytest.raises(ValueError, match="changed"):
+        await journal.append(lease, event("new"), expected_head=receipt)
+    await engine.dispose()
 
 
 def test_corruption_noncanonical_payload_and_schema_changes_fail_closed() -> None:

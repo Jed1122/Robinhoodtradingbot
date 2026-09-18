@@ -55,6 +55,27 @@ def test_small_capital_denial_is_a_valid_no_trade_outcome() -> None:
     assert "per_trade_risk" in result.reason_codes
 
 
+def test_prefix_replay_binds_one_recorded_script_without_consuming_future_events() -> None:
+    r = request()
+    initial = replay_options(r, event_count=0)
+    filled = replay_options(r, event_count=2)
+    complete = replay_options(r, event_count=len(r.events))
+    assert initial.input_hash == filled.input_hash == complete.input_hash
+    assert initial.entry_intent_hash == filled.entry_intent_hash == complete.entry_intent_hash
+    assert initial.trial.episodes[-1].episode_id == complete.trial.episodes[-1].episode_id
+    assert initial.entry_state is OrderState.SUBMISSION_PENDING
+    assert initial.cash == D(2500) and not initial.cash_flows
+    assert initial.trial.reserved_risk == filled.trial.reserved_risk == D(11)
+    assert filled.cash == D("2489.5") and filled.position_units == 1
+    assert complete == replay_options(r)
+
+
+@pytest.mark.parametrize("count", [True, -1, 6, "1", D(1)])
+def test_prefix_replay_rejects_invalid_or_out_of_bounds_event_count(count: object) -> None:
+    with pytest.raises(ValueError):
+        replay_options(request(), event_count=count)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("scenario", "cash", "units", "state"),
     [
@@ -117,14 +138,12 @@ def test_losing_cash_flows_consume_nonreplenishing_trial_capacity() -> None:
     assert result.trial.remaining(D("50")) == D("44")
 
 
-def test_invalid_request_identity_config_history_and_option_kind_are_rejected() -> None:
+def test_invalid_request_identity_config_and_history_are_rejected() -> None:
     r = request()
     with pytest.raises(DomainValidationError):
         replay_options(object())
     with pytest.raises(DomainValidationError):
         replay_options(replace(r, loaded=replace(r.loaded, config_hash="0" * 64)))
-    with pytest.raises(DomainValidationError):
-        replay_options(replace(r, contract=replace(r.contract, kind=OptionKind.PUT)))
     with pytest.raises(DomainValidationError):
         replay_options(replace(r, history=replace(r.history, bars=r.history.bars[:1])))
     for field in ("loaded", "history", "contract", "initial_quote", "trial"):
@@ -132,6 +151,45 @@ def test_invalid_request_identity_config_history_and_option_kind_are_rejected() 
             replace(r, **{field: object()})
     with pytest.raises(DomainValidationError):
         replace(r, history=replace(r.history, instrument_id="OTHER"))
+
+
+def put_request():
+    r = request()
+    return synthetic_options_request(r.loaded, r.research_capital, option_kind=OptionKind.PUT)
+
+
+def test_long_put_bearish_candidate_uses_same_exact_cash_lifecycle() -> None:
+    result = replay_options(put_request())
+    assert result.status == "completed_synthetic_replay"
+    assert result.cash == D("2504")
+    assert result.net_cash_flow == D("4")
+    assert result.fees == D("1")
+    assert result.position_units == 0
+    assert result.trial.reserved_risk == 0
+    assert not result.production_eligible
+    assert result.economic_verdict == "ECONOMIC_NO_GO"
+
+
+def test_put_does_not_treat_every_nonbullish_or_bullish_signal_as_bearish() -> None:
+    r = request()
+    put = replace(put_request(), history=r.history)
+    assert "no_momentum_candidate" in replay_options(put).reason_codes
+    flat = tuple(
+        replace(bar, open=D(100), high=D(101), low=D(99), close=D(100)) for bar in r.history.bars
+    )
+    result = replay_options(replace(put, history=replace(put.history, bars=flat)))
+    assert result.status == "candidate_denied"
+    assert not result.cash_flows
+
+
+def test_bearish_underlying_does_not_enter_a_long_call_and_small_put_still_denied() -> None:
+    r = put_request()
+    call = replace(request(), history=r.history)
+    assert "no_momentum_candidate" in replay_options(call).reason_codes
+    small = replay_options(replace(r, research_capital=D(100)))
+    assert small.status == "capital_denied"
+    assert small.cash == D(100)
+    assert not small.cash_flows
 
 
 def test_event_shapes_idempotency_and_synthetic_provenance_fail_closed() -> None:

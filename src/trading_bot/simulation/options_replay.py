@@ -1,4 +1,4 @@
-"""One synthetic long-call episode through shared features and order transitions.
+"""One synthetic long-option episode through shared features and order transitions.
 
 This is not a broker composition or a full production pretrade evaluation. No network,
 credentials, real data or promotion persistence is reachable from this module.
@@ -37,7 +37,7 @@ from trading_bot.simulation.options_replay_models import (
     OptionsReplayTransition,
 )
 from trading_bot.strategies.features import FeaturePipeline
-from trading_bot.strategies.momentum import MomentumStrategy
+from trading_bot.strategies.options.momentum import OptionsMomentumStrategy
 from trading_bot.strategies.protocol import FeatureSnapshot, StrategyAction, StrategyContext
 
 _TERMINAL = frozenset(
@@ -52,22 +52,29 @@ _TERMINAL = frozenset(
 _FILLABLE = frozenset({OrderState.SUBMITTED, OrderState.CANCEL_PENDING})
 
 
-def replay_options(request: OptionsReplayRequest) -> OptionsReplayResult:
-    """Replay one explicit recorded fixture; incomplete exposure stays incomplete."""
+def replay_options(
+    request: OptionsReplayRequest, *, event_count: int | None = None
+) -> OptionsReplayResult:
+    """Replay a recorded fixture, optionally only its first N events.
+
+    The identity binds the entire immutable script, as in the original v1 format.
+    Prefix processing never consumes later events; this is not a streaming-data API.
+    """
     if type(request) is not OptionsReplayRequest:
         raise DomainValidationError("exact replay request required")
+    count = len(request.events) if event_count is None else event_count
+    if type(count) is not int or not 0 <= count <= len(request.events):
+        raise DomainValidationError("invalid replay event count")
     with localcontext() as ctx:
         ctx.prec = 2048
-        return _replay(request)
+        return _replay(request, count)
 
 
-def _replay(r: OptionsReplayRequest) -> OptionsReplayResult:
+def _replay(r: OptionsReplayRequest, count: int) -> OptionsReplayResult:
     config = r.loaded.config
     canonical, digest = hash_loaded_config(config, r.loaded.safety_envelope)
     if canonical != r.loaded.canonical_json or digest != r.loaded.config_hash:
         raise DomainValidationError("configuration identity mismatch")
-    if r.contract.kind is not OptionKind.CALL:
-        raise DomainValidationError("first momentum slice supports long calls only")
     if len(r.history.bars) < config.research.minimum_history_bars:
         raise DomainValidationError("insufficient underlying history")
     input_hash = content_hash(
@@ -94,10 +101,10 @@ def _replay(r: OptionsReplayRequest) -> OptionsReplayResult:
         features = FeaturePipeline(short_window=short, long_window=long).compute(
             r.history, as_of=r.as_of
         )
-    strategy = MomentumStrategy(
+    strategy = OptionsMomentumStrategy(
+        kind=r.contract.kind,
         short_window=short,
         long_window=long,
-        version=f"unvalidated-options-momentum-{short}-{long}-v1",
     )
     decision = strategy.decide(
         StrategyContext(
@@ -173,12 +180,13 @@ def _replay(r: OptionsReplayRequest) -> OptionsReplayResult:
             r.contract.last_trading_at,
         )
 
+    structure_kind = (
+        StructureKind.LONG_CALL if r.contract.kind is OptionKind.CALL else StructureKind.LONG_PUT
+    )
     intent = OptionsOrderIntent(
         "synthetic-entry-" + input_hash,
         "synthetic-research",
-        OptionStructure(
-            StructureKind.LONG_CALL, (OptionLeg(r.contract, Side.BUY, PositionEffect.OPEN, 1),)
-        ),
+        OptionStructure(structure_kind, (OptionLeg(r.contract, Side.BUY, PositionEffect.OPEN, 1),)),
         1,
         r.initial_quote.ask,
         "debit",
@@ -214,7 +222,7 @@ def _replay(r: OptionsReplayRequest) -> OptionsReplayResult:
     units = 0
     flows: list[OptionsReplayCashFlow] = []
     latency = timedelta(milliseconds=config.simulation.latency_milliseconds)
-    for event in r.events:
+    for event in r.events[:count]:
         if event.action == "accept_entry":
             entry = advance("entry", entry, OrderEvent.BROKER_ACCEPTED, event.at)
             entry_accepted_at = event.at
@@ -240,7 +248,7 @@ def _replay(r: OptionsReplayRequest) -> OptionsReplayResult:
                 intent,
                 intent_id="synthetic-close-" + input_hash,
                 structure=OptionStructure(
-                    StructureKind.LONG_CALL,
+                    structure_kind,
                     (OptionLeg(r.contract, Side.SELL, PositionEffect.CLOSE, 1),),
                 ),
                 limit_price=r.close_limit,

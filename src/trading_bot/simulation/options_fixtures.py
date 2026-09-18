@@ -40,15 +40,20 @@ def synthetic_options_request(
     loaded: LoadedConfig,
     capital: Decimal,
     scenario: str = "completed",
+    *,
+    option_kind: OptionKind = OptionKind.CALL,
 ) -> OptionsReplayRequest:
     if scenario not in SCENARIOS:
         raise ValueError("unsupported synthetic options scenario")
+    if type(option_kind) is not OptionKind:
+        raise ValueError("exact option kind required")
+    is_call = option_kind is OptionKind.CALL
     at = datetime(2026, 9, 18, 15, tzinfo=UTC)
     contract = OptionContract(
-        "synthetic-call-100",
-        "SYN261016C00100000",
+        f"synthetic-{option_kind.value}-100",
+        "SYN261016C00100000" if is_call else "SYN261016P00100000",
         "SYN",
-        OptionKind.CALL,
+        option_kind,
         Decimal(100),
         date(2026, 10, 16),
         datetime(2026, 10, 16, 20, tzinfo=UTC),
@@ -71,14 +76,18 @@ def synthetic_options_request(
             ),
         ),
         at - timedelta(days=1),
-        content_hash({"synthetic-contract": 1}),
+        content_hash({"synthetic-contract": 1} if is_call else {"synthetic-put-contract": 1}),
         "USD",
     )
     bars = []
     count = loaded.config.research.minimum_history_bars
     for index in range(count):
         end = at - timedelta(days=count - index)
-        price = Decimal(90) + Decimal(index) / Decimal(100)
+        price = (
+            Decimal(90) + Decimal(index) / Decimal(100)
+            if is_call
+            else Decimal(110) - Decimal(index) / Decimal(100)
+        )
         bars.append(
             Bar(
                 InstrumentId("SYN"),
@@ -91,7 +100,7 @@ def synthetic_options_request(
                 price,
                 Decimal(1000),
                 SOURCE,
-                content_hash({"synthetic-bar": index}),
+                content_hash({"synthetic-bar": index} if is_call else {"synthetic-put-bar": index}),
             )
         )
     history = HistoricalSlice(InstrumentId("SYN"), tuple(bars), None, content_hash(tuple(bars)))
