@@ -59,11 +59,53 @@ The new module entry point is temporary deliberate isolation from the pre-existi
 unfinished `trader` CLI changes. It is not a second configuration loader or live service.
 The main CLI integration is still pending.
 
+## Saved synthetic inputs and reports
+
+`export-options-fixture` saves the same fabricated engineering inputs, including supplied
+trial history, as a closed `synthetic-options-replay-input-v1` JSON document. It is not a
+vendor data importer. The document contains a canonical configuration hash, not config
+overrides. Monetary values are canonical decimal strings, timestamps are UTC with six
+fractional digits and `Z`, counts are integers, and unknown fields are denied. Config
+changes require newly exported inputs; neither historical records nor old hashes change.
+
+Create a private directory outside the repository, then export and replay:
+
+```sh
+options_artifacts=$(mktemp -d /private/tmp/options-research.XXXXXX)
+PYTHONPATH=src uv run python -m trading_bot.cli.options_research export-options-fixture \
+  --output-dir "$options_artifacts" --research-capital 2500 --scenario completed
+# Substitute the document_hash printed by export; do not include angle brackets.
+PYTHONPATH=src uv run python -m trading_bot.cli.options_research replay-file \
+  "$options_artifacts/inputs/<document_hash>.json" --report-dir "$options_artifacts"
+```
+
+Use an absolute, non-symlink directory (`/private/tmp` on macOS; `/tmp` on Linux).
+The root must already exist, be owned by the current user and have mode `0700`. Inputs
+and reports are `0600`; subdirectories are `0700`. Symlinks, FIFOs, relative paths,
+parent traversal, repository-local storage and public permissions are rejected. Identical
+content-addressed writes are idempotent; differing existing bytes are never overwritten.
+The implementation reuses the existing private bundle-storage primitives.
+
+`replay-file` prints a `synthetic-options-replay-report-v1` envelope. Optional saved reports
+go to `reports/<report_hash>.json`, including incomplete outcomes before exit code 2.
+Without `--report-dir`, output is stdout only. The content hashes detect changes; they
+are not signatures, vendor provenance, or proof that a supplied trial history is complete.
+This format must never be used to reconstruct or authorize a live account's trial budget.
+
+The canonical options settings `replay_max_bytes` (4,194,304), `replay_max_records` (5,000
+total JSON array items) and `replay_max_json_depth` (16) are release ceilings, not market
+limits. Files are size-bounded before reading/JSON decoding; nesting and duplicate keys,
+numeric floats/nonfinite values and excessive array items are denied before domain
+construction. Output is also size-bounded. Environment names follow the existing
+`TRADING_BOT__OPTIONS__REPLAY_MAX_BYTES`, `...__REPLAY_MAX_RECORDS` and
+`...__REPLAY_MAX_JSON_DEPTH` convention; the module CLI still ignores ambient overrides.
+New required fields intentionally change the config identity; there is no silent upgrade.
+
 ## Known limits
 
 This slice handles one synthetic long-call unit per episode. Spreads/condors have validated
 identity records only, not validated payoff engines or execution. It does not yet support
-recorded external file imports, bearish/put selection, partial complete-package quantities,
+historical/vendor data imports, bearish/put selection, partial complete-package quantities,
 continuous/restarted episodes, real calendars, real fee schedules, dividends, exercise,
 assignment, settlement calendars or broker intervention. Fixture bars deliberately are
 fabricated daily observations, including non-market dates; they are not exchange history.

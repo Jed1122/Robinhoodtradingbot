@@ -277,6 +277,9 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
         "max_open_strategy_positions",
         "max_new_positions_per_session",
         "max_structure_units_per_entry",
+        "replay_max_bytes",
+        "replay_max_records",
+        "replay_max_json_depth",
     ):
         _require_at_most(
             f"options.{name}", getattr(config.options, name), getattr(envelope.options, name)

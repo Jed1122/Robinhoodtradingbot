@@ -21,6 +21,12 @@ from trading_bot.risk.options_economics import (
 )
 from trading_bot.simulation.options_fixtures import synthetic_options_request
 from trading_bot.simulation.options_replay import replay_options
+from trading_bot.simulation.options_replay_io import (
+    read_options_replay_file,
+    replay_options_report,
+    write_options_replay_input,
+)
+from trading_bot.simulation.options_replay_models import SOURCE, OptionsReplayResult
 
 app = typer.Typer(no_args_is_help=True)
 CAPITAL_TIERS = (100, 500, 1000, 2500, 5000, 10000, 25000, 50000)
@@ -39,6 +45,60 @@ def _load(config_dir: Path) -> LoadedConfig:
 def _invalid() -> None:
     typer.echo(canonical_json({"status": "denied", "reason": "options_research_input_invalid"}))
     raise typer.Exit(1)
+
+
+@app.command("export-options-fixture")
+def export_options_fixture(
+    output_dir: Annotated[Path, typer.Option()],
+    research_capital: Annotated[str, typer.Option()] = "100",
+    scenario: Annotated[str, typer.Option()] = "completed",
+    config_dir: Annotated[Path, typer.Option()] = Path("configs"),
+) -> None:
+    """Save fabricated inputs in an existing private directory outside the repository."""
+    try:
+        request = synthetic_options_request(
+            _load(config_dir), parse_decimal(research_capital), scenario
+        )
+        digest = write_options_replay_input(
+            output_dir,
+            request,
+            repository_root=Path(__file__).resolve().parents[3],
+        )
+    except (ValueError, TypeError, ArithmeticError, OSError):
+        _invalid()
+        return
+    typer.echo(
+        canonical_json(
+            {
+                "document_hash": digest,
+                "source_kind": SOURCE,
+                "production_eligible": False,
+                "evidence_promotable": False,
+            }
+        )
+    )
+
+
+@app.command("replay-file")
+def replay_file(
+    input_path: Annotated[Path, typer.Argument()],
+    report_dir: Annotated[Path | None, typer.Option()] = None,
+    config_dir: Annotated[Path, typer.Option()] = Path("configs"),
+) -> None:
+    """Replay strict saved synthetic inputs; never load configuration from the document."""
+    try:
+        repository = Path(__file__).resolve().parents[3]
+        request = read_options_replay_file(
+            input_path, _load(config_dir), repository_root=repository
+        )
+        row = replay_options_report(request, report_dir=report_dir, repository_root=repository)
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _invalid()
+        return
+    typer.echo(canonical_json(row))
+    result = row["result"]
+    if isinstance(result, OptionsReplayResult) and result.status == "incomplete_synthetic_replay":
+        raise typer.Exit(2)
 
 
 @app.command("options-replay")

@@ -466,6 +466,9 @@ class OptionsSettings(StrictModel):
     max_open_strategy_positions: StrictInt = Field(ge=0)
     max_new_positions_per_session: StrictInt = Field(ge=0)
     max_structure_units_per_entry: StrictInt = Field(ge=0)
+    replay_max_bytes: StrictInt = Field(ge=1)
+    replay_max_records: StrictInt = Field(ge=1)
+    replay_max_json_depth: StrictInt = Field(ge=1)
     allow_locked_quotes: StrictBool
     margin_borrowing_enabled: StrictFalse
     uncovered_options_enabled: StrictFalse

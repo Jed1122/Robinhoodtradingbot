@@ -16,6 +16,9 @@ options:
   max_open_strategy_positions: 1
   max_new_positions_per_session: 1
   max_structure_units_per_entry: 1
+  replay_max_bytes: 4194304
+  replay_max_records: 5000
+  replay_max_json_depth: 16
   allow_locked_quotes: false
   margin_borrowing_enabled: false
   uncovered_options_enabled: false

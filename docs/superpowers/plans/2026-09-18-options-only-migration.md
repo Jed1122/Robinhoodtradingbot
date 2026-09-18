@@ -128,3 +128,33 @@ path normalization. CLI required --report and optional --root default current di
 No dependencies, network, credentials, production changes, baseline test suppression or
 threshold weakening. Focused pytest/Ruff/Mypy. Commit only owned files; report RED/GREEN
 and READY/NOT_READY. Coordinator reviews/integrates. No subagents.
+
+## Task 9: Bounded recorded synthetic options replay
+
+Coordinator-owned follow-up to Task 3 at 2bac364. Freeze a closed, versioned JSON input
+containing synthetic options replay records, config identity and content digest, never
+configuration overrides, filesystem references or credentials. Financial fields remain
+decimal strings; counts are exact integers; unknown/duplicate keys, non-finite numbers,
+oversized/deep inputs, mismatched hashes and non-synthetic claims fail closed.
+Reuse existing bounded JSON and private no-follow/no-overwrite artifact storage helpers,
+the existing canonical config, current domain records, risk and replay function. Do not
+change monetary admission, quantity limits, production capability or old serialization.
+Expose fixture export and saved-input replay/report commands within options_research.
+Input parsing is not source authenticity, and all outputs remain ECONOMIC_NO_GO and
+non-promotable. Saved reports must be content-addressed, private and non-overwriting;
+incomplete replay still has exit code2 and saves its truthful report. No broker imports,
+network, production persistence, paid dependencies, staged lockfile changes or main CLI
+edits. Tests first: exact independent cash outcomes, tampering/type/provenance denial,
+configuration mismatch, malformed paths, size/depth/count bounds, no overwrite and
+determinism. Require90% branch coverage for new options_replay modules.
+
+## Task 10: Official historical-data comparison, documentation only
+
+Independent local read-only research at 2bac364 while Task9 runs. Compare Databento,
+ThetaData and Massive using primary vendor documentation only, with retrieval dates
+and source links. Cover quote/chain schemas, expired coverage, timestamps/availability,
+corporate actions/dividends, non-display use, personal use, retention, redistribution,
+free/sample path, advertised prices and all-in cost uncertainty. No API login, downloads,
+restricted datasets, subscription or provider selection. Unknown rights/costs stay unknown;
+do not infer automated-use rights from retail display pricing. Draft findings under this
+plan's ignored workspace; coordinator verifies sources and publishes docs/data-providers.md.
