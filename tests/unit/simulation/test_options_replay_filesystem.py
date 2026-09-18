@@ -10,6 +10,7 @@ import pytest
 from tests.unit.config.test_options_config import load_options
 from trading_bot.risk.options_economics import TrialEpisode, TrialLossState
 from trading_bot.simulation.options_fixtures import synthetic_options_request
+from trading_bot.simulation.options_replay import replay_options
 from trading_bot.simulation.options_replay_io import (
     read_options_replay_file,
     replay_options_report,
@@ -119,3 +120,24 @@ def test_forged_config_or_non_request_cannot_be_encoded(tmp_path: Path) -> None:
         decode_options_replay(b"{}", None)  # type: ignore[arg-type]
     with pytest.raises(OptionsReplayFileError):
         read_options_replay_file(Path("/"), request.loaded, repository_root=ROOT)
+
+
+def test_oversized_engine_output_is_denied_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request, _ = fixture_file(tmp_path)
+    # Fault-inject expansion at the engine boundary. Current ordinary one-unit
+    # reports are smaller than inputs; future diagnostic growth must remain bounded.
+    oversized = replace(
+        replay_options(request),
+        reason_codes=("x" * request.loaded.config.options.replay_max_bytes,),
+    )
+    monkeypatch.setattr(
+        "trading_bot.simulation.options_replay_io.replay_options",
+        lambda _: oversized,
+    )
+    with pytest.raises(OptionsReplayFileError) as caught:
+        replay_options_report(request, report_dir=tmp_path, repository_root=ROOT)
+    assert caught.value.__context__ is None
+    assert not (tmp_path / "reports").exists()
