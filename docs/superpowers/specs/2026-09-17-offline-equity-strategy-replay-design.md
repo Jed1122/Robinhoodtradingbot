@@ -5,8 +5,8 @@ Source reviewed: `a447de05da54e078b1b28859cdb5a04085d46e2b`.
 Status: **written design approved by the operator on 2026-09-17 UTC; implementation in progress**.
 
 The integration seams, strict scenario-input/outcome contracts, separated audit/receipt identities,
-incremental single-order sessions, opt-in equity tick/lot handling, and truthful configuration-only
-CLI status are implemented. The full event/portfolio replay,
+incremental single-order sessions, opt-in equity tick/lot handling, shared synthetic portfolio
+funding/accounting, and truthful configuration-only CLI status are implemented. The full strategy replay,
 aggregate result derivation and scenario CLI path remain incomplete; see the
 [implementation checklist](../plans/2026-09-17-offline-equity-strategy-replay.md).
 

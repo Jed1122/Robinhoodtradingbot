@@ -28,8 +28,44 @@ assert that a future snapshot has sufficient visible history or that an order pa
 and delivery-receipt hash. The run key excludes future deliveries and the full bundle digest;
 the future coordinator must additionally bind each cycle/order to its visible as-of inputs.
 The closed outcome encoder never serializes arbitrary objects. All request eligibility flags
-are immutable false. Shared portfolio accounting, aggregate result derivation, configured
-exits, the coordinator and `simulate --scenario` remain unimplemented.
+are immutable false. Shared synthetic portfolio accounting is implemented below. Aggregate
+strategy-result derivation, configured exits, the coordinator and `simulate --scenario` remain
+unimplemented.
+
+### Shared synthetic equity portfolio funding
+
+`simulation/equity_replay_portfolio.py` owns one in-memory `ReplayPortfolio`, starting flat
+with the request's explicit synthetic cash. A BUY transfers limit notional plus a conservative
+commission allocation out of allocatable cash; it does not debit total account cash. The
+commission capacity uses the immutable declared session slots after submission and before
+expiry, including declared slots beyond a shorter replay horizon. Delivered quotes,
+liquidity, outcomes and eventual cancellation do not reduce this reservation at admission.
+The caller's opportunity count must equal the declaration. GFD expiry matches the declared
+session end, not an inferred exchange calendar.
+
+One active order per instrument prevents independent lifecycle results from overwriting a
+position. BUY admission into an existing position and SELL quantities above held shares are
+denied. SELL proceeds remain in the order allocation until terminal; tiny proceeds insufficient
+to pay their commission fail in the lifecycle instead of borrowing cash. Funding acceptance is
+explicitly **not** economic-risk or production-pretrade approval.
+
+Only the existing lifecycle authority changes fill cash, fees and shares. The portfolio
+recomputes that lifecycle against its own original allocation, verifies canonical settings,
+costs, tick/lot alignment, declared fill slots, decision-to-event links and immutable prefixes,
+then checks shared-cash conservation before atomically publishing. Configured sampling and
+market-input provenance remain owned by the simulator and future coordinator; portfolio result
+hashes are not proof of execution assumptions. An invalid operation latches the book invalid
+while leaving the last monetary state available for diagnosis. Identical intent/result
+redelivery is idempotent; terminal release cannot run twice or overwrite a later order.
+
+Shared results must arrive in chronological order, including acknowledgements before later
+fills in other instruments. Held positions are marked at a supplied, recorded, fresh synthetic
+bid visible at the requested UTC instant. Current portfolio identity excludes configured full
+input/result digests, which contain future deliveries. Cash-flow results are recognized as
+realized only when a traced position returns flat and its order is terminal; partial exits and
+fees stay in the remaining open-flow mark. These fields are not tax-lot or broker-settlement
+accounting. Terminal orders and flat positions are separate facts. The module performs no
+provider, ledger, credential or deployment I/O, and does not implement the strategy runner.
 
 ### Configuration-driven synthetic order simulation
 

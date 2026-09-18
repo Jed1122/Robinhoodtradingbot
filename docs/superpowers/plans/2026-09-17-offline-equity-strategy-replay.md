@@ -125,20 +125,32 @@ rebuilds a private prefix for correctness, not production-scale throughput.
 
 ## Task 4: Shared funding and portfolio state
 
-**Files:** create `simulation/equity_replay_portfolio.py`, `tests/unit/simulation/test_equity_replay_portfolio.py`.
+**Files:** create `simulation/equity_replay_portfolio.py`, the boundary-validation helper
+`simulation/equity_replay_portfolio_checks.py`, `tests/unit/simulation/test_equity_replay_portfolio.py`
+and its synthetic-only two-symbol fixture helper.
 
 **Interfaces:** `ReplayPortfolio(request)`, `reserve(intent, fee_opportunities) -> ReplayOrderOutcome`, `apply(order_id, configured_result) -> None`, `snapshot(as_of, quotes) -> PortfolioSnapshot`. Only this owner changes unallocated cash/reservations and published positions. Initial order records use the existing `LifecycleRequest`.
 
-- [ ] Write literal two-order funding tests: initial cash 100, a BUY reservation 60 leaves 40 allocatable; another 50 reservation is denied; cancellation without fills releases 60 exactly once. A fill costing 20 plus fee 1 reduces total cash to 79, not 19. SELL cannot reserve more than held shares.
-- [ ] Observe failures; implement allocation transfers, not duplicate fill accounting. Each order's current lifecycle cash is its allocation balance; total cash is unallocated cash plus active allocations. Derive position and fill effects only from validated lifecycle results. Repeated identical snapshots cannot release funds or apply fees twice.
+- [x] Write literal two-order funding tests: initial cash 100, a BUY reservation 60 leaves 40 allocatable; another 50 reservation is denied; cancellation without fills releases 60 exactly once. A fill costing 20 plus fee 1 reduces total cash to 79, not 19. SELL cannot reserve more than held shares.
+- [x] Observe failures; implement allocation transfers, not duplicate fill accounting. After correcting synthetic source fixture identities, 21 tests failed on the missing portfolio before implementation. Each order's current lifecycle cash is its allocation balance; total cash is unallocated cash plus active allocations. Derive position and fill effects only from validated lifecycle results. Repeated identical snapshots cannot release funds or apply fees twice.
 
 ```python
 total_cash = unallocated_cash + sum(active_allocations, Decimal(0))
 assert total_cash >= 0
 ```
 
-- [ ] Require one active order per instrument; cash and position conservation failure invalidates the replay. Mark held positions with visible fresh quotes; no unobserved mark or implicit closing fill.
-- [ ] Run portfolio tests and lifecycle tests, then commit scoped files.
+- [x] Require one active order per instrument; cash and position conservation failure invalidates the replay. Mark held positions with visible fresh quotes; no unobserved mark or implicit closing fill. Valuation uses the bid. Realized fields recognize fully traced, terminal, flat round trips only; partial-exit cash flows stay with open marked exposure, not broker tax lots.
+- [x] Run portfolio tests and lifecycle tests: 43 portfolio cases and 522 tests in the broader simulation/portfolio selection passed. Commit only Task 4 source, tests and its architecture/spec/plan updates; preserve the already-dirty handoff and unrelated paths outside that commit.
+
+Continuation note: 43 portfolio cases now cover disjoint allocations, canonical commission
+capacity, shared ordering, cancellation/rejection/expiry, duplicate and conflicting updates,
+freshness boundaries, fixed Decimal precision, bid marks, partial exits and forbidden I/O.
+Separate failing audit regressions exposed future-input digests leaking into a current
+portfolio hash and omitted configured decisions hiding generated event times. Current-state
+identity now excludes future audit hashes; decision prefixes are linked back to lifecycle
+events, timestamps and snapshot hashes. Both defects were reproduced before correction.
+The book supplies authoritative order/flat facts, but the complete strategy result contract
+remains deferred until Task 6 supplies decisions, exit reasons and completion context.
 
 ## Task 5: Configured exits and canonical economic checks
 
@@ -242,9 +254,26 @@ written to disk. The unmodified targeted tests were rerun after the probes. Pref
 control ordering, atomic failures, lot/tick behavior and false eligibility flags were reviewed.
 No broker, credential, production-ledger, deployment, remote CI, push or merge action occurred.
 
-The aggregate result contract, shared portfolio funding, configured exits/economic checks,
-decision coordinator (including same-time causal phases), private scenario CLI and their
-whole-strategy end-to-end/adversarial tests remain open. Task 4 is the next implementation step;
-the complete offline replay milestone and live readiness are not claimed.
+At that Task 3 checkpoint, shared funding and the subsequent strategy layers remained open.
+The following Task 4 checkpoint supersedes the portfolio-funding status only.
+
+Shared-portfolio checkpoint on **2026-09-18 UTC**: **4,571 tests passed**, with **87.72%**
+combined coverage and the unchanged 80% floor. Ruff, Mypy (189 source files), Bandit, offline
+lock verification and the frozen dependency audit passed; no known dependency vulnerabilities
+were reported. The existing Starlette/httpx warning, Bandit comment warnings and audit hashing
+guidance remain. Dependencies and canonical risk configuration were not changed.
+
+Three isolated, expected-failing in-memory mutation probes detected reuse of reserved cash,
+duplicate terminal cash release, and terminal orders incorrectly implying flat positions. Each
+failed at the intended literal assertion; the unmodified tests were rerun afterward. The probes
+also produced an in-process Pytest plugin rewrite warning. No mutated source was written.
+The complete local suite, focused checks, and scoped review found no changed broker, runtime,
+risk, execution or configuration files. No remote CI, external broker/provider, credentials,
+production ledger, deployment, push, merge, account changes or spending occurred.
+
+Task 4 is complete. **Task 5 (configured exits and canonical economic checks) is next.** The
+aggregate strategy result, decision coordinator (including same-time causal phases), private
+scenario CLI and whole-strategy end-to-end/adversarial tests remain open. The complete offline
+replay milestone and live readiness are not claimed.
 
 Every spec section maps to Tasks 1-8: interfaces (1), contracts/identity/time (2-3), funding (4), configured risk/exits (5), strategy composition/completion (6), operator surface (7), verification (8). Session opportunity declarations separate structural capacity from future market delivery. No new broker, persistence or promotion implementation is included. All protected changes remain primary-owned.
