@@ -6,9 +6,10 @@ Status: **written design approved by the operator on 2026-09-17 UTC; implementat
 
 The integration seams, strict scenario-input/outcome contracts, separated audit/receipt identities,
 incremental single-order sessions, opt-in equity tick/lot handling, shared synthetic portfolio
-funding/accounting, configured exit policies, canonical synthetic economic checks, and truthful
-configuration-only CLI status are implemented. The full strategy replay, aggregate result
-derivation and scenario CLI path remain incomplete; see the
+funding/accounting, configured exit policies, canonical synthetic economic checks, full offline
+decision/event coordination, aggregate result derivation and truthful configuration-only CLI
+status are implemented. The private scenario CLI path and final whole-milestone adversarial
+verification remain incomplete; see the
 [implementation checklist](../plans/2026-09-17-offline-equity-strategy-replay.md).
 
 The operator selected offline strategy replay and then approved this written design. This document
@@ -218,6 +219,12 @@ If an entry remainder is active when an exit triggers, request cancellation firs
 permitted cancel-race fill, wait for terminal entry state, then create a freshly checked exit
 for the actual remaining position. No simultaneous BUY and SELL, blind replace, automatic
 resubmission, or market-order escape path is allowed.
+
+Implemented timing contract: a cancel requested from an observed timestamp occupies an explicit
+later causal phase, not an invented later timestamp. After cancellation is terminal, another
+declared decision must recompute the exit trigger and actual quantity against its current quote
+and checks. An acknowledgement by itself does not schedule a decision or reuse an old trigger.
+Canonical loss-driven cancellations retain a readable reason in the aggregate audit record.
 
 Exit orders use the existing LIMIT intent path with the then-visible bid as the price input,
 subject to instrument constraints. A stop trigger is not a guaranteed stop fill. A gap, partial

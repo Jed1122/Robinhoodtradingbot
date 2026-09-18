@@ -13,8 +13,8 @@ string encoding and existing cycle-result hashes remain unchanged. A separate
 `PerInstrumentDecisionCycleRequest` carries explicit per-instrument exit policies, preserving
 the original request's serialized shape and paper restart keys. The portfolio constructor
 requires exactly one policy form and rejects duplicate or missing entry-policy mappings.
-These are composition seams only, not an implemented equity replay runner or a new risk gate.
-No production paper, shadow, live, broker or promotion composition is enabled by them.
+The synthetic equity runner below uses these seams. No production paper, shadow, live,
+broker or promotion composition is enabled by them, and they add no new risk gate.
 
 `simulation/equity_replay_models.py` now defines strict synthetic scenario inputs: a detached
 canonical `LoadedConfig`, a configuration-grid candidate, verified synthetic bundle, instrument
@@ -26,12 +26,50 @@ assert that a future snapshot has sufficient visible history or that an order pa
 
 `equity_replay_codec.py` separates the stable run key, deduplicated economic-input audit hash
 and delivery-receipt hash. The run key excludes future deliveries and the full bundle digest;
-the future coordinator must additionally bind each cycle/order to its visible as-of inputs.
+the coordinator additionally binds each cycle/order to its visible as-of inputs.
 The closed outcome encoder never serializes arbitrary objects. All request eligibility flags
-are immutable false. Shared synthetic portfolio accounting is implemented below. Aggregate
-strategy-result derivation, the coordinator and `simulate --scenario` remain unimplemented.
-Configured exit policies and the synthetic economic adapter are implemented below; they do
-not yet form a runnable whole-strategy replay.
+are immutable false. Shared synthetic portfolio accounting, configured exits, the economic
+adapter, whole-strategy coordinator and aggregate result derivation are implemented below.
+The private `simulate --scenario` CLI and final whole-milestone adversarial verification
+remain pending; the existing CLI still reports configuration-only execution.
+
+### Offline equity decision/event replay
+
+`await simulation.equity_replay.replay_equity_strategy(request)` accepts only a validated
+synthetic value request. `equity_replay_cycle.py` composes the real `BundleSnapshotLoader`,
+`FeaturePipeline`, momentum or relative-strength strategy, `DecisionCycleService`,
+`PortfolioConstructor`, `IntentPlanner` and typed in-memory journal. The original minimum
+history requirement remains enforced. Feature/target calculations use fixed rounded Decimal
+contexts; inner fill, funding and lifecycle accounting retain exact arithmetic.
+
+`equity_replay_state.py` merges finite explicit market/decision times with each order's next
+configured action. Time, control priority, instrument and order identity determine ordering.
+Every transition reaches the shared portfolio and risk observer before the next action;
+strategy decisions follow already-scheduled actions at the same time. Exits precede entries,
+then instrument order is stable. Each intent receives fresh economic, funding and final-size
+checks after earlier admissions; a denied order is not silently resized or retried.
+
+New orders cannot consume the triggering event or their submission bar. Exit triggers first
+request cancellation of any entry remainder. That causal request is processed after the
+already-observed timestamp, followed by its configured acknowledgement; no microsecond delay
+or backdated control is invented. Permitted race fills update the actual position. Another
+explicitly declared decision after terminal cancellation must recompute the current quote,
+exit trigger, quantity and checks. Cancellation alone never creates an implicit SELL.
+Canonical loss dispositions cancel unfilled entries when required and never force liquidation.
+Cancellation time, order and reason are retained in the synthetic audit result.
+
+`equity_replay_records.py` derives immutable results from the authoritative book and recorded
+cycles/transitions. Order terminality, position flatness and completed strategy outcomes are
+separate facts; a filled, canceled or expired entry can leave unresolved exposure. End of input
+does not force liquidation. Missing history or a fresh final mark raises a sanitized denial,
+not an invented valuation or completed result. UTC reset observations are not synthesized.
+`assumptions_validated`, `evidence_promotable` and `production_pretrade_eligible` remain false.
+The runner has no provider transport, broker, production ledger, credential or promotion writer.
+
+As-of cycle/intent IDs exclude future scenario digests. Duplicate deliveries change only the
+receipt identity, not economic outcomes; extending the future stream preserves existing cycles,
+fills and cancellation transitions. This is a small deterministic fixture runner, not calibrated
+market execution, accepted research, a production pretrade engine or live-readiness evidence.
 
 ### Shared synthetic equity portfolio funding
 
@@ -54,7 +92,7 @@ Only the existing lifecycle authority changes fill cash, fees and shares. The po
 recomputes that lifecycle against its own original allocation, verifies canonical settings,
 costs, tick/lot alignment, declared fill slots, decision-to-event links and immutable prefixes,
 then checks shared-cash conservation before atomically publishing. Configured sampling and
-market-input provenance remain owned by the simulator and future coordinator; portfolio result
+market-input provenance remain owned by the simulator and coordinator; portfolio result
 hashes are not proof of execution assumptions. An invalid operation latches the book invalid
 while leaving the last monetary state available for diagnosis. Identical intent/result
 redelivery is idempotent; terminal release cannot run twice or overwrite a later order.
@@ -105,9 +143,9 @@ activity limits do not apply to exits, while the canonical loss/drawdown rules s
 Drawdown requests a hard-stop disposition, never a liquidation or automatic recovery.
 
 Neither adapter calls `PretradeEngine`, mutates an order, or mints production attestations;
-`evidence_promotable` and `production_pretrade_eligible` stay false. The future coordinator
-must consume all denials and cancellation/hard-stop dispositions, sequence same-time causal
-events, refresh checks before admission, and own partial-entry cancellation before any exit.
+`evidence_promotable` and `production_pretrade_eligible` stay false. The coordinator consumes
+denials and cancellation/hard-stop dispositions, sequences same-time causal events, refreshes
+checks before admission, and owns partial-entry cancellation before any exit.
 
 ### Configuration-driven synthetic order simulation
 
@@ -127,6 +165,15 @@ Inputs must arrive before their timestamp is published, including exact duplicat
 pending duplicates are audit-only. Delivery replays the existing prefix in fresh private state
 to preserve the same validated input/decision identities as the one-shot wrapper. This favors
 small deterministic fixtures, not production throughput. The API is synchronous and single-owner.
+
+`next_event_key` exposes the next time and control priority; `advance_next` atomically publishes
+one action, allowing a cross-order coordinator to apply all same-time acknowledgements before
+market opportunities. The equity-only `cancel_after_observation` queues one versioned causal
+request after a fully observed timestamp. Its priority is after ordinary market input; all
+same-time causal requests precede zero-latency acknowledgements. Later acknowledgements use
+ordinary control priority. Forward delivery rebuilds the exact processed action count, not an
+entire timestamp, so it cannot accidentally drain a pending same-time action. The opt-in phase
+does not change unused legacy input preimages or pinned one-shot hashes.
 
 `InstrumentConfiguredOrderRequest` explicitly opts into `synthetic-equity-increments-v1`.
 This equity LIMIT/GFD-only subtype validates identity, tick/lot alignment, size bounds and metadata

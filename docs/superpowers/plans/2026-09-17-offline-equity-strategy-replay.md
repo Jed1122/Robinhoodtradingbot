@@ -24,7 +24,10 @@
 
 ## Review and dependency order
 
-The current simulator is complete for its single-order fixture scope. Whole-strategy replay and its CLI are absent. Provider/source/runtime/promotion layers remain separately blocked.
+At plan creation the simulator was complete only for its single-order fixture scope, with
+whole-strategy replay and its CLI absent. The completed tasks below now include the offline
+coordinator; the private scenario CLI and final milestone checks remain pending.
+Provider/source/runtime/promotion layers remain separately blocked.
 
 Integration seams -> scenario contracts -> incremental order transitions -> shared portfolio coordination -> configured exits/economic checks -> decision replay -> strict CLI -> adversarial/full verification.
 
@@ -68,9 +71,9 @@ encoded = tuple(
 
 **Files:** create `simulation/equity_replay_models.py`, `simulation/equity_replay_codec.py`, `tests/unit/simulation/test_equity_replay_models.py`, `tests/unit/simulation/_equity_replay_fixtures.py` under the existing source/test roots.
 
-**Interfaces:** frozen `ReplayCandidate(strategy_id, short_window, long_window, top_n, exposure_multiplier)`; `ReplaySession(instrument_id, window, opportunity_times)`; `ReplayDecision(event_id, cursor)`; `EquityStrategyReplayRequest(namespace, loaded, seed, candidate, bundle, snapshot_settings, instruments, sessions, decisions, markets, starts_at, end_at, initial_cash)`; frozen `ReplayOrderOutcome(intent_id, accepted, reasons, order_id)` with no eligibility fields. Reuse and detach the existing `LoadedConfig` to bind both canonical config and its safety envelope, rather than introducing a separate config/hash carrier. The aggregate `EquityStrategyReplayResult` remains pending: derive its terminal/flat/completion facts from Task 4's authoritative portfolio/order records, not independent caller-selected booleans.
+**Interfaces:** frozen `ReplayCandidate(strategy_id, short_window, long_window, top_n, exposure_multiplier)`; `ReplaySession(instrument_id, window, opportunity_times)`; `ReplayDecision(event_id, cursor)`; `EquityStrategyReplayRequest(namespace, loaded, seed, candidate, bundle, snapshot_settings, instruments, sessions, decisions, markets, starts_at, end_at, initial_cash)`; frozen `ReplayOrderOutcome(intent_id, accepted, reasons, order_id)` with no eligibility fields. Reuse and detach the existing `LoadedConfig` to bind both canonical config and its safety envelope, rather than introducing a separate config/hash carrier. Task 6 implements the aggregate `EquityStrategyReplayResult`, deriving terminal/flat/completion facts from Task 4's authoritative portfolio/order records, not independent caller-selected booleans.
 
-- [x] Write request/outcome construction tests for wrong exact types, live mode, enabled evidence flags, candidate outside canonical grids, non-UTC dates, duplicate instrument IDs, unknown instrument/session references, negative cash and conflicting duplicate delivery. Include false-flag mutation rejection tests. Add aggregate-result tests when portfolio records are available; that part is not complete.
+- [x] Write request/outcome construction tests for wrong exact types, live mode, enabled evidence flags, candidate outside canonical grids, non-UTC dates, duplicate instrument IDs, unknown instrument/session references, negative cash and conflicting duplicate delivery. Include false-flag mutation rejection tests. Aggregate-result tests were added with Task 6 once authoritative records were available.
 
 ```python
 assert request.evidence_promotable is False
@@ -87,7 +90,7 @@ digest = content_hash(payload)
 ```
 
 - [x] Rerun model tests plus existing bundle/configured model tests: 43 new contract tests and 539 tests in the expanded selection passed; all-source Ruff and Mypy (186 source files) passed.
-- [ ] Derive and test the aggregate result contract alongside portfolio coordination; do not mark Task 2 wholly complete until then.
+- [x] Derive and test the aggregate result contract alongside Task 6 coordination: construction is internal, eligibility fields are immutable false, and authoritative terminal orders do not imply flat positions. A valid incomplete run retains explicit unresolved reasons.
 - [x] Commit the verified input/identity slice and document its remaining boundary (`feat: add strict synthetic equity replay input contracts`).
 
 ## Task 3: Incremental configured-order transition seam
@@ -120,7 +123,7 @@ Session timing contract: a timestamp becomes closed when `advance_to` publishes 
 including duplicate redelivery. The eventual coordinator must give newly generated same-time
 actions an explicit causal phase with bound audit identity; it must not backdate a cancel,
 silently reorder an already-applied quote, or invent a later timestamp. This integration detail
-remains part of Task 6, not an implemented scheduler capability. Current session delivery
+was deferred until Task 6, which now implements the explicit causal phase. Current session delivery
 rebuilds a private prefix for correctness, not production-scale throughput.
 
 ## Task 4: Shared funding and portfolio state
@@ -149,8 +152,8 @@ Separate failing audit regressions exposed future-input digests leaking into a c
 portfolio hash and omitted configured decisions hiding generated event times. Current-state
 identity now excludes future audit hashes; decision prefixes are linked back to lifecycle
 events, timestamps and snapshot hashes. Both defects were reproduced before correction.
-The book supplies authoritative order/flat facts, but the complete strategy result contract
-remains deferred until Task 6 supplies decisions, exit reasons and completion context.
+At that checkpoint the book supplied authoritative order/flat facts, but the complete strategy
+result contract was deferred until Task 6 supplied decisions, exit reasons and completion context.
 
 ## Task 5: Configured exits and canonical economic checks
 
@@ -183,14 +186,17 @@ history. Full-suite and final checkpoint verification is recorded below.
 
 ## Task 6: Full offline decision/event coordinator
 
-**Files:** create `simulation/equity_replay.py`, `simulation/equity_replay_cycle.py`, `tests/integration/simulation/test_equity_strategy_replay.py`.
+**Files:** create `simulation/equity_replay.py`, `simulation/equity_replay_cycle.py`,
+`simulation/equity_replay_state.py`, `simulation/equity_replay_records.py`,
+`tests/integration/simulation/test_equity_strategy_replay.py` and its synthetic fixture helper;
+extend `simulation/configured_session.py` and add `tests/unit/simulation/test_configured_coordination.py`.
 
 **Interfaces:** `async replay_equity_strategy(request: EquityStrategyReplayRequest) -> EquityStrategyReplayResult`; `ReplayCycleComposition` internally binds the existing service, loader, feature wrapper, chosen strategy, portfolio, planner, execution recorder and journal.
 
-- [ ] Build a synthetic bundle fixture with visible coverage/membership and completed bars; explicit subsequent quote slots permit actual entry and exit. Assert exact entry/exit intent purpose, literal quantities/cash/fees, true flatness only after the SELL fills, and permanently false evidence flags.
-- [ ] Observe the absent runner failure. Merge finite event sources with the configured control priorities; run strategy decisions after prior events at equal time. Size/admit each intent from fresh state, exits first, then stable instrument order. Bind ID factories to as-of inputs, never future scenario content.
-- [ ] When an entry remainder exists at an exit trigger, queue its cancel; wait for terminal state and account for the race fill before making a new exit decision. No reusing an old quantity or expired quote.
-- [ ] Add incomplete/prefix tests before implementing result derivation:
+- [x] Build a synthetic bundle fixture with visible coverage/membership and 750 completed daily bars; explicit subsequent quote slots permit actual momentum and relative-strength entry and exit. Assert exact entry/exit intent purpose, literal quantities/cash/fees, true flatness only after the SELL fills, and permanently false evidence flags.
+- [x] Observe the absent runner failure: eight initial integration cases failed before implementation. Sixteen initial scheduler cases likewise failed on the missing per-action/causal seam. Merge finite event sources with configured control priorities; run strategy decisions after prior events at equal time. Recheck admission from fresh state, exits first, then stable instrument order. Bind IDs to as-of inputs, never future scenario content.
+- [x] When an entry remainder exists at an exit trigger, queue its cancel; wait for terminal state and account for the race fill before another declared decision recomputes the current trigger, actual quantity, quote and checks. No implicit decision on acknowledgement, old quantity or expired quote.
+- [x] Add incomplete/prefix tests before implementing result derivation:
 
 ```python
 assert canceled_entry.orders_terminal
@@ -199,7 +205,14 @@ assert not canceled_entry.strategy_outcomes_complete
 assert short_run.cycles == extended_run.cycles[: len(short_run.cycles)]
 ```
 
-- [ ] Rejection, expiry, no-fill and open positions are explicit; malformed/accounting failures return no completed result. Rerun simulation and paper/promotion denial tests; commit scoped files.
+- [x] Rejection, expiry, no-fill and open positions are explicit; malformed/accounting failures return no completed result. The 46 new coordination/integration cases and expanded 605-case simulation/paper/promotion selection pass. Full verification and scoped commit are recorded in the checkpoint below.
+
+Audit regressions reproduced zero-latency cancellation acknowledgements interleaving before
+other same-time causal requests, and missing readable loss-cancellation reasons. Requests now
+all precede their same-time acknowledgements, and the immutable result retains cancellation
+order/time/reason. Prefix checks include a pending cancel race; a later decision after a price
+recovery does not reuse the previous stop trigger. Final stale marks and insufficient history
+deny without fabricating completion. No production runtime, broker or risk config is changed.
 
 ## Task 7: Strict local CLI and truthful summary behavior
 
@@ -297,12 +310,35 @@ unmodified 324-case risk selection was rerun afterward. Test-first audit correct
 preserve drawdown hard-stops after recovery, select current marks despite old quote redelivery,
 and bind observed entry state back to its submitted identity and quantity.
 
-**Task 5 is complete. Task 6 (the full offline decision/event coordinator) is next.** Aggregate
-result derivation, same-time causal phases, cancel-race-aware exits, strict private scenario
-CLI, and whole-strategy end-to-end/adversarial verification remain open. No real provider,
+At that checkpoint Task 5 was complete and Task 6 (the full offline decision/event coordinator)
+was next. Aggregate result derivation, same-time causal phases, cancel-race-aware exits, strict
+private scenario CLI, and whole-strategy verification remained open. No real provider,
 broker, credential, production-ledger, remote CI, deployment, push, merge, account, subscription
 or live operation was performed. No new plugin or spending is required for the next offline
 task. All protected strategy/risk work remained primary-owned and inline; unrelated dirty
 paths were preserved.
+
+Decision/event coordinator checkpoint on **2026-09-18 UTC**: **4,674 tests passed** with
+**87.86% combined line/branch coverage**, retaining the 80% floor. The 46 new scheduling and
+full-pipeline integration cases passed; 605 simulation/paper/promotion regressions also passed
+independently. Ruff, Mypy (196 source files), Bandit, offline lock verification and the frozen
+pinned-dependency audit passed; no known dependency vulnerabilities were reported. Existing
+Starlette/httpx, Bandit comment and audit hashing-guidance warnings remain. No dependencies,
+canonical risk thresholds, production runtime, broker or deployment files were changed.
+
+Three isolated in-memory mutations were detected at their intended assertions: same-bar fills,
+ignored cancel-race fills, and terminal entries incorrectly treated as flat positions. No source
+files were mutated; the unmodified 46-case selection was rerun afterward. Full-suite verification
+also passed after the implementation and included unchanged legacy hash, paper restart and
+promotion-denial contracts. Scoped review confirmed that eligibility flags remain false and no
+provider, broker, ledger, credential, authorization or promotion-writing capability was added.
+
+**Task 6 and the remaining Task 2 aggregate-result contract are complete. Task 7's private
+scenario CLI is next; Task 8's complete milestone-level adversarial review remains pending.**
+The runner is a value-only Python entry point, not a completed operator CLI or live-readiness
+milestone. No remote CI, provider/broker calls, account or credential operations, production
+ledger access, deployment, push, merge, subscriptions, spending or live activation occurred.
+Protected work stayed primary-owned and inline. The pre-existing dirty handoff was updated
+locally and left outside the scoped commit, together with all other unrelated changes.
 
 Every spec section maps to Tasks 1-8: interfaces (1), contracts/identity/time (2-3), funding (4), configured risk/exits (5), strategy composition/completion (6), operator surface (7), verification (8). Session opportunity declarations separate structural capacity from future market delivery. No new broker, persistence or promotion implementation is included. All protected changes remain primary-owned.

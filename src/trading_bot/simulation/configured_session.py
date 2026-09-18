@@ -41,7 +41,7 @@ from trading_bot.simulation.lifecycle_models import (
     LifecycleFillEvent,
 )
 
-type _ActionKind = Literal["expiry", "submission", "cancel_ack", "input"]
+type _ActionKind = Literal["expiry", "submission", "cancel_ack", "input", "decision_cancel"]
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -58,8 +58,14 @@ class _Action:
 class _Run:
     """Private per-call scheduling state; all balances come from authoritative replay."""
 
-    def __init__(self, request: ConfiguredOrderRequest) -> None:
+    def __init__(
+        self,
+        request: ConfiguredOrderRequest,
+        causal_cancels: tuple[SyntheticCancelRequest, ...] = (),
+    ) -> None:
         self.request = request
+        self.causal_cancels = causal_cancels
+        self.steps = 0
         settings: dict[str, object] = {
             "simulation": request.simulation.model_dump(),
             "costs": request.costs.model_dump(),
@@ -82,15 +88,7 @@ class _Run:
                 "submission_window": request.submission_window,
             },
         )
-        self.input_hash = configured_hash(
-            "input",
-            {
-                "base": self.base,
-                "events": request.events,
-                "end_at": request.end_at,
-                "expires_at": request.expires_at,
-            },
-        )
+        self.input_hash = self._input_identity()
         self.events: tuple[LifecycleEvent, ...] = ()
         self.lifecycle = replay_order_lifecycle(request.initial)
         self.decisions: list[ConfiguredDecision] = []
@@ -115,6 +113,39 @@ class _Run:
                     indexed,
                 ),
             )
+        for event in causal_cancels:
+            self._queue_decision_cancel(event)
+
+    def _input_identity(self) -> DataHash:
+        payload: dict[str, object] = {
+            "base": self.base,
+            "events": self.request.events,
+            "end_at": self.request.end_at,
+            "expires_at": self.request.expires_at,
+        }
+        # The opt-in phase does not change any legacy preimage when unused.
+        if self.causal_cancels:
+            payload["post_observation_cancels_v1"] = self.causal_cancels
+        return configured_hash("input", payload)
+
+    def _queue_decision_cancel(self, event: SyntheticCancelRequest) -> None:
+        digest = configured_hash("post_observation_cancel_v1", event)
+        heapq.heappush(
+            self.queue,
+            _Action(
+                event.cursor.occurred_at,
+                5,
+                event.cursor.sequence,
+                "decision_cancel",
+                event.event_id,
+                digest,
+            ),
+        )
+
+    def add_decision_cancel(self, event: SyntheticCancelRequest) -> None:
+        self.causal_cancels = (*self.causal_cancels, event)
+        self.input_hash = self._input_identity()
+        self._queue_decision_cancel(event)
 
     def _schedule(
         self, kind: _ActionKind, at: datetime, priority: int, trigger: DataHash | None = None
@@ -244,21 +275,15 @@ class _Run:
         self,
         action: _Action,
     ) -> tuple[DecisionReason, SimulatedOutcome | None, SimulatedOutcome | None, Decimal | None]:
+        if action.kind == "decision_cancel":
+            return self._cancel(action)
         if action.kind == "input":
             if action.indexed is None:
                 deny()
             event = action.indexed.event
             if isinstance(event, SyntheticMarketEvent):
                 return self._market(action, event)
-            if self.lifecycle.order_terminal:
-                return DecisionReason.ALREADY_TERMINAL, None, None, None
-            self._control(action, OrderEvent.REQUEST_CANCEL)
-            self.race_available = chance(
-                self.request.simulation.cancel_race_probability_pct,
-                keyed_rng(self.base, action.digest, "cancel_race"),
-            )
-            self._schedule("cancel_ack", action.at + self.latency, 3, action.digest)
-            return DecisionReason.CANCEL_REQUESTED, None, None, None
+            return self._cancel(action)
         if self.lifecycle.order_terminal:
             return DecisionReason.ALREADY_TERMINAL, None, None, None
         if action.kind == "submission":
@@ -278,39 +303,57 @@ class _Run:
             reason = DecisionReason.CANCELED
         return reason, None, None, None
 
+    def _cancel(self, action: _Action) -> tuple[DecisionReason, None, None, None]:
+        if self.lifecycle.order_terminal:
+            return DecisionReason.ALREADY_TERMINAL, None, None, None
+        self._control(action, OrderEvent.REQUEST_CANCEL)
+        self.race_available = chance(
+            self.request.simulation.cancel_race_probability_pct,
+            keyed_rng(self.base, action.digest, "cancel_race"),
+        )
+        # Same-time causal requests all precede their zero-latency acknowledgements.
+        # At a later timestamp the acknowledgement resumes ordinary control priority.
+        priority = 6 if action.kind == "decision_cancel" and self.latency == timedelta(0) else 3
+        self._schedule("cancel_ack", action.at + self.latency, priority, action.digest)
+        return DecisionReason.CANCEL_REQUESTED, None, None, None
+
+    def advance_next(self) -> None:
+        action = heapq.heappop(self.queue)
+        before = len(self.events)
+        reason, selected, realized, percentage = self._process(action)
+        decision = ConfiguredDecision(
+            action.event_id,
+            action.digest,
+            action.at,
+            reason,
+            selected,
+            realized,
+            percentage,
+            tuple(event.event_id for event in self.events[before:]),
+            self.lifecycle.snapshot.snapshot_hash,
+            None if action.indexed is None else action.indexed.delivery_index,
+        )
+        self.decisions.append(decision)
+        if action.indexed is not None:
+            for index in action.indexed.duplicate_indices:
+                self.decisions.append(
+                    replace(
+                        decision,
+                        reason=DecisionReason.DUPLICATE,
+                        selected_outcome=None,
+                        realized_outcome=None,
+                        partial_percentage=None,
+                        generated_event_ids=(),
+                        delivery_index=index,
+                        original_event_id=decision.event_id,
+                    )
+                )
+        self.steps += 1
+
     def advance_to(self, now: datetime) -> ConfiguredOrderResult:
         # Peek first: a partial advance must not discard the next future action.
         while self.queue and self.queue[0].at <= now:
-            action = heapq.heappop(self.queue)
-            before = len(self.events)
-            reason, selected, realized, percentage = self._process(action)
-            decision = ConfiguredDecision(
-                action.event_id,
-                action.digest,
-                action.at,
-                reason,
-                selected,
-                realized,
-                percentage,
-                tuple(event.event_id for event in self.events[before:]),
-                self.lifecycle.snapshot.snapshot_hash,
-                None if action.indexed is None else action.indexed.delivery_index,
-            )
-            self.decisions.append(decision)
-            if action.indexed is not None:
-                for index in action.indexed.duplicate_indices:
-                    self.decisions.append(
-                        replace(
-                            decision,
-                            reason=DecisionReason.DUPLICATE,
-                            selected_outcome=None,
-                            realized_outcome=None,
-                            partial_percentage=None,
-                            generated_event_ids=(),
-                            delivery_index=index,
-                            original_event_id=decision.event_id,
-                        )
-                    )
+            self.advance_next()
         return self.result()
 
     def result(self) -> ConfiguredOrderResult:
@@ -359,6 +402,32 @@ class ConfiguredOrderSession:
             return queue[0].at
         return None
 
+    @property
+    def next_event_key(self) -> tuple[datetime, int] | None:
+        """Time and control priority for stable cross-order merging by the caller."""
+        if self.next_event_at is None:
+            return None
+        action = self._run.queue[0]
+        return action.at, action.priority
+
+    def _stage(self) -> _Run:
+        candidate = copy(self._run)
+        candidate.queue = list(self._run.queue)
+        candidate.decisions = list(self._run.decisions)
+        return candidate
+
+    def advance_next(self) -> ConfiguredOrderResult:
+        """Publish exactly one queued action, not all actions at that timestamp."""
+        with checked():
+            key = self.next_event_key
+            if key is None:
+                deny(ConfiguredErrorReason.ORDERING)
+            candidate = self._stage()
+            candidate.advance_next()
+            result = candidate.result()
+            self._run, self._result, self._through = candidate, result, key[0]
+            return result
+
     def advance_to(self, now: datetime) -> ConfiguredOrderResult:
         with checked():
             utc(now)
@@ -369,12 +438,42 @@ class ConfiguredOrderSession:
                 deny(ConfiguredErrorReason.ORDERING)
             # Only the queue/decision lists are mutable; all remaining state is frozen.
             # Stage the whole advance so an accounting failure cannot publish its prefix.
-            candidate = copy(self._run)
-            candidate.queue = list(self._run.queue)
-            candidate.decisions = list(self._run.decisions)
+            candidate = self._stage()
             result = candidate.advance_to(now)
             self._run, self._result, self._through = candidate, result, now
             return result
+
+    def cancel_after_observation(self, event: SyntheticCancelRequest) -> None:
+        """Queue one equity cancel after the fully observed current timestamp.
+
+        This explicitly later causal phase cannot preempt its triggering fill. A zero-latency
+        acknowledgement becomes eligible only after this request is processed. Ordinary
+        delivery at a published timestamp remains forbidden, and no synthetic delay is added.
+        """
+        with checked():
+            if type(event) is not SyntheticCancelRequest:
+                deny()
+            event.__post_init__()
+            request = self._run.request
+            if (
+                type(request) is not InstrumentConfiguredOrderRequest
+                or self._through is None
+                or event.cursor.occurred_at != self._through
+                or event.cursor.sequence <= request.initial.submitted.sequence
+                or (self.next_event_at is not None and self.next_event_at <= self._through)
+                or self._run.lifecycle.snapshot.order.state
+                not in {OrderState.SUBMITTED, OrderState.PARTIALLY_FILLED}
+                or self._run.causal_cancels
+                or any(isinstance(item, SyntheticCancelRequest) for item in request.events)
+                or any(item.event_id == event.event_id for item in request.events)
+            ):
+                deny(ConfiguredErrorReason.ORDERING)
+            # Validate even when the acknowledgement lies beyond the scenario horizon.
+            event.cursor.occurred_at + self._run.latency
+            candidate = self._stage()
+            candidate.add_decision_cancel(event)
+            result = candidate.result()
+            self._run, self._result = candidate, result
 
     def deliver(self, event: SyntheticInputEvent) -> None:
         with checked():
@@ -384,8 +483,16 @@ class ConfiguredOrderSession:
             if self._through is not None and event.cursor.occurred_at <= self._through:
                 deny(ConfiguredErrorReason.ORDERING)
             request = replace(self._run.request, events=(*self._run.request.events, event))
-            candidate = _Run(request)
-            result = (
-                candidate.result() if self._through is None else candidate.advance_to(self._through)
-            )
+            candidate = _Run(request, self._run.causal_cancels)
+            # Rebuild the exact processed prefix, not a whole timestamp. A single-step
+            # publication can still have queued same-time actions, including a causal cancel.
+            for _ in range(self._run.steps):
+                candidate.advance_next()
+            result = candidate.result()
+            if (
+                result.events != self._result.events
+                or result.decisions != self._result.decisions
+                or result.lifecycle != self._result.lifecycle
+            ):
+                deny(ConfiguredErrorReason.ORDERING)
             self._run, self._result = candidate, result
