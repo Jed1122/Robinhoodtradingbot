@@ -40,6 +40,10 @@ class InvalidCapabilityManifest(CapabilityValidationError):
     """Raised when a capability manifest cannot be safely committed or queried."""
 
 
+class InvalidCapabilityVerification(CapabilityValidationError):
+    """A scoped verification observation is malformed or contradictory."""
+
+
 class CapabilityNotFoundError(LookupError):
     """Raised when an exact provider and operation key is absent."""
 
@@ -82,6 +86,25 @@ class OperationKind(StrEnum):
     REVIEW = "review"
     PLACE = "place"
     CANCEL = "cancel"
+
+
+class CapabilityAssetClass(StrEnum):
+    """Metadata-only extension; never accepted by the legacy order validator."""
+
+    OPTIONS = "options"
+
+
+class VerificationDimension(StrEnum):
+    PUBLIC = "public"
+    SESSION = "session"
+    ACCOUNT = "account"
+    RUNTIME = "runtime"
+
+
+class VerificationStatus(StrEnum):
+    VERIFIED = "verified"
+    DENIED = "denied"
+    UNKNOWN = "unknown"
 
 
 def _safe_error_text(value: object, fallback: str) -> str:
@@ -156,7 +179,7 @@ class CapabilityRecord:
 
     provider: str
     operation: str
-    asset_class: AssetClass
+    asset_class: AssetClass | CapabilityAssetClass
     operation_kind: OperationKind
     evidence: tuple[CapabilityEvidence, ...]
     limitations: tuple[str, ...]
@@ -166,7 +189,7 @@ class CapabilityRecord:
         _require_nonempty_string(self.provider, "provider", InvalidCapabilityRecord)
         if not _is_operation_identifier(self.operation):
             raise InvalidCapabilityRecord("operation must be a bounded identifier")
-        if type(self.asset_class) is not AssetClass:
+        if type(self.asset_class) not in {AssetClass, CapabilityAssetClass}:
             raise InvalidCapabilityRecord("asset_class must be an AssetClass")
         if type(self.operation_kind) is not OperationKind:
             raise InvalidCapabilityRecord("operation_kind must be an OperationKind")
@@ -207,7 +230,92 @@ class CapabilityRecord:
         levels = frozenset(item.level for item in validated.evidence)
         if required is EvidenceLevel.UNSUPPORTED:
             return levels == {EvidenceLevel.UNSUPPORTED}
-        return validated.locked_reason is None and required in levels
+        return (
+            validated.asset_class is not CapabilityAssetClass.OPTIONS
+            and validated.locked_reason is None
+            and required in levels
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityVerification:
+    """One expiring, operation-scoped witness; refs are opaque local commitments.
+
+    Evidence history is retained, including denials. No witness grants trading authority.
+    Synthetic witnesses are always ineligible, regardless of their stated status.
+    """
+
+    provider: str
+    operation: str
+    dimension: VerificationDimension
+    status: VerificationStatus
+    evidence: CapabilityEvidence
+    valid_until: datetime
+    session_ref: str | None
+    account_ref: str | None
+    runtime_ref: str | None
+    synthetic: bool
+
+    def __post_init__(self) -> None:
+        valid = False
+        try:
+            _require_nonempty_string(self.provider, "provider", InvalidCapabilityVerification)
+            if not _is_operation_identifier(self.operation):
+                raise ValueError
+            if (
+                type(self.dimension) is not VerificationDimension
+                or type(self.status) is not VerificationStatus
+            ):
+                raise ValueError
+            evidence = _rebuild_evidence(self.evidence)
+            if (
+                evidence is None
+                or type(self.valid_until) is not datetime
+                or type(self.synthetic) is not bool
+            ):
+                raise ValueError
+            expiry = require_utc(self.valid_until)
+            if expiry <= evidence.observed_at:
+                raise ValueError
+            required_refs = {
+                VerificationDimension.PUBLIC: (False, False, False),
+                VerificationDimension.SESSION: (True, False, False),
+                VerificationDimension.ACCOUNT: (False, True, False),
+                VerificationDimension.RUNTIME: (False, True, True),
+            }[self.dimension]
+            for value, required in zip(
+                (self.session_ref, self.account_ref, self.runtime_ref), required_refs, strict=True
+            ):
+                if required:
+                    if type(value) is not str or _SHA256_HEX.fullmatch(value) is None:
+                        raise ValueError
+                elif value is not None:
+                    raise ValueError
+            allowed_levels = {
+                VerificationDimension.PUBLIC: {EvidenceLevel.DOCUMENTED},
+                VerificationDimension.SESSION: {EvidenceLevel.SCHEMA_DECLARED},
+                VerificationDimension.ACCOUNT: {EvidenceLevel.AUTHENTICATED_READ_VERIFIED},
+                VerificationDimension.RUNTIME: _AUTHENTICATED_LEVELS,
+            }[self.dimension]
+            if evidence.level not in allowed_levels and (
+                self.status is VerificationStatus.VERIFIED
+                or evidence.level is not EvidenceLevel.UNSUPPORTED
+            ):
+                raise ValueError
+            if (
+                self.dimension is not VerificationDimension.PUBLIC
+                and evidence.schema_sha256 is None
+            ):
+                raise ValueError
+            object.__setattr__(self, "evidence", evidence)
+            object.__setattr__(self, "valid_until", expiry)
+            valid = True
+        except MemoryError:
+            raise
+        except Exception:
+            valid = False
+        if not valid:
+            raise InvalidCapabilityVerification("capability verification is invalid") from None
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,6 +323,7 @@ class CapabilityManifest:
     """Deterministically ordered unique capability records."""
 
     records: tuple[CapabilityRecord, ...]
+    verifications: tuple[CapabilityVerification, ...] = ()
 
     def __post_init__(self) -> None:
         _require_exact_tuple(self.records, "records", InvalidCapabilityManifest)
@@ -249,6 +358,58 @@ class CapabilityManifest:
             self,
             "records",
             tuple(sorted(records, key=lambda item: (item.provider, item.operation))),
+        )
+        _require_exact_tuple(self.verifications, "verifications", InvalidCapabilityManifest)
+        witnesses: list[CapabilityVerification] = []
+        witness_keys: set[tuple[object, ...]] = set()
+        by_key = {(item.provider, item.operation): item for item in records}
+        for raw in self.verifications:
+            witness = _rebuild_verification(raw)
+            if witness is None:
+                raise InvalidCapabilityManifest("capability verification is invalid")
+            record = by_key.get((witness.provider, witness.operation))
+            if record is None:
+                raise InvalidCapabilityManifest("verification has no operation record")
+            key = (
+                witness.provider,
+                witness.operation,
+                witness.dimension,
+                witness.session_ref,
+                witness.account_ref,
+                witness.runtime_ref,
+                witness.evidence.observed_at,
+            )
+            if key in witness_keys:
+                raise InvalidCapabilityManifest("verification history is ambiguous")
+            if (
+                witness.dimension is VerificationDimension.RUNTIME
+                and witness.status is VerificationStatus.VERIFIED
+                and record.operation_kind
+                in {OperationKind.REVIEW, OperationKind.PLACE, OperationKind.CANCEL}
+                and witness.evidence.level is not EvidenceLevel.AUTHENTICATED_WRITE_REVIEWED
+            ):
+                raise InvalidCapabilityManifest(
+                    "write runtime requires operation-specific write evidence"
+                )
+            witness_keys.add(key)
+            witnesses.append(witness)
+        object.__setattr__(
+            self,
+            "verifications",
+            tuple(
+                sorted(
+                    witnesses,
+                    key=lambda item: (
+                        item.provider,
+                        item.operation,
+                        item.dimension.value,
+                        item.session_ref or "",
+                        item.account_ref or "",
+                        item.runtime_ref or "",
+                        item.evidence.observed_at,
+                    ),
+                )
+            ),
         )
 
     def find(self, *, provider: str, operation: str) -> CapabilityRecord:
@@ -321,7 +482,31 @@ def _rebuild_manifest(value: object) -> CapabilityManifest | None:
     try:
         if type(value.records) is not tuple:
             raise TypeError
-        rebuilt = CapabilityManifest(records=value.records)
+        rebuilt = CapabilityManifest(records=value.records, verifications=value.verifications)
+    except MemoryError:
+        raise
+    except Exception:
+        rebuilt = None
+    return rebuilt
+
+
+def _rebuild_verification(value: object) -> CapabilityVerification | None:
+    if type(value) is not CapabilityVerification:
+        return None
+    rebuilt: CapabilityVerification | None = None
+    try:
+        rebuilt = CapabilityVerification(
+            provider=value.provider,
+            operation=value.operation,
+            dimension=value.dimension,
+            status=value.status,
+            evidence=value.evidence,
+            valid_until=value.valid_until,
+            session_ref=value.session_ref,
+            account_ref=value.account_ref,
+            runtime_ref=value.runtime_ref,
+            synthetic=value.synthetic,
+        )
     except MemoryError:
         raise
     except Exception:

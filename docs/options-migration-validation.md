@@ -113,7 +113,7 @@ restart, production schema migration or production-state inspection occurred.
 | 1 Migration contract and foundation | Initial foundation implemented and tested; not evidence that all downstream use is ready. |
 | 2 Complete offline single-leg slice | Working synthetic single-unit long-call path and bounded saved-input replay/report commands. Historical/vendor imports, puts, partial/package scenarios and complete common risk composition remain unfinished. |
 | 3 Historical data and economic research | Provider comparison, strict six-kind point-in-time record codec, exact Parquet/DuckDB storage, pinned QuantLib pricing/Greeks/stress and terminal package payoff research implemented. Pending: provider-specific acquisition/import mapping and licensing, economic hypotheses, package execution, full risk integration and empirical scorecards. No market data acquired. |
-| 4 Official capabilities and locked integration | Dated public/session evidence audit documents four independent dimensions and single-leg limits. Manifest integration, options schemas/fake transports, operation-specific composition and account/runtime evidence remain pending. No broker/account calls. |
+| 4 Official capabilities and locked integration | Dated public/session audit, version-2 scoped manifest history, four-dimensional evidence assessment and locked options declaration classification implemented. Official response schemas/fake transports, execution-owner composition and actual account/runtime evidence remain pending. No broker/account calls. |
 | 5 Durable lifecycle and operation | Additive synthetic trial journal, immutable history, restart reconstruction and lease fencing fixes implemented. Full normalized options ledger, replay/service wiring, reconciliation, expiry/assignment incidents, recovery and continuous scheduling remain pending. No production migration. |
 | 6 Deployment preparation and handoff | Deterministic credential-free deployment preparation report and research CI definition implemented. Options runtime benchmark, encrypted restore drill, live costs, heartbeat and complete operator surface remain pending. Existing DigitalOcean deployment manifests preserved. |
 
@@ -263,3 +263,43 @@ Prior Docker Compose availability limitations remain; static tests are not deplo
 All six milestone status rows and separate readiness verdicts above remain binding. No broker
 or account calls, orders, paid services, Cloud jobs, infrastructure changes, production-state
 inspection, deployment or production migrations occurred.
+
+## Scoped capability-evidence continuation from `cf09c6d`
+
+The existing capability manifest and loader now support version-2 verification history,
+without changing version-1 artifacts or the legacy order validator. Public, session, account
+and runtime witnesses are independent and operation-specific. Schema and opaque identity
+bindings, expiry, historical denials and synthetic status are enforced. No current authenticated
+account/runtime witness was acquired or asserted.
+
+Known options declarations now receive an explicit metadata-only options classification and
+remain locked. The legacy single-category capability gate cannot unlock options. The new
+assessment's production-eligibility property is permanently false, including when test
+witnesses satisfy all dimensions. A review-found duplicate-dimension reporting defect was
+reproduced with a failing test and fixed; exact types and all four distinct dimensions are
+required. Scoped re-review confirmed both this fix and the legacy-gate denial.
+
+See [scope, semantics and remaining integration](options-capability-verification.md).
+This completes the evidence-model slice, not the broker-integration milestone or live readiness.
+
+Final refreshed full suite: **5,068 passed, 11 optional-backend skips**, **86.90%** overall
+coverage, 284.50 seconds. The expanded **90% per-file critical branch gate passed**;
+`capabilities/verification.py` has **18/18 branches covered**. The separate pinned research
+selection again passed **92 tests with no skips**. Its independent CI review also ran that
+selection under a global Python socket-denial harness and confirmed 92 passes.
+
+Ruff, Mypy (217 source files), Bandit, both offline lock checks, final wheel/source build and
+diff checks passed. The previously recorded locked dependency audits and temporary SBOM
+validation apply unchanged; no dependencies changed in this evidence slice. Existing Bandit
+comment warnings and the Starlette/httpx warning remain. The final coverage artifact is
+`/private/tmp/robinhood-options-foundations.tUIbHH/verified-final-coverage.json`.
+
+Standalone deployment-plan and capital-feasibility commands were exercised locally. For the
+fabricated $0.10 premium, 100 multiplier and $1 bounded fee reserve, the $100 capital tier
+admits zero units under its $0.50 per-trade budget. This is a necessary filter, not a final
+pretrade check, observed market opportunity or recommendation to add capital. All tiers
+remain production-ineligible and the economic verdict remains `ECONOMIC_NO_GO`.
+
+Existing staged root `uv.lock`, the dirty tracked SBOM and all unrelated working-tree files
+were preserved. Local checkpoints were not pushed. No external account/broker activity,
+Cloud jobs, deployment, production migrations or real-money actions occurred.

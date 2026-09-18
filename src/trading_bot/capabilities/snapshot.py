@@ -18,6 +18,7 @@ from typing import Protocol, cast
 from mcp import types
 
 from trading_bot.capabilities.models import (
+    CapabilityAssetClass,
     CapabilityEvidence,
     CapabilityManifest,
     CapabilityRecord,
@@ -46,9 +47,7 @@ type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 _PROVIDER = "robinhood-trading"
 _TOOL_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,127})?\Z")
 _SCHEMA_IDENTIFIER = re.compile(r"[-A-Za-z0-9_$.[\]]{1,256}\Z")
-_NATURAL_LONG_IDENTIFIER = re.compile(
-    r"[a-z][a-z0-9]{0,23}(?:_[a-z][a-z0-9]{0,23}){2,}\Z"
-)
+_NATURAL_LONG_IDENTIFIER = re.compile(r"[a-z][a-z0-9]{0,23}(?:_[a-z][a-z0-9]{0,23}){2,}\Z")
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _JSON_SCHEMA_TYPES = frozenset(
     {"array", "boolean", "integer", "null", "number", "object", "string"}
@@ -112,6 +111,17 @@ _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
     "get_portfolio": (AssetClass.EQUITY, OperationKind.READ),
     "place_equity_order": (AssetClass.EQUITY, OperationKind.PLACE),
     "review_equity_order": (AssetClass.EQUITY, OperationKind.REVIEW),
+}
+_OPTIONS_TOOLS: dict[str, OperationKind] = {
+    "get_option_chains": OperationKind.READ,
+    "get_option_instruments": OperationKind.READ,
+    "get_option_historicals": OperationKind.READ,
+    "get_option_quotes": OperationKind.READ,
+    "get_option_positions": OperationKind.READ,
+    "get_option_orders": OperationKind.READ,
+    "review_option_order": OperationKind.REVIEW,
+    "place_option_order": OperationKind.PLACE,
+    "cancel_option_order": OperationKind.CANCEL,
 }
 
 
@@ -367,9 +377,7 @@ def _sanitize_tools_page(
         for declared in raw_tools:
             if type(declared) is not types.Tool:
                 raise TypeError
-            converted.append(
-                _sanitize_tool(declared, omit_descriptions=omit_descriptions)
-            )
+            converted.append(_sanitize_tool(declared, omit_descriptions=omit_descriptions))
         sanitized = tuple(converted)
         cursor = raw_cursor
     except CapabilitySnapshotError:
@@ -421,9 +429,7 @@ def _sanitize_tool(
     description = tool.description
     if omit_descriptions:
         input_value = _strip_schema_descriptions(input_value)
-        output_value = (
-            None if raw_output is None else _strip_schema_descriptions(raw_output)
-        )
+        output_value = None if raw_output is None else _strip_schema_descriptions(raw_output)
         description = None
     if type(input_value) is not dict or (
         output_value is not None and type(output_value) is not dict
@@ -452,6 +458,7 @@ def _sanitize_tool(
 
 def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> CapabilityRecord:
     reviewed = _REVIEWED_TOOLS.get(tool.name)
+    asset_class: AssetClass | CapabilityAssetClass
     asset_class, operation_kind = reviewed or (AssetClass.EQUITY, OperationKind.DISCOVER)
     locked_reason = (
         None if reviewed is not None else "tool name is not in the reviewed operation allowlist"
@@ -459,7 +466,15 @@ def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> Cap
     limitations: tuple[str, ...] = (
         "tools/list is unauthenticated schema evidence only; no tool was invoked",
     )
-    if reviewed is None:
+    if tool.name in _OPTIONS_TOOLS:
+        asset_class = CapabilityAssetClass.OPTIONS
+        operation_kind = _OPTIONS_TOOLS[tool.name]
+        locked_reason = "options account, runtime, lifecycle and authorization evidence pending"
+        limitations += (
+            "Codex-session declarations do not establish standalone runtime capability",
+            "options writes are single-leg only; package execution remains unavailable",
+        )
+    elif reviewed is None:
         limitations += ("asset class and operation safety remain unclassified",)
     return CapabilityRecord(
         provider=_PROVIDER,
@@ -582,8 +597,7 @@ def _strip_schema_descriptions(value: JsonValue) -> JsonValue:
             continue
         if key in _SCHEMA_MAPPING_KEYS and type(item) is dict:
             stripped[key] = {
-                name: _strip_schema_descriptions(schema)
-                for name, schema in item.items()
+                name: _strip_schema_descriptions(schema) for name, schema in item.items()
             }
             continue
         if key in _SCHEMA_LIST_KEYS and type(item) is list:
@@ -738,9 +752,7 @@ def _scan_sensitive(
                 )
                 for property_name in item
             ):
-                raise UnsafeCapabilitySnapshot(
-                    "capability snapshot contains sensitive material"
-                )
+                raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
             continue
         sensitive_schema_alias = _name_is_sensitive(key) and _looks_like_schema(item)
         if _name_is_sensitive(key) and not sensitive_schema_alias and _contains_value(item):

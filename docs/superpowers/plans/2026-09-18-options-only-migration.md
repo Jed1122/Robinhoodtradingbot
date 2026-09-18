@@ -185,3 +185,18 @@ lock, referencing the existing local Python package. This separates heavy resear
 production and preserves the user's staged root lockfile. It does not create a second
 trading config or risk policy. No existing dirty main CLI/docs file is overwritten; additive
 operator composition remains separate until its integration can preserve existing work.
+
+### Implemented checkpoints in this continuation
+
+- `cf09c6d`: normalized provenance/codec/Parquet foundations, pinned numerical research,
+  terminal payoff models, immutable synthetic trial journal and fencing, static deployment
+  report and isolated research CI. Full local suite: 5,008 passed, 86.80%; critical gate passed.
+- Capability evidence slice: extend the existing manifest/loader with strict v2 observations,
+  independent scopes, expiry and negative history; retain v1 and legacy order boundaries.
+  Classify known options declarations but keep all production capability locked. Review
+  response parsers, fake transport, execution owner and account/runtime verification remain
+  follow-on work, not implied by evidence-model completion.
+
+The migration remains partial. Every externally blocked item is separate from unfinished
+credential-free engineering in the tracked migration validation report. No approval for
+broker/account access, purchases, Cloud execution, deployment or live trading is inferred.

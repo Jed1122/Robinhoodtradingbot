@@ -24,6 +24,10 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
     if order_state_machine.is_file():
         modules.append(order_state_machine)
 
+    capability_verification = source_root / "capabilities" / "verification.py"
+    if capability_verification.is_file():
+        modules.append(capability_verification)
+
     for filename in ("lease.py", "options_trial.py"):
         persistence_module = source_root / "persistence" / filename
         if persistence_module.is_file():
