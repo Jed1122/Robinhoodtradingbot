@@ -67,8 +67,11 @@ estimate matching underlying data, corporate actions, storage or other costs.
   remain false. No trading flags or canonical risk limits are changed.
 - `network_used` denotes an attempted metadata operation, including uncertain
   transport failures; it does not certify that the provider received the request.
-- Licenses and rights to store, replay and process data locally or in Cloud still
-  require review. Do not share raw licensed data with Cloud agents by default.
+- The diagnostic does not verify licenses or local/Cloud usage rights. For the current
+  private historical research scope, the operator has attested permitted use and local
+  retention and directed us to proceed without requesting a separate agreement document.
+  That does not authorize redistribution or raw-data access by Cloud agents. See the
+  [current acquisition decision](databento-acquisition-next-steps.md).
 - Historical usage limits should be configured in the provider portal, but the
   documented limit blocks requests after usage exceeds the limit; do not treat
   this as a guaranteed exact spending cap or protection for live-data usage.
@@ -104,9 +107,22 @@ Quotes were received at 23:55:17–23:56:04 UTC. These are account/request-speci
 estimates, not charges or guarantees. Even one full year of broad SPY option-chain
 minute quotes exceeds the reported credits before adding other data. Do not
 download the broad history. A later acquisition plan should freeze the hypothesis
-and selection rules, verify rights/coverage and quote the necessary contract subset
+and selection rules, record the operator-attested permitted-use scope, validate
+coverage and quote the necessary contract subset
 before requesting approval for any credit use. A small sample can validate the
 importer but cannot establish an economic edge or satisfy the holdout requirements.
 
 No time-series data, batch job, live feed, account-management operation or broker
 call was requested. Download and trading authorization remain false.
+
+### Subsequent acquisition continuation
+
+At `2026-09-19T00:45:38.965782+00:00`, one additional free cost-only request refreshed
+the exact three-year SPY definition scope above: **$11.435879766941**. The 68 diagnostic
+tests passed immediately beforehand. No download or credit expenditure occurred.
+The operator no longer requires supplying a separate OPRA agreement; existing private
+use/local-retention permission is operator-attested, not provider-verified. A separate
+definitions-only acquisition of up to $12 in existing credits is now explicitly
+approved, with no cash charges, subscriptions, quote downloads or live data. The
+billing portal requires browser sign-in before its current credit balance can be
+verified; a sign-in tab is open for the operator. No acquisition has been submitted.

@@ -1,8 +1,10 @@
 # Databento acquisition: decisions before spending credits
 
-2026-09-18. The operator reports $125 unused credit. Prior free authenticated metadata
-estimates are recorded in [the preflight guide](databento-preflight.md); this continuation
-made no authenticated requests and spent no credits. The replacement key remains private.
+2026-09-18 local date. The operator reports $125 unused credit. Prior free authenticated
+metadata estimates are recorded in [the preflight guide](databento-preflight.md).
+The observation/expiry implementation made no authenticated requests. The subsequent
+acquisition continuation refreshed one free definition-cost estimate as recorded below;
+no history was downloaded and no credits were spent. The replacement key remains private.
 
 During this continuation the operator confirmed that Databento permits the account's
 private automated historical OPRA research/trading and local retention. This is recorded
@@ -10,6 +12,15 @@ as **operator-attested**, not a separately inspected license document or provide
 entitlement. It is not spending approval or permission for redistribution/Cloud access.
 
 ## Current decision
+
+The operator subsequently instructed us to proceed without obtaining a separate
+OPRA agreement document. Proceed on the existing operator attestation of permitted
+private automated historical use and local retention; requesting another agreement
+or support reply is **not a prerequisite**. This changes the documentary requirement,
+not actual provider restrictions or the distinction between attestation and independently
+verified entitlement. Do not mark `download_entitlement_verified` true, bypass provider
+access denials, accept new terms, buy a subscription or share raw data with Cloud agents.
+Spending authorization remains a separate decision.
 
 Do not download broad SPY option quotes: the observed 2025 `cbbo-1m` estimate was
 $141.845587790012, and the 2023-2026 estimate was $396.336761265993. Both exceed the
@@ -24,10 +35,11 @@ scope will fit $125 or meet research requirements. [Official options example](ht
 
 Before acquisition:
 
-1. Confirm historical OPRA licensing for this user's private, personal, automated
-   research and eventual trading, including retention, private backups, derived results
-   and any exchange/provider charges. Display-plan status and free credit do not answer
-   those questions. No raw data is to be sent to Cloud agents or redistributed.
+1. Record the operator's existing private-use/local-retention attestation and instruction
+   to proceed without a separate agreement. Do not infer additional sharing, perpetual
+   post-termination use or fee exemptions from it. If acquisition requires a new agreement,
+   fee or access grant, stop for the operator; do not circumvent the provider's controls.
+   No raw data is to be sent to Cloud agents or redistributed.
 2. Freeze the contract-selection rule and development/validation/final-test split before
    examining outcomes. Use definitions and information available at the decision time.
    Do not shorten evidence requirements or select favorable contracts to force a GO.
@@ -41,9 +53,35 @@ Before acquisition:
 5. After an authorized acquisition, validate completeness/provenance and retain raw
    hashes and usage-rights records. Only then run the frozen research procedure.
 
-No concrete historical-download purchase has yet been authorized. The operator's
-confirmation is recorded for planning; it is not independent verification of the
-account's OPRA terms, retention rights, additional charges or spending authorization.
+Only the definitions-only acquisition described below is now authorized, up to $12
+of existing credit and no cash spending. The private-use/local-retention attestation
+is not independent verification of the account's OPRA terms or additional charges.
+
+## Definitions-only proposal — refreshed 2026-09-19 00:45:38 UTC
+
+One successful free `metadata.get_cost` call returned **$11.435879766941** for
+`OPRA.PILLAR`, parent `SPY.OPT`, schema `definition`, from `2023-01-01T00:00:00Z`
+inclusive to `2026-01-01T00:00:00Z` exclusive. This is the same estimate as the prior
+check, not a bill or a verified credit balance. The existing diagnostic's 68 tests
+passed before the request; its credential is read only internally and never printed.
+
+The operator explicitly approved **at most $12 of existing credit**, definitions
+only, no cash charges, subscriptions, quotes or live data. This approval is confined to
+the exact scope above; do not ask for the same approval again unless its conditions
+change. Stop if credit coverage or the cost conditions cannot be established. Definitions
+support point-in-time contract identity/selection; they contain no bid/ask execution
+history and cannot alone establish economic evidence. No historical downloader is
+implemented in the existing cost-only diagnostic; an acquisition path still needs
+implementation and verification before use, or the official portal can be used under
+the same authorization after verifying its request and credit conditions.
+
+The free diagnostic does not expose current billing credits. The official billing
+page redirected to sign-in in the in-app browser; two native Safari access attempts
+timed out without reading the existing session. A Databento sign-in tab was opened
+for operator handoff. No login credentials were requested in chat, no account settings
+were changed, and no acquisition was submitted. Next: operator signs in, inspect
+remaining eligible credits and the exact definitions request, then acquire only if
+the approved credit-only/cost conditions hold. No separate OPRA agreement is pending.
 
 ## Supplied terms review — 2026-09-18
 
@@ -61,11 +99,11 @@ OPRA permissions or indefinite retention/use rights.
 
 The public [Exchange Data Policy](https://databento.com/legal/exchange-data-policy)
 currently addresses CME non-professional data, not OPRA. CME conditions must not be
-applied to OPRA by analogy. Preserve the applicable OPRA terms or a provider reply
-covering the intended historical use and retention before acquisition. No extra
+applied to OPRA by analogy. These are historical review findings, not an outstanding
+request for another document after the operator's later instruction above. No extra
 subscription or exchange fee is presumed either necessary or waived.
 
-## Suggested support question (not sent)
+## Optional support question (not sent; no longer an acquisition prerequisite)
 
 “I plan to use historical OPRA.PILLAR instrument definitions and bid/ask observations
 for my own private automated options research and eventual personal trading. There
