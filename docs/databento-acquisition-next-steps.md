@@ -1,10 +1,13 @@
 # Databento acquisition: decisions before spending credits
 
-2026-09-18 local date. The operator reports $125 unused credit. Prior free authenticated
+2026-09-18 local date. Before acquisition, the authenticated billing page confirmed
+$125 unused credit and $0 balance due. Prior free authenticated
 metadata estimates are recorded in [the preflight guide](databento-preflight.md).
 The observation/expiry implementation made no authenticated requests. The subsequent
-acquisition continuation refreshed one free definition-cost estimate as recorded below;
-no history was downloaded and no credits were spent. The replacement key remains private.
+acquisition continuation refreshed one free definition-cost estimate as recorded below.
+After scoped operator approval and browser sign-in, one $11.44 definitions request was
+submitted and accepted as queued; final charge and local file receipt remain unverified.
+The replacement key remains private and was not read during the browser submission.
 
 During this continuation the operator confirmed that Databento permits the account's
 private automated historical OPRA research/trading and local retention. This is recorded
@@ -75,13 +78,33 @@ implemented in the existing cost-only diagnostic; an acquisition path still need
 implementation and verification before use, or the official portal can be used under
 the same authorization after verifying its request and credit conditions.
 
-The free diagnostic does not expose current billing credits. The official billing
-page redirected to sign-in in the in-app browser; two native Safari access attempts
-timed out without reading the existing session. A Databento sign-in tab was opened
-for operator handoff. No login credentials were requested in chat, no account settings
-were changed, and no acquisition was submitted. Next: operator signs in, inspect
-remaining eligible credits and the exact definitions request, then acquire only if
-the approved credit-only/cost conditions hold. No separate OPRA agreement is pending.
+The initial browser sign-in blocker was resolved by the operator. The authenticated
+billing page showed $125 remaining credits and $0 due before submission. No login
+credentials were requested in chat, and no account settings were changed. No separate
+OPRA agreement is pending.
+
+## Accepted portal request — 2026-09-19 00:53 UTC
+
+The official portal accepted one request showing **$11.44**, below the approved $12
+credit-only cap. Request details confirm `SPY.OPT`, Definition, DBN/zstd, direct
+download and `[2023-01-01 00:00 UTC, 2026-01-01 00:00 UTC)`. Optional file splitting
+is off; the portal shows four output files. The last verified provider state is
+**Queued**, not completed. Do not create a duplicate request or purchase another format.
+Final billed cost, post-acquisition credits and local file integrity remain unverified.
+While the job remained queued, a subsequent billing-page check still showed $125 in
+credits and $0 due. That is not evidence that the accepted request is free; final
+accounting is pending.
+
+The request identifier and exact acquisition details are stored in a private receipt
+outside Git under the existing private research directory, not in a Cloud task or
+tracked artifact. No payment-method details, API keys or provider payloads are stored
+in this guide. No subscription, quote data, live data or broker action was requested.
+
+Next: retrieve the existing job's files when ready, preserve its provider metadata and
+checksums, and inventory file sizes/hashes privately. Existing canonical record/Parquet
+verification does not decode raw DBN: a reviewed provider-definition decoder and mapping
+are still missing. Definitions alone do not establish complete point-in-time chains,
+executable quotes, historical availability, trading performance or promotion eligibility.
 
 ## Supplied terms review — 2026-09-18
 

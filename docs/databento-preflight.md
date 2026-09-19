@@ -124,5 +124,8 @@ The operator no longer requires supplying a separate OPRA agreement; existing pr
 use/local-retention permission is operator-attested, not provider-verified. A separate
 definitions-only acquisition of up to $12 in existing credits is now explicitly
 approved, with no cash charges, subscriptions, quote downloads or live data. The
-billing portal requires browser sign-in before its current credit balance can be
-verified; a sign-in tab is open for the operator. No acquisition has been submitted.
+billing portal initially required browser sign-in. After the operator signed in,
+the portal confirmed $125 credit and $0 due; one exact-scope $11.44 definitions-only
+batch was submitted at 2026-09-19 00:53 UTC and accepted as queued. This browser action
+does not add download capability to the cost-only diagnostic. Completion, final cost
+and local files remain unverified; see the acquisition guide before any follow-up.
