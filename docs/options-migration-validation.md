@@ -380,3 +380,45 @@ Their absence cannot be repaired by fabricated fixtures, extra capital, a plugin
 No broker/account calls, paid data, purchases, Cloud dispatch, deployment, production migration
 or live activation was authorized or performed. Technical readiness remains NOT_READY;
 economic readiness ECONOMIC_NO_GO; account/runtime capability UNVERIFIED; live NOT_AUTHORIZED.
+
+## Databento credential and metadata preflight — 2026-09-18
+
+User created a Databento account, rotated a key that had been shared in chat, and
+entered the replacement through a hidden native local dialog. The replacement was
+never placed in commands, chat output, Git, configuration snapshots or Cloud tasks.
+It is a restricted plaintext credential file outside Git, not an encrypted vault.
+The old exposed key was not used. The operator reports $125 unused credit; no API
+balance verification is claimed.
+
+Added an isolated credential helper and CLI with default-off network access. Only
+one fixed official free `metadata.get_cost` GET is exposed per explicit invocation;
+no time-series, batch, live-data, account-management or broker operation exists in
+the helper. Requests require explicit symbols, schema and UTC dates. Responses are
+bounded, Decimal-parsed and stripped to safe fields. No redirects, environment
+proxies, retries, raw responses or exception details cross the boundary.
+
+Test-first coverage established missing APIs/CLI before implementation. Independent
+read-only review found main/sibling Git checkout exclusion and hard-linked-key
+retry defects; six new failing regressions reproduced them before fixes. Both
+findings were re-reviewed as resolved. A native-dialog syntax failure was caught
+by actual macOS compilation, reproduced in a new failing compiler test, fixed,
+and followed by successful local credential entry. Mocks alone did not establish
+that native UI integration worked.
+
+Final targeted suite: 68 passed. Broader diagnostics/CLI/architecture selection:
+392 passed. Full suite (collected before adding the last compiler regression):
+5278 passed, 11 optional-backend skips, one existing Starlette/httpx warning,
+87.09% overall coverage, 392.97 seconds. The critical 90% per-file branch gate passed.
+Full Ruff and Mypy (223 source files) pass. Scoped Bandit is clean; full Bandit
+passes with the pre-existing suppression-comment warnings. Dependencies and root
+lockfile were not changed; no new dependency audit/SBOM regeneration is claimed.
+Artifacts: `/private/tmp/databento-preflight.oFsjrD`.
+
+Four real, non-billable metadata estimates established authentication and scoped
+prices only. [Exact scopes and estimates](databento-preflight.md) include $141.8456
+for 2025 SPY.OPT minute quotes and $396.3368 for 2023–2025, both above reported
+credits before other inputs. No market history was downloaded and no credit use
+or purchase was authorized. Retention/non-display/Cloud rights, entitlements,
+research selection, genuine economic evidence, remaining operational engineering
+and live readiness remain unresolved. Existing staged `uv.lock`, dirty SBOM and
+unrelated work were preserved unchanged. These results are local, not Cloud CI.
