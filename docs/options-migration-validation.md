@@ -422,3 +422,56 @@ or purchase was authorized. Retention/non-display/Cloud rights, entitlements,
 research selection, genuine economic evidence, remaining operational engineering
 and live readiness remain unresolved. Existing staged `uv.lock`, dirty SBOM and
 unrelated work were preserved unchanged. These results are local, not Cloud CI.
+
+## Options observation, expiry and paused monitoring — 2026-09-18
+
+Continuation from `690a591`, still a partial implementation of the migration.
+Added immutable normalized account observations, exact cash/position/order/fill/
+share/settlement/lifecycle comparisons, complete-package ownership checks, explicit
+complete-calendar expiry deadlines and a bounded continuous read-only observer.
+The observer uses the existing canonical configuration, scheduler, alerts and
+append-only reconciliation store. Legacy schemas, historical hashes and risk
+limits were not changed. See [scope and remaining work](options-operational-monitor.md).
+
+Failing tests preceded each new core module. Independent review reproduced two
+important false-clean cases: clock rollback above the source timestamp and fills
+on pre-submission order states. Seven failing regressions preceded the fixes;
+scoped re-review confirmed both were addressed. Additional post-implementation
+acceptance tests cover partial complete packages/missing protective legs and DST.
+All new observations use synthetic inputs; socket/DNS denial protects their tests.
+Real temporary SQLite tests verify persistence, append-only results and paused restart.
+
+Final full suite: **5,399 passed, 11 optional-backend skips**, one existing
+Starlette/httpx warning, **87.68% overall coverage**, 342.05 seconds. The **90%
+per-file critical branch gate passed**, including the new modules: account records
+34/34, expiry 44/44, reconciliation 97/98 and monitor 42/42 branches. Separate pinned
+QuantLib/DuckDB research selection: **38 passed**. Full Ruff and Mypy (228 source
+files) pass; Bandit passes with existing suppression-comment warnings. Root locked
+dependency audit reports no known vulnerabilities, `uv lock --check` passes and
+DigitalOcean shell syntax passes. Existing manifest/SBOM tests passed in the full
+suite; tracked SBOM was not regenerated. Docker Compose rendering remains unverified
+because the installed CLI does not provide usable Compose. No clean-checkout or
+remote CI result is claimed. Artifacts: `/private/tmp/options-operational.70j5uy`,
+especially `pytest-final.log` and `final.json`.
+
+The main agent owns all reconciliation/lifecycle/runtime changes; local delegated
+work was limited to documentation, coverage discovery checks and read-only review.
+Existing staged `uv.lock`, dirty SBOM and unrelated work were preserved. Their lock
+and SBOM hashes match the baseline. No production state was migrated and no service
+was installed or started.
+
+The user attested historical OPRA private automated-use/local-retention permissions,
+then supplied general Website Terms of Use. Public agreement review does not verify
+the account's OPRA-specific terms; the public Exchange Data Policy addresses CME.
+[Acquisition notes](databento-acquisition-next-steps.md) distinguish the attestation,
+supplied document, unresolved rights and missing spending authorization. No credentials
+were read, authenticated calls made, market history downloaded, credits spent, Cloud
+jobs dispatched, broker orders placed or deployment changes made in this continuation.
+
+This observer is not full cash-flow/reservation reconstruction or pretrade risk
+admission, and a clean result grants no execution authority. Engineering still includes
+complete risk/loss-latch composition, normalized lifecycle-ledger recovery, official
+broker parsing and locked execution integration, service/operator composition and the
+preregistered economic-evidence pipeline. Technical readiness remains **NOT_READY**;
+economic readiness **ECONOMIC_NO_GO**; account/runtime capability **UNVERIFIED**;
+live **NOT_AUTHORIZED**. Every observer status remains paused and live-unsupported.

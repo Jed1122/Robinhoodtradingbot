@@ -105,6 +105,63 @@ def test_requires_durable_recorded_options_runtime_branches(tmp_path: Path) -> N
     ]
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "src/trading_bot/domain/options_account.py",
+        "src/trading_bot/reconciliation/options.py",
+        "src/trading_bot/runtime/options_monitor.py",
+    ],
+)
+def test_requires_each_discovered_options_module_to_have_branch_coverage(
+    tmp_path: Path, relative_path: str
+) -> None:
+    root = tmp_path / "project"
+    _source(root, relative_path)
+    report = _report(tmp_path / "coverage.json", {})
+
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative_path}",
+    ]
+
+
+def test_accepts_exact_90_percent_branch_coverage_for_options_modules(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    options_modules = [
+        "src/trading_bot/domain/options_account.py",
+        "src/trading_bot/reconciliation/options.py",
+        "src/trading_bot/runtime/options_monitor.py",
+    ]
+    for relative_path in options_modules:
+        _source(root, relative_path)
+    report = _report(
+        tmp_path / "coverage.json",
+        {relative_path: _entry(10, 9) for relative_path in options_modules},
+    )
+
+    assert _load_checker().check_critical_branch_coverage(report, root) == []
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "src/trading_bot/domain/options_account.py",
+        "src/trading_bot/reconciliation/options.py",
+        "src/trading_bot/runtime/options_monitor.py",
+    ],
+)
+def test_rejects_invalid_branch_coverage_for_each_options_module(
+    tmp_path: Path, relative_path: str
+) -> None:
+    root = tmp_path / "project"
+    _source(root, relative_path)
+    report = _report(tmp_path / "coverage.json", {relative_path: _entry(10, 11)})
+
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"invalid branch counters for {relative_path}",
+    ]
+
+
 def test_requires_discovered_simulation_lifecycle_modules(tmp_path: Path) -> None:
     root = tmp_path / "project"
     _source(root, "src/trading_bot/risk/anchor.py")

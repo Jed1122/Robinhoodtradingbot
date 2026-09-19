@@ -37,6 +37,15 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
     if recorded_options_runtime.is_file():
         modules.append(recorded_options_runtime)
 
+    for relative_path in (
+        Path("domain/options_account.py"),
+        Path("reconciliation/options.py"),
+        Path("runtime/options_monitor.py"),
+    ):
+        options_module = source_root / relative_path
+        if options_module.is_file():
+            modules.append(options_module)
+
     simulation_directory = source_root / "simulation"
     if simulation_directory.is_dir():
         modules.extend(simulation_directory.glob("lifecycle*.py"))
