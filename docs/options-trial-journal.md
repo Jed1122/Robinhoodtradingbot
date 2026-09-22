@@ -44,11 +44,45 @@ old losses. Streaming reconstruction is required before supporting larger histor
 Downgrade refuses a nonempty trial table to prevent erasing economic history. Operators
 must not treat code rollback as permission to remove durable evidence.
 
+## Existing recorded replay integration
+
+`RecordedOptionsSession` already coordinates this journal with the synthetic replay.
+`start` durably reserves the episode before any simulated acceptance. `restore` verifies
+the saved checkpoints against the original immutable input document and reconstructs
+cash, orders and trial state. `advance` requires an explicit resume flag and the expected
+event count, then atomically compares and appends one checkpoint under the journal's
+lease, fencing and hash-chain rules. Every returned checkpoint remains paused.
+
+This integration permits only one recorded script per isolated trial account. The caller
+must retain the original input document; conflicting history, changed input or stale
+progress stops reconstruction or advancement instead of merging state automatically.
+The session never schedules the next event, creates a broker capability or submits an
+order. Durable synthetic replay evidence is not a live executor or promotion artifact.
+
+## Separate synthetic loss-history observer
+
+`risk/options_loss_history.py` provides immutable `OptionsLossPoint` observations and
+`evaluate_options_loss_history`. It reconstructs flow-adjusted daily and weekly loss,
+drawdown and halt latches from the complete supplied observation tuple. Its reports are
+always paused, not production-eligible and not economic evidence. Session boundaries,
+liquidation marks and external flows remain synthetic fixture assertions, not
+authenticated account observations.
+
+That observer is distinct from the episode reservations and non-replenishing loss
+capacity preserved by `OptionsTrialJournal`. Trial checkpoints do not persist the
+observer's point history or establish its session completeness. The separate
+`OptionsRiskJournal` and [offline operator rehearsal](options-risk-history.md) now
+preserve and reconstruct that synthetic history; neither is a live admission path.
+
 ## Remaining lifecycle work
 
-This is not the complete options ledger or operating service. Normalized strategy legs,
-order/fill/collateral/settlement ownership, broker reconciliation, expiry deadlines,
-exercise/assignment incidents, unexpected shares, protective monitoring, recovery
-composition, operational latches and continuous scheduling remain unimplemented.
-The current replay still uses in-memory trial state; its production wiring to this
-synthetic journal is intentionally not implied. Live options remain disabled.
+This is not a complete broker-connected options ledger or operating service.
+`PausedOptionsMonitor` separately evaluates supplied normalized observations, includes
+expiry checks, persists reconciliation results and supports bounded recurring cycles.
+Its status remains paused with entries disabled; even a clean result cannot enable
+trading. The provided monitoring composition is credential-free, not an authenticated
+broker-connected recovery or protective-order executor.
+
+Live options remain disabled. Authenticated lifecycle ownership, provider execution,
+production recovery and live promotion remain separate blocked capabilities; neither
+the trial journal, recorded replay nor synthetic loss observer unlocks them.
