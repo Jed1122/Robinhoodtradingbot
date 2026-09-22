@@ -275,8 +275,8 @@ def preserve_batch(
         require(type(batch) is VerifiedBatch)
         with ExitStack() as stack:
             parent = _source_root(source)
-            target = _open_root(destination, repository_root)
             stack.callback(os.close, parent)
+            target = _open_root(destination, repository_root)
             stack.callback(os.close, target)
             for artifact in batch.files:
                 _copy(parent, target, artifact)

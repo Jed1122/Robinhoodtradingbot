@@ -285,3 +285,52 @@ real file produces exact counts and disclosed quality limitations. Integrity suc
 does not change economic, capability or live authorization. Run narrow tests, complete
 baseline, research-backend tests, lint/type/security/dependency checks and independent
 review. Update acquisition/readiness documents with actual evidence and remaining work.
+
+## Continuation from a3c1a4e — durable offline risk history
+
+Critical path: validated liquidation-equity observations -> exact external-flow adjustment
+and loss-window state -> append-only fenced recovery -> offline operator reporting.
+Existing trial reservations, source observations, calendars and order transitions remain
+separate authorities. This closes a risk-history gap, not broker integration or economics.
+All work below is coordinator-owned, credential-free, synthetic/offline and non-promotable.
+No real accounts, deployment, live credentials, purchases or changes to authorized limits.
+
+### Task 20: Complete archive-copy resource cleanup
+
+Reproduce the deferred source-descriptor leak when destination opening fails. Register
+source cleanup before opening the destination. Keep input/output bytes, file permissions,
+publication and all trading behavior unchanged. Expected: failing destination leaves no
+open source descriptor; existing preservation/integrity tests remain green.
+
+### Task 21: Cash-flow-neutral options loss history
+
+Implement an immutable versioned offline observation/reducer using the existing canonical
+configuration and loss policy. Bind account, configuration, UTC chronology, explicit session
+boundaries and source hashes. Compute daily/weekly losses and drawdown from liquidation
+equity minus cumulative external flows; deposits/withdrawals are not trading P&L. Preserve
+the initial risk-equity ceiling. Reject changed identities and conflicting duplicate events.
+Keep daily halts for their explicit session and weekly/drawdown halts latched across dates,
+recovery and restart. No self-authorizing manual-clear path. Gaps/unverified reset or mark
+evidence block entries without disabling observation. Output never authorizes orders.
+Expected: exact independent loss/funding examples, incomplete/stale/changed evidence denial,
+zero budget denial, immutable prior points and deterministic reconstruction. Tests first.
+
+### Task 22: Fenced durable options risk journal
+
+Add an additive Alembic table for versioned risk observations and their bound hash chain.
+Reuse the existing lease and SQLite single-writer boundary; check lease after waiting and
+before commit. Atomically validate expected head, observation chronology and reconstructed
+loss state. Reject tampering, duplicates with different content, lost leaders and destructive
+downgrades. Restore starts paused and never clears a latch. Migrate only temporary test DBs.
+Expected: real SQLite round-trip/restart, duplicate/CAS/lease races, mutation guards and
+independent cash-flow/loss expectations. Require the existing critical90% branch gate.
+
+### Task 23: Bounded offline risk-history operator path
+
+Expose a separate credential-free operator module, not persistence inside options_research.
+Accept a closed synthetic fixture format, canonical config and bounded observations. Show
+losses, latches and paused status with masked identity; no broker/authentication imports,
+production grants, alternate policy loader or automatic resume. Demonstrate restart using
+the real journal. Fix stale documentation about existing recorded-session/monitor APIs.
+Expected: working CLI, invalid/partial input denial, no-network tests and clear status/exit
+semantics. Full suite, critical coverage, lint/type/security checks and independent review.

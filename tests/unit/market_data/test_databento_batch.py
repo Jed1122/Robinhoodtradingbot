@@ -3,8 +3,9 @@
 import hashlib
 import importlib
 import json
+import os
 import socket
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 import pytest
@@ -213,6 +214,24 @@ def test_source_changed_after_validation_is_not_published(tmp_path):
     with pytest.raises(api().DatabentoImportError):
         api().preserve_batch(root, destination, result, repository_root=Path(__file__).parents[3])
     assert not (destination / "fixture.definition.dbn.zst").exists()
+
+
+def test_failed_destination_open_closes_the_source_descriptor(tmp_path, monkeypatch):
+    module = api()
+    source = make_batch(tmp_path)
+    batch = verify(source)
+    descriptor = module._source_root(source)
+    monkeypatch.setattr(module, "_source_root", lambda path: descriptor)
+    with pytest.raises(module.DatabentoImportError):
+        module.preserve_batch(
+            source, tmp_path / "absent", batch, repository_root=Path(__file__).parents[3]
+        )
+    try:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
 
 
 @pytest.mark.parametrize("target", ["manifest.json", "condition.json"])
