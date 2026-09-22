@@ -129,13 +129,16 @@ def _fingerprint(stream: BinaryIO, name: str, max_bytes: int) -> BatchFile:
     return BatchFile(name, count, digest.hexdigest())
 
 
-def _metadata(parent: int, name: str) -> object:
+def _metadata(parent: int, name: str) -> tuple[BatchFile, object]:
+    """Parse and fingerprint the same bounded snapshot, never two path reads."""
     with _file(parent, name, _JSON_LIMITS.max_blob_bytes) as stream:
-        return _json(
-            stream.read(_JSON_LIMITS.max_blob_bytes + 1),
+        body = stream.read(_JSON_LIMITS.max_blob_bytes + 1)
+        parsed = _json(
+            body,
             max_bytes=_JSON_LIMITS.max_blob_bytes,
             limits=_JSON_LIMITS,
         )
+        return BatchFile(name, len(body), hashlib.sha256(body).hexdigest()), parsed
 
 
 def _conditions(value: object, expected: DefinitionRequest) -> tuple[tuple[str, str], ...]:
@@ -167,10 +170,12 @@ def validate_batch(
         with ExitStack() as stack:
             parent = _source_root(source)
             stack.callback(os.close, parent)
-            manifest = _mapping(_metadata(parent, "manifest.json"), {"job_id", "files"})
+            manifest_file, manifest_value = _metadata(parent, "manifest.json")
+            manifest = _mapping(manifest_value, {"job_id", "files"})
             job_id = _string(manifest["job_id"])
             require(_NAME.fullmatch(job_id) is not None)
             files = []
+            snapshots = {}
             entries = _array(manifest["files"])
             require(len(entries) == 3)
             for item in entries:
@@ -181,8 +186,11 @@ def validate_batch(
                 require(type(entry["size"]) is int and 0 < entry["size"] <= max_file_bytes)
                 # URLs are never fetched, copied into a report, or interpreted as instructions.
                 require(type(entry["urls"]) is dict)
-                with _file(parent, name, max_file_bytes) as stream:
-                    observed = _fingerprint(stream, name, max_file_bytes)
+                if name in {"metadata.json", "condition.json"}:
+                    observed, snapshots[name] = _metadata(parent, name)
+                else:
+                    with _file(parent, name, max_file_bytes) as stream:
+                        observed = _fingerprint(stream, name, max_file_bytes)
                 require(observed.size == entry["size"] and "sha256:" + observed.sha256 == digest)
                 files.append(observed)
             names = {item.name for item in files}
@@ -191,7 +199,7 @@ def validate_batch(
             require(definition.endswith(".definition.dbn.zst"))
             require(set(os.listdir(parent)) == names | {"manifest.json"})
             metadata = _mapping(
-                _metadata(parent, "metadata.json"), {"job_id", "version", "query", "customizations"}
+                snapshots["metadata.json"], {"job_id", "version", "query", "customizations"}
             )
             require(type(metadata["version"]) is int and metadata["version"] == 1)
             require(metadata["job_id"] == job_id)
@@ -211,9 +219,8 @@ def validate_batch(
                     }
                 )
             )
-            conditions = _conditions(_metadata(parent, "condition.json"), expected)
-            with _file(parent, "manifest.json", _JSON_LIMITS.max_blob_bytes) as stream:
-                files.append(_fingerprint(stream, "manifest.json", _JSON_LIMITS.max_blob_bytes))
+            conditions = _conditions(snapshots["condition.json"], expected)
+            files.append(manifest_file)
             return VerifiedBatch(
                 expected, tuple(sorted(files, key=lambda f: f.name)), definition, conditions, job_id
             )

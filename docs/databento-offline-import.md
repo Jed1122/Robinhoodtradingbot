@@ -70,7 +70,11 @@ All provisional parts remain temporary until input EOF/hash validation succeeds.
 part paths and manifests are content-addressed, private and no-overwrite. A publication
 failure can leave unreferenced immutable parts; without a verified complete manifest they
 are not a dataset. Verification checks manifest identity, private paths, part hashes,
-columns and counts. It does not authenticate the source or establish financial validity.
+columns and counts, including closed nested profile/provenance shapes and false eligibility
+flags. JSON parsing and fingerprints use the same bounded snapshot; DuckDB queries a private
+copy of the exact hashed Parquet bytes, never a second read of the mutable source path.
+The result verifies that snapshot, not perpetual filesystem immutability. It does not
+authenticate the source or establish financial validity.
 
 ## Economic evidence still required
 

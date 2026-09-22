@@ -6,7 +6,9 @@ metadata estimates are recorded in [the preflight guide](databento-preflight.md)
 The observation/expiry implementation made no authenticated requests. The subsequent
 acquisition continuation refreshed one free definition-cost estimate as recorded below.
 After scoped operator approval and browser sign-in, one $11.44 definitions request was
-submitted and accepted as queued; final charge and local file receipt remain unverified.
+submitted and accepted as queued. On September22 the operator supplied the completed
+download; local receipt and native staging are now verified as recorded below. Final
+charge remains unverified.
 The replacement key remains private and was not read during the browser submission.
 
 During this continuation the operator confirmed that Databento permits the account's
@@ -88,9 +90,10 @@ OPRA agreement is pending.
 The official portal accepted one request showing **$11.44**, below the approved $12
 credit-only cap. Request details confirm `SPY.OPT`, Definition, DBN/zstd, direct
 download and `[2023-01-01 00:00 UTC, 2026-01-01 00:00 UTC)`. Optional file splitting
-is off; the portal shows four output files. The last verified provider state is
-**Queued**, not completed. Do not create a duplicate request or purchase another format.
-Final billed cost, post-acquisition credits and local file integrity remain unverified.
+is off; the portal showed four output files. At that time the verified portal state was
+**Queued**. The later local download validation below supersedes the pending-file status,
+not the last portal observation. Do not create a duplicate request or purchase another
+format. Final billed cost and post-acquisition credits remain unverified.
 While the job remained queued, a subsequent billing-page check still showed $125 in
 credits and $0 due. That is not evidence that the accepted request is free; final
 accounting is pending.
@@ -100,11 +103,35 @@ outside Git under the existing private research directory, not in a Cloud task o
 tracked artifact. No payment-method details, API keys or provider payloads are stored
 in this guide. No subscription, quote data, live data or broker action was requested.
 
-Next: retrieve the existing job's files when ready, preserve its provider metadata and
-checksums, and inventory file sizes/hashes privately. Existing canonical record/Parquet
-verification does not decode raw DBN: a reviewed provider-definition decoder and mapping
-are still missing. Definitions alone do not establish complete point-in-time chains,
-executable quotes, historical availability, trading performance or promotion eligibility.
+## Supplied local download — 2026-09-22
+
+The four supplied files match the exact approved request and provider-listed sizes/hashes.
+The source download is unchanged; a verified no-overwrite private copy is retained outside
+Git. Complete Zstd/DBN validation found **6,821,768 native definition records**, spanning
+**752 receive dates**, with **224,696 distinct raw symbols**. Distinct symbols are not
+asserted to be permanent unique contracts or executed trades. Native staging contains
+**1,433 content-addressed Parquet parts**, **355,875,960 bytes**, plus its private manifest.
+An independent decompressed-byte calculation agrees exactly with the record count:
+`(2,657,756,012 - 201,919,532) / 360 = 6,821,768`.
+
+The provider metadata contains 217,732 partial-symbol declarations; its conditions list
+779 available,2 degraded,3 missing dates. These are retained limitations, not proof of
+which eligible trading sessions are missing. Mapping conflict resolution, historical
+availability, complete chains and canonical contract enrichment remain unverified.
+No quotes, underlying prices or strategy returns are in this definitions archive.
+
+The reviewed [offline importer](databento-offline-import.md) is now implemented with pinned
+decoders, synthetic no-network tests and private hashed Parquet snapshots. It does not
+change risk limits, grant economic evidence, unlock a broker or permit live trading.
+No credential, provider request, account inspection or additional spending occurred during
+local import. The final charge remains unknown; do not infer it from the estimate or from
+successful downloading.
+
+Next data work: resolve definitions point-in-time with verified contract/session enrichment,
+freeze admissible selection and existing research splits, then estimate the required quote,
+underlying and event-data scope. Quotes or additional inputs need separate approval before
+acquisition. Existing evidence-duration/sample requirements remain unchanged. Definitions
+alone cannot establish trading performance or promotion eligibility.
 
 ## Supplied terms review — 2026-09-18
 

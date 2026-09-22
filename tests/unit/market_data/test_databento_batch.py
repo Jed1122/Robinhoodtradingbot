@@ -4,6 +4,7 @@ import hashlib
 import importlib
 import json
 import socket
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -212,3 +213,36 @@ def test_source_changed_after_validation_is_not_published(tmp_path):
     with pytest.raises(api().DatabentoImportError):
         api().preserve_batch(root, destination, result, repository_root=Path(__file__).parents[3])
     assert not (destination / "fixture.definition.dbn.zst").exists()
+
+
+@pytest.mark.parametrize("target", ["manifest.json", "condition.json"])
+def test_json_parsing_is_bound_to_the_exact_hashed_snapshot(tmp_path, monkeypatch, target):
+    module = api()
+    source = make_batch(tmp_path)
+    original = (source / target).read_bytes()
+    original_open = module._file
+    switched = False
+
+    @contextmanager
+    def replacing(parent, name, max_bytes):
+        nonlocal switched
+        with original_open(parent, name, max_bytes) as stream:
+            yield stream
+        if name == target and not switched:
+            switched = True
+            if target == "condition.json":
+                body = json.loads(original)
+                body[0]["condition"] = "missing"
+            else:
+                body = json.loads(original)
+                body["job_id"] = "REPLACED"
+            (source / target).write_text(json.dumps(body))
+
+    monkeypatch.setattr(module, "_file", replacing)
+    result = verify(source)
+    assert switched
+    assert result.conditions[0] == ("2023-01-03", "available")
+    assert (
+        next(item.sha256 for item in result.files if item.name == target)
+        == hashlib.sha256(original).hexdigest()
+    )

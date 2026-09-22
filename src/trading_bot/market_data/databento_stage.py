@@ -25,6 +25,7 @@ from trading_bot.market_data.databento_batch import (
     validate_batch,
 )
 from trading_bot.market_data.databento_definitions import DefinitionLimits, scan_definitions
+from trading_bot.market_data.databento_stage_schema import validate_nested
 from trading_bot.market_data.options_parquet import _connection, _private_temp_directory
 from trading_bot.market_data.recording import canonical_json
 
@@ -78,7 +79,7 @@ def _part(directory: Path, rows: list[dict[str, object]], index: int) -> Path:
     connection = _connection(directory)
     try:
         connection.execute(
-            "COPY (SELECT * FROM read_json(?, format='newline_delimited', columns="
+            "COPY (SELECT * FROM read_json(?, format='newline_delimited', columns="  # nosec B608
             + _SQL_COLUMNS
             + ")) TO ? (FORMAT PARQUET, COMPRESSION ZSTD)",
             # DuckDB binds COPY's destination before parameters in its SELECT.
@@ -218,11 +219,13 @@ def verify_staged(manifest_path: Path, *, repository_root: Path) -> dict[str, ob
             require(
                 manifest["economic_evidence"] is False and manifest["production_eligible"] is False
             )
+            profile = validate_nested(manifest)
             entries = _array(manifest["files"])
             require(0 < len(entries) <= _BOUNDS.max_records)
             count = 0
             seen = set()
-            connection = _connection(root)
+            temporary = Path(stack.enter_context(_private_temp_directory()))
+            connection = _connection(temporary)
             stack.callback(connection.close)
             for value in entries:
                 item = _mapping(value, {"path", "sha256", "byte_count", "record_count"})
@@ -246,19 +249,23 @@ def verify_staged(manifest_path: Path, *, repository_root: Path) -> dict[str, ob
                     and hashlib.sha256(encoded).hexdigest() == item["sha256"]
                 )
                 require(Path(relative).stem == item["sha256"])
+                # Query exactly the hashed bytes, not the mutable source path again.
+                snapshot = temporary / f"{len(seen)}.parquet"
+                with snapshot.open("xb") as output:
+                    os.chmod(snapshot, 0o600)
+                    output.write(encoded)
                 columns = connection.execute(
                     "DESCRIBE SELECT * FROM read_parquet(?, hive_partitioning=false)",
-                    [str(root / relative)],
+                    [str(snapshot)],
                 ).fetchall()
                 require({row[0]: row[1] for row in columns} == _COLUMNS)
                 observed = connection.execute(
                     "SELECT count(*) FROM read_parquet(?, hive_partitioning=false)",
-                    [str(root / relative)],
+                    [str(snapshot)],
                 ).fetchone()[0]
+                snapshot.unlink()  # Only our exclusive, private snapshot.
                 require(observed == item["record_count"])
                 count += observed
-            profile = cast(dict[str, object], manifest["validation"])
-            require(type(profile) is dict and type(profile["record_count"]) is int)
             require(
                 count == profile["record_count"] and profile["record_validation_complete"] is True
             )

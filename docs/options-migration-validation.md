@@ -475,3 +475,61 @@ broker parsing and locked execution integration, service/operator composition an
 preregistered economic-evidence pipeline. Technical readiness remains **NOT_READY**;
 economic readiness **ECONOMIC_NO_GO**; account/runtime capability **UNVERIFIED**;
 live **NOT_AUTHORIZED**. Every observer status remains paused and live-unsupported.
+
+## Supplied Databento definitions and native staging — 2026-09-22
+
+The operator supplied the approved definitions-only download. All provider-listed sizes
+and SHA-256 hashes match; the original Downloads folder is unchanged and a verified private
+no-overwrite raw copy is retained outside Git. Full streaming decode, independent byte-count
+arithmetic and private Parquet verification agree on **6,821,768 definition records**,
+**224,696 distinct raw symbols**, **752 receive dates** and **1,433 Parquet parts**. Counts
+include repeated definition updates, not trades or permanently unique contract identities.
+The corrected verifier passed on the complete real staged archive, not only fixtures.
+
+The existing separately locked research environment now pins `databento-dbn==0.69.0` and
+`zstandard==0.25.0`; the root dependency lock and executable trading configuration are
+unchanged. The standalone local importer does not touch the user's pre-existing CLI edits.
+Native staging preserves integer prices, nanosecond timestamps, record order and unknown
+values. It does not construct executable canonical option contracts. No actual records,
+provider URLs, keys or account identifiers are added to Git, CI or Cloud tasks.
+
+Test-first implementation covered batch scope/hashes, bounded metadata and full DBN/Zstd
+EOF validation, private all-or-incomplete publication, CLI behavior and no-network boundaries.
+Independent source-format audit informed version/framing rules. The final fresh-context
+review found JSON hash/parse and Parquet hash/query races; seven new regressions failed before
+fixes and the full focused importer selection then passed **70 tests**. The implementation
+now parses/hashes one JSON snapshot and queries the exact hashed Parquet snapshot. Nested
+manifest/profile/provenance schemas and false eligibility flags are also strictly checked.
+This review covered the local importer change, not the entire unfinished trading platform.
+
+### Decisions and remaining limits
+
+- Retain native research staging, not relaxed executable records; explicit enrichment is
+  still required. The cost of this boundary is additional downstream normalization work.
+- Retain provider partial-symbol declarations as limitations, not rejection or complete-chain
+  proof. Affected periods cannot be trusted without later coverage/mapping checks.
+- File hashes establish internal byte consistency, not independent provider authenticity.
+  Forged but self-consistent upstream files are outside that guarantee.
+- The coordinator re-graded malformed nested manifests from Minor to Important because
+  a positive verification verdict must not carry arbitrary historical-availability claims.
+- Deferred minor: an early destination-open failure in `preserve_batch` can leave its source
+  descriptor open until process exit. Repeated failed calls in a persistent process could
+  exhaust descriptors; this does not grant data eligibility or trading authority.
+
+The archive contains **definitions, not bid/ask quotes, underlying prices or strategy returns**.
+Its metadata lists217,732 partial symbols; conditions list779 available,2 degraded,3 missing
+dates. Mapping conflict resolution, eligible-session coverage, historical availability and
+canonical contract enrichment remain unverified. Quotes, underlying/event inputs and any
+additional data spending need their own scope, estimates and approval; no further purchase
+was made. The earlier $11.44 portal price is not a verified final bill.
+
+Full risk/loss-latch composition, lifecycle/reservation/collateral/settlement recovery, official
+broker parsing and locked execution integration, continuous service/operator composition,
+package execution and preregistered economic research remain unfinished. The existing
+evidence-duration/sample requirements are not waived by a three-year definitions download.
+Technical readiness **NOT_READY**; economics **ECONOMIC_NO_GO**; account/runtime capability
+**UNVERIFIED**; live **NOT_AUTHORIZED**. No broker calls, credentials, Cloud execution,
+production migration, deployment, live activation or changed risk limits in this continuation.
+
+Verification artifacts: `/private/tmp/options-definition-validation.RauLUe`.
+Full-suite and final gate results are recorded below when complete.

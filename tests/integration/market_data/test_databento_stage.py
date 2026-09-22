@@ -1,5 +1,6 @@
 """Private staging with synthetic DBN input; incomplete imports never publish a manifest."""
 
+import hashlib
 import importlib
 import json
 from pathlib import Path
@@ -85,3 +86,69 @@ def test_publication_denies_in_repo_or_nonprivate_target(tmp_path):
     target.mkdir(mode=0o755)
     with pytest.raises(DatabentoImportError):
         api().stage_batch(source, target, expected=REQUEST, repository_root=ROOT)
+
+
+def test_parquet_queries_use_the_hashed_snapshot_not_reopened_mutable_source(tmp_path, monkeypatch):
+    module = api()
+    source = make_batch(tmp_path, payload=zstd.ZstdCompressor().compress(fixture()))
+    target = tmp_path / "staged"
+    target.mkdir(mode=0o700)
+    manifest_path = module.stage_batch(source, target, expected=REQUEST, repository_root=ROOT)
+    manifest = json.loads(manifest_path.read_bytes())
+    part = target / manifest["files"][0]["path"]
+    expected_digest = hashlib.sha256(part.read_bytes()).hexdigest()
+    replacement = tmp_path / "replacement.parquet"
+    with duckdb.connect(":memory:") as connection:
+        connection.execute(
+            "COPY (SELECT * REPLACE(999::BIGINT AS strike_price) "
+            "FROM read_parquet(?, hive_partitioning=false)) TO ? (FORMAT PARQUET)",
+            [str(replacement), str(part)],
+        )
+    replacement_body = replacement.read_bytes()
+    original_read = module._read
+    original_connection = module._connection
+    inspected = []
+
+    def replacing_read(directory, name, max_bytes):
+        body = original_read(directory, name, max_bytes)
+        if name == part.name:
+            part.write_bytes(replacement_body)
+        return body
+
+    class Connection:
+        def __init__(self, directory):
+            self.wrapped = original_connection(directory)
+
+        def execute(self, sql, params):
+            inspected.append(hashlib.sha256(Path(params[0]).read_bytes()).hexdigest())
+            return self.wrapped.execute(sql, params)
+
+        def close(self):
+            self.wrapped.close()
+
+    monkeypatch.setattr(module, "_read", replacing_read)
+    monkeypatch.setattr(module, "_connection", Connection)
+    module.verify_staged(manifest_path, repository_root=ROOT)
+    assert inspected == [expected_digest, expected_digest]
+
+
+@pytest.mark.parametrize("mutation", ["profile_schema", "input_files", "conditions", "eligibility"])
+def test_unknown_or_malformed_nested_manifest_never_gets_verified(tmp_path, mutation):
+    module = api()
+    source = make_batch(tmp_path, payload=zstd.ZstdCompressor().compress(fixture()))
+    target = tmp_path / "staged"
+    target.mkdir(mode=0o700)
+    path = module.stage_batch(source, target, expected=REQUEST, repository_root=ROOT)
+    manifest = json.loads(path.read_bytes())
+    if mutation == "profile_schema":
+        manifest["validation"]["schema"] = "unreviewed-v999"
+    elif mutation == "eligibility":
+        manifest["validation"]["historical_availability_verified"] = True
+    else:
+        manifest[mutation] = "malformed"
+    body = json.dumps(manifest).encode()
+    altered = path.parent / (hashlib.sha256(body).hexdigest() + ".json")
+    altered.write_bytes(body)
+    altered.chmod(0o600)
+    with pytest.raises(DatabentoImportError):
+        module.verify_staged(altered, repository_root=ROOT)
