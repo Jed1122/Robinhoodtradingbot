@@ -1,6 +1,6 @@
 # SPY options research shortlist design
 
-Status: **written specification approved; implementation plan awaiting operator review**.
+Status: **operator selected Native execution; implementation under final verification**.
 Prepared 2026-09-22 UTC against `24472cc0aa67aac85ce23de815a1faa2ed0a8030`.
 No implementation, data purchase or live authorization follows from this document alone.
 
@@ -213,7 +213,9 @@ Failing tests first, then narrow and broader existing checks:
 Implementation verification retains Ruff, Mypy, full pytest with 80% overall coverage,
 the existing 90% critical branch gates, Bandit, locked-dependency audit, SBOM and
 manifest checks in proportion to changed paths. No production migration or deployment.
-No such implementation tests have run for this unimplemented specification.
+Implementation test results and adjudicated plan deviations are maintained in
+[the operator guide](../../options-research-shortlist.md); synthetic verification
+does not establish real-data, economic, broker or live readiness.
 
 ## 7. Review checkpoint
 
@@ -221,8 +223,7 @@ No such implementation tests have run for this unimplemented specification.
 - Research-only design brief: explicitly approved by the operator.
 - Written specification and inline consistency/ambiguity review: prepared.
 - Written-spec operator review: approved by the operator's “proceed” on 2026-09-22.
-- [Implementation plan](../plans/2026-09-22-options-research-shortlist.md): prepared;
-  operator plan review and execution-method choice pending. Implementation not started.
+- [Implementation plan](../plans/2026-09-22-options-research-shortlist.md): approved for
+  Native execution by the operator's “do native”; final verification in progress.
 
-Review the implementation plan and choose an execution method before implementation.
-Neither specification approval nor plan preparation grants permission to acquire data.
+Implementation authorization grants no permission to acquire data or activate trading.

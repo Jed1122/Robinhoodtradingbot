@@ -84,6 +84,7 @@ def test_offline_options_modules_cannot_import_broker_or_persistence_capabilitie
         root / "cli/options_research.py",
         *sorted((root / "simulation").glob("options_*.py")),
         *sorted((root / "strategies/options").rglob("*.py")),
+        *sorted((root / "research").glob("options_shortlist*.py")),
     ]
     for path in files:
         for node in ast.walk(ast.parse(path.read_text())):

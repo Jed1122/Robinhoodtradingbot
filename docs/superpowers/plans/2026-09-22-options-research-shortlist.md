@@ -1167,6 +1167,10 @@ strategy-exit policy, live bypass or source-authenticity claim is introduced.
 ## Execution checkpoint
 
 Written specification approved by the operator's “proceed” on 2026-09-22.
-Implementation plan prepared and coordinator-reviewed; **operator plan review and
-execution-method choice remain pending**. No implementation tests have been run for
-the planned feature and no source/config/product behavior changed by this document.
+The operator selected **Native execution** with “do native”. Tasks 1–3 are committed;
+Task 4 and whole-range verification are in progress. The implementation base is
+`225883dd2bea9cc58f40ca7fd472b8c4e9e068e9`; this plan's earlier state descriptions
+remain the planning snapshot. See [the operator guide](../../options-research-shortlist.md)
+for actual validation results and explicit deviations, including required config
+fields, the nested simulation profile and the legacy-test identity projection.
+No provider acquisition, broker operation, deployment or live activation is authorized.

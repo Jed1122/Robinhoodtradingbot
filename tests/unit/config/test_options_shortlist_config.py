@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from trading_bot.config import LoadedConfig, load_config
+from trading_bot.config.models import AppConfig, OptionsShortlistSettings, SafetyEnvelope
 
 ROOT = Path("configs")
 
@@ -79,3 +80,17 @@ def test_tighter_resources_change_config_identity() -> None:
 def test_disabled_options_cannot_enable_shortlist() -> None:
     with pytest.raises(ValueError):
         load({"TRADING_BOT__OPTIONS__ENABLED": "false"})
+
+
+@pytest.mark.parametrize("field", (None, *OptionsShortlistSettings.model_fields))
+@pytest.mark.parametrize("graph", ["config", "safety_envelope"])
+def test_missing_shortlist_configuration_never_uses_implicit_defaults(field, graph) -> None:
+    loaded = load()
+    raw = getattr(loaded, graph).model_dump()
+    if field is None:
+        del raw["options"]["research_shortlist"]
+    else:
+        del raw["options"]["research_shortlist"][field]
+    model = AppConfig if graph == "config" else SafetyEnvelope
+    with pytest.raises(ValueError):
+        model.model_validate(raw)

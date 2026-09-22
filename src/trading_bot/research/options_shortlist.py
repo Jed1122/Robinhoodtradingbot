@@ -7,7 +7,7 @@ from typing import cast
 from zoneinfo import ZoneInfo
 
 from trading_bot.config.models import OptionsShortlistSettings
-from trading_bot.domain import BarInterval, DataHash
+from trading_bot.domain import BarInterval, ConfigHash, DataHash
 from trading_bot.domain.decimal_utils import (
     MAX_CANONICAL_DECIMAL_TEXT_LENGTH,
     _require_sha256_hex,
@@ -297,7 +297,7 @@ def select_options_shortlist(
     session: ShortlistSessionInput,
     *,
     settings: OptionsShortlistSettings,
-    config_hash: DataHash,
+    config_hash: ConfigHash,
     code_hash: DataHash,
     input_hash: DataHash,
 ) -> OptionsShortlistResult:

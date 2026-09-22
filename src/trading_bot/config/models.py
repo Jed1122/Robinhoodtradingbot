@@ -456,19 +456,19 @@ class PredictionResearchSettings(StrictModel):
 class OptionsShortlistSettings(StrictModel):
     """Fixed acquisition-universe policy; no trading or source-verification authority."""
 
-    enabled: StrictBool = False
-    underlying: Literal["SPY"] = "SPY"
-    version: Literal["spy-prior-close-atm-30d-v1"] = "spy-prior-close-atm-30d-v1"
-    reference: Literal["previous_regular_session_close"] = "previous_regular_session_close"
-    strike_tie: Literal["lower_strike"] = "lower_strike"
-    expiry_tie: Literal["earlier_expiry"] = "earlier_expiry"
-    min_dte: StrictInt = Field(default=21, ge=21, le=21)
-    target_dte: StrictInt = Field(default=30, ge=30, le=30)
-    max_dte: StrictInt = Field(default=45, ge=45, le=45)
-    max_input_records: StrictInt = Field(default=25000, ge=1, le=25000)
-    max_input_bytes: StrictInt = Field(default=16777216, ge=1, le=16777216)
-    max_json_depth: StrictInt = Field(default=16, ge=1, le=16)
-    max_decision_sessions: StrictInt = Field(default=1, ge=1, le=1)
+    enabled: StrictBool
+    underlying: Literal["SPY"]
+    version: Literal["spy-prior-close-atm-30d-v1"]
+    reference: Literal["previous_regular_session_close"]
+    strike_tie: Literal["lower_strike"]
+    expiry_tie: Literal["earlier_expiry"]
+    min_dte: StrictInt = Field(ge=21, le=21)
+    target_dte: StrictInt = Field(ge=30, le=30)
+    max_dte: StrictInt = Field(ge=45, le=45)
+    max_input_records: StrictInt = Field(ge=1, le=25000)
+    max_input_bytes: StrictInt = Field(ge=1, le=16777216)
+    max_json_depth: StrictInt = Field(ge=1, le=16)
+    max_decision_sessions: StrictInt = Field(ge=1, le=1)
 
 
 class OptionsSettings(StrictModel):
@@ -492,7 +492,7 @@ class OptionsSettings(StrictModel):
     uncovered_options_enabled: StrictFalse
     zero_dte_live_enabled: StrictFalse
     overnight_session_entries_enabled: StrictFalse
-    research_shortlist: OptionsShortlistSettings = Field(default_factory=OptionsShortlistSettings)
+    research_shortlist: OptionsShortlistSettings
 
     @model_validator(mode="after")
     def validate_risk_hierarchy(self) -> Self:

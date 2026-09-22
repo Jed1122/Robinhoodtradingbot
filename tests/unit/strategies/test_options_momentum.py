@@ -4,6 +4,7 @@ These tests were added after the core put implementation; they are not initial T
 All observations and replay cash flows are fabricated, not market evidence.
 """
 
+from copy import deepcopy
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -11,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from trading_bot.config import LoadedConfig, load_config
+from trading_bot.config import hashing as config_hashing
 from trading_bot.domain import ConfigHash, DataHash, InstrumentId
 from trading_bot.domain.decimal_utils import DomainValidationError
 from trading_bot.domain.options import OptionKind
@@ -150,15 +152,30 @@ LEGACY_CALL_RESULT_HASHES = (
 )
 
 
-@pytest.fixture(scope="module")
-def options_config() -> LoadedConfig:
+@pytest.fixture
+def options_config(monkeypatch: pytest.MonkeyPatch) -> LoadedConfig:
+    # These golden results bind the pre-shortlist schema, not today's configuration
+    # identity. Project ONLY this test's newly added research section out before the
+    # real serializer hashes it. Production always binds the full current graph.
+    original = config_hashing._hash_payload
+
+    def legacy_config_identity(payload):
+        legacy = deepcopy(payload)
+        for name in ("config", "safety_envelope"):
+            del legacy[name]["options"]["research_shortlist"]
+        return original(legacy)
+
+    monkeypatch.setattr(config_hashing, "_hash_payload", legacy_config_identity)
     config_dir = Path(__file__).parents[3] / "configs"
-    return load_config(
+    loaded = load_config(
         config_dir / "base.yaml",
         config_dir / "options/simulation.yaml",
         config_dir / "safety-envelope.yaml",
         {},
     )
+    # Independent original identity: all other policy changes must still fail.
+    assert loaded.config_hash == "c742c2ffc44bc850c08a8560080c3b2b0ca65394fd5bebbd177167fbf1b9197b"
+    return loaded
 
 
 @pytest.mark.parametrize(("scenario", "capital", "expected_hash"), LEGACY_CALL_RESULT_HASHES)

@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Literal
 
 from trading_bot.clock import require_utc
-from trading_bot.domain import Bar, CorporateAction, DataHash
+from trading_bot.domain import Bar, ConfigHash, CorporateAction, DataHash
 from trading_bot.domain.decimal_utils import (
     DomainValidationError,
     _require_nonempty,
@@ -239,7 +239,7 @@ class OptionsShortlistResult:
     session_id: str
     as_of: datetime
     source_kind: SourceKind
-    config_hash: DataHash
+    config_hash: ConfigHash
     code_hash: DataHash
     input_hash: DataHash
     decision_hash: DataHash

@@ -15,6 +15,13 @@ from trading_bot.config import LoadedConfig, load_config
 from trading_bot.domain.decimal_utils import parse_decimal, require_bounded_decimal
 from trading_bot.domain.options import OptionKind
 from trading_bot.market_data.recording import canonical_json, content_hash
+from trading_bot.research.options_shortlist import select_options_shortlist
+from trading_bot.research.options_shortlist_io import (
+    ShortlistFileError,
+    read_shortlist_input,
+    shortlist_code_hash,
+    write_shortlist_manifest,
+)
 from trading_bot.risk.options_economics import (
     OptionsCapitalState,
     TrialLossState,
@@ -194,6 +201,67 @@ def capital_feasibility(
             }
         )
     )
+
+
+def _load_shortlist(config_dir: Path) -> LoadedConfig:
+    return load_config(
+        config_dir / "base.yaml",
+        config_dir / "options/shortlist/simulation.yaml",
+        config_dir / "safety-envelope.yaml",
+        {},
+    )
+
+
+@app.command("options-shortlist")
+def options_shortlist(
+    input_path: Annotated[Path, typer.Argument()],
+    output_dir: Annotated[Path, typer.Option()],
+    config_dir: Annotated[Path, typer.Option()] = Path("configs"),
+) -> None:
+    """Select a private offline acquisition universe, never an order or data download."""
+    reason = "options_shortlist_input_invalid"
+    try:
+        loaded = _load_shortlist(config_dir)
+        settings = loaded.config.options.research_shortlist
+        repository = Path(__file__).resolve().parents[3]
+        session, input_hash = read_shortlist_input(
+            input_path,
+            settings=settings,
+            repository_root=repository,
+        )
+        result = select_options_shortlist(
+            session,
+            settings=settings,
+            config_hash=loaded.config_hash,
+            code_hash=shortlist_code_hash(),
+            input_hash=input_hash,
+        )
+        digest = write_shortlist_manifest(
+            output_dir,
+            result,
+            repository_root=repository,
+            settings=settings,
+        )
+        typer.echo(
+            canonical_json(
+                {
+                    "status": result.status,
+                    "decision_sessions": 1,
+                    "candidate_count": len(result.candidates),
+                    "denied_sessions": int(result.status == "no_candidate"),
+                    "reasons": result.reasons,
+                    "manifest_hash": digest,
+                }
+            )
+        )
+        return
+    except ShortlistFileError as error:
+        if error.code != "shortlist_input_invalid":
+            reason = error.code
+    except (ValueError, TypeError, ArithmeticError, OSError):
+        pass
+    typer.echo(canonical_json({"status": "denied", "reason": reason}))
+    raise typer.Exit(1)
 
 
 def main() -> None:
