@@ -558,3 +558,93 @@ pre-existing tracked SBOM hash remains
 `085ecfb87803d0bd88b4d2efa53a7aab438356893b010799c4d7d70b88647750`.
 Unrelated staged, unstaged and untracked work remains intact. Importer commits are local
 checkpoints only, not pushed or deployed. The full migration ledger remains open.
+
+## Durable offline loss-history continuation (2026-09-22)
+
+Continuation from `a3c1a4e` adds a strict synthetic loss observer, additive risk journal
+and credential-free operator rehearsal. This does not complete the full options migration.
+The validated Databento acquisition remains contract definitions, not executable quote
+history or evidence of an economic edge. No source dataset was downloaded or purchased
+in this continuation, and no private provider records were shared with local reviewers.
+
+### Implemented
+
+- `OptionsLossPoint` binds immutable exact values, account/configuration/source identity,
+  UTC chronology and declared sessions. The reducer separates external cash flows from
+  daily/weekly losses and drawdown, preserves an initial risk-equity ceiling, latches
+  weekly/drawdown breaches, and denies incomplete history and stale observations.
+- `OptionsRiskJournal` reconstructs the whole bounded history under the existing single-
+  writer lease. New migration `0007_options_risk_history` adds hash-chained observations
+  and four mutation guards without rewriting old evidence. Only disposable test databases
+  were migrated. Nonempty downgrade is denied.
+- `python -m trading_bot.cli.options_risk_history demo` and `replay-file` exercise the
+  actual journal in private temporary databases and verify engine-close/reopen equality.
+  They mask identity, redact errors, reject unsupported/private-file inputs and always
+  report paused, entry-disabled, non-promotable synthetic status. There is no existing
+  production-ledger argument or implicit deployment. See [operator guide](options-risk-history.md).
+- The archive-preservation source descriptor is now released if destination opening fails.
+  Existing raw dataset files, risk settings, staged dependency lock and tracked SBOM were
+  untouched. The stale recorded-session integration documentation was corrected.
+
+### Review and verification scope
+
+A fresh read-only local review identified two Important defects: a historical duplicate
+could return an obsolete journal head, and an intra-transaction backward clock jump could
+commit future-dated evidence. Both were reproduced with failing real-SQLite tests and fixed:
+only exact-tip retries succeed, and lease checks retain the transaction/evaluation time
+floor through commit. No Critical or Minor findings were reported. The reviewer did not
+perform a second review; final verification is test-based.
+
+The coordinator additionally corrected a CLI assertion and a persistence import boundary,
+and updated explicit migration revision/trigger-count expectations. Database orchestration
+is in the persistence layer; the architecture guard was preserved. Initial regression
+verification was interrupted after known failures and is not counted as a passing run.
+
+Focused post-fix tests: **62 passed**, with **100% line/branch coverage** on both the new
+loss reducer and risk journal. Pinned QuantLib 1.43, DuckDB 1.5.5, databento-dbn 0.69.0 and
+Zstandard 0.25.0 were confirmed; the separate research selection passed **92 tests**.
+Final verification at `0f684ce` plus the preserved pre-existing worktree changes:
+**5,552 passed**, no skips, one existing Starlette/httpx warning, **89.82% overall
+coverage**, 365.54 seconds. The expanded **90% per-file critical branch gate passed**.
+The new risk reducer/journal retain **100% line and branch coverage** in that full run.
+
+Ruff all, Mypy (238 source files), Bandit, root/research offline lock checks and both
+locked dependency audits passed. Audits report no known vulnerabilities, not absence
+of every possible vulnerability. Temporary CycloneDX 1.6 inventories validate with
+104 root/60 research components; the tracked SBOM reproducibility test leaves its
+pre-existing artifact unchanged. The full suite included local encrypted backup/restore
+tests with the real age binaries and deployment-manifest checks. DigitalOcean shell
+syntax checks passed; Compose rendering and remote CI/deployment were not verified.
+
+Artifacts: `/private/tmp/options-risk-validation.tif5zy` (`pytest-final.log`,
+`coverage-final.json`, `focused-final.log`, `research-tests.log`, `demo.json`, dependency
+audit logs and temporary SBOMs). The demo independently reports an $11 synthetic loss
+even after a $1,000 synthetic deposit, preserving all three triggered loss halts.
+It is not a real account event.
+
+User-staged root lock SHA-256 remains
+`bc4a00f5e4f9d251582f98694d410f59284a69798b8970311495e12e978c1044`;
+tracked dirty SBOM SHA-256 remains
+`085ecfb87803d0bd88b4d2efa53a7aab438356893b010799c4d7d70b88647750`.
+All unrelated staged/unstaged/untracked work is preserved. Commits are local only.
+
+### Boundaries and still-open work
+
+- Calendar/session, liquidation-mark and external-flow truth is declared synthetic, not
+  authenticated. No real account balance or permissions were inspected.
+- This observer does not replace full pretrade admission, Greek/portfolio risk, consecutive
+  loss controls, trial-loss reservations or broker lifecycle reconciliation. Connecting all
+  those authorities to a verified production execution owner remains unfinished.
+- Engine reopen is not a process-crash, host-loss or off-host recovery drill. Privileged
+  database replacement/full rollback also needs a separately trusted external checkpoint;
+  local triggers/hash chains alone cannot prove it never occurred.
+- Real point-in-time option bid/ask observations and matching underlying history, coverage
+  checks, preregistered out-of-sample research and cost-sensitive economics remain necessary.
+  Definitions alone cannot produce a genuine economic validation result.
+- Production broker/runtime evidence, normalized lifecycle recovery, operational drills,
+  deployment and live authorization remain separate. No purchases, subscription changes,
+  broker/account calls, credentials, Cloud jobs, deployment or orders occurred.
+
+Technical readiness is partial/offline; economics remain `ECONOMIC_NO_GO`; account/runtime
+capabilities remain unverified; operator live authorization remains absent. Weekly/drawdown
+latches have no automatic clearing API, and no risk threshold was loosened.
