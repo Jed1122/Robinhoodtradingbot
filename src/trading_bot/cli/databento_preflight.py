@@ -51,6 +51,7 @@ def _parser() -> argparse.ArgumentParser:
     cost = commands.add_parser("estimate", allow_abbrev=False)
     cost.add_argument("--credential-directory", type=Path, required=True)
     cost.add_argument("--symbol", action="append", required=True)
+    cost.add_argument("--stype-in", choices=("parent", "raw_symbol"), default="parent")
     cost.add_argument("--schema", choices=("definition", "cbbo-1m"), required=True)
     cost.add_argument("--start", type=date.fromisoformat, required=True)
     cost.add_argument("--end", type=date.fromisoformat, required=True)
@@ -109,7 +110,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             result["status"] = "credential_stored_locally"
         else:
-            request = CostRequest(tuple(args.symbol), args.schema, args.start, args.end)
+            request = CostRequest(
+                tuple(args.symbol), args.schema, args.start, args.end, stype_in=args.stype_in
+            )
             result["request"] = request.query()
             result["status"] = "offline_preview"
             if args.allow_metadata_network:

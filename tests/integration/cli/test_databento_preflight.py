@@ -60,6 +60,75 @@ def test_preview_does_not_read_key_or_connect(cli, private, capsys):
     assert list(private.iterdir()) == []
 
 
+def test_raw_preview_never_loads_credentials(cli, private, monkeypatch, capsys):
+    def forbidden(*args, **kwargs):
+        pytest.fail("preview must not load credentials or call the provider")
+
+    monkeypatch.setattr(cli, "load_credential", forbidden)
+    monkeypatch.setattr(cli, "estimate_cost", forbidden)
+    symbol = "SPY   250117C00500000"
+    code = cli.main(
+        [
+            "estimate",
+            "--credential-directory",
+            str(private),
+            "--symbol",
+            symbol,
+            "--stype-in",
+            "raw_symbol",
+            "--schema",
+            "cbbo-1m",
+            "--start",
+            "2025-01-02",
+            "--end",
+            "2025-01-03",
+        ]
+    )
+    assert code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "offline_preview"
+    assert result["request"]["symbols"] == symbol
+    assert result["request"]["stype_in"] == "raw_symbol"
+    assert result["network_used"] is False
+    assert result["download_authorized"] is False
+    assert result["download_entitlement_verified"] is False
+    assert result["economic_evidence"] is False
+    assert result["credits_remaining"] is None
+    assert list(private.iterdir()) == []
+
+
+def test_invalid_raw_cli_denies_before_key_loading(cli, private, monkeypatch, capsys):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid scope must not load credentials")
+
+    monkeypatch.setattr(cli, "load_credential", forbidden)
+    code = cli.main(
+        [
+            "estimate",
+            "--credential-directory",
+            str(private),
+            "--symbol",
+            KEY,
+            "--stype-in",
+            "raw_symbol",
+            "--schema",
+            "cbbo-1m",
+            "--start",
+            "2025-01-02",
+            "--end",
+            "2025-01-03",
+            "--allow-metadata-network",
+        ]
+    )
+    assert code == 2
+    output = capsys.readouterr()
+    assert KEY not in output.out + output.err
+    result = json.loads(output.out)
+    assert result["status"] == "denied"
+    assert result["reason_code"] == "scope_invalid"
+    assert result["network_used"] is False
+
+
 def test_terminal_prompt_is_hidden_and_never_echoes_key(cli, private, monkeypatch, capsys):
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: KEY)

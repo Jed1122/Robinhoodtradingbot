@@ -52,11 +52,35 @@ deadline and a 512-byte response bound. Only a finite nonnegative JSON numeric U
 estimate is accepted, using Decimal parsing. Raw provider responses, credentials
 and exception details are never printed.
 
-Only `OPRA.PILLAR`, one to four explicitly named alphabetic parent underlyings, and
-`definition` or `cbbo-1m` schemas are currently supported. No missing-symbol or
-`ALL_SYMBOLS` request can be constructed. Repeat the explicitly scoped estimate
-with `--schema definition` to quote contract definitions separately. This does not
-estimate matching underlying data, corporate actions, storage or other costs.
+The fixed dataset is `OPRA.PILLAR`. Default parent mode accepts one to four
+alphabetic underlying roots and `definition` or `cbbo-1m`. Explicit
+`--stype-in raw_symbol` accepts one to 100 unique standard-format SPY option
+symbols, preserving their three ASCII spaces after `SPY`, and supports only
+`cbbo-1m`. The encoded expiry is interpreted as 2000–2099 and must be a valid
+calendar date; the encoded strike must be positive. Invalid or mixed modes,
+duplicates, adjusted-root strings, wildcards and `ALL_SYMBOLS` are rejected,
+not repaired or expanded into a broader query.
+
+Syntax validation is not proof of deliverables, historical availability or
+tradability. No exact-contract selector or downloader is included. Underlying
+history, corporate actions, calendars and other costs are not estimated by this
+command. Repeat a parent-mode estimate with `--schema definition` to quote
+definitions separately; do not repurchase the existing archive.
+
+This **offline-only synthetic syntax example** does not select a research contract
+and does not read a key or contact the provider:
+
+```sh
+PYTHONPATH=src python -m trading_bot.cli.databento_preflight estimate \
+  --credential-directory /Users/jedweinstein/.robinhood-options-research \
+  --stype-in raw_symbol --symbol 'SPY   250117C00500000' \
+  --schema cbbo-1m --start 2025-01-02 --end 2025-01-03
+```
+
+Repeat `--symbol` for each explicitly selected contract. Before making a real
+estimate, freeze and verify the private contract/date selection manifest; a
+cheap subset is not automatically sufficient research coverage. See the
+[scope and estimate record](options-data-budget-scope.md).
 
 ## Interpret the result correctly
 
