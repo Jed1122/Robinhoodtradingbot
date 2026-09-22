@@ -142,21 +142,34 @@ def load_credential(directory: Path, *, repository_root: Path) -> DatabentoCrede
     raise DatabentoPreflightError("credential_invalid")
 
 
+def _valid_raw_option_symbol(symbol: object) -> bool:
+    """Validate bounded query syntax, not contract identity or tradability."""
+    if type(symbol) is not str:
+        return False
+    matched = re.fullmatch(r"SPY   ([0-9]{2})([0-9]{2})([0-9]{2})[CP]([0-9]{8})", symbol)
+    if matched is None:
+        return False
+    year, month, day, strike = (int(value) for value in matched.groups())
+    try:
+        date(2000 + year, month, day)
+    except ValueError:
+        return False
+    return strike > 0
+
+
 @dataclass(frozen=True, slots=True)
 class CostRequest:
     symbols: tuple[str, ...]
     schema: Literal["definition", "cbbo-1m"]
     start: date
     end: date
+    stype_in: Literal["parent", "raw_symbol"] = "parent"
 
     def __post_init__(self) -> None:
         if (
             type(self.symbols) is not tuple
-            or not 1 <= len(self.symbols) <= 4
-            or any(
-                type(s) is not str or re.fullmatch(r"[A-Z]{1,6}", s) is None for s in self.symbols
-            )
-            or len(set(self.symbols)) != len(self.symbols)
+            or type(self.stype_in) is not str
+            or self.stype_in not in ("parent", "raw_symbol")
             or type(self.schema) is not str
             or self.schema not in ("definition", "cbbo-1m")
             or type(self.start) is not date
@@ -164,12 +177,26 @@ class CostRequest:
             or self.end <= self.start
         ):
             raise DatabentoPreflightError("scope_invalid")
+        if self.stype_in == "parent":
+            valid = 1 <= len(self.symbols) <= 4 and all(
+                type(s) is str and re.fullmatch(r"[A-Z]{1,6}", s) is not None for s in self.symbols
+            )
+        else:
+            valid = (
+                self.schema == "cbbo-1m"
+                and 1 <= len(self.symbols) <= 100
+                and all(_valid_raw_option_symbol(s) for s in self.symbols)
+            )
+        if not valid or len(set(self.symbols)) != len(self.symbols):
+            raise DatabentoPreflightError("scope_invalid")
 
     def query(self) -> dict[str, str]:
         return {
             "dataset": "OPRA.PILLAR",
-            "symbols": ",".join(symbol + ".OPT" for symbol in self.symbols),
-            "stype_in": "parent",
+            "symbols": ",".join(
+                symbol + ".OPT" if self.stype_in == "parent" else symbol for symbol in self.symbols
+            ),
+            "stype_in": self.stype_in,
             "schema": self.schema,
             # UTC day boundaries give whole 24-hour ranges for definition estimates.
             "start": datetime.combine(self.start, datetime.min.time(), UTC).isoformat(),

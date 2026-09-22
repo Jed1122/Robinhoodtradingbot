@@ -192,3 +192,105 @@ async def test_future_date_refused_before_network(request_scope):
             clock=Clock(),
             allow_metadata_network=True,
         )
+
+
+def test_raw_symbol_is_preserved_and_parent_default_is_unchanged(request_scope):
+    raw = replace(request_scope, symbols=("SPY   250117C00500000",), stype_in="raw_symbol")
+    assert raw.query() == {
+        "dataset": "OPRA.PILLAR",
+        "symbols": "SPY   250117C00500000",
+        "schema": "cbbo-1m",
+        "stype_in": "raw_symbol",
+        "start": "2025-01-02T00:00:00+00:00",
+        "end": "2025-01-03T00:00:00+00:00",
+    }
+    assert request_scope.query()["symbols"] == "SPY.OPT"
+    assert request_scope.query()["stype_in"] == "parent"
+
+
+@pytest.mark.parametrize(
+    "symbol",
+    [
+        "SPY",
+        "SPY.OPT",
+        "ALL_SYMBOLS",
+        "SPY   250117C00500000,SPY",
+        "SPY   250117C00500000\n",
+        "SPY   250230C00500000",
+        "SPY   250117C00000000",
+        "SPY   \uff12\uff15\uff10\uff11\uff11\uff17C00500000",
+        "SPY\u00a0  250117C00500000",
+        "QQQ   250117C00500000",
+        "SPY1  250117C00500000",
+        "SPY   250117c00500000",
+        None,
+    ],
+)
+def test_invalid_raw_symbols_are_denied(request_scope, symbol):
+    with pytest.raises(DatabentoPreflightError, match=r"^scope_invalid$"):
+        replace(request_scope, symbols=(symbol,), stype_in="raw_symbol")
+
+
+def test_raw_list_boundaries_and_other_modes_are_denied(request_scope):
+    symbols = tuple(f"SPY   250117C{strike:08d}" for strike in range(1, 102))
+    assert len(replace(request_scope, symbols=symbols[:100], stype_in="raw_symbol").symbols) == 100
+    for values in ((), symbols, (symbols[0], symbols[0]), (symbols[0], "SPY")):
+        with pytest.raises(DatabentoPreflightError, match=r"^scope_invalid$"):
+            replace(request_scope, symbols=values, stype_in="raw_symbol")
+    raw = replace(request_scope, symbols=symbols[:1], stype_in="raw_symbol")
+    for change in ({"schema": "definition"}, {"stype_in": "instrument_id"}, {"stype_in": None}):
+        with pytest.raises(DatabentoPreflightError, match=r"^scope_invalid$"):
+            replace(raw, **change)
+
+
+def test_calendar_validation_accepts_leap_day_and_keeps_parent_limit(request_scope):
+    raw = replace(request_scope, symbols=("SPY   240229C00500000",), stype_in="raw_symbol")
+    assert raw.query()["symbols"] == "SPY   240229C00500000"
+    with pytest.raises(DatabentoPreflightError, match=r"^scope_invalid$"):
+        replace(request_scope, symbols=("SPY", "QQQ", "IWM", "DIA", "XLF"))
+
+
+@pytest.mark.parametrize("status", [200, 302])
+async def test_raw_mode_keeps_fixed_cost_endpoint_and_no_redirect(
+    monkeypatch, request_scope, status
+):
+    scope = replace(request_scope, symbols=("SPY   250117P00500000",), stype_in="raw_symbol")
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        assert request.method == "GET"
+        assert str(request.url.copy_with(query=None)) == (
+            "https://hist.databento.com/v0/metadata.get_cost"
+        )
+        assert dict(request.url.params) == {
+            "dataset": "OPRA.PILLAR",
+            "symbols": "SPY   250117P00500000",
+            "schema": "cbbo-1m",
+            "stype_in": "raw_symbol",
+            "start": "2025-01-02T00:00:00+00:00",
+            "end": "2025-01-03T00:00:00+00:00",
+        }
+        return httpx.Response(
+            status,
+            content=b"0.125",
+            headers={
+                "content-type": "application/json",
+                "location": "https://example.invalid/denied",
+            },
+        )
+
+    wire_transport(monkeypatch, respond)
+    if status == 200:
+        result = await estimate_cost(
+            scope, DatabentoCredential(KEY), clock=Clock(), allow_metadata_network=True
+        )
+        assert result.cost_usd == Decimal("0.125")
+        assert result.download_authorized is False
+        assert result.economic_evidence is False
+    else:
+        with pytest.raises(DatabentoPreflightError, match=r"^http_failed$"):
+            await estimate_cost(
+                scope, DatabentoCredential(KEY), clock=Clock(), allow_metadata_network=True
+            )
+    assert len(calls) == 1
