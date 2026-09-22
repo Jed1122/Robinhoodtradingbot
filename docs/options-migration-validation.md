@@ -517,7 +517,7 @@ This review covered the local importer change, not the entire unfinished trading
   exhaust descriptors; this does not grant data eligibility or trading authority.
 
 The archive contains **definitions, not bid/ask quotes, underlying prices or strategy returns**.
-Its metadata lists217,732 partial symbols; conditions list779 available,2 degraded,3 missing
+Its metadata lists 217,732 partial symbols; conditions list 779 available, 2 degraded, 3 missing
 dates. Mapping conflict resolution, eligible-session coverage, historical availability and
 canonical contract enrichment remain unverified. Quotes, underlying/event inputs and any
 additional data spending need their own scope, estimates and approval; no further purchase
@@ -532,4 +532,29 @@ Technical readiness **NOT_READY**; economics **ECONOMIC_NO_GO**; account/runtime
 production migration, deployment, live activation or changed risk limits in this continuation.
 
 Verification artifacts: `/private/tmp/options-definition-validation.RauLUe`.
-Full-suite and final gate results are recorded below when complete.
+
+Final local verification at `41a3c41`: **5,489 passed**, no skips, one existing
+Starlette/httpx deprecation warning, **89.66% overall coverage**, 331.95 seconds.
+The **90% per-file critical branch gate passed**. Native staging and its nested schema
+validator have 100% measured line/branch coverage; batch validation has 95% branch
+coverage and the DBN decoder has 96.15%. Coverage is not a guarantee of valid economics.
+The final run uses the pinned disposable test environment with `UV_NO_SYNC=1`; two
+earlier interrupted runs are not counted as passing verification. An environment-related
+`uv run` stall was isolated to the smoke subprocess; all three relevant smoke tests passed
+with explicit environment selection, followed by the complete green suite.
+
+Ruff all, Mypy (234 source files), Bandit, root/research lock checks and both locked
+dependency audits pass. Audits report no known vulnerabilities, with the tool's normal
+`--no-deps` warning. Temporary CycloneDX1.6 inventories validate: 104 root and 60 research
+components. These inventories are not asserted to be a complete dependency graph.
+The tracked SBOM is unchanged; its temporary-output reproducibility test passed. All
+four real local `age` encrypted backup/restore tests and DigitalOcean shell syntax checks
+passed. Compose rendering remains unverified: the installed Docker CLI rejects the command.
+No remote CI, production deployment, operational benchmark or live-broker validation claimed.
+
+User-staged root lock hash remains
+`bc4a00f5e4f9d251582f98694d410f59284a69798b8970311495e12e978c1044`;
+pre-existing tracked SBOM hash remains
+`085ecfb87803d0bd88b4d2efa53a7aab438356893b010799c4d7d70b88647750`.
+Unrelated staged, unstaged and untracked work remains intact. Importer commits are local
+checkpoints only, not pushed or deployed. The full migration ledger remains open.

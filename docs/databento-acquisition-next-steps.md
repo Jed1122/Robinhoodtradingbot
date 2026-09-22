@@ -6,7 +6,7 @@ metadata estimates are recorded in [the preflight guide](databento-preflight.md)
 The observation/expiry implementation made no authenticated requests. The subsequent
 acquisition continuation refreshed one free definition-cost estimate as recorded below.
 After scoped operator approval and browser sign-in, one $11.44 definitions request was
-submitted and accepted as queued. On September22 the operator supplied the completed
+submitted and accepted as queued. On September 22 the operator supplied the completed
 download; local receipt and native staging are now verified as recorded below. Final
 charge remains unverified.
 The replacement key remains private and was not read during the browser submission.
@@ -115,7 +115,7 @@ An independent decompressed-byte calculation agrees exactly with the record coun
 `(2,657,756,012 - 201,919,532) / 360 = 6,821,768`.
 
 The provider metadata contains 217,732 partial-symbol declarations; its conditions list
-779 available,2 degraded,3 missing dates. These are retained limitations, not proof of
+779 available, 2 degraded, 3 missing dates. These are retained limitations, not proof of
 which eligible trading sessions are missing. Mapping conflict resolution, historical
 availability, complete chains and canonical contract enrichment remain unverified.
 No quotes, underlying prices or strategy returns are in this definitions archive.
