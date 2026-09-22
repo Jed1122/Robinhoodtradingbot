@@ -24,11 +24,14 @@ jobs:
           uv run --project research --no-sync python - <<'PY'
           import QuantLib
           import duckdb
+          from importlib.metadata import version
 
           actual = (QuantLib.__version__, duckdb.__version__)
           expected = ("1.43", "1.5.5")
           if actual != expected:
               raise SystemExit(f"research backend version mismatch: {actual!r}")
+          if (version("databento-dbn"), version("zstandard")) != ("0.69.0", "0.25.0"):
+              raise SystemExit("offline decoder version mismatch")
           PY
       - name: Run credential-free options research tests
         run: >
@@ -38,3 +41,7 @@ jobs:
           tests/unit/market_data/test_options_records.py
           tests/unit/market_data/test_options_data_codec.py
           tests/integration/market_data/test_options_parquet.py
+          tests/unit/market_data/test_databento_batch.py
+          tests/integration/market_data/test_databento_definitions.py
+          tests/integration/market_data/test_databento_stage.py
+          tests/integration/cli/test_databento_import.py

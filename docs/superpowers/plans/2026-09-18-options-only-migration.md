@@ -262,3 +262,26 @@ normalized legs/collateral/settlements, complete risk and broker reconciliation 
 
 No Cloud execution, broker/account calls, purchases, deployment or live activation is authorized
 by these follow-ons. Current local verification is recorded in options-migration-validation.md.
+
+## Task 19: Supplied Databento definitions, offline validation and staging
+
+Base 812ee81bb9c2cf46276addcc5d057875919f7865. Main owns integration; real supplied data
+stays outside Git and agent tasks. Validate the operator-supplied completed batch against
+the already approved SPY.OPT definitions-only 2023-2025 request. No new acquisition,
+authentication, quote purchase or trading. Retain original download, make a verified
+private copy, and preserve metadata/checksums/quality conditions without assuming
+available days imply complete chains. Verify all compressed bytes and record framing.
+
+Tests first for strict batch metadata, hash/size/scope mismatches, safe paths, limits,
+truncation, record types, exact nanoseconds/prices and unsupported contract fields.
+Use a separately pinned offline DBN decoder in research, not the production package.
+Stage provider-native definitions with explicit unknown deliverables, sessions and
+historical availability; do not manufacture executable OptionContract objects or
+overwrite existing canonical record schemas. Retain original provider bytes and an
+immutable, content-bound validation report. Expose a credential-free command.
+
+Expected: synthetic input validates deterministically; corruption/wrong scope fails;
+real file produces exact counts and disclosed quality limitations. Integrity success
+does not change economic, capability or live authorization. Run narrow tests, complete
+baseline, research-backend tests, lint/type/security/dependency checks and independent
+review. Update acquisition/readiness documents with actual evidence and remaining work.

@@ -6,6 +6,8 @@ dependencies = [
   "robinhood-multi-asset-trading-system",
   "QuantLib==1.43",
   "duckdb==1.5.5",
+  "databento-dbn==0.69.0",
+  "zstandard==0.25.0",
 ]
 
 [tool.uv]
