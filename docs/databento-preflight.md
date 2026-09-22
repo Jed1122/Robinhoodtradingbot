@@ -153,3 +153,49 @@ the portal confirmed $125 credit and $0 due; one exact-scope $11.44 definitions-
 batch was submitted at 2026-09-19 00:53 UTC and accepted as queued. This browser action
 does not add download capability to the cost-only diagnostic. Completion, final cost
 and local files remain unverified; see the acquisition guide before any follow-up.
+
+## Exact-symbol extension — 2026-09-22
+
+The approved [implementation plan](superpowers/plans/2026-09-22-exact-options-cost-preflight.md)
+adds the raw-symbol mode documented above. Commits `b7f333a` and `a2f3450` contain
+the request model, CLI and regression tests. The 18 model tests failed on the missing
+constructor argument before implementation; the two CLI tests failed on the missing
+argument handling. All **88** preflight, CLI and private-credential tests then passed.
+A fresh independent reviewer repeated those 88 tests and reported no findings.
+Neither the tests nor that review contacted Databento or inspected a real key.
+
+A real CLI subprocess with a nonexistent credential directory returned
+`offline_preview`, preserved the synthetic raw symbol, and reported no network or
+authorization. No real raw-symbol estimate has been requested with this extension.
+The earlier parent-scope dollar estimates are not evidence of provider verification
+for this new mode. Final broad-suite results are recorded in the plan's execution record.
+
+### Review decisions and remaining boundaries
+
+- Use literal expected request dictionaries rather than the same serializer on both
+  sides of an assertion; the tradeoff is independent fixture maintenance.
+- Overlap the independent review with broad regression testing, but require both
+  before completion; a discovered regression would need a corrective commit.
+- Keep syntax validation separate from contract identity, deliverables, availability
+  and tradability. A valid-looking but nonexistent contract could reach the free
+  metadata estimator, never a downloader or order interface.
+- Do not certify current prices, billing or entitlements from mocked tests. They
+  remain separate acquisition checks; relying on old observations could misprice a
+  purchase, so acquisition stays gated.
+- Keep research sufficiency and trading readiness unqualified/NO-GO. This may delay
+  research promotion but must not increase exposure.
+- Preserve the existing clock-dependent future-date denial inside `estimate_cost`.
+  Static symbol/mode/date-shape validation occurs before loading a credential; the
+  check against the current clock occurs after an explicitly opted-in credential
+  load and before HTTP. A future-date request can therefore cause an unnecessary
+  local key read, not a provider request. This behavior was not changed by the feature.
+- Exercise malformed symbols at the model boundary plus a CLI credential-denial
+  regression. The CLI constructs the validated model before credential loading;
+  a future bypass of that construction would need its own regression test.
+- Pin nested `uv run` test processes to the same verified environment as pytest.
+  The initial broad run stalled when an existing smoke test selected the separate
+  project `.venv`; no application code was changed to resolve this environment mismatch.
+  This does not establish portability of the stalled host environment.
+
+No deferred review findings, live authorization, risk changes, account calls,
+data acquisition, subscriptions or deployment changes are included in this extension.
