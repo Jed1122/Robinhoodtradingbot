@@ -119,3 +119,27 @@ def test_incomplete_history_remains_blocked_after_journal_restart(tmp_path):
     report = json.loads(result.stdout)
     assert report["restart_verified"] and not report["entry_enabled"]
     assert "risk_history_incomplete" in report["losses"]["entry_reasons"]
+
+
+def test_malformed_internal_report_is_denied_before_printing(monkeypatch):
+    module = importlib.import_module("trading_bot.cli.options_risk_history")
+    monkeypatch.setattr(module, "_rehearse", lambda *args: {"losses": [], "secret": "hidden"})
+    result = runner.invoke(app(), ["demo", "--config-dir", str(CONFIGS)])
+    assert result.exit_code == 1
+    assert json.loads(result.stdout) == {"status": "denied", "reason": "risk_history_input_invalid"}
+    assert "hidden" not in result.output
+
+
+def test_database_failure_is_redacted_by_persistence_boundary(monkeypatch):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from trading_bot.persistence import options_risk_rehearsal as module
+
+    def fail(*args):
+        raise SQLAlchemyError("sensitive-storage-detail")
+
+    monkeypatch.setattr(module.command, "upgrade", fail)
+    result = runner.invoke(app(), ["demo", "--config-dir", str(CONFIGS)])
+    assert result.exit_code == 1
+    assert "sensitive-storage-detail" not in result.output
+    assert json.loads(result.stdout)["status"] == "denied"

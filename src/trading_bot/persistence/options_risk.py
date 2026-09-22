@@ -1,6 +1,7 @@
 """Fenced immutable synthetic risk history, with no order/authorization capabilities."""
 
 from dataclasses import dataclass, fields
+from datetime import datetime
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -154,14 +155,18 @@ class OptionsRiskJournal:
             )
             return RiskJournalSnapshot(points, report, rows[-1].event_hash if rows else _GENESIS)
 
-    def _check_leader(self, leader: ExecutionLeaseRow | None) -> None:
+    def _check_leader(
+        self, leader: ExecutionLeaseRow | None, *, not_before: datetime | None = None
+    ) -> datetime:
         now = require_utc(self._clock.now())
         if (
             leader is None
             or now >= leader.expires_at
             or now < max(leader.acquired_at, leader.heartbeat_at)
+            or (not_before is not None and now < not_before)
         ):
             raise StaleFencingToken("risk writer lease expired, changed or clock regressed")
+        return now
 
     async def append(
         self, lease: ExecutionLease, point: OptionsLossPoint, *, expected_head: str
@@ -181,24 +186,26 @@ class OptionsRiskJournal:
                     ExecutionLeaseRow.fencing_token == lease.fencing_token,
                 )
             )
-            self._check_leader(leader)
+            transaction_at = self._check_leader(leader)
             rows = await self._rows(session, lease.account_id)
             points = _points(rows, lease.account_id)
             head = rows[-1].event_hash if rows else _GENESIS
             duplicate = await session.get(OptionsRiskEventRow, point.event_id)
+            evaluated_at = self._check_leader(leader, not_before=transaction_at)
             if duplicate is not None:
                 if (
                     duplicate.account_id != point.account_id
                     or duplicate.payload_json != payload
-                    or head not in (expected_head, duplicate.event_hash)
+                    or head != duplicate.event_hash
+                    or expected_head not in (duplicate.previous_hash, duplicate.event_hash)
                 ):
                     raise DomainValidationError("conflicting or superseded risk event")
-                evaluate_options_loss_history(self._loaded, points, as_of=self._clock.now())
-                self._check_leader(leader)
+                evaluate_options_loss_history(self._loaded, points, as_of=evaluated_at)
+                self._check_leader(leader, not_before=evaluated_at)
                 return duplicate.event_hash
             if head != expected_head or len(rows) >= self._maximum:
                 raise DomainValidationError("risk head changed or journal full")
-            evaluate_options_loss_history(self._loaded, (*points, point), as_of=self._clock.now())
+            evaluate_options_loss_history(self._loaded, (*points, point), as_of=evaluated_at)
             row = OptionsRiskEventRow(
                 id=point.event_id,
                 account_id=point.account_id,
@@ -210,6 +217,6 @@ class OptionsRiskJournal:
             row.event_hash = _hash(row)
             session.add(row)
             await session.flush()
-            self._check_leader(leader)
+            self._check_leader(leader, not_before=evaluated_at)
             await session.commit()
             return row.event_hash

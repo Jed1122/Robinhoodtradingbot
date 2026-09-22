@@ -296,3 +296,33 @@ def test_lower_fencing_token_is_detected_even_with_recomputed_hash():
         rows.append(row)
     with pytest.raises(ValueError):
         module._points(rows, ACCOUNT)
+
+
+async def test_old_duplicate_with_current_head_cannot_return_stale_receipt(journal_url):
+    engine, _factory, clock, _leases, lease, journal = await setup(journal_url)
+    head_a = await journal.append(lease, point(), expected_head="0" * 64)
+    clock.value += timedelta(seconds=1)
+    head_b = await journal.append(lease, point("B", at=clock.value), expected_head=head_a)
+    with pytest.raises(ValueError, match=r"conflicting|superseded"):
+        await journal.append(lease, point(), expected_head=head_b)
+    assert (await journal.snapshot(ACCOUNT)).head_hash == head_b
+    await engine.dispose()
+
+
+async def test_precommit_clock_regression_rolls_back_even_inside_lease(journal_url):
+    engine, _factory, clock, _leases, lease, journal = await setup(journal_url)
+    head = await journal.append(lease, point(), expected_head="0" * 64)
+    clock.value = OPEN + timedelta(seconds=10)
+    later = point("later", at=clock.value)
+
+    def regress(connection, cursor, statement, parameters, context, executemany):
+        if "INSERT INTO options_risk_events" in statement:
+            clock.value = OPEN + timedelta(seconds=5)
+
+    sqlalchemy_event.listen(engine.sync_engine, "after_cursor_execute", regress)
+    with pytest.raises(StaleFencingToken):
+        await journal.append(lease, later, expected_head=head)
+    sqlalchemy_event.remove(engine.sync_engine, "after_cursor_execute", regress)
+    restored = await journal.snapshot(ACCOUNT)
+    assert restored.points == (point(),) and restored.head_hash == head
+    await engine.dispose()
