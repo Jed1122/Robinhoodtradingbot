@@ -4,6 +4,7 @@ import asyncio
 import json
 import sqlite3
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -365,3 +366,118 @@ async def test_lease_expiring_during_database_wait_cannot_append(
     sqlalchemy_event.remove(engine.sync_engine, "before_cursor_execute", advance_clock)
     assert (await journal.restore(AccountId("account-1"))).episodes == ()
     await engine.dispose()
+
+
+@pytest.mark.parametrize("expected", ["current", "absent", "unrelated"])
+async def test_superseded_retry_cannot_return_an_obsolete_trial_head(journal_url, expected):
+    engine = create_engine(journal_url)
+    factory = async_session_factory(engine)
+    clock = Clock()
+    lease = await LeaseRepository(factory, clock).acquire(AccountId("account-1"), owner="paper")
+    journal = OptionsTrialJournal(factory, clock)
+    try:
+        first = await journal.append(lease, event(), expected_head="0" * 64)
+        last = await journal.append(lease, event("later"), expected_head=first)
+        heads = {"current": last, "absent": None, "unrelated": "f" * 64}
+        with pytest.raises(ValueError, match=r"changed|superseded"):
+            await journal.append(lease, event(), expected_head=heads[expected])
+        snapshot = await journal.snapshot(AccountId("account-1"))
+        assert snapshot.head_hash == last
+        assert snapshot.events == (event(), event("later"))
+        assert snapshot.state.reserved_risk == D("11")
+    finally:
+        await engine.dispose()
+
+
+async def test_tip_retry_does_not_accept_an_unrelated_expected_head(journal_url):
+    engine = create_engine(journal_url)
+    factory = async_session_factory(engine)
+    clock = Clock()
+    lease = await LeaseRepository(factory, clock).acquire(AccountId("account-1"), owner="paper")
+    journal = OptionsTrialJournal(factory, clock)
+    try:
+        head = await journal.append(lease, event(), expected_head="0" * 64)
+        assert await journal.append(lease, event(), expected_head=head) == head
+        with pytest.raises(ValueError, match=r"changed|superseded"):
+            await journal.append(lease, event(), expected_head="f" * 64)
+        assert (await journal.snapshot(AccountId("account-1"))).head_hash == head
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("renewed", [False, True])
+async def test_trial_writer_cannot_use_a_clock_before_lease_history(journal_url, renewed):
+    engine = create_engine(journal_url)
+    factory = async_session_factory(engine)
+    clock = Clock()
+    leases = LeaseRepository(factory, clock)
+    lease = await leases.acquire(AccountId("account-1"), owner="paper")
+    if renewed:
+        clock.current = NOW + timedelta(seconds=10)
+        lease = await leases.renew(lease)
+        clock.current = NOW + timedelta(seconds=5)
+    else:
+        clock.current = NOW - timedelta(seconds=1)
+    journal = OptionsTrialJournal(factory, clock)
+    try:
+        with pytest.raises(StaleFencingToken):
+            await journal.append(lease, event(occurred_at=NOW - timedelta(seconds=2)))
+        assert (await journal.restore(AccountId("account-1"))).episodes == ()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "boundary", ["BEGIN IMMEDIATE", "FROM options_trial_events", "INSERT INTO options_trial_events"]
+)
+async def test_trial_clock_regression_during_database_work_rolls_back(journal_url, boundary):
+    engine = create_engine(journal_url)
+    factory = async_session_factory(engine)
+    clock = Clock()
+    lease = await LeaseRepository(factory, clock).acquire(AccountId("account-1"), owner="paper")
+    journal = OptionsTrialJournal(factory, clock)
+    head = await journal.append(lease, event())
+    clock.current = NOW + timedelta(seconds=10)
+
+    def regress(connection, cursor, statement, parameters, context, executemany):
+        if boundary in statement:
+            clock.current = NOW + timedelta(seconds=5)
+
+    sqlalchemy_event.listen(engine.sync_engine, "after_cursor_execute", regress)
+    try:
+        with pytest.raises(StaleFencingToken):
+            await journal.append(lease, event("later"), expected_head=head)
+    finally:
+        sqlalchemy_event.remove(engine.sync_engine, "after_cursor_execute", regress)
+    try:
+        snapshot = await journal.snapshot(AccountId("account-1"))
+        assert snapshot.head_hash == head
+        assert snapshot.events == (event(),)
+        assert snapshot.state.reserved_risk == D("11")
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("fault", ["expired", "regressed"])
+async def test_exact_retry_rechecks_lease_after_reading_history(journal_url, fault):
+    engine = create_engine(journal_url)
+    factory = async_session_factory(engine)
+    clock = Clock()
+    lease = await LeaseRepository(factory, clock, timedelta(seconds=30)).acquire(
+        AccountId("account-1"), owner="paper"
+    )
+    journal = OptionsTrialJournal(factory, clock)
+    head = await journal.append(lease, event())
+    clock.current = NOW + timedelta(seconds=10)
+
+    def disrupt(connection, cursor, statement, parameters, context, executemany):
+        if "FROM options_trial_events" in statement:
+            clock.current = NOW + timedelta(seconds=31 if fault == "expired" else 5)
+
+    sqlalchemy_event.listen(engine.sync_engine, "after_cursor_execute", disrupt)
+    try:
+        with pytest.raises(StaleFencingToken):
+            await journal.append(lease, event(), expected_head=head)
+    finally:
+        sqlalchemy_event.remove(engine.sync_engine, "after_cursor_execute", disrupt)
+        await engine.dispose()

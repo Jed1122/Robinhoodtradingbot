@@ -188,6 +188,18 @@ class OptionsTrialJournal:
                 rows[-1].event_hash if rows else _GENESIS,
             )
 
+    def _check_leader(
+        self, leader: ExecutionLeaseRow | None, *, not_before: datetime
+    ) -> datetime:
+        now = require_utc(self._clock.now())
+        if (
+            leader is None
+            or now >= leader.expires_at
+            or now < max(leader.acquired_at, leader.heartbeat_at, not_before)
+        ):
+            raise StaleFencingToken("trial journal lease expired, changed or clock regressed")
+        return now
+
     async def append(
         self,
         lease: ExecutionLease,
@@ -217,20 +229,21 @@ class OptionsTrialJournal:
             )
             # BEGIN IMMEDIATE and the query can wait. Compare after those awaits,
             # never authorize using a clock sample taken before obtaining the lock.
-            if leader is None or leader.expires_at <= require_utc(self._clock.now()):
-                raise StaleFencingToken("trial journal writer is not the current lease owner")
+            transaction_at = self._check_leader(leader, not_before=now)
             rows = await self._rows(session, lease.account_id)
             state = _reconstruct(rows)
             current_head = rows[-1].event_hash if rows else _GENESIS
             duplicate = await session.get(OptionsTrialEventRow, event.event_id)
+            evaluated_at = self._check_leader(leader, not_before=transaction_at)
             if duplicate is not None:
                 if duplicate.account_id != lease.account_id or duplicate.payload_json != payload:
                     raise DomainValidationError("conflicting trial event identity")
-                if expected_head is not None and current_head not in (
-                    expected_head,
-                    duplicate.event_hash,
+                if current_head != duplicate.event_hash or (
+                    expected_head is not None
+                    and expected_head not in (duplicate.previous_hash, duplicate.event_hash)
                 ):
                     raise DomainValidationError("trial history changed after duplicate event")
+                self._check_leader(leader, not_before=evaluated_at)
                 return duplicate.event_hash
             if expected_head is not None and current_head != expected_head:
                 raise DomainValidationError("trial history changed before append")
@@ -253,7 +266,6 @@ class OptionsTrialJournal:
             session.add(row)
             await session.flush()
             # A slow write is still uncommitted. Expiry here rolls the event back.
-            if leader.expires_at <= require_utc(self._clock.now()):
-                raise StaleFencingToken("trial journal lease expired during append")
+            self._check_leader(leader, not_before=evaluated_at)
             await session.commit()
             return row.event_hash

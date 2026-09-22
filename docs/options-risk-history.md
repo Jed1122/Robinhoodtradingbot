@@ -51,6 +51,14 @@ changed identity/content, stale leaders, clock regression and altered history fa
 Lease validity is checked after lock acquisition and again before commit. SQL triggers
 reject update/delete/replacement and downgrade refuses nonempty history.
 
+The separate synthetic `OptionsTrialJournal` now applies the same lease chronology
+checks, including acquisition/heartbeat time, time spent waiting for SQLite, history
+reads, and the pre-commit boundary. An exact duplicate may return only the current
+journal tip; an explicitly supplied retry head must be that tip or its predecessor.
+Replaying an older event after intervening history fails, even when supplied with the
+latest head. The v1 event encoding and existing hashes are unchanged; no migration or
+reservation-policy change is required. This is recovery hardening, not a broker adapter.
+
 Only a future separately reviewed composition may use this library outside synthetic
 rehearsals. It does not establish production state migration or deployment readiness.
 History bounds fail closed; there is no truncation or rolling-window loss forgiveness.

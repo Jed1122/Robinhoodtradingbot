@@ -334,3 +334,32 @@ production grants, alternate policy loader or automatic resume. Demonstrate rest
 the real journal. Fix stale documentation about existing recorded-session/monitor APIs.
 Expected: working CLI, invalid/partial input denial, no-network tests and clear status/exit
 semantics. Full suite, critical coverage, lint/type/security checks and independent review.
+
+## Continuation from 2421153 — authenticated-read evidence and recovery hardening
+
+The operator separately approved read-only verification of the Agentic account and
+Databento availability/cost estimates. This does not authorize order review, order
+writes, credential changes, acquisitions, spending, production-ledger access or deployment.
+Public documentation, this Codex connection, account observations and the standalone
+DigitalOcean runtime remain separate evidence scopes. Keep private account values out of Git.
+
+Current classification: normalized reconciliation/expiry and synthetic recovery are partial;
+production lifecycle composition is unfinished; standalone broker runtime is unverified;
+genuine economic evaluation is blocked on suitable quote/underlying data and acquisition
+authority. Existing definitions alone cannot establish returns. Critical path: independent
+durable local lifecycle -> retained normalized broker observations -> reproducible reconciliation
+and expiry -> paused recovery -> separately verified connected composition. Data acquisition and
+preregistered economic evaluation proceed independently after their own prerequisites.
+
+### Task 24: Trial-journal lease chronology and exact-tip retries
+
+Coordinator-owned prerequisite hardening, not completed production integration. Preserve
+the v1 payload/hash format, synthetic source label, canonical trial policy and old readable
+records. Match the risk journal's transaction/evaluation clock checks: reject time before
+lease acquisition/heartbeat and regression during asynchronous database work; recheck after
+history reads and immediately before returning a duplicate or committing a new event.
+Reject a superseded duplicate even if its caller supplies the current journal head. Permit
+an exact current-tip retry with its predecessor/current head, without changing reservations.
+Use real temporary SQLite tests for RED/GREEN, clock regression and expiry during waits,
+post-insert rollback, duplicate identity and unchanged durable cash/risk state. No production
+migration, account adapter, transport allowlist change or live capability is included.
