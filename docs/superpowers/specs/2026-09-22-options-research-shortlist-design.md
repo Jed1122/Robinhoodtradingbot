@@ -1,6 +1,6 @@
 # SPY options research shortlist design
 
-Status: **design brief approved; written specification awaiting operator review**.
+Status: **written specification approved; implementation plan awaiting operator review**.
 Prepared 2026-09-22 UTC against `24472cc0aa67aac85ce23de815a1faa2ed0a8030`.
 No implementation, data purchase or live authorization follows from this document alone.
 
@@ -218,10 +218,11 @@ No such implementation tests have run for this unimplemented specification.
 ## 7. Review checkpoint
 
 - Context, scope and dependency classification: complete.
-- Research-only design brief: explicitly approved by the operator this turn.
+- Research-only design brief: explicitly approved by the operator.
 - Written specification and inline consistency/ambiguity review: prepared.
-- Written-spec operator review: pending.
-- Implementation plan, execution-method choice and implementation: not started.
+- Written-spec operator review: approved by the operator's “proceed” on 2026-09-22.
+- [Implementation plan](../plans/2026-09-22-options-research-shortlist.md): prepared;
+  operator plan review and execution-method choice pending. Implementation not started.
 
-After written-spec approval, prepare the implementation plan. Do not treat approval
-of the brief as approval of this later artifact or as permission to acquire data.
+Review the implementation plan and choose an execution method before implementation.
+Neither specification approval nor plan preparation grants permission to acquire data.
