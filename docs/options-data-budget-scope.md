@@ -11,6 +11,16 @@ their estimates, not a broad $396.34 quote download. ThetaData remains a fallbac
 requiring a separate coverage, usage-rights and total-cost decision; no subscription
 is approved. A lower data bill does not establish an economic edge.
 
+The [subscription and capital decision](options-data-purchase-decision-2026-09-22.md)
+records the subsequent willingness to consider $40/month, the checked underlying-data
+add-on and granularity discrepancy, and fresh hypothetical capital checks. It does
+not expand acquisition authority or the live account envelope.
+
+The subsequent [underlying preflight](options-underlying-data-preflight-2026-09-22.md)
+adds fresh Nasdaq-only SPY bar/quote estimates and timestamp limitations. The
+[shortlist specification](superpowers/specs/2026-09-22-options-research-shortlist-design.md)
+records the approved research-only design brief; written-spec review is still pending.
+
 At the planning baseline, the estimator supported parent option chains, not exact
 option symbols or underlying prices. This document separates two deliverables:
 
