@@ -269,6 +269,55 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
     if config.prediction_markets.live_enabled or envelope.prediction_live_permitted:
         raise UnsafeConfiguration("prediction live execution is always prohibited")
 
+    for name in (
+        "max_per_trade_loss_usd",
+        "cumulative_trial_loss_limit_usd",
+        "max_total_payoff_risk_pct",
+        "max_underlying_group_payoff_risk_pct",
+        "max_open_strategy_positions",
+        "max_new_positions_per_session",
+        "max_structure_units_per_entry",
+        "replay_max_bytes",
+        "replay_max_records",
+        "replay_max_json_depth",
+    ):
+        _require_at_most(
+            f"options.{name}", getattr(config.options, name), getattr(envelope.options, name)
+        )
+    _require_at_least(
+        "options.min_unencumbered_cash_pct",
+        config.options.min_unencumbered_cash_pct,
+        envelope.options.min_unencumbered_cash_pct,
+    )
+    for name in ("enabled", "allow_locked_quotes"):
+        _require_not_enabled(
+            f"options.{name}", getattr(config.options, name), getattr(envelope.options, name)
+        )
+
+    shortlist = config.options.research_shortlist
+    shortlist_bound = envelope.options.research_shortlist
+    _require_not_enabled(
+        "options.research_shortlist.enabled", shortlist.enabled, shortlist_bound.enabled
+    )
+    for name in ("max_input_records", "max_input_bytes", "max_json_depth", "max_decision_sessions"):
+        _require_at_most(
+            f"options.research_shortlist.{name}",
+            getattr(shortlist, name),
+            getattr(shortlist_bound, name),
+        )
+    for name in (
+        "underlying",
+        "version",
+        "reference",
+        "strike_tie",
+        "expiry_tie",
+        "min_dte",
+        "target_dte",
+        "max_dte",
+    ):
+        if getattr(shortlist, name) != getattr(shortlist_bound, name):
+            raise UnsafeConfiguration("options shortlist policy is not release-allowed")
+
     max_pairs = (
         (
             "portfolio.expected_starting_equity_usd",
@@ -391,6 +440,21 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
             envelope.costs.max_slippage_pct,
         ),
         (
+            "research.maximum_stressed_drawdown_pct",
+            config.research.maximum_stressed_drawdown_pct,
+            envelope.research.maximum_stressed_drawdown_pct,
+        ),
+        (
+            "research.maximum_single_opportunity_profit_contribution_pct",
+            config.research.maximum_single_opportunity_profit_contribution_pct,
+            envelope.research.maximum_single_opportunity_profit_contribution_pct,
+        ),
+        (
+            "research.maximum_monte_carlo_loss_probability_pct",
+            config.research.maximum_monte_carlo_loss_probability_pct,
+            envelope.research.maximum_monte_carlo_loss_probability_pct,
+        ),
+        (
             "promotion.micro_order_review_interval",
             config.promotion.micro_order_review_interval,
             envelope.promotion.micro_order_review_interval,
@@ -469,6 +533,51 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
             "costs.stressed_cost_multiplier",
             config.costs.stressed_cost_multiplier,
             envelope.costs.stressed_cost_multiplier,
+        ),
+        (
+            "research.walk_forward_folds",
+            config.research.walk_forward_folds,
+            envelope.research.walk_forward_folds,
+        ),
+        (
+            "research.embargo_bars",
+            config.research.embargo_bars,
+            envelope.research.embargo_bars,
+        ),
+        (
+            "research.monte_carlo_iterations",
+            config.research.monte_carlo_iterations,
+            envelope.research.monte_carlo_iterations,
+        ),
+        (
+            "research.history_calendar_days",
+            config.research.history_calendar_days,
+            envelope.research.history_calendar_days,
+        ),
+        (
+            "research.minimum_history_bars",
+            config.research.minimum_history_bars,
+            envelope.research.minimum_history_bars,
+        ),
+        (
+            "research.minimum_test_bars_per_fold",
+            config.research.minimum_test_bars_per_fold,
+            envelope.research.minimum_test_bars_per_fold,
+        ),
+        (
+            "research.minimum_independent_opportunities",
+            config.research.minimum_independent_opportunities,
+            envelope.research.minimum_independent_opportunities,
+        ),
+        (
+            "research.minimum_positive_walk_forward_folds",
+            config.research.minimum_positive_walk_forward_folds,
+            envelope.research.minimum_positive_walk_forward_folds,
+        ),
+        (
+            "research.minimum_benchmark_excess_return_pct",
+            config.research.minimum_benchmark_excess_return_pct,
+            envelope.research.minimum_benchmark_excess_return_pct,
         ),
     )
     for name, actual, minimum in min_pairs:

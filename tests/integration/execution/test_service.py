@@ -14,6 +14,8 @@ from alembic.config import Config
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from tests.unit.risk.test_pretrade import valid_harness
+from trading_bot import logging as logging_module
 from trading_bot.brokers import BrokerSubmissionAmbiguous
 from trading_bot.domain import (
     AccountId,
@@ -40,7 +42,9 @@ from trading_bot.domain import (
 )
 from trading_bot.execution import InProcessSubmissionExclusion, OrderReviewService
 from trading_bot.execution.service import ExecutionService
+from trading_bot.logging import SecretRegistry
 from trading_bot.persistence import async_session_factory, create_engine
+from trading_bot.persistence.base import PersistenceDataError
 from trading_bot.persistence.models import (
     AccountRow,
     BrokerReviewRow,
@@ -390,6 +394,72 @@ async def test_safe_fake_order_is_durably_pending_before_exactly_one_place(
         OrderState.SUBMISSION_PENDING.value,
         OrderState.SUBMITTED.value,
     ]
+
+
+@pytest.mark.asyncio
+async def test_real_final_pretrade_evidence_is_persisted_canonically(
+    execution_database: tuple[AsyncEngine, async_sessionmaker[AsyncSession]],
+) -> None:
+    """Exercise persistence with all 24 checks emitted by the real risk engine."""
+
+    _engine, factory = execution_database
+    intent = make_intent()
+    harness = valid_harness()
+    evaluation = replace(
+        harness.engine.evaluate_final(harness.context),
+        intent_id=intent.id,
+        config_hash=intent.config_hash,
+    )
+    assert len(evaluation.checks) == 24
+    assert any(
+        value is not None and len(value) > 128
+        for check in evaluation.checks
+        for value in (check.observed, check.configured_limit)
+    )
+
+    async with SqlAlchemyUnitOfWork(
+        factory,
+        code_hash=CODE_HASH,
+        config_hash=CONFIG_HASH,
+    ) as uow:
+        await uow.orders.add(intent)
+        await uow.orders.add_risk_evaluation("real-final-risk", "final", evaluation)
+        await uow.commit()
+
+    async with factory() as session:
+        persisted = await session.scalar(
+            select(RiskEvaluationRow).where(RiskEvaluationRow.id == "real-final-risk")
+        )
+    assert persisted is not None
+    assert persisted.check_count == 24
+
+
+@pytest.mark.asyncio
+async def test_risk_evidence_still_rejects_registered_secrets(
+    execution_database: tuple[AsyncEngine, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _engine, factory = execution_database
+    intent = make_intent()
+    secret = "registered_structured_secret"
+    monkeypatch.setattr(logging_module, "_REGISTRY_STATE", logging_module._RegistryState())
+    SecretRegistry().register(secret)
+    evaluation = FakePretrade._evaluation(intent, allowed=True, count=24)
+    evaluation = replace(
+        evaluation,
+        checks=(replace(evaluation.checks[0], observed=secret), *evaluation.checks[1:]),
+    )
+
+    with pytest.raises(PersistenceDataError, match="safe bounded evidence") as captured:
+        async with SqlAlchemyUnitOfWork(
+            factory,
+            code_hash=CODE_HASH,
+            config_hash=CONFIG_HASH,
+        ) as uow:
+            await uow.orders.add(intent)
+            await uow.orders.add_risk_evaluation("secret-risk", "final", evaluation)
+
+    assert secret not in str(captured.value)
 
 
 @pytest.mark.asyncio

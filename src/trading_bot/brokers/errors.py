@@ -3,11 +3,19 @@
 from trading_bot.capabilities.models import UnsupportedCapabilityError
 
 __all__ = [
+    "BrokerCancellationAmbiguous",
     "BrokerSubmissionAmbiguous",
     "BrokerUnavailable",
     "SchemaDriftError",
     "UnsupportedCapabilityError",
 ]
+
+
+class BrokerCancellationAmbiguous(RuntimeError):
+    """Raised when a cancellation may have reached the provider."""
+
+    def __init__(self) -> None:
+        super().__init__("broker cancellation outcome is ambiguous")
 
 
 class BrokerUnavailable(RuntimeError):

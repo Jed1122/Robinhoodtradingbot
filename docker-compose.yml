@@ -1,0 +1,154 @@
+services:
+  trading-bot:
+    image: ${TRADING_BOT_IMAGE:-trading-bot:local}
+    pull_policy: ${TRADING_BOT_PULL_POLICY:-missing}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:8080:8080"]
+    environment:
+      LIVE_TRADING_ENABLED: "false"
+      PREDICTION_LIVE_ENABLED: "false"
+      TRADING_BOT__MONITORING__HOST: "0.0.0.0"
+      TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH: "true"
+    tmpfs: [/tmp]
+    mem_limit: 768m
+    cpus: "0.75"
+    pids_limit: 256
+    init: true
+    stop_grace_period: 45s
+    restart: unless-stopped
+  connected-shadow:
+    profiles: [connected-shadow]
+    image: ${TRADING_BOT_IMAGE:-trading-bot:local}
+    pull_policy: ${TRADING_BOT_PULL_POLICY:-missing}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - shadow
+      - --config
+      - /app/configs/shadow.yaml
+      - --once
+      - --oauth-store
+      - /var/lib/trading-bot/oauth
+      - --account-fingerprint-file
+      - /var/lib/trading-bot/oauth/account-fingerprint
+      - --ledger
+      - /var/lib/trading-bot/evidence/ledger.db
+      - --image-attestation
+      - /run/trading-bot/runtime-image-attestation.json
+    environment:
+      LIVE_TRADING_ENABLED: "false"
+      PREDICTION_LIVE_ENABLED: "false"
+      TRADING_BOT__MONITORING__HOST: "0.0.0.0"
+      TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH: "true"
+      TRADING_BOT_IMAGE_DIGEST: ${TRADING_BOT_IMAGE:-}
+    volumes:
+      - type: bind
+        source: ${TRADING_BOT_EVIDENCE_DIR:-/var/lib/trading-bot/evidence}
+        target: /var/lib/trading-bot/evidence
+      - type: bind
+        source: ${TRADING_BOT_OAUTH_DIR:-/var/lib/trading-bot/oauth}
+        target: /var/lib/trading-bot/oauth
+      - type: bind
+        source: ${TRADING_BOT_ACCOUNT_FINGERPRINT_FILE:-/var/lib/trading-bot/oauth/account-fingerprint}
+        target: /var/lib/trading-bot/oauth/account-fingerprint
+        read_only: true
+      - type: bind
+        source: ${TRADING_BOT_RUNTIME_ATTESTATION_FILE:-/var/lib/trading-bot/runtime-image-attestation.json}
+        target: /run/trading-bot/runtime-image-attestation.json
+        read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 768m
+    cpus: "0.75"
+    pids_limit: 256
+    init: true
+    restart: "no"
+    healthcheck:
+      disable: true
+  connected-research:
+    profiles: [connected-research]
+    image: ${TRADING_BOT_IMAGE:-trading-bot:local}
+    pull_policy: ${TRADING_BOT_PULL_POLICY:-missing}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - research-equities
+      - --config
+      - /app/configs/shadow.yaml
+      - --once
+      - --oauth-store
+      - /var/lib/trading-bot/oauth
+      - --account-fingerprint-file
+      - /var/lib/trading-bot/oauth/account-fingerprint
+      - --ledger
+      - /var/lib/trading-bot/evidence/ledger.db
+      - --artifact-dir
+      - /var/lib/trading-bot/evidence/research
+      - --image-attestation
+      - /run/trading-bot/runtime-image-attestation.json
+    environment:
+      LIVE_TRADING_ENABLED: "false"
+      PREDICTION_LIVE_ENABLED: "false"
+      TRADING_BOT__MONITORING__HOST: "0.0.0.0"
+      TRADING_BOT__MONITORING__CONTAINER_LOOPBACK_PUBLISH: "true"
+      TRADING_BOT_IMAGE_DIGEST: ${TRADING_BOT_IMAGE:-}
+    volumes:
+      - type: bind
+        source: ${TRADING_BOT_EVIDENCE_DIR:-/var/lib/trading-bot/evidence}
+        target: /var/lib/trading-bot/evidence
+      - type: bind
+        source: ${TRADING_BOT_OAUTH_DIR:-/var/lib/trading-bot/oauth}
+        target: /var/lib/trading-bot/oauth
+      - type: bind
+        source: ${TRADING_BOT_ACCOUNT_FINGERPRINT_FILE:-/var/lib/trading-bot/oauth/account-fingerprint}
+        target: /var/lib/trading-bot/oauth/account-fingerprint
+        read_only: true
+      - type: bind
+        source: ${TRADING_BOT_RUNTIME_ATTESTATION_FILE:-/var/lib/trading-bot/runtime-image-attestation.json}
+        target: /run/trading-bot/runtime-image-attestation.json
+        read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 768m
+    cpus: "0.75"
+    pids_limit: 256
+    init: true
+    restart: "no"
+    healthcheck:
+      disable: true
+  promotion-status:
+    profiles: [promotion-status]
+    image: ${TRADING_BOT_IMAGE:-trading-bot:local}
+    pull_policy: ${TRADING_BOT_PULL_POLICY:-missing}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    command:
+      - promotion-status
+      - --config
+      - /app/configs/micro_live.yaml
+      - --ledger
+      - /var/lib/trading-bot/evidence/ledger.db
+    environment:
+      LIVE_TRADING_ENABLED: "false"
+      PREDICTION_LIVE_ENABLED: "false"
+    volumes:
+      - type: bind
+        source: ${TRADING_BOT_EVIDENCE_DIR:-/var/lib/trading-bot/evidence}
+        target: /var/lib/trading-bot/evidence
+        read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
+    cpus: "0.25"
+    pids_limit: 64
+    init: true
+    restart: "no"
+    healthcheck:
+      disable: true

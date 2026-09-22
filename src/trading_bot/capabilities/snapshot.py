@@ -18,15 +18,13 @@ from typing import Protocol, cast
 from mcp import types
 
 from trading_bot.capabilities.models import (
+    CapabilityAssetClass,
     CapabilityEvidence,
     CapabilityManifest,
     CapabilityRecord,
     EvidenceLevel,
     OperationKind,
     validated_manifest_copy,
-)
-from trading_bot.capabilities.sanitization import (
-    candidate_name_has_unsafe_characters as _candidate_name_has_unsafe_characters,
 )
 from trading_bot.capabilities.sanitization import (
     decoded_candidates as _decoded_candidates,
@@ -48,6 +46,8 @@ type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 
 _PROVIDER = "robinhood-trading"
 _TOOL_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,127})?\Z")
+_SCHEMA_IDENTIFIER = re.compile(r"[-A-Za-z0-9_$.[\]]{1,256}\Z")
+_NATURAL_LONG_IDENTIFIER = re.compile(r"[a-z][a-z0-9]{0,23}(?:_[a-z][a-z0-9]{0,23}){2,}\Z")
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _JSON_SCHEMA_TYPES = frozenset(
     {"array", "boolean", "integer", "null", "number", "object", "string"}
@@ -93,12 +93,14 @@ _SCHEMA_CHILD_KEYS = frozenset(
     }
 )
 _SCHEMA_BOOLEAN_KEYS = frozenset({"deprecated", "nullable", "readOnly", "uniqueItems", "writeOnly"})
+_SCHEMA_DESCRIPTION_KEY = "description"
 _MAX_TOOLS_LIST_PAGES = 32
 _TOOLS_LIST_PAGE_TIMEOUT_SECONDS = 10.0
 _MAX_LOCAL_JSON_POINTER_LENGTH = 65_536
 
 _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
     "cancel_equity_order": (AssetClass.EQUITY, OperationKind.CANCEL),
+    "get_accounts": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_fundamentals": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_historicals": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_orders": (AssetClass.EQUITY, OperationKind.READ),
@@ -106,8 +108,20 @@ _REVIEWED_TOOLS: dict[str, tuple[AssetClass, OperationKind]] = {
     "get_equity_quotes": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_technical_indicators": (AssetClass.EQUITY, OperationKind.READ),
     "get_equity_tradability": (AssetClass.EQUITY, OperationKind.READ),
+    "get_portfolio": (AssetClass.EQUITY, OperationKind.READ),
     "place_equity_order": (AssetClass.EQUITY, OperationKind.PLACE),
     "review_equity_order": (AssetClass.EQUITY, OperationKind.REVIEW),
+}
+_OPTIONS_TOOLS: dict[str, OperationKind] = {
+    "get_option_chains": OperationKind.READ,
+    "get_option_instruments": OperationKind.READ,
+    "get_option_historicals": OperationKind.READ,
+    "get_option_quotes": OperationKind.READ,
+    "get_option_positions": OperationKind.READ,
+    "get_option_orders": OperationKind.READ,
+    "review_option_order": OperationKind.REVIEW,
+    "place_option_order": OperationKind.PLACE,
+    "cancel_option_order": OperationKind.CANCEL,
 }
 
 
@@ -149,7 +163,7 @@ class SanitizedToolSchema:
     schema_sha256: str
 
     def __post_init__(self) -> None:
-        if type(self.name) is not str or _TOOL_NAME.fullmatch(self.name) is None:
+        if not _declaration_identifier_is_safe(self.name, pattern=_TOOL_NAME):
             raise CapabilitySnapshotError("sanitized tool name is invalid")
         if self.description is not None and type(self.description) is not str:
             raise CapabilitySnapshotError("sanitized tool description is invalid")
@@ -160,7 +174,6 @@ class SanitizedToolSchema:
             else _decode_schema_object(self._output_schema_json)
         )
         selected: dict[str, JsonValue] = {
-            "name": self.name,
             "description": self.description,
             "inputSchema": input_schema,
             "outputSchema": output_schema,
@@ -277,8 +290,11 @@ async def capture_tools_snapshot(
     session: ToolsListSession,
     *,
     observed_at: datetime | None = None,
+    omit_descriptions: bool = False,
 ) -> ToolsListSnapshot:
     """Capture all tools/list pages without invoking any declared tool."""
+    if type(omit_descriptions) is not bool:
+        raise CapabilitySnapshotError("omit_descriptions must be a boolean")
     supplied_timestamp = observed_at if observed_at is not None else datetime.now(UTC)
     timestamp: datetime | None = None
     if type(supplied_timestamp) is datetime:
@@ -296,7 +312,10 @@ async def capture_tools_snapshot(
     while True:
         result = await _request_tools_page(session, params)
         page_count += 1
-        page_tools, cursor = _sanitize_tools_page(result)
+        page_tools, cursor = _sanitize_tools_page(
+            result,
+            omit_descriptions=omit_descriptions,
+        )
         for declared in page_tools:
             if declared.name in names:
                 raise DuplicateToolNameError("tools/list contains a duplicate tool name")
@@ -343,6 +362,8 @@ async def _request_tools_page(
 
 def _sanitize_tools_page(
     result: types.ListToolsResult,
+    *,
+    omit_descriptions: bool,
 ) -> tuple[tuple[SanitizedToolSchema, ...], str | None]:
     sanitized: tuple[SanitizedToolSchema, ...] | None = None
     cursor: str | None = None
@@ -356,7 +377,7 @@ def _sanitize_tools_page(
         for declared in raw_tools:
             if type(declared) is not types.Tool:
                 raise TypeError
-            converted.append(_sanitize_tool(declared))
+            converted.append(_sanitize_tool(declared, omit_descriptions=omit_descriptions))
         sanitized = tuple(converted)
         cursor = raw_cursor
     except CapabilitySnapshotError:
@@ -373,11 +394,16 @@ async def write_tools_snapshot(
     output: Path,
     *,
     observed_at: datetime | None = None,
+    omit_descriptions: bool = False,
 ) -> ToolsListSnapshot:
     """Validate a complete snapshot in memory, then write exactly one artifact."""
     if output.is_symlink():
         raise CapabilitySnapshotError("snapshot destination cannot be a symlink")
-    snapshot = await capture_tools_snapshot(session, observed_at=observed_at)
+    snapshot = await capture_tools_snapshot(
+        session,
+        observed_at=observed_at,
+        omit_descriptions=omit_descriptions,
+    )
     artifact = snapshot.as_json()
     payload = json.dumps(artifact, allow_nan=False, indent=2, sort_keys=True) + "\n"
     if output.is_symlink():
@@ -386,20 +412,31 @@ async def write_tools_snapshot(
     return snapshot
 
 
-def _sanitize_tool(tool: types.Tool) -> SanitizedToolSchema:
-    if _TOOL_NAME.fullmatch(tool.name) is None:
+def _sanitize_tool(
+    tool: types.Tool,
+    *,
+    omit_descriptions: bool = False,
+) -> SanitizedToolSchema:
+    if type(tool.name) is not str:
+        raise TypeError
+    if not _declaration_identifier_is_safe(tool.name, pattern=_TOOL_NAME):
         raise CapabilitySnapshotError("tool name is not a sanitized MCP path segment")
     if tool.description is not None and type(tool.description) is not str:
         raise CapabilitySnapshotError("tool description must be a string or null")
     input_value = _copy_json(tool.inputSchema)
-    output_value = _copy_json(tool.outputSchema)
+    raw_output = _copy_json(tool.outputSchema)
+    output_value = raw_output
+    description = tool.description
+    if omit_descriptions:
+        input_value = _strip_schema_descriptions(input_value)
+        output_value = None if raw_output is None else _strip_schema_descriptions(raw_output)
+        description = None
     if type(input_value) is not dict or (
         output_value is not None and type(output_value) is not dict
     ):
         raise CapabilitySnapshotError("tool schemas must be JSON objects or null output")
     selected: dict[str, JsonValue] = {
-        "name": tool.name,
-        "description": tool.description,
+        "description": description,
         "inputSchema": input_value,
         "outputSchema": output_value,
     }
@@ -412,7 +449,7 @@ def _sanitize_tool(tool: types.Tool) -> SanitizedToolSchema:
     )
     return SanitizedToolSchema(
         name=tool.name,
-        description=tool.description,
+        description=description,
         _input_schema_json=_encode_json(input_value),
         _output_schema_json=None if output_value is None else _encode_json(output_value),
         schema_sha256=digest,
@@ -421,6 +458,7 @@ def _sanitize_tool(tool: types.Tool) -> SanitizedToolSchema:
 
 def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> CapabilityRecord:
     reviewed = _REVIEWED_TOOLS.get(tool.name)
+    asset_class: AssetClass | CapabilityAssetClass
     asset_class, operation_kind = reviewed or (AssetClass.EQUITY, OperationKind.DISCOVER)
     locked_reason = (
         None if reviewed is not None else "tool name is not in the reviewed operation allowlist"
@@ -428,7 +466,15 @@ def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> Cap
     limitations: tuple[str, ...] = (
         "tools/list is unauthenticated schema evidence only; no tool was invoked",
     )
-    if reviewed is None:
+    if tool.name in _OPTIONS_TOOLS:
+        asset_class = CapabilityAssetClass.OPTIONS
+        operation_kind = _OPTIONS_TOOLS[tool.name]
+        locked_reason = "options account, runtime, lifecycle and authorization evidence pending"
+        limitations += (
+            "Codex-session declarations do not establish standalone runtime capability",
+            "options writes are single-leg only; package execution remains unavailable",
+        )
+    elif reviewed is None:
         limitations += ("asset class and operation safety remain unclassified",)
     return CapabilityRecord(
         provider=_PROVIDER,
@@ -438,7 +484,7 @@ def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> Cap
         evidence=(
             CapabilityEvidence(
                 level=EvidenceLevel.SCHEMA_DECLARED,
-                source_uri=f"mcp://{_PROVIDER}/tools/{tool.name}",
+                source_uri=f"mcp://{_PROVIDER}/tools-list",
                 observed_at=observed_at,
                 schema_sha256=tool.schema_sha256,
                 authenticated=False,
@@ -540,6 +586,30 @@ def _copy_json(value: object) -> JsonValue:
     raise CapabilitySnapshotError("schema contains a non-JSON value")
 
 
+def _strip_schema_descriptions(value: JsonValue) -> JsonValue:
+    """Keep validation structure while discarding provider-controlled prose."""
+
+    if type(value) is not dict:
+        return _copy_json(value)
+    stripped: dict[str, JsonValue] = {}
+    for key, item in value.items():
+        if key == _SCHEMA_DESCRIPTION_KEY:
+            continue
+        if key in _SCHEMA_MAPPING_KEYS and type(item) is dict:
+            stripped[key] = {
+                name: _strip_schema_descriptions(schema) for name, schema in item.items()
+            }
+            continue
+        if key in _SCHEMA_LIST_KEYS and type(item) is list:
+            stripped[key] = [_strip_schema_descriptions(schema) for schema in item]
+            continue
+        if key in _SCHEMA_CHILD_KEYS and type(item) is dict:
+            stripped[key] = _strip_schema_descriptions(item)
+            continue
+        stripped[key] = _copy_json(item)
+    return stripped
+
+
 def _encode_json(value: JsonValue) -> str:
     return json.dumps(
         value,
@@ -610,6 +680,14 @@ def _atomic_private_write(output: Path, payload: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _declaration_identifier_is_safe(value: object, *, pattern: re.Pattern[str]) -> bool:
+    if type(value) is not str or pattern.fullmatch(value) is None:
+        return False
+    if not text_contains_sensitive_material(value):
+        return True
+    return _NATURAL_LONG_IDENTIFIER.fullmatch(value) is not None
+
+
 def _scan_sensitive(
     value: JsonValue,
     *,
@@ -628,14 +706,15 @@ def _scan_sensitive(
     if sensitive_property:
         _validate_sensitive_schema(value)
     for key, item in value.items():
-        if _candidate_name_has_unsafe_characters(key) or text_contains_sensitive_material(key):
+        if not _declaration_identifier_is_safe(key, pattern=_SCHEMA_IDENTIFIER):
             raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
         if sensitive_property and key in _SCHEMA_MAPPING_KEYS:
             schema_mapping = cast(dict[str, JsonValue], item)
             for schema_name, schema in schema_mapping.items():
-                if _candidate_name_has_unsafe_characters(
-                    schema_name
-                ) or text_contains_sensitive_material(schema_name):
+                if not _declaration_identifier_is_safe(
+                    schema_name,
+                    pattern=_SCHEMA_IDENTIFIER,
+                ):
                     raise UnsafeCapabilitySnapshot(
                         "capability snapshot contains sensitive material"
                     )
@@ -643,9 +722,10 @@ def _scan_sensitive(
             continue
         if key == "properties" and type(item) is dict:
             for property_name, property_schema in item.items():
-                if _candidate_name_has_unsafe_characters(
-                    property_name
-                ) or text_contains_sensitive_material(property_name):
+                if not _declaration_identifier_is_safe(
+                    property_name,
+                    pattern=_SCHEMA_IDENTIFIER,
+                ):
                     raise UnsafeCapabilitySnapshot(
                         "capability snapshot contains sensitive material"
                     )
@@ -662,6 +742,17 @@ def _scan_sensitive(
                     property_schema,
                     sensitive_property=sensitive_property or sensitive_label,
                 )
+            continue
+        if key == "required" and type(item) is list:
+            if any(
+                type(property_name) is not str
+                or not _declaration_identifier_is_safe(
+                    property_name,
+                    pattern=_SCHEMA_IDENTIFIER,
+                )
+                for property_name in item
+            ):
+                raise UnsafeCapabilitySnapshot("capability snapshot contains sensitive material")
             continue
         sensitive_schema_alias = _name_is_sensitive(key) and _looks_like_schema(item)
         if _name_is_sensitive(key) and not sensitive_schema_alias and _contains_value(item):

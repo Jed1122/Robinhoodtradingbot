@@ -1,6 +1,7 @@
 """Deterministic, fail-closed source and deployment code identity."""
 
 import hashlib
+import json
 import os
 import re
 import stat
@@ -14,6 +15,7 @@ from trading_bot.domain.identifiers import CodeHash
 
 _IMAGE_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _GIT_COMMIT = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
+_RELEASE_KEY = re.compile(r"[0-9a-f]{64}-[0-9a-f]{64}-[0-9a-f]{64}\Z")
 _RELEVANT_UNTRACKED_PREFIXES = (b"src/", b"configs/", b"migrations/", b"scripts/")
 _NON_SOURCE_PATH_PARTS = {
     b".mypy_cache",
@@ -36,6 +38,33 @@ class UnsafeCodeIdentity(CodeIdentityError):
 
 
 @dataclass(frozen=True, slots=True)
+class DeployedImageAttestation:
+    """Root-controlled binding between a release and one immutable image ID."""
+
+    image_digest: str
+    deployment_config_hash: str
+    compose_sha256: str
+    release_key: str
+
+    def __post_init__(self) -> None:
+        _validate_image_digest(self.image_digest)
+        _require_sha256_hex(self.deployment_config_hash, "deployment_config_hash")
+        _require_sha256_hex(self.compose_sha256, "compose_sha256")
+        if _RELEASE_KEY.fullmatch(self.release_key) is None:
+            raise CodeIdentityError("release_key is invalid")
+        expected_release_key = (
+            f"{self.image_digest.removeprefix('sha256:')}-"
+            f"{self.deployment_config_hash}-{self.compose_sha256}"
+        )
+        if self.release_key != expected_release_key:
+            raise CodeIdentityError("release_key does not match deployment identity")
+
+    @property
+    def code_hash(self) -> CodeHash:
+        return deployed_image_code_hash(self.image_digest)
+
+
+@dataclass(frozen=True, slots=True)
 class CodeIdentity:
     code_hash: CodeHash
     git_commit: str | None
@@ -48,6 +77,98 @@ class CodeIdentity:
         if self.git_commit is not None and _GIT_COMMIT.fullmatch(self.git_commit) is None:
             raise CodeIdentityError("git_commit must be a full lowercase Git object ID")
         _validate_image_digest(self.image_digest)
+
+
+def deployed_image_code_hash(image_digest: str) -> CodeHash:
+    """Return the canonical promotion identity for one immutable OCI image."""
+
+    _validate_image_digest(image_digest)
+    return CodeHash(hashlib.sha256(f"oci-image:{image_digest}".encode()).hexdigest())
+
+
+def verify_deployed_image_attestation(
+    path: str | Path,
+    *,
+    expected_image_digest: str,
+) -> DeployedImageAttestation:
+    """Verify a canonical artifact produced outside the unprivileged container."""
+
+    return _verify_deployed_image_attestation(
+        path,
+        expected_image_digest=expected_image_digest,
+        trusted_owner_uid=0,
+    )
+
+
+def _verify_deployed_image_attestation(
+    path: str | Path,
+    *,
+    expected_image_digest: str,
+    trusted_owner_uid: int,
+) -> DeployedImageAttestation:
+    """Filesystem verifier with an injectable owner only for unprivileged tests."""
+
+    _validate_image_digest(expected_image_digest)
+    if type(trusted_owner_uid) is not int or trusted_owner_uid < 0:
+        raise CodeIdentityError("trusted_owner_uid must be a nonnegative integer")
+    source = Path(path)
+    if not source.is_absolute():
+        raise CodeIdentityError("deployment attestation path must be absolute")
+    try:
+        parent_metadata = source.parent.lstat()
+    except OSError as exc:
+        raise CodeIdentityError("deployment attestation is unavailable") from exc
+    if not stat.S_ISDIR(parent_metadata.st_mode) or parent_metadata.st_uid != trusted_owner_uid:
+        raise CodeIdentityError("deployment attestation parent is not trusted")
+    if parent_metadata.st_mode & 0o022:
+        raise CodeIdentityError("deployment attestation parent permissions are unsafe")
+    descriptor = -1
+    try:
+        descriptor = os.open(source, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != trusted_owner_uid:
+            raise CodeIdentityError(
+                "deployment attestation must be a trusted-owner regular file"
+            )
+        if metadata.st_mode & 0o222 or metadata.st_size <= 0 or metadata.st_size > 2048:
+            raise CodeIdentityError("deployment attestation file metadata is unsafe")
+        with os.fdopen(descriptor, encoding="ascii") as stream:
+            descriptor = -1
+            raw = stream.read(2049)
+        document: object = json.loads(raw)
+    except CodeIdentityError:
+        raise
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise CodeIdentityError("deployment attestation cannot be decoded") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    required_keys = {
+        "compose_sha256",
+        "deployment_config_hash",
+        "image_digest",
+        "release_key",
+        "schema_version",
+    }
+    if type(document) is not dict or set(document) != required_keys:
+        raise CodeIdentityError("deployment attestation schema is invalid")
+    if type(document.get("schema_version")) is not int or document.get("schema_version") != 1:
+        raise CodeIdentityError("deployment attestation schema version is unsupported")
+    try:
+        attestation = DeployedImageAttestation(
+            image_digest=document["image_digest"],
+            deployment_config_hash=document["deployment_config_hash"],
+            compose_sha256=document["compose_sha256"],
+            release_key=document["release_key"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CodeIdentityError("deployment attestation values are invalid") from exc
+    canonical = json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    if raw != canonical:
+        raise CodeIdentityError("deployment attestation is not canonical")
+    if attestation.image_digest != expected_image_digest:
+        raise CodeIdentityError("deployment attestation image does not match runtime image")
+    return attestation
 
 
 class _HashWriter(Protocol):

@@ -9,6 +9,41 @@ allowed_modes:
 live_trading_permitted: true
 prediction_live_permitted: false
 
+# Options schema extension; old evidence bytes are not rewritten.
+options:
+  enabled: true
+  live_supported: false
+  max_per_trade_loss_usd: 50
+  cumulative_trial_loss_limit_usd: 50
+  max_total_payoff_risk_pct: 5
+  max_underlying_group_payoff_risk_pct: 2
+  min_unencumbered_cash_pct: 80
+  max_open_strategy_positions: 1
+  max_new_positions_per_session: 1
+  max_structure_units_per_entry: 1
+  replay_max_bytes: 4194304
+  replay_max_records: 5000
+  replay_max_json_depth: 16
+  allow_locked_quotes: false
+  margin_borrowing_enabled: false
+  uncovered_options_enabled: false
+  zero_dte_live_enabled: false
+  overnight_session_entries_enabled: false
+  research_shortlist:
+    enabled: true
+    underlying: SPY
+    version: spy-prior-close-atm-30d-v1
+    reference: previous_regular_session_close
+    strike_tie: lower_strike
+    expiry_tie: earlier_expiry
+    min_dte: 21
+    target_dte: 30
+    max_dte: 45
+    max_input_records: 25000
+    max_input_bytes: 16777216
+    max_json_depth: 16
+    max_decision_sessions: 1
+
 portfolio:
   expected_starting_equity_usd: 100
   live_account_equity_ceiling_usd: 150
@@ -111,6 +146,15 @@ research:
   walk_forward_folds: 5
   embargo_bars: 1
   monte_carlo_iterations: 1000
+  history_calendar_days: 3650
+  minimum_history_bars: 750
+  minimum_test_bars_per_fold: 50
+  minimum_independent_opportunities: 30
+  maximum_stressed_drawdown_pct: 10
+  minimum_positive_walk_forward_folds: 3
+  maximum_single_opportunity_profit_contribution_pct: 50
+  maximum_monte_carlo_loss_probability_pct: 50
+  minimum_benchmark_excess_return_pct: 0
   assumptions_validated: false
   evidence_promotable: false
 

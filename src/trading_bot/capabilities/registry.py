@@ -6,13 +6,17 @@ from pathlib import Path
 from typing import Any, Never
 
 from trading_bot.capabilities.models import (
+    CapabilityAssetClass,
     CapabilityEvidence,
     CapabilityManifest,
     CapabilityRecord,
+    CapabilityVerification,
     EvidenceLevel,
     InvalidCapabilityManifest,
     OperationKind,
     UnsupportedCapabilityError,
+    VerificationDimension,
+    VerificationStatus,
     validated_manifest_copy,
 )
 from trading_bot.capabilities.sanitization import text_contains_sensitive_material
@@ -40,6 +44,20 @@ _EVIDENCE_FIELDS = frozenset(
         "authenticated",
         "contains_account_data",
         "notes",
+    }
+)
+_VERIFICATION_FIELDS = frozenset(
+    {
+        "provider",
+        "operation",
+        "dimension",
+        "status",
+        "evidence",
+        "valid_until",
+        "session_ref",
+        "account_ref",
+        "runtime_ref",
+        "synthetic",
     }
 )
 
@@ -89,14 +107,20 @@ def load_capability_manifest(path: Path) -> CapabilityManifest:
             parse_constant=_reject_nonfinite_constant,
         )
         root = _mapping(raw)
-        _require_exact_fields(root, _ROOT_FIELDS)
-        if type(root["format_version"]) is not int or root["format_version"] != 1:
+        version = root.get("format_version")
+        if type(version) is not int or version not in {1, 2}:
             raise ValueError
+        _require_exact_fields(root, _ROOT_FIELDS | ({"verifications"} if version == 2 else set()))
         checked_at = datetime.fromisoformat(_string(root["checked_at"]).replace("Z", "+00:00"))
         require_utc(checked_at)
         records_raw = _list(root["records"])
-        records = tuple(_parse_record(item) for item in records_raw)
-        manifest = CapabilityManifest(records=records)
+        records = tuple(_parse_record(item, version=version) for item in records_raw)
+        verifications = (
+            tuple(_parse_verification(item) for item in _list(root["verifications"]))
+            if version == 2
+            else ()
+        )
+        manifest = CapabilityManifest(records=records, verifications=verifications)
     except MemoryError:
         raise
     except Exception:
@@ -142,17 +166,38 @@ def render_capability_matrix(manifest: CapabilityManifest) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _parse_record(raw: object) -> CapabilityRecord:
+def _parse_record(raw: object, *, version: int) -> CapabilityRecord:
     value = _mapping(raw)
     _require_exact_fields(value, _RECORD_FIELDS)
     return CapabilityRecord(
         provider=_safe_freeform_string(value["provider"]),
         operation=_safe_freeform_string(value["operation"]),
-        asset_class=AssetClass(_string(value["asset_class"])),
+        asset_class=(
+            CapabilityAssetClass.OPTIONS
+            if version == 2 and value["asset_class"] == "options"
+            else AssetClass(_string(value["asset_class"]))
+        ),
         operation_kind=OperationKind(_string(value["operation_kind"])),
         evidence=tuple(_parse_evidence(item) for item in _list(value["evidence"])),
         limitations=tuple(_safe_freeform_string(item) for item in _list(value["limitations"])),
         locked_reason=_optional_safe_freeform_string(value["locked_reason"]),
+    )
+
+
+def _parse_verification(raw: object) -> CapabilityVerification:
+    value = _mapping(raw)
+    _require_exact_fields(value, _VERIFICATION_FIELDS)
+    return CapabilityVerification(
+        provider=_safe_freeform_string(value["provider"]),
+        operation=_safe_freeform_string(value["operation"]),
+        dimension=VerificationDimension(_string(value["dimension"])),
+        status=VerificationStatus(_string(value["status"])),
+        evidence=_parse_evidence(value["evidence"]),
+        valid_until=datetime.fromisoformat(_string(value["valid_until"]).replace("Z", "+00:00")),
+        session_ref=_optional_string(value["session_ref"]),
+        account_ref=_optional_string(value["account_ref"]),
+        runtime_ref=_optional_string(value["runtime_ref"]),
+        synthetic=_boolean(value["synthetic"]),
     )
 
 

@@ -1,0 +1,12 @@
+mode: simulation
+live_trading_enabled: false
+options:
+  enabled: true
+  research_shortlist:
+    enabled: true
+equities:
+  enabled: false
+crypto:
+  enabled: false
+prediction_markets:
+  simulation_enabled: false

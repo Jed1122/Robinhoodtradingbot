@@ -1,17 +1,22 @@
 """Evidence-backed capability registry with no transport or account access."""
 
 from trading_bot.capabilities.models import (
+    CapabilityAssetClass,
     CapabilityEvidence,
     CapabilityManifest,
     CapabilityNotFoundError,
     CapabilityRecord,
     CapabilityValidationError,
+    CapabilityVerification,
     EvidenceLevel,
     InvalidCapabilityEvidence,
     InvalidCapabilityManifest,
     InvalidCapabilityRecord,
+    InvalidCapabilityVerification,
     OperationKind,
     UnsupportedCapabilityError,
+    VerificationDimension,
+    VerificationStatus,
 )
 from trading_bot.capabilities.registry import (
     load_capability_manifest,
@@ -32,19 +37,27 @@ from trading_bot.capabilities.snapshot import (
     capture_tools_snapshot,
     write_tools_snapshot,
 )
+from trading_bot.capabilities.verification import (
+    VerificationContext,
+    VerificationDecision,
+    assess_operation,
+)
 
 __all__ = [
+    "CapabilityAssetClass",
     "CapabilityEvidence",
     "CapabilityManifest",
     "CapabilityNotFoundError",
     "CapabilityRecord",
     "CapabilitySnapshotError",
     "CapabilityValidationError",
+    "CapabilityVerification",
     "DuplicateToolNameError",
     "EvidenceLevel",
     "InvalidCapabilityEvidence",
     "InvalidCapabilityManifest",
     "InvalidCapabilityRecord",
+    "InvalidCapabilityVerification",
     "JsonValue",
     "OperationKind",
     "PaginationCycleError",
@@ -53,6 +66,11 @@ __all__ = [
     "ToolsListSnapshot",
     "UnsafeCapabilitySnapshot",
     "UnsupportedCapabilityError",
+    "VerificationContext",
+    "VerificationDecision",
+    "VerificationDimension",
+    "VerificationStatus",
+    "assess_operation",
     "canonical_sha256",
     "capture_tools_list",
     "capture_tools_snapshot",

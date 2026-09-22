@@ -1,5 +1,8 @@
 # Robinhood Multi-Asset Trading System Design
 
+> Historical planning snapshot from 2026-07-10. For current implementation and operational
+> status, see the repository README and `docs/final-implementation-report.md`.
+
 **Status:** Approved for implementation planning  
 **Date:** 2026-07-10  
 **Repository:** `robinhood-multi-asset-trading-system`  

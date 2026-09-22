@@ -45,6 +45,7 @@ REQUIRED_TABLES = {
     "alerts",
     "reconciliation_events",
     "promotion_evidence",
+    "promotion_observations",
     "configuration_versions",
     "live_authorizations",
     "live_leases",
@@ -53,12 +54,15 @@ REQUIRED_TABLES = {
     "heartbeats",
     "execution_leases",
     "audit_events",
+    "options_trial_events",
+    "options_risk_events",
 }
 
 HASH_A = "a" * 64
 HASH_B = "b" * 64
 HASH_C = "c" * 64
 UTC_TEXT = "2026-07-13T12:00:00.000000Z"
+PROMOTION_EXPIRES_TEXT = "2026-07-13T12:05:00.000000Z"
 
 
 @contextmanager
@@ -412,7 +416,7 @@ def _seed_promotion_and_authorization(connection: sqlite3.Connection) -> None:
             evaluated_at, expires_at
         ) VALUES ('promotion-1', 'micro_live', 1, ?, '[]', ?, ?)
         """,
-        (HASH_A, UTC_TEXT, UTC_TEXT),
+        (HASH_A, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
     )
     connection.execute(
         """
@@ -421,7 +425,7 @@ def _seed_promotion_and_authorization(connection: sqlite3.Connection) -> None:
             evaluated_at, expires_at
         ) VALUES ('promotion-2', 'normal_live', 1, ?, '[]', ?, ?)
         """,
-        (HASH_B, UTC_TEXT, UTC_TEXT),
+        (HASH_B, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
     )
     connection.execute(
         """
@@ -430,7 +434,7 @@ def _seed_promotion_and_authorization(connection: sqlite3.Connection) -> None:
             evaluated_at, expires_at
         ) VALUES ('promotion-3', 'micro_live', 0, ?, '["ineligible"]', ?, ?)
         """,
-        (HASH_C, UTC_TEXT, UTC_TEXT),
+        (HASH_C, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
     )
     connection.execute(
         """
@@ -505,7 +509,126 @@ def test_upgrade_records_core_revision(
 
     with closing(sqlite3.connect(database_path)) as connection:
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
-    assert revision == ("0003_submission_attempt_guards",)
+    assert revision == ("0007_options_risk_history",)
+
+
+@pytest.mark.parametrize(
+    "legacy_reason_codes",
+    (
+        "not-json",
+        "{}",
+        "[ ]",
+        '["unexpected"]',
+    ),
+)
+def test_research_guard_upgrade_rejects_unsafe_legacy_evidence_and_can_retry(
+    alembic_config: Config,
+    database_path: Path,
+    legacy_reason_codes: str,
+) -> None:
+    command.upgrade(alembic_config, "0004_promotion_observations")
+    with closing(_connect(database_path)) as connection:
+        connection.execute(
+            """
+            INSERT INTO research_acceptance_evidence (
+                id, strategy_version, eligible, config_hash, code_hash,
+                research_manifest_hash, report_hash, evidence_hash,
+                reason_codes_json, observed_at
+            ) VALUES ('legacy', 'strategy-v1', 1, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                HASH_A,
+                HASH_B,
+                HASH_C,
+                "d" * 64,
+                "e" * 64,
+                legacy_reason_codes,
+                UTC_TEXT,
+            ),
+        )
+        connection.commit()
+
+    with pytest.raises(
+        RuntimeError,
+        match="existing research evidence is incompatible",
+    ):
+        command.upgrade(alembic_config, "head")
+
+    with closing(_connect(database_path)) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0004_promotion_observations",
+        )
+        assert connection.execute(
+            "SELECT reason_codes_json FROM research_acceptance_evidence"
+        ).fetchone() == (legacy_reason_codes,)
+        assert not connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'trigger'
+              AND name LIKE 'trg_research_acceptance_evidence_immutable_%'
+            """
+        ).fetchall()
+        connection.execute("UPDATE research_acceptance_evidence SET reason_codes_json = '[]'")
+        connection.commit()
+
+    command.upgrade(alembic_config, "head")
+    with _inspect_database(database_path) as inspector:
+        assert ("evidence_hash",) in _unique_column_sets(
+            inspector,
+            "research_acceptance_evidence",
+        )
+
+
+def test_research_guard_upgrade_is_atomic_and_can_retry(
+    alembic_config: Config,
+    database_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    command.upgrade(alembic_config, "0004_promotion_observations")
+    original_execute = Operations.execute
+
+    def fail_on_first_research_trigger(
+        operations: Operations,
+        sqltext: Any,
+        *,
+        execution_options: dict[str, Any] | None = None,
+    ) -> None:
+        if "CREATE TRIGGER" in str(sqltext):
+            raise RuntimeError("injected research guard failure")
+        original_execute(
+            operations,
+            sqltext,
+            execution_options=execution_options,
+        )
+
+    with monkeypatch.context() as scoped_patch:
+        scoped_patch.setattr(Operations, "execute", fail_on_first_research_trigger)
+        with pytest.raises(RuntimeError, match="injected research guard failure"):
+            command.upgrade(alembic_config, "head")
+
+    with closing(_connect(database_path)) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0004_promotion_observations",
+        )
+        assert not connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'trigger'
+              AND name LIKE 'trg_research_acceptance_evidence_immutable_%'
+            """
+        ).fetchall()
+    with _inspect_database(database_path) as inspector:
+        assert ("evidence_hash",) not in _unique_column_sets(
+            inspector,
+            "research_acceptance_evidence",
+        )
+
+    command.upgrade(alembic_config, "head")
+    with _inspect_database(database_path) as inspector:
+        assert ("evidence_hash",) in _unique_column_sets(
+            inspector,
+            "research_acceptance_evidence",
+        )
 
 
 def test_models_register_exactly_the_required_tables() -> None:
@@ -792,7 +915,7 @@ def test_database_rejects_noncanonical_boolean_and_hash_values(
                 evaluated_at, expires_at
             ) VALUES ('promotion-1', 'paper', ?, ?, '[]', ?, ?)
             """,
-            (eligible, evidence_hash, UTC_TEXT, UTC_TEXT),
+            (eligible, evidence_hash, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
         )
 
 
@@ -1498,7 +1621,7 @@ def test_live_lease_rejects_missing_promotion_evidence_hash(
                 evaluated_at, expires_at
             ) VALUES ('promotion-1', 'micro_live', 1, ?, '[]', ?, ?)
             """,
-            (HASH_A, UTC_TEXT, UTC_TEXT),
+            (HASH_A, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
         )
         connection.execute(
             """
@@ -1543,7 +1666,7 @@ def test_live_authorization_rejects_a_nonlive_stage(
                 evaluated_at, expires_at
             ) VALUES ('promotion-paper', 'paper', 1, ?, '[]', ?, ?)
             """,
-            (HASH_A, UTC_TEXT, UTC_TEXT),
+            (HASH_A, UTC_TEXT, PROMOTION_EXPIRES_TEXT),
         )
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
@@ -2380,7 +2503,7 @@ def test_failed_downgrade_restores_all_schema_changes_and_can_retry(
         correction = connection.execute(
             "SELECT corrects_id FROM audit_events WHERE id = 'audit-2'"
         ).fetchone()
-    assert revision == ("0003_submission_attempt_guards",)
+    assert revision == ("0007_options_risk_history",)
     assert correction == ("audit-1",)
 
     command.downgrade(alembic_config, "base")

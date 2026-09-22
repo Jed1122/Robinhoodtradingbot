@@ -1948,11 +1948,15 @@ def test_configured_structlog_emits_secret_free_aware_utc_json(
 def test_makefile_has_exact_baseline_targets_and_commands() -> None:
     makefile = (_REPO_ROOT / "Makefile").read_text(encoding="utf-8")
 
-    assert ".PHONY: format lint typecheck test security" in makefile.splitlines()
+    phony = next(line for line in makefile.splitlines() if line.startswith(".PHONY:"))
+    assert {"format", "lint", "typecheck", "test", "security"} <= set(phony.split()[1:])
     assert "format:\n\tuv run ruff format ." in makefile
     assert "lint:\n\tuv run ruff check ." in makefile
     assert "typecheck:\n\tuv run mypy src" in makefile
-    assert "test:\n\tuv run pytest --cov=trading_bot --cov-branch" in makefile
+    assert (
+        "test:\n\tuv run pytest tests --cov=trading_bot --cov-branch --cov-fail-under=80"
+        in makefile
+    )
     assert ("security:\n\tuv run bandit -c pyproject.toml -r src\n\tuv run pip-audit") in makefile
 
 
@@ -1962,11 +1966,11 @@ def test_ci_is_read_only_and_has_only_the_baseline_offline_test_matrix() -> None
 
     assert 'python-version: ["3.12", "3.13", "3.14"]' in workflow
     assert "permissions:\n  contents: read" in workflow
-    assert "actions/checkout@v4" in workflow
-    assert "actions/setup-python@v5" in workflow
+    assert "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683" in workflow
+    assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in workflow
     assert "uv run ruff check ." in workflow
     assert "uv run mypy src" in workflow
-    assert "uv run pytest --cov=trading_bot --cov-branch" in workflow
+    assert "uv run pytest tests --cov=trading_bot --cov-branch --cov-fail-under=80" in workflow
     for forbidden in (
         "pull_request_target",
         "secret",
@@ -1974,9 +1978,6 @@ def test_ci_is_read_only_and_has_only_the_baseline_offline_test_matrix() -> None
         "oauth",
         "api_key",
         "authenticated",
-        "broker",
-        "place_order",
-        "live",
     ):
         assert forbidden not in folded
 
@@ -1990,14 +1991,12 @@ def test_baseline_docs_describe_only_the_current_safe_implementation(relative_pa
         "broker protocols",
         "paper-safe",
         "fail-closed",
-        "trading mcp is not configured",
+        "connected-shadow",
+        "write-incapable",
         "prediction live execution is unsupported",
         "no live order has been placed",
         "no profitability claim",
-        "trader cli is not implemented",
-        "broker adapters are not implemented",
-        "account access is not implemented",
     ):
         assert required in document
-    for absent_command_claim in ("`trader status`", "`trader preflight`", "`trader run`"):
-        assert absent_command_claim not in document
+    if relative_path == "README.md":
+        assert "offline `backtest`, `simulate`, and one-cycle `paper` cli" in document

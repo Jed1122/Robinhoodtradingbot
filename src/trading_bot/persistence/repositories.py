@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any, Protocol, cast
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trading_bot.capabilities.sanitization import text_contains_sensitive_material
 from trading_bot.clock import require_utc
 from trading_bot.domain.decimal_utils import (
+    MAX_CANONICAL_DECIMAL_TEXT_LENGTH,
     DomainValidationError,
     canonical_decimal_text,
     parse_decimal,
@@ -72,6 +74,8 @@ from trading_bot.persistence.models import (
 
 ActiveGuard = Callable[[], None]
 ConfigGuard = Callable[[ConfigHash], None]
+
+_STRUCTURED_EVIDENCE_IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*(?::[a-z0-9_]+)*\Z")
 
 
 class OrderRepository(Protocol):
@@ -206,7 +210,7 @@ def _validate_safe_text(value: str, field_name: str, *, maximum_length: int = 12
 
 
 def _validate_evidence_text(value: str, field_name: str) -> None:
-    if type(value) is not str or not value.strip() or len(value) > 128:
+    if type(value) is not str or not value.strip():
         raise PersistenceDataError(f"{field_name} must be safe bounded evidence")
     if contains_registered_secret(value):
         raise PersistenceDataError(f"{field_name} must be safe bounded evidence")
@@ -214,8 +218,26 @@ def _validate_evidence_text(value: str, field_name: str) -> None:
         numeric = canonical_decimal_text(parse_decimal(value)) == value
     except DomainValidationError:
         numeric = False
-    if not numeric and text_contains_sensitive_material(value):
+    if numeric:
+        if len(value) > MAX_CANONICAL_DECIMAL_TEXT_LENGTH:
+            raise PersistenceDataError(f"{field_name} must be safe bounded evidence")
+        return
+    if len(value) > 128:
         raise PersistenceDataError(f"{field_name} must be safe bounded evidence")
+    if _STRUCTURED_EVIDENCE_IDENTIFIER.fullmatch(value) is not None:
+        return
+    if text_contains_sensitive_material(value):
+        raise PersistenceDataError(f"{field_name} must be safe bounded evidence")
+
+
+def _validate_evidence_identifier(value: str, field_name: str) -> None:
+    if (
+        type(value) is not str
+        or len(value) > 128
+        or _STRUCTURED_EVIDENCE_IDENTIFIER.fullmatch(value) is None
+        or contains_registered_secret(value)
+    ):
+        raise PersistenceDataError(f"{field_name} must be a safe structured identifier")
 
 
 def _utc_text(value: datetime) -> str:
@@ -228,8 +250,8 @@ def _utc_text(value: datetime) -> str:
 def _serialize_risk_checks(evaluation: RiskEvaluation) -> str:
     checks: list[dict[str, object]] = []
     for check in evaluation.checks:
-        _validate_safe_text(check.code, "risk check code")
-        _validate_safe_text(check.reason, "risk check reason")
+        _validate_evidence_identifier(check.code, "risk check code")
+        _validate_evidence_identifier(check.reason, "risk check reason")
         if check.observed is not None:
             _validate_evidence_text(check.observed, "risk check observation")
         if check.configured_limit is not None:

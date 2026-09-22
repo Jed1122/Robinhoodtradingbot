@@ -1,7 +1,7 @@
 """Immutable broker-neutral market-data records."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from trading_bot.clock import require_utc
@@ -156,3 +156,44 @@ class MarketClock:
             require_utc(self.next_open_at)
         if self.next_close_at is not None:
             require_utc(self.next_close_at)
+
+
+@dataclass(frozen=True, slots=True)
+class CorporateAction:
+    instrument_id: InstrumentId
+    action_type: str
+    effective_date: date
+    announced_at: datetime
+    split_ratio: Decimal | None
+    cash_amount: Decimal | None
+    data_hash: DataHash
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.instrument_id, "instrument_id")
+        if self.action_type not in {"split", "dividend"}:
+            raise DomainValidationError("corporate action type must be split or dividend")
+        require_utc(self.announced_at)
+        if self.action_type == "split":
+            if self.split_ratio is None or self.cash_amount is not None:
+                raise DomainValidationError("split requires only a positive split ratio")
+            _require_decimal(self.split_ratio, "split_ratio", positive=True)
+        else:
+            if self.cash_amount is None or self.split_ratio is not None:
+                raise DomainValidationError("dividend requires only a nonnegative cash amount")
+            _require_decimal(self.cash_amount, "cash_amount", nonnegative=True)
+        _require_sha256_hex(self.data_hash, "data_hash")
+
+
+@dataclass(frozen=True, slots=True)
+class EarningsEvent:
+    instrument_id: InstrumentId
+    earnings_date: date
+    announced_at: datetime
+    confirmed: bool
+    data_hash: DataHash
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.instrument_id, "instrument_id")
+        require_utc(self.announced_at)
+        _require_exact_bool(self.confirmed, "confirmed")
+        _require_sha256_hex(self.data_hash, "data_hash")

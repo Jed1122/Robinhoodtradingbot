@@ -33,7 +33,12 @@ CLI_ALLOWED_PROTOCOLS = PROTOCOL_NAMES - {"BrokerPlace"}
 RECOVERY_ALLOWED_PROTOCOLS = frozenset({"BrokerRead", "BrokerCancelOnly"})
 PLACE_ORDER_USE_ALLOWLIST = frozenset({Path("execution/service.py")})
 CURRENT_PLACE_ORDER_DEFINITION_ALLOWLIST = frozenset(
-    {(Path("brokers/protocols.py"), "BrokerPlace")}
+    {
+        (Path("brokers/protocols.py"), "BrokerPlace"),
+        (Path("brokers/fake.py"), "FakeBroker"),
+        (Path("brokers/robinhood_crypto_api.py"), "RobinhoodCryptoPlaceAdapter"),
+        (Path("brokers/robinhood_prediction.py"), "RobinhoodPredictionAdapter"),
+    }
 )
 
 EXPECTED_PROTOCOL_IMPORTS = {
@@ -1589,9 +1594,14 @@ def test_protocol_module_imports_only_canonical_broker_neutral_types() -> None:
     assert actual_imports == EXPECTED_PROTOCOL_IMPORTS
 
 
-def test_current_production_has_one_protocol_definition_and_no_place_use() -> None:
+def test_current_production_limits_place_use_to_execution_service() -> None:
     definitions = _place_order_definition_sites(PACKAGE_ROOT)
-    assert definitions == ((Path("brokers/protocols.py"), "async"),)
+    assert definitions == (
+        (Path("brokers/fake.py"), "async"),
+        (Path("brokers/protocols.py"), "async"),
+        (Path("brokers/robinhood_crypto_api.py"), "async"),
+        (Path("brokers/robinhood_prediction.py"), "async"),
+    )
     assert (
         _definition_allowlist_violations(
             PACKAGE_ROOT,
@@ -1601,9 +1611,7 @@ def test_current_production_has_one_protocol_definition_and_no_place_use() -> No
     )
 
     uses = _place_order_use_sites(PACKAGE_ROOT)
-    assert uses == set()
-    assert uses <= PLACE_ORDER_USE_ALLOWLIST
-    assert {Path("execution/service.py")} == PLACE_ORDER_USE_ALLOWLIST
+    assert uses == PLACE_ORDER_USE_ALLOWLIST == frozenset({Path("execution/service.py")})
 
 
 def test_reviewed_adapter_declaration_is_not_mistaken_for_invocation(tmp_path: Path) -> None:

@@ -1,5 +1,8 @@
 # Locked Live Execution and Reconciliation Implementation Plan
 
+> Historical planning snapshot from 2026-07-10. For current implementation and operational
+> status, see the repository README and `docs/final-implementation-report.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement equity and crypto live-order code behind mandatory persistence, review, risk, authorization, idempotency, reconciliation, and kill-switch gates while keeping all live modes disabled by default.

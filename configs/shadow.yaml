@@ -3,5 +3,7 @@ mode: shadow
 live_trading_enabled: false
 runtime:
   start_paused: true
+crypto:
+  enabled: false
 prediction_markets:
   live_enabled: false

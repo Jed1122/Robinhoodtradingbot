@@ -1,0 +1,18 @@
+#cloud-config
+timezone: UTC
+users:
+  - name: tradingbot
+    uid: 10001
+    gid: 10001
+    lock_passwd: true
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-trading-bot.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+  - path: /etc/apt/apt.conf.d/52unattended-local
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "false";
+runcmd:
+  - mkdir -p /var/lib/trading-bot/locks /var/log/trading-bot /etc/trading-bot /var/backups/trading-bot
+  - chown -R 10001:10001 /var/lib/trading-bot /var/log/trading-bot /etc/trading-bot /var/backups/trading-bot

@@ -86,6 +86,7 @@ class ResearchAcceptanceEvidenceRow(Base):
     """Accepted or rejected research eligibility evidence for an exact strategy build."""
 
     __tablename__ = "research_acceptance_evidence"
+    __table_args__ = (UniqueConstraint("evidence_hash"),)
 
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True)
     strategy_version: Mapped[str] = mapped_column(String(NAME_LENGTH), nullable=False)
@@ -117,8 +118,50 @@ class PromotionEvidenceRow(Base):
     expires_at: Mapped[datetime] = utc_datetime_column("expires_at")
 
 
+class PromotionObservationRow(Base):
+    """Append-only identity-bound paper, shadow, and staged-live cycle evidence."""
+
+    __tablename__ = "promotion_observations"
+    __table_args__ = (
+        CheckConstraint(
+            "stage IN ('paper', 'shadow', 'micro_live', 'normal_live')",
+            name="stage_known",
+        ),
+        CheckConstraint("completed_at >= started_at", name="completion_ordered"),
+        UniqueConstraint("stage", "cycle_id"),
+        UniqueConstraint("evidence_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True)
+    stage: Mapped[str] = mapped_column(String(NAME_LENGTH), nullable=False)
+    cycle_id: Mapped[str] = sha256_column("cycle_id")
+    account_fingerprint: Mapped[str] = sha256_column("account_fingerprint")
+    provider_evidence_hash: Mapped[str] = sha256_column("provider_evidence_hash")
+    strategy_version: Mapped[str] = mapped_column(String(NAME_LENGTH), nullable=False)
+    strategy_eligibility_hash: Mapped[str] = sha256_column("strategy_eligibility_hash")
+    config_hash: Mapped[str] = sha256_column("config_hash")
+    code_hash: Mapped[str] = sha256_column("code_hash")
+    data_hash: Mapped[str] = sha256_column("data_hash")
+    started_at: Mapped[datetime] = utc_datetime_column("started_at")
+    completed_at: Mapped[datetime] = utc_datetime_column("completed_at")
+    identity_verified: Mapped[bool] = exact_boolean_column("identity_verified")
+    provider_evidence_verified: Mapped[bool] = exact_boolean_column("provider_evidence_verified")
+    strategy_eligible: Mapped[bool] = exact_boolean_column("strategy_eligible")
+    authenticated_reads: Mapped[bool] = exact_boolean_column("authenticated_reads")
+    data_validated: Mapped[bool] = exact_boolean_column("data_validated")
+    outcomes_complete: Mapped[bool] = exact_boolean_column("outcomes_complete")
+    reconciliation_clean: Mapped[bool] = exact_boolean_column("reconciliation_clean")
+    fixture_data: Mapped[bool] = exact_boolean_column("fixture_data")
+    runtime_scope_valid: Mapped[bool] = exact_boolean_column("runtime_scope_valid")
+    order_state_known: Mapped[bool] = exact_boolean_column("order_state_known")
+    eligible: Mapped[bool] = exact_boolean_column("eligible")
+    reason_codes_json: Mapped[str] = mapped_column(Text(), nullable=False)
+    evidence_hash: Mapped[str] = sha256_column("evidence_hash")
+
+
 __all__ = [
     "PromotionEvidenceRow",
+    "PromotionObservationRow",
     "ResearchAcceptanceEvidenceRow",
     "RiskEvaluationRow",
     "StrategyDecisionRow",

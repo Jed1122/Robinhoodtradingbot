@@ -629,6 +629,73 @@ async def test_snapshot_preserves_exact_allowed_fields_and_explicit_null_output(
 
 
 @pytest.mark.asyncio
+async def test_capture_omits_provider_prose_before_persisting_schema() -> None:
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {
+            "account_number": {
+                "type": "string",
+                "description": "Authorization: Bearer actual-secret-value",
+            }
+        },
+        "required": ["account_number"],
+    }
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        description="account number = actual-secret-value",
+                        input_schema=input_schema,
+                    )
+                ]
+            )
+        ]
+    )
+
+    snapshot = await capture_tools_snapshot(
+        session,
+        observed_at=OBSERVED_AT,
+        omit_descriptions=True,
+    )
+
+    assert snapshot.tools[0].description is None
+    assert snapshot.tools[0].input_schema == {
+        "type": "object",
+        "properties": {"account_number": {"type": "string"}},
+        "required": ["account_number"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_capture_preserves_bounded_long_declaration_identifiers() -> None:
+    property_name = "rounded_uncollared_estimated_notional_with_estimated_fee"
+    schema: dict[str, object] = {
+        "type": "object",
+        "properties": {property_name: {"type": "string"}},
+        "required": [property_name],
+    }
+    session = FakeToolsListSession(
+        [
+            types.ListToolsResult(
+                tools=[
+                    tool(
+                        name="get_crypto_account_onboarding_info",
+                        description=None,
+                        input_schema=schema,
+                    )
+                ]
+            )
+        ]
+    )
+
+    snapshot = await capture_tools_snapshot(session, observed_at=OBSERVED_AT)
+
+    assert snapshot.tools[0].name == "get_crypto_account_onboarding_info"
+    assert snapshot.tools[0].input_schema == schema
+
+
+@pytest.mark.asyncio
 async def test_safe_snapshot_writes_complete_artifact(tmp_path: Path) -> None:
     session = FakeToolsListSession([types.ListToolsResult(tools=[tool()])])
     output = tmp_path / "snapshot.json"

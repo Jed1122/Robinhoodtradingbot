@@ -1,3 +1,5 @@
+import json
+import os
 import re
 import subprocess
 from dataclasses import FrozenInstanceError, fields
@@ -11,6 +13,7 @@ from trading_bot.code_identity import (
     CodeIdentityError,
     InvalidImageDigest,
     UnsafeCodeIdentity,
+    deployed_image_code_hash,
     require_clean_live_identity,
     resolve_code_identity,
 )
@@ -247,6 +250,250 @@ def test_valid_immutable_image_digest_is_recorded(tmp_git_repo: Path) -> None:
 
     assert identity.image_digest == digest
     require_clean_live_identity(identity)
+
+
+def test_deployed_image_code_hash_is_canonical_and_changes_with_digest() -> None:
+    first = deployed_image_code_hash(f"sha256:{'a' * 64}")
+    second = deployed_image_code_hash(f"sha256:{'b' * 64}")
+
+    assert re.fullmatch(r"[0-9a-f]{64}", first)
+    assert first != second
+
+
+def test_root_attestation_binds_the_expected_deployed_image(tmp_path: Path) -> None:
+    image_digest = f"sha256:{'a' * 64}"
+    deployment_config_hash = "b" * 64
+    compose_sha256 = "c" * 64
+    release_key = f"{'a' * 64}-{deployment_config_hash}-{compose_sha256}"
+    parent = tmp_path / "release"
+    parent.mkdir(mode=0o700)
+    artifact = parent / "runtime-image-attestation.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "compose_sha256": compose_sha256,
+                "deployment_config_hash": deployment_config_hash,
+                "image_digest": image_digest,
+                "release_key": release_key,
+                "schema_version": 1,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="ascii",
+    )
+    artifact.chmod(0o444)
+
+    verified = code_identity._verify_deployed_image_attestation(
+        artifact,
+        expected_image_digest=image_digest,
+        trusted_owner_uid=os.geteuid(),
+    )
+
+    assert verified.image_digest == image_digest
+    assert verified.deployment_config_hash == deployment_config_hash
+    assert verified.compose_sha256 == compose_sha256
+    assert verified.release_key == release_key
+    assert verified.code_hash == deployed_image_code_hash(image_digest)
+
+
+def test_deployment_attestation_rejects_a_different_runtime_image(tmp_path: Path) -> None:
+    attested_digest = f"sha256:{'a' * 64}"
+    deployment_config_hash = "b" * 64
+    compose_sha256 = "c" * 64
+    parent = tmp_path / "release"
+    parent.mkdir(mode=0o700)
+    artifact = parent / "runtime-image-attestation.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "compose_sha256": compose_sha256,
+                "deployment_config_hash": deployment_config_hash,
+                "image_digest": attested_digest,
+                "release_key": (
+                    f"{'a' * 64}-{deployment_config_hash}-{compose_sha256}"
+                ),
+                "schema_version": 1,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="ascii",
+    )
+    artifact.chmod(0o444)
+
+    with pytest.raises(CodeIdentityError, match="does not match runtime image"):
+        code_identity._verify_deployed_image_attestation(
+            artifact,
+            expected_image_digest=f"sha256:{'d' * 64}",
+            trusted_owner_uid=os.geteuid(),
+        )
+
+
+def test_deployment_attestation_rejects_owner_writable_artifact(tmp_path: Path) -> None:
+    image_digest = f"sha256:{'a' * 64}"
+    deployment_config_hash = "b" * 64
+    compose_sha256 = "c" * 64
+    parent = tmp_path / "release"
+    parent.mkdir(mode=0o700)
+    artifact = parent / "runtime-image-attestation.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "compose_sha256": compose_sha256,
+                "deployment_config_hash": deployment_config_hash,
+                "image_digest": image_digest,
+                "release_key": (
+                    f"{'a' * 64}-{deployment_config_hash}-{compose_sha256}"
+                ),
+                "schema_version": 1,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="ascii",
+    )
+    artifact.chmod(0o644)
+
+    with pytest.raises(CodeIdentityError, match="metadata is unsafe"):
+        code_identity._verify_deployed_image_attestation(
+            artifact,
+            expected_image_digest=image_digest,
+            trusted_owner_uid=os.geteuid(),
+        )
+
+
+def test_deployment_attestation_schema_version_must_be_an_exact_integer(
+    tmp_path: Path,
+) -> None:
+    image_digest = f"sha256:{'a' * 64}"
+    deployment_config_hash = "b" * 64
+    compose_sha256 = "c" * 64
+    parent = tmp_path / "release"
+    parent.mkdir(mode=0o700)
+    artifact = parent / "runtime-image-attestation.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "compose_sha256": compose_sha256,
+                "deployment_config_hash": deployment_config_hash,
+                "image_digest": image_digest,
+                "release_key": (
+                    f"{'a' * 64}-{deployment_config_hash}-{compose_sha256}"
+                ),
+                "schema_version": True,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="ascii",
+    )
+    artifact.chmod(0o444)
+
+    with pytest.raises(CodeIdentityError, match="schema version is unsupported"):
+        code_identity._verify_deployed_image_attestation(
+            artifact,
+            expected_image_digest=image_digest,
+            trusted_owner_uid=os.geteuid(),
+        )
+
+
+def _attestation_document(*, release_image_hex: str = "a" * 64) -> dict[str, object]:
+    deployment_config_hash = "b" * 64
+    compose_sha256 = "c" * 64
+    return {
+        "compose_sha256": compose_sha256,
+        "deployment_config_hash": deployment_config_hash,
+        "image_digest": f"sha256:{'a' * 64}",
+        "release_key": (
+            f"{release_image_hex}-{deployment_config_hash}-{compose_sha256}"
+        ),
+        "schema_version": 1,
+    }
+
+
+def _write_attestation(
+    parent: Path,
+    document: dict[str, object],
+    *,
+    indent: int | None = None,
+) -> Path:
+    parent.mkdir(mode=0o700)
+    parent.chmod(0o700)
+    artifact = parent / "runtime-image-attestation.json"
+    artifact.write_text(
+        json.dumps(
+            document,
+            sort_keys=True,
+            separators=None if indent else (",", ":"),
+            indent=indent,
+        )
+        + "\n",
+        encoding="ascii",
+    )
+    artifact.chmod(0o444)
+    return artifact
+
+
+def test_deployment_attestation_rejects_final_component_symlink(tmp_path: Path) -> None:
+    parent = tmp_path / "release"
+    target = _write_attestation(parent, _attestation_document())
+    redirected = parent / "redirected-attestation.json"
+    target.rename(redirected)
+    target.symlink_to(redirected)
+
+    with pytest.raises(CodeIdentityError, match="cannot be decoded"):
+        code_identity._verify_deployed_image_attestation(
+            target,
+            expected_image_digest=f"sha256:{'a' * 64}",
+            trusted_owner_uid=os.geteuid(),
+        )
+
+
+def test_deployment_attestation_rejects_unsafe_parent_permissions(tmp_path: Path) -> None:
+    parent = tmp_path / "release"
+    artifact = _write_attestation(parent, _attestation_document())
+    parent.chmod(0o770)
+
+    with pytest.raises(CodeIdentityError, match="parent permissions are unsafe"):
+        code_identity._verify_deployed_image_attestation(
+            artifact,
+            expected_image_digest=f"sha256:{'a' * 64}",
+            trusted_owner_uid=os.geteuid(),
+        )
+
+
+def test_deployment_attestation_rejects_noncanonical_json(tmp_path: Path) -> None:
+    artifact = _write_attestation(
+        tmp_path / "release",
+        _attestation_document(),
+        indent=2,
+    )
+
+    with pytest.raises(CodeIdentityError, match="is not canonical"):
+        code_identity._verify_deployed_image_attestation(
+            artifact,
+            expected_image_digest=f"sha256:{'a' * 64}",
+            trusted_owner_uid=os.geteuid(),
+        )
+
+
+def test_deployment_attestation_rejects_inconsistent_release_key(tmp_path: Path) -> None:
+    artifact = _write_attestation(
+        tmp_path / "release",
+        _attestation_document(release_image_hex="d" * 64),
+    )
+
+    with pytest.raises(CodeIdentityError, match="does not match deployment identity"):
+        code_identity._verify_deployed_image_attestation(
+            artifact,
+            expected_image_digest=f"sha256:{'a' * 64}",
+            trusted_owner_uid=os.geteuid(),
+        )
 
 
 @pytest.mark.parametrize(

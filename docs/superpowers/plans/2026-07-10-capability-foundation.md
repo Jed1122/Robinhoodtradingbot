@@ -1,5 +1,8 @@
 # Capability and Repository Foundation Implementation Plan
 
+> Historical planning snapshot from 2026-07-10. For current implementation and operational
+> status, see the repository README and `docs/final-implementation-report.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Produce a reproducible Python repository, strict configuration, canonical domain primitives, least-privilege broker protocols, and an evidence-based Robinhood capability matrix without making account or trading calls.
