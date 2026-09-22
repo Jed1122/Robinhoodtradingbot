@@ -10,6 +10,11 @@
 
 **Spec:** [Approved durable ledger design](../specs/2026-09-22-durable-offline-options-ledger-design.md), implementing the relevant parts of [options-only build specification](../../options-only-build-spec.md) and [migration plan](2026-09-18-options-only-migration.md).
 
+**Priority update — 2026-09-22:** The operator subsequently prioritized the data-provider
+decision. This unimplemented plan is deferred while the
+[targeted data scope and provider comparison](../../options-provider-decision-refresh-2026-09-22.md)
+advance. Ledger implementation is not a dependency for choosing a provider.
+
 ## Global Constraints
 
 - Native implementation is already selected: the coordinator implements the tasks, then one fresh independent reviewer reviews the complete diff. This plan is awaiting operator review; it is not implemented software.
@@ -751,4 +756,4 @@ Render only the default existing manifest: `docker-compose -f docker-compose.yml
 
 Main-agent self-review checked this map against all twelve approved spec sections, reconciled cash-field/config-loader names against the current code, defined shared helper signatures and pinned the five Review Focus items to their owning tests. The code snippets are implementation/test instructions, not executed tests or existing features. Implementation may split long modules by responsibility only while preserving these frozen public interfaces and updating the file map/critical-coverage list in the same change.
 
-Approval of this plan permits the described **Native, credential-free implementation and local tests**. It does not authorize external account access, production changes or live trading. Complete this ledger milestone before resuming the separately scoped native historical-data normalization milestone; neither synthetic ledger success nor clean reconciliation establishes economic viability.
+Approval of this plan permits the described **Native, credential-free implementation and local tests**. It does not authorize external account access, production changes or live trading. The subsequent operator priority places data-provider selection and its dependent native-data preparation ahead of this ledger milestone. Neither synthetic ledger success nor clean reconciliation establishes economic viability.
