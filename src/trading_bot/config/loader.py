@@ -294,6 +294,30 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
             f"options.{name}", getattr(config.options, name), getattr(envelope.options, name)
         )
 
+    shortlist = config.options.research_shortlist
+    shortlist_bound = envelope.options.research_shortlist
+    _require_not_enabled(
+        "options.research_shortlist.enabled", shortlist.enabled, shortlist_bound.enabled
+    )
+    for name in ("max_input_records", "max_input_bytes", "max_json_depth", "max_decision_sessions"):
+        _require_at_most(
+            f"options.research_shortlist.{name}",
+            getattr(shortlist, name),
+            getattr(shortlist_bound, name),
+        )
+    for name in (
+        "underlying",
+        "version",
+        "reference",
+        "strike_tie",
+        "expiry_tie",
+        "min_dte",
+        "target_dte",
+        "max_dte",
+    ):
+        if getattr(shortlist, name) != getattr(shortlist_bound, name):
+            raise UnsafeConfiguration("options shortlist policy is not release-allowed")
+
     max_pairs = (
         (
             "portfolio.expected_starting_equity_usd",

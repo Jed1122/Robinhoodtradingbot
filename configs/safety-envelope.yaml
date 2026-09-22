@@ -29,6 +29,20 @@ options:
   uncovered_options_enabled: false
   zero_dte_live_enabled: false
   overnight_session_entries_enabled: false
+  research_shortlist:
+    enabled: true
+    underlying: SPY
+    version: spy-prior-close-atm-30d-v1
+    reference: previous_regular_session_close
+    strike_tie: lower_strike
+    expiry_tie: earlier_expiry
+    min_dte: 21
+    target_dte: 30
+    max_dte: 45
+    max_input_records: 25000
+    max_input_bytes: 16777216
+    max_json_depth: 16
+    max_decision_sessions: 1
 
 portfolio:
   expected_starting_equity_usd: 100
