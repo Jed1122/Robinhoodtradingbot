@@ -1,10 +1,13 @@
 # Durable offline options ledger design
 
-Status: **proposed written specification; awaiting operator review**.
+Status: **operator-approved written specification; implementation plan under review**.
 Inspected implementation base: `e9eb0948cddf6f4bc47d93901891a70dd8f92b4a`.
-The operator approved writing this design on 2026-09-22, with the durable ledger
-prioritized before native historical-data normalization. This document does not
-authorize implementation, broker access, production migration, or live activation.
+The operator approved writing this design on 2026-09-22, then approved the written
+specification, with the durable ledger prioritized before native historical-data
+normalization. The next review artifact is the
+[implementation plan](../plans/2026-09-22-durable-offline-options-ledger.md).
+Implementation awaits that plan review. Neither approval authorizes broker access,
+production migration, spending, deployment, or live activation.
 
 ## 1. Intent and success boundary
 
