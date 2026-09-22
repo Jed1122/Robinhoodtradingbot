@@ -1,6 +1,6 @@
 # SPY options research shortlist design
 
-Status: **operator selected Native execution; implementation under final verification**.
+Status: **Native implementation verified; synthetic research only, live gates closed**.
 Prepared 2026-09-22 UTC against `24472cc0aa67aac85ce23de815a1faa2ed0a8030`.
 No implementation, data purchase or live authorization follows from this document alone.
 
@@ -224,6 +224,7 @@ does not establish real-data, economic, broker or live readiness.
 - Written specification and inline consistency/ambiguity review: prepared.
 - Written-spec operator review: approved by the operator's “proceed” on 2026-09-22.
 - [Implementation plan](../plans/2026-09-22-options-research-shortlist.md): approved for
-  Native execution by the operator's “do native”; final verification in progress.
+  Native execution by the operator's “do native”; all four tasks, independent review
+  corrections and post-correction regression verification are complete.
 
 Implementation authorization grants no permission to acquire data or activate trading.

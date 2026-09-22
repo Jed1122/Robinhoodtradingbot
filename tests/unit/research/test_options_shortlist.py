@@ -145,6 +145,32 @@ def test_explicit_regular_sessions_handle_closures_dst_and_early_close(
     assert select(case).status == "selected"
 
 
+@pytest.mark.parametrize("endpoint", ["prior", "current"])
+@pytest.mark.parametrize(
+    "opening,closing",
+    [
+        (time(9, 30), time(16, 15)),
+        (time(9, 30), time(13, 15)),
+        (time(0), time(18, 59)),
+        (time(9, 31), time(16)),
+    ],
+)
+def test_consistently_mislabeled_regular_sessions_are_denied(endpoint, opening, closing):
+    case = make_case()
+    session = case.prior_session if endpoint == "prior" else case.current_session
+    assert session is not None
+    altered = fixture_session(session.trading_date, closing)
+    altered = replace(
+        altered,
+        opens_at=altered.opens_at + timedelta(hours=opening.hour - 9, minutes=opening.minute - 30),
+    )
+    # Rebuild calendar, close, chain evidence and contract sessions consistently.
+    # Agreement among caller-supplied records is not proof of a regular session.
+    case = make_case(**{endpoint: altered})
+    assert select(case).reasons == ("calendar_unverified",)
+    assert select(case).candidates == ()
+
+
 @pytest.mark.parametrize(
     "field,value,reason",
     [

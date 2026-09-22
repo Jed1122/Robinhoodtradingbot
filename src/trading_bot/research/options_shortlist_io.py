@@ -9,7 +9,13 @@ from pathlib import Path
 from trading_bot.config.models import OptionsShortlistSettings
 from trading_bot.domain import DataHash
 from trading_bot.market_data.bundle_models import BundleError
-from trading_bot.market_data.bundle_store import _open_root, _publish, _read, _subdirectory
+from trading_bot.market_data.bundle_store import (
+    _directory_flags,
+    _open_root,
+    _publish,
+    _read,
+    _subdirectory,
+)
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.options_shortlist_models import (
     OptionsShortlistResult,
@@ -63,6 +69,33 @@ def _bundle_code(error: BundleError) -> str:
     }.get(error.code, "shortlist_input_invalid")
 
 
+def _private_root(root: Path, repository_root: Path) -> int:
+    """Retain no-symlink traversal, then reject repository aliases by inode ancestry."""
+    with ExitStack() as cleanup:
+        descriptor = _open_root(root, repository_root)
+        cleanup.callback(os.close, descriptor)
+        repository = repository_root.stat()
+        repository_identity = (repository.st_dev, repository.st_ino)
+        cursor = os.dup(descriptor)
+        previous_identity = None
+        try:
+            while True:
+                info = os.fstat(cursor)
+                identity = (info.st_dev, info.st_ino)
+                if identity == repository_identity:
+                    raise BundleError("bundle_path_invalid")
+                if identity == previous_identity:
+                    break  # The filesystem root is its own parent.
+                parent = os.open("..", _directory_flags(), dir_fd=cursor)
+                os.close(cursor)
+                cursor = parent
+                previous_identity = identity
+        finally:
+            os.close(cursor)
+        cleanup.pop_all()  # Transfer the original descriptor to the caller's ExitStack.
+        return descriptor
+
+
 def read_shortlist_input(
     input_path: Path, *, settings: OptionsShortlistSettings, repository_root: Path
 ) -> tuple[ShortlistSessionInput, DataHash]:
@@ -77,7 +110,7 @@ def read_shortlist_input(
         ):
             raise ShortlistFileError("shortlist_path_invalid")
         with ExitStack() as stack:
-            parent = _open_root(input_path.parent, repository_root)
+            parent = _private_root(input_path.parent, repository_root)
             stack.callback(os.close, parent)
             encoded = _read(parent, input_path.name, limits.max_envelope_bytes)
         session = decode_shortlist_input(encoded, settings=settings)
@@ -126,7 +159,7 @@ def write_shortlist_manifest(
         _check(len(body) <= limits.max_envelope_bytes)
         digest = content_hash(payload)
         with ExitStack() as stack:
-            parent = _open_root(root, repository_root)
+            parent = _private_root(root, repository_root)
             stack.callback(os.close, parent)
             child = _subdirectory(parent, "options-shortlists", create=True)
             stack.callback(os.close, child)

@@ -111,7 +111,7 @@ through `LoadedConfig.config.options.research_shortlist`; test-only
 prior: OptionSession | None = None) -> ShortlistSessionInput` and
 `load_shortlist() -> LoadedConfig`.
 
-- [ ] **1.1 Write failing configuration tests.** Use the canonical loader with an
+- [x] **1.1 Write failing configuration tests.** Use the canonical loader with an
   explicit empty environment; do not instantiate a second config graph.
 
 ```python
@@ -175,7 +175,7 @@ lower positive resource caps change the resolved config hash; zero/negative/bool
 limits fail; options-disabled + shortlist-enabled fails; policy and tie enums cannot
 change. Existing historical hashes/readers are not rewritten to match the new graph.
 
-- [ ] **1.2 Run RED.**
+- [x] **1.2 Run RED.**
 
 ```sh
 uv run pytest tests/unit/config/test_options_shortlist_config.py -q
@@ -183,7 +183,7 @@ uv run pytest tests/unit/config/test_options_shortlist_config.py -q
 
 Expected: new profile/settings missing, not an unrelated import/environment failure.
 
-- [ ] **1.3 Add exact configuration, envelope checks and research records.**
+- [x] **1.3 Add exact configuration, envelope checks and research records.**
 
 ```python
 class OptionsShortlistSettings(StrictModel):
@@ -382,7 +382,7 @@ No `verified=true`, signature-shaped string or user-supplied hash can unlock tha
 This implements the spec's unresolved-evidence denial; it does not claim to complete
 the real-data dependency. Synthetic success is permanently labeled synthetic.
 
-- [ ] **1.4 Create fabricated shared fixtures and RED model tests.** In the test-only
+- [x] **1.4 Create fabricated shared fixtures and RED model tests.** In the test-only
   helper use default target `2024-01-02` 09:30–16:00 New York and prior `2023-12-29`
   09:30–16:00; explicitly include Dec 30/31 and Jan 1 as closed calendar days. Build
   custom-session fixture calendars from the supplied endpoints, declaring intermediate
@@ -449,7 +449,7 @@ boolean counts; malformed hashes; unknown semantics; unauthorized result constru
 flags; adjusted contract rejection by the unchanged domain class. Do not use
 `object.__setattr__` or `model_construct` to manufacture nominally valid fixtures.
 
-- [ ] **1.5 Run GREEN and review.**
+- [x] **1.5 Run GREEN and review.**
 
 ```sh
 uv run pytest tests/unit/config/test_options_shortlist_config.py tests/unit/config/test_options_config.py tests/unit/research/test_options_shortlist_models.py tests/unit/domain/test_options.py -q
@@ -461,7 +461,7 @@ git diff --check
 Require unchanged live locks and legacy options tests; review policy/envelope equality
 and exact numeric handling before the commit.
 
-- [ ] **1.6 Commit only Task 1 paths**, message `feat: define offline options shortlist inputs and settings`.
+- [x] **1.6 Commit only Task 1 paths**, message `feat: define offline options shortlist inputs and settings`.
 
 ## Task 2: Pure causal selector with explicit refusals
 
@@ -479,7 +479,7 @@ config_hash: DataHash, code_hash: DataHash, input_hash: DataHash) -> OptionsShor
 Invalid shapes or contradictory economic identities raise `DomainValidationError`;
 well-formed unselectable data returns `no_candidate` with stable reason codes.
 
-- [ ] **2.1 Write RED policy/causality tests**, with this test helper locally defined:
+- [x] **2.1 Write RED policy/causality tests**, with this test helper locally defined:
 
 ```python
 from dataclasses import replace
@@ -553,7 +553,7 @@ Same-time conflicting visible rows deny; later available visible revisions super
 earlier ones using the existing PIT semantics. A future-only prior close yields no
 candidate, not a previous-day fallback.
 
-- [ ] **2.2 Run RED.**
+- [x] **2.2 Run RED.**
 
 ```sh
 uv run pytest tests/unit/research/test_options_shortlist.py -q
@@ -561,7 +561,7 @@ uv run pytest tests/unit/research/test_options_shortlist.py -q
 
 Expected: missing selector; then failing causal/policy assertions as cases are added.
 
-- [ ] **2.3 Implement the selection pipeline and hash contract.** Validate exact types
+- [x] **2.3 Implement the selection pipeline and hash contract.** Validate exact types
   and resource record count before selection. Settings disabled returns
   `shortlist_disabled`. Apply one deterministic first-failure reason in this order:
 
@@ -668,7 +668,7 @@ underlying and **sorted member IDs**, not the order-sensitive legacy record hash
 Do not change the original record or its legacy hash. Thus reordering membership
 with unchanged provenance does not leak input ordering through a candidate hash.
 
-- [ ] **2.4 Add calendar/discontinuity/adversarial tests before their implementation.**
+- [x] **2.4 Add calendar/discontinuity/adversarial tests before their implementation.**
 
 ```python
 from datetime import date, time
@@ -727,7 +727,7 @@ Assert every result flag is false; flag assignment raises FrozenInstanceError;
 Neither input nor candidate has quantity/limit-price/account fields. Subsequent quote
 absence is not an argument to this API and cannot select a replacement.
 
-- [ ] **2.5 Run GREEN and unchanged primitive/economics regressions.**
+- [x] **2.5 Run GREEN and unchanged primitive/economics regressions.**
 
 ```sh
 uv run pytest tests/unit/research/test_options_shortlist.py tests/unit/research/test_options_shortlist_models.py tests/unit/market_data/test_options_records.py tests/unit/domain/test_options.py tests/unit/risk -q
@@ -739,7 +739,7 @@ git diff --check
 Require an independent read-only review of causality, policy adherence and imported
 denials; the coordinator resolves findings and reruns impacted tests before commit.
 
-- [ ] **2.6 Commit only Task 2 paths**, message `feat: add deterministic research-only SPY shortlist selection`.
+- [x] **2.6 Commit only Task 2 paths**, message `feat: add deterministic research-only SPY shortlist selection`.
 
 ## Task 3: Strict wire format and private no-overwrite manifest IO
 
@@ -767,7 +767,7 @@ Use a small `ShortlistFileError(ValueError)` exposing only a fixed `code` from
 `shortlist_input_invalid`, `shortlist_path_invalid`, `shortlist_storage_conflict`,
 `shortlist_storage_unavailable`. Never embed original errors or paths in this class.
 
-- [ ] **3.1 Write RED strict-wire tests.**
+- [x] **3.1 Write RED strict-wire tests.**
 
 ```python
 import json
@@ -813,13 +813,13 @@ and one full-size rejection test; no provider dataset is required. Reject unsupp
 compression before parsing. Record count is the Task 2 definition, not all array
 members (the existing replay counter counts differently and is not reused).
 
-- [ ] **3.2 Run RED.**
+- [x] **3.2 Run RED.**
 
 ```sh
 uv run pytest tests/unit/research/test_options_shortlist_wire.py -q
 ```
 
-- [ ] **3.3 Implement the versioned input and manifest codecs.** The input top-level
+- [x] **3.3 Implement the versioned input and manifest codecs.** The input top-level
   keys are exactly `schema` and `sessions`, with schema `options-shortlist-input-v1`
   and sessions an array of exactly one Task 1 session object. Its field names exactly
   match Task 1; optional evidence/prior fields are explicit JSON null, not omitted.
@@ -864,7 +864,7 @@ inside the payload. Do not embed input file paths, raw records, credentials or a
 information. Manifests contain private selected symbols/strikes and therefore still
 require owner-only storage. Reject a manifest exceeding the configured byte ceiling.
 
-- [ ] **3.4 Add RED private IO/failure tests.** Use `tmp_path.resolve()` so macOS `/var`
+- [x] **3.4 Add RED private IO/failure tests.** Use `tmp_path.resolve()` so macOS `/var`
   aliases do not accidentally introduce a symlink parent. Explicitly create 0700 root
   and 0600 input files outside a distinct fake repository directory.
 
@@ -900,7 +900,7 @@ short writes, zero write, failed link, and directory fsync uncertainty. Reuse th
 existing bundle-store fault injection patterns with these new public wrappers; do
 not assume helper tests alone prove the new composition. No fallback ordinary write.
 
-- [ ] **3.5 Implement narrow descriptor-safe wrappers.** Validate absolute paths,
+- [x] **3.5 Implement narrow descriptor-safe wrappers.** Validate absolute paths,
   no `..`, input basename not empty/dot/dot-dot and no slash, root outside the actual
   repository, exact private modes and owner. Use fixed subdirectory
   `options-shortlists`; generated names are only validated 64-hex digest + `.json`.
@@ -933,7 +933,7 @@ default all-zero hash. This is scoped research-code identity, not image attestat
 or proof of every transitive dependency; the unchanged lockfile hash is recorded in
 the operator validation report, not synthesized into live authorization.
 
-- [ ] **3.6 Run GREEN and storage/legacy regressions.**
+- [x] **3.6 Run GREEN and storage/legacy regressions.**
 
 ```sh
 uv run pytest tests/unit/research/test_options_shortlist_wire.py tests/unit/research/test_options_shortlist_io.py tests/unit/market_data/test_bundle_codec.py tests/unit/market_data/test_options_data_codec.py tests/unit/simulation/test_options_replay_wire.py tests/unit/simulation/test_options_replay_filesystem.py tests/integration/market_data/test_bundle_store.py -q
@@ -945,7 +945,7 @@ git diff --check
 Review no raw errors/paths, no unchecked path components, no old schema/hash changes
 and no rewriting tracked/private artifacts before commit.
 
-- [ ] **3.7 Commit only Task 3 paths**, message `feat: persist bounded private options shortlist manifests`.
+- [x] **3.7 Commit only Task 3 paths**, message `feat: persist bounded private options shortlist manifests`.
 
 ## Task 4: Offline CLI, documentation and full regression evidence
 
@@ -960,7 +960,7 @@ test; create `tests/integration/cli/test_options_shortlist.py` and
 Exit0 for selected or valid no_candidate; exit1 for schema/type/config/IO denial.
 No `--live`, `--provider`, `--token`, `--download`, balance, quote or override parameters.
 
-- [ ] **4.1 Write RED CLI and non-capability tests.** Test modules must block all
+- [x] **4.1 Write RED CLI and non-capability tests.** Test modules must block all
   network attempts with the existing socket guards, including `connect_ex`. Add fake
   secret paths/values to fixtures, but do not inspect real credentials. Guard
   `os.getenv` and relevant `os.environ` credential-key accesses during invocation;
@@ -1011,7 +1011,7 @@ or acquisition option. AST import-boundary test scans `research/options_shortlis
 alongside existing paths and rejects broker/persistence/httpx/mcp/subprocess imports;
 keep existing risk-economics imports in the broader research CLI valid.
 
-- [ ] **4.2 Run RED.**
+- [x] **4.2 Run RED.**
 
 ```sh
 uv run pytest tests/integration/cli/test_options_shortlist.py -q
@@ -1019,7 +1019,7 @@ uv run pytest tests/integration/cli/test_options_shortlist.py -q
 
 Expected: command absent, then precise integration failures as features are completed.
 
-- [ ] **4.3 Implement only the new command and loader.** Keep existing `_load`
+- [x] **4.3 Implement only the new command and loader.** Keep existing `_load`
   untouched; add `_load_shortlist(config_dir: Path) -> LoadedConfig` selecting
   `options/shortlist.yaml` with `environ={}`. Compose in this order:
 
@@ -1053,7 +1053,7 @@ storage code, then `typer.Exit(1)`. Do not echo tracebacks, exception strings, i
 symbols or filesystem paths. Do not catch `BaseException`; interrupts must propagate.
 No success output is emitted before durable publication succeeds.
 
-- [ ] **4.4 Write operator documentation.** Include the exact command above, root 0700/
+- [x] **4.4 Write operator documentation.** Include the exact command above, root 0700/
   file 0600 requirements, one-session/no-compression caps, a complete synthetic schema
   example generated from the committed fixture, stable reason/exit-code table and
   private manifest format. Explain source-last-trade vs official close, causal dates,
@@ -1067,7 +1067,7 @@ request, 750-bar minimum, five folds, at least 50 test bars/fold and 30 independ
 opportunities where applicable; this selector needs one close but relaxes none of
 those study requirements. Do not choose a strategy exit or holdout after viewing returns.
 
-- [ ] **4.5 Run narrow GREEN, then the baseline with temporary artifacts.** Before
+- [x] **4.5 Run narrow GREEN, then the baseline with temporary artifacts.** Before
   broad tests, inspect `tests/smoke/test_sbom_reproducible.py` and confirm it still
   writes two temporary outputs, never the tracked SBOM. Do not regenerate the dirty
   SBOM. No lockfile or dependency changes are needed.
@@ -1129,7 +1129,7 @@ equivalent and record that fact. No Docker service start, image pull, SSH or pro
 migration. Record baseline failures separately from introduced failures; never label
 the complete milestone verified while required checks are red or unperformed.
 
-- [ ] **4.6 Independent final review, corrections and commit.** Give a credential-free
+- [x] **4.6 Independent final review, corrections and commit.** Give a credential-free
   read-only reviewer the exact committed base, owned paths, this plan/spec and test
   results. Request findings on specification adherence, future leakage, forbidden
   imports, private IO and accidental authorizations. Keep final policy decisions with
@@ -1167,8 +1167,9 @@ strategy-exit policy, live bypass or source-authenticity claim is introduced.
 ## Execution checkpoint
 
 Written specification approved by the operator's “proceed” on 2026-09-22.
-The operator selected **Native execution** with “do native”. Tasks 1–3 are committed;
-Task 4 and whole-range verification are in progress. The implementation base is
+The operator selected **Native execution** with “do native”. All four tasks and the
+independent review correction pass are complete; final verification passed 5,793 tests
+with four existing local age-tool skips and 90.06% coverage. The implementation base is
 `225883dd2bea9cc58f40ca7fd472b8c4e9e068e9`; this plan's earlier state descriptions
 remain the planning snapshot. See [the operator guide](../../options-research-shortlist.md)
 for actual validation results and explicit deviations, including required config

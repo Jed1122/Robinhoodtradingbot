@@ -74,6 +74,48 @@ def test_private_input_hash_and_manifest_are_reproducible(paths):
     assert str(root) not in artifact.read_text()
 
 
+@pytest.mark.parametrize("operation", ["read", "write"])
+def test_case_alias_cannot_place_private_artifacts_inside_repository(paths, operation):
+    _, repository = paths
+    root = repository / "private"
+    root.mkdir(mode=0o700)
+    path = input_file(root)
+    alias = repository.with_name(repository.name.upper()) / root.name
+    if not alias.exists():
+        pytest.skip("requires a case-insensitive filesystem")
+    assert alias.samefile(root)
+    with pytest.raises(ValueError, match="shortlist_path_invalid"):
+        if operation == "read":
+            read(alias / path.name, repository)
+        else:
+            write(alias, repository)
+    assert not (root / "options-shortlists").exists()
+
+
+@pytest.mark.parametrize("operation", ["read", "write"])
+def test_descriptor_ancestry_rejects_repository_even_if_lexical_check_misses_it(
+    paths, monkeypatch, operation
+):
+    from trading_bot.research import options_shortlist_io as module
+
+    _, repository = paths
+    root = repository / "private"
+    root.mkdir(mode=0o700)
+    path = input_file(root)
+
+    # Model a filesystem alias on every CI platform, without altering the shared helper.
+    def lexical_miss(root, repository):
+        return os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+
+    monkeypatch.setattr(module, "_open_root", lexical_miss)
+    with pytest.raises(ValueError, match="shortlist_path_invalid"):
+        if operation == "read":
+            read(path, repository)
+        else:
+            write(root, repository)
+    assert not (root / "options-shortlists").exists()
+
+
 @pytest.mark.parametrize(
     "change", ["file_mode", "root_mode", "relative", "traversal", "missing", "fifo", "repository"]
 )

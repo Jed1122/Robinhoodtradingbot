@@ -1,7 +1,7 @@
 """Causal SPY acquisition shortlist, without prices for execution or order capability."""
 
 from dataclasses import replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Context, Decimal, localcontext
 from typing import cast
 from zoneinfo import ZoneInfo
@@ -72,10 +72,15 @@ def _calendar(case: ShortlistSessionInput, evidence: dict[str, object]) -> bool:
     if sessions != (prior, current):
         return False
     zone = ZoneInfo("America/New_York")
+    # This version supports only these underlying regular-session shapes, not
+    # arbitrary caller-consistent options/extended-hours intervals. Dates, closures
+    # and early-close eligibility still need independently trusted source evidence.
     return all(
         s.exchange_timezone == "America/New_York"
         and s.opens_at.astimezone(zone).date() == s.trading_date
         and s.closes_at.astimezone(zone).date() == s.trading_date
+        and s.opens_at.astimezone(zone).time() == time(9, 30)
+        and s.closes_at.astimezone(zone).time() in {time(13), time(16)}
         for s in sessions
     )
 

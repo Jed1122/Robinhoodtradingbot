@@ -16,6 +16,8 @@ Both parent directories must already exist, be owned by the current user, and
 have mode `0700`. Input must be a regular `0600` file. Paths must be absolute,
 outside this repository, without `..` or symlink components. The output root may
 equal the input parent. No credential is needed or read.
+Containment also checks opened-directory ancestor device/inode identities, so
+alternate filename capitalization cannot bypass the repository exclusion on macOS.
 
 The command explicitly loads `configs/options/shortlist/simulation.yaml` through
 the existing canonical loader with an empty environment. The nested filename
@@ -35,6 +37,10 @@ Resource caps may tighten; policy values cannot change in this version.
 Version `spy-prior-close-atm-30d-v1` uses the immediate prior completed underlying
 regular session's unadjusted, non-interpolated SPY close. The calendar declares
 closures and early closes; UTC instants retain America/New_York trading dates.
+This version accepts only underlying session shapes opening at 09:30 and ending
+at 13:00 or 16:00 New York time. Other shapes fail closed, even when the supplied
+calendar and price bar agree. This shape check does not authenticate the calendar
+or establish which dates are eligible for early closes.
 A source-specific last trade remains labeled as such, not a consolidated close.
 An options session ending later than the underlying session cannot substitute for it.
 
@@ -124,17 +130,25 @@ Nested records retain the existing `options-data-record-v1` schema and hashes.
 Implementation uses Native execution and test-first development. The pre-change
 baseline was 5,579 passing tests, four local age-tool skips and one existing
 Starlette/httpx deprecation warning. Focused selector/config/CLI regression passed 93
-tests; codec/storage regressions passed 195. After correcting configuration regression
-tests, the complete suite passed **5,781 tests**, with the same four age-tool skips
-and existing warning. Overall line/branch coverage is **90.05%**, above the 80% gate.
+tests; codec/storage regressions passed 195. After configuration and independent-review
+corrections, the final complete suite passed **5,793 tests**, with the same four age-tool
+skips and existing warning. Overall line/branch coverage is **90.06%**, above the 80% gate.
 The existing 90% per-critical-module branch gate passed. New-module branches are
-selector **61/66 (92.42%)**, models **24/24**, wire **8/8** and IO **2/2**.
+selector **61/66 (92.42%)**, models **24/24**, wire **8/8** and IO **6/6**.
 
 Ruff check and owned-file formatting passed; Mypy passed for 242 source files.
 Bandit found no issues (12 existing explicit suppressions). Locked-dependency check
 passed. SBOM/critical-coverage smoke tests passed 25/25. DigitalOcean shell syntax
 and standalone `docker-compose config --quiet` validation passed; no service started.
-The independent whole-range review remains the final gate before handoff.
+The independent whole-range review of `225883d..60068de` found two Important
+issues: consistently mislabeled session bounds and case-aliased repository paths.
+Both were reproduced by 12 failing tests, then corrected in the new shortlist
+selector/IO only; the affected 195-test suite passed. No shared trading module or
+storage helper was changed. The post-correction full suite passed **5,793 tests**;
+critical and shortlist branch checks, Ruff, Mypy and Bandit remained green.
+There were no Critical or Minor findings; no second reviewer was used.
+The shared storage helper still has only lexical repository containment for other
+callers; the new inode-ancestry protection is scoped to shortlist input/output.
 
 The existing SBOM reproducibility check writes temporary files and preserves the
 tracked artifact. Its generator currently reports an empty component inventory
@@ -164,6 +178,29 @@ was exported from the locked dependency graph, with no dependency or lockfile ed
 6. The legacy replay test harness serializes the original config schema and asserts
    its original digest; production still hashes the complete new graph. Cost if wrong:
    the harness might hide a config regression, limited by that independent digest pin.
+7. Genuine calendar/source authenticity and deliberately relabeled real observations
+   remain unverified. Cost if wrong: fabricated output could be mistaken for actual
+   evidence; imported-lane denial and false eligibility flags remain essential.
+8. Future appends exceeding input caps are invalid, outside causal-stability promises.
+   Cost if wrong: an otherwise reproducible decision may be denied on oversized input.
+9. Unknown actions outside the reference interval still conservatively deny selection,
+   as specified. Cost if wrong: otherwise usable sessions can be withheld.
+10. Whole visible-chain and scoped-code identities are retained, not upgraded to
+    full attestation. Cost if wrong: unused visible definitions can change a digest;
+    unhashed dependencies can affect behavior without changing the scoped code hash.
+11. Forged frozen Python objects and concurrent same-user tampering remain outside
+    supported immutable input. Cost if wrong: privileged tampering may corrupt outputs;
+    strict wire validation does not provide host-level isolation.
+12. The reviewer accepted the test-only historical projection; the coordinator upheld
+    it with original digest pins. Cost if wrong: a harness error could hide a
+    compatibility regression; production identity validation remains untouched.
+13. Incomplete SBOM inventory and missing economic/live evidence remain separate
+    blockers. Cost if wrong: local test success could be mistaken for release readiness.
+14. Central verification is accepted without a second full-suite run by the reviewer.
+    Cost if wrong: an environment-specific discrepancy might escape independent
+    review; the coordinator reruns the complete suite after corrections.
+
+Deferred minors: none.
 
 Remaining dependent work: verified native normalization/source evidence, a
 separately authorized quote-cost/acquisition scope including exits/expiry and
