@@ -118,6 +118,11 @@ normalization and source suitability remain separate inputs.
 
 ## Next deliverable: purchase-ready request, not the full ledger
 
+The subsequent [bars-only prerequisite proposal](options-underlying-bootstrap-proposal-2026-09-22.md)
+freezes the first request at a refreshed $0.89 displayed estimate and seeks a $1
+credit-only cap. It does not complete the targeted option manifest: native source
+integration and calendar/action evidence are still missing. Nothing was acquired.
+
 1. Resolve the minimum underlying input and its source semantics, warmup, sessions,
    corporate-event coverage and cost. Acquire nothing without exact separate approval.
 2. Normalize the already-acquired native definitions and permitted underlying inputs
