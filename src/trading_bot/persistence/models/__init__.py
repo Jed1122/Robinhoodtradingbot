@@ -35,7 +35,7 @@ from trading_bot.persistence.models.operations import (
     ReconciliationEventRow,
     UsedNonceRow,
 )
-from trading_bot.persistence.models.options import OptionsTrialEventRow
+from trading_bot.persistence.models.options import OptionsRiskEventRow, OptionsTrialEventRow
 from trading_bot.persistence.models.orders import (
     BrokerReviewRow,
     FillRow,
@@ -64,6 +64,7 @@ __all__ = [
     "LiveAuthorizationRow",
     "LiveLeaseRow",
     "MarketSnapshotRow",
+    "OptionsRiskEventRow",
     "OptionsTrialEventRow",
     "OrderIntentRow",
     "OrderRow",

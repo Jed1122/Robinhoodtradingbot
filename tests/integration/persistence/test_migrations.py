@@ -55,6 +55,7 @@ REQUIRED_TABLES = {
     "execution_leases",
     "audit_events",
     "options_trial_events",
+    "options_risk_events",
 }
 
 HASH_A = "a" * 64
@@ -508,7 +509,7 @@ def test_upgrade_records_core_revision(
 
     with closing(sqlite3.connect(database_path)) as connection:
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
-    assert revision == ("0006_options_trial_history",)
+    assert revision == ("0007_options_risk_history",)
 
 
 @pytest.mark.parametrize(
@@ -2502,7 +2503,7 @@ def test_failed_downgrade_restores_all_schema_changes_and_can_retry(
         correction = connection.execute(
             "SELECT corrects_id FROM audit_events WHERE id = 'audit-2'"
         ).fetchone()
-    assert revision == ("0006_options_trial_history",)
+    assert revision == ("0007_options_risk_history",)
     assert correction == ("audit-1",)
 
     command.downgrade(alembic_config, "base")

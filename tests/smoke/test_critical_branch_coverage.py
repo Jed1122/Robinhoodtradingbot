@@ -74,6 +74,7 @@ def test_requires_options_trial_history_and_execution_lease_branches(tmp_path: P
     root = tmp_path / "project"
     _source(root, "src/trading_bot/risk/anchor.py")
     _source(root, "src/trading_bot/persistence/options_trial.py")
+    _source(root, "src/trading_bot/persistence/options_risk.py")
     _source(root, "src/trading_bot/persistence/lease.py")
     report = _report(
         tmp_path / "coverage.json",
@@ -83,6 +84,7 @@ def test_requires_options_trial_history_and_execution_lease_branches(tmp_path: P
     )
     assert _load_checker().check_critical_branch_coverage(report, root) == [
         "missing branch coverage for src/trading_bot/persistence/lease.py",
+        "missing branch coverage for src/trading_bot/persistence/options_risk.py",
         "missing branch coverage for src/trading_bot/persistence/options_trial.py",
     ]
 
