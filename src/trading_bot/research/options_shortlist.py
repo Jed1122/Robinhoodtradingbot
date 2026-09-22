@@ -250,7 +250,8 @@ def _selection(
     evidence["chain"] = chain
     definitions = {r.value.contract_id: r for r in visible if type(r.value) is OptionContract}
     if any(
-        ident not in definitions or cast(OptionContract, definitions[ident].value).underlying != "SPY"
+        ident not in definitions
+        or cast(OptionContract, definitions[ident].value).underlying != "SPY"
         for ident in chain_row.value.contract_ids
     ):
         return (), "chain_unavailable"
