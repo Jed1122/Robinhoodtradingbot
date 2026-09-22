@@ -648,3 +648,38 @@ All unrelated staged/unstaged/untracked work is preserved. Commits are local onl
 Technical readiness is partial/offline; economics remain `ECONOMIC_NO_GO`; account/runtime
 capabilities remain unverified; operator live authorization remains absent. Weekly/drawdown
 latches have no automatic clearing API, and no risk threshold was loosened.
+
+## Session, host and trial-journal checkpoint (2026-09-22)
+
+The later [dated readiness checkpoint](options-readiness-2026-09-22.md) supersedes the
+previous section's unverified-account/host status only for its explicitly observed reads
+and paused-service checks. `robinhood-2` authenticated account, portfolio, options and
+equity position/order reads. A separately approved read-only DigitalOcean inspection
+verified paused health, readiness denial, live-disabled metrics, executing image/config
+attestation and installed equity-read client identity. No credentials or production
+ledger were read; no connected profile or order operation was run on that host.
+
+`bc9cf25` hardens the synthetic trial journal's lease chronology, precommit clock floor,
+duplicate-read expiry and exact-tip retry behavior without rewriting payloads or hashes.
+New regressions first demonstrated 10 failures; one related denial was already covered
+by existing behavior. The final focused three-journal selection passed 56 tests. Fresh
+independent review found no Critical/Important issue; one additional final-duplicate-clock
+test suggestion is deferred. This change does not complete production lifecycle integration.
+
+Full suite at `bc9cf25` with preserved pre-existing worktree changes: **5,563 passed**,
+no skips, one existing Starlette/httpx warning, **89.83% overall coverage**, 351.25 seconds.
+The **90% per-file critical branch gate passed**. Ruff, Mypy (238 source files), Bandit,
+root offline lock check, root locked dependency audit, temporary CycloneDX 1.5 validation
+(104 components), DigitalOcean shell syntax and `git diff --check` passed. Root audit
+reported no known vulnerabilities; research dependency checks were not repeated in this
+unchanged-dependency continuation. Local Docker Compose rendering remains unavailable;
+the host has Compose installed, but no fresh render, deployment or remote CI ran.
+
+Verification artifacts: `/private/tmp/options-trial-hardening.Hd7rBp` (full suite log,
+coverage JSON, locked requirements and temporary SBOM). Root lock/SBOM hashes remain
+the exact values recorded above. No push or deployment was performed.
+
+The portal estimate for broad 2023–2025 SPY option CBBO-1m history exceeds available
+credits. No quote acquisition was authorized or submitted; underlying-source gaps remain.
+Economic status is still `ECONOMIC_NO_GO`, production integration remains partial, and
+standalone options capability/live authorization remain blocked independently.

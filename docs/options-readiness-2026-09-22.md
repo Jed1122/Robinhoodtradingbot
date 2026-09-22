@@ -36,10 +36,52 @@ The public guide distinguishes cash settlement from limited-margin reuse of proc
 It does not establish all selected-account intraday restrictions. The runtime must use
 fresh account-specific evidence, not universal PDT or same-day-settlement assumptions.
 
-**Standalone DigitalOcean options runtime: UNVERIFIED.** This work did not inspect or
-transfer local OAuth state, register a runtime client, validate unattended renewal,
-probe the host, or alter the existing equity-only SDK/transport allowlists. Desktop
+**Standalone DigitalOcean options runtime: UNVERIFIED.** The separately authorized
+read-only host inspection below verified the existing paused service, not options
+authentication or execution. No OAuth state was read or transferred, runtime client
+registered, unattended renewal validated, or SDK/transport allowlist changed. Desktop
 authentication cannot be copied into a runtime-verification verdict.
+
+## Read-only DigitalOcean checkpoint
+
+The operator separately approved inspection of the existing deployment. DigitalOcean
+reported the existing Ubuntu 24.04, NYC3, one-vCPU/2-GB/50-GB Droplet active. An initial
+SSH attempt using the deployment-service username was denied. The existing administrator
+SSH alias then authenticated successfully using its existing key with strict known-host
+verification. No key/access setting or deployment changed; OAuth credentials and
+production-ledger contents were not read.
+
+At approximately 18:47–18:51 UTC, the running container reported:
+
+- `/healthz`: HTTP 200, process check healthy with reason `paused`.
+- `/readyz`: HTTP 503, `ready=false`, denials `paused` and `external_capability_missing`.
+- `/metrics`: `trading_bot_live_enabled 0.0`.
+- Command: shadow-mode `serve --paused`; non-root UID/GID 10001; read-only root filesystem;
+  all Linux capabilities dropped; no-new-privileges; loopback-only port 8080; no mounts.
+- Limits: 768 MiB memory, 0.75 CPU and 256 processes. No resource benchmark was performed.
+
+Executing image ID:
+`sha256:1a259e1a559c2ecb2ae0277e8f7fa2733e7e9f0c2b90ff418f5baa1c527e9d25`.
+The configured image, last-good release pointer and root-owned mode-0444 attestation
+agreed with that ID. The paused container's read-only configuration-hash command returned
+`f617b11838362eccf5ea0e4e18e274974f347cb12f5e01006a1c1b7a3255f224`, matching the
+attestation. Deployed Compose SHA-256
+`6ad9422f7d5e10280fcccef97a6703edb6deeb422e7fcd64f9e6d3d2c5a55c54`
+matched the release record and local reviewed manifest. The installed deployment-helper
+hash also matched the local helper. Docker Compose 2.40.3 was present on the host;
+neither a new Compose render nor a deployment was performed.
+
+Hashes of the installed MCP SDK, transport and equity-evidence source files matched
+their local reviewed counterparts. Their installed SDK allowlist contains the seven
+existing account/equity reads, not options reads or order-changing operations. No
+connected profile, OAuth flow, broker call or strategy loop was launched on the host.
+An empty mount list applies to this running paused container only; it does not prove
+the host contains no credentials or other private state.
+
+**Paused deployment checks: PASS within the scope above. Options production lifecycle,
+runtime authentication/renewal and operational recovery: still NOT VERIFIED.** A healthy
+process endpoint is not broker reconciliation, a strategy heartbeat or economic evidence.
+The newly tested local options changes were not deployed.
 
 ## Historical data estimates, not acquisition
 
@@ -92,3 +134,21 @@ It does not complete durable broker lifecycle integration. Follow-on dependency 
 5. Suitable acquired history and preregistered economic evaluation; independent live approval.
 
 Two local read-only audits assisted this checkpoint. No Cloud execution was performed.
+
+## Local verification
+
+Task 24 code checkpoint: `bc9cf25`. Eleven added regression cases followed observed
+RED failures before the fix. Final focused trial/recorded-session/risk-journal selection:
+56 passed. Full non-authenticated suite: **5,563 passed**, no skips, one existing
+Starlette/httpx deprecation warning, **89.83% overall coverage**, 351.25 seconds.
+The **90% per-file critical branch gate passed**. Ruff, Mypy (238 source files), Bandit,
+root offline lock consistency, locked-dependency audit, temporary CycloneDX 1.5 schema
+validation (104 components), DigitalOcean shell syntax and diff checks passed. The audit
+found no known dependency vulnerabilities; it is not proof of absence of all risks.
+Local Docker Compose remains unavailable. No remote CI or production failure drill ran.
+
+A fresh independent read-only review of `2421153..bc9cf25` found no Critical or Important
+issues. Deferred minor: add a sequenced-clock test isolating the final exact-duplicate
+return check; existing tests already cover expiry/regression during history reads.
+This is a test-coverage suggestion, not an observed defect or a live-readiness approval.
+Pre-existing staged lockfile, dirty SBOM and unrelated work remain unchanged.
