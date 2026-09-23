@@ -1,8 +1,10 @@
 # Targeted Databento prerequisite: SPY underlying bars
 
 Recorded 2026-09-22 UTC against `f5dc9351b3e31164be5b236f6444809650155621`.
-Status: exact bars-only acquisition proposal, awaiting operator approval and final
-cost/credit checks. **Not a complete options dataset or economic validation.**
+Status: operator-approved package acquired; completed job shows $0.89, credits
+decreased by $0.89 and amount due remains $0.00. Local receipt/integrity checks
+passed; native semantic normalization remains unimplemented as recorded below.
+**Not a complete options dataset or economic validation.**
 
 ## Recommendation and exact request
 
@@ -126,3 +128,79 @@ whitespace; product tests were not rerun because no product code changed.
 Disposition: **bars-only proposal ready for operator decision; complete targeted
 option package still blocked on the dependencies above; economic/live eligibility
 unchanged.** All capital assumptions, risk limits and write-incapable defaults remain.
+
+## Approved acquisition — 2026-09-22 23:53 UTC
+
+The operator explicitly approved the exact bars-only package above, with a $1
+existing-credit ceiling, no cash charge and no subscription. This approval does
+not cover option quotes, BBO, repeat requests, different symbols/dates or live data.
+
+Before submission, the complete Download center listing showed no matching SPY
+bars job. Fresh billing showed $113.57 credits, $0.00 due and zero subscription
+plans/licenses. The customized Data request page quoted **$0.89** for the exact
+OHLCV-1m scope, DBN/zstd, direct download, no optional splitting and four output
+files. No new license, terms, payment or subscription step appeared.
+
+Databento distinguishes the customized request-page quote from the catalog
+estimate and states that applicable historical-data credits apply before charges.
+The fresh credit balance exceeded the quote and the approved ceiling. This is
+the pre-submission basis for credit-only acquisition, not a claim that the account
+has an enforced spending cap. [Official pricing/credits FAQ](https://databento.com/docs/faqs/usage-pricing-and-data-credits).
+
+Exactly one Submit request action produced an accepted confirmation. The existing
+job's detail panel confirmed `OHLCV-1m`, DBN/zstd, direct download and
+`[2018-05-01 00:00 UTC, 2026-01-01 00:00 UTC)`, with status **Queued**. Its private
+request identifier and receipt are retained outside Git/Cloud in the owner-private
+research directory. Do not resubmit or use Start duplicate request.
+
+The first post-submission billing check still showed $113.57 credits and $0.00
+due. That does not establish a free request or a final charge; billing remains
+pending. Files have not yet been retrieved or validated. Retrieve the existing
+job's files when ready, preserve metadata/conditions/provider hashes privately,
+and verify final billing without starting a new request.
+
+The earlier estimate-only observations above remain historical. This section
+supersedes their no-acquisition status, not the source/economic limitations.
+No broker call, code/config change, deployment or live activation occurred.
+
+## Completed delivery and credit accounting — 2026-09-22/23 UTC
+
+Around 23:56 UTC the same job became **Ready**, showing a completed cost of **$0.89**,
+79.6 MB billing size and four downloadable files totaling 25.6 MB. The portal's
+job-specific expiry display was recorded privately; do not infer a UTC deadline
+from its unlabeled local display. Download all was invoked once for this existing
+job. No duplicate batch or streaming request was made.
+
+The downloaded ZIP is 25,560,016 bytes. A no-overwrite private copy and its four
+extracted files are retained outside Git/Cloud. Checks confirmed:
+
+- ZIP integrity and the complete Zstandard stream, decompressing to 79,656,090 bytes.
+- Exactly the three provider-manifest-listed files plus the manifest itself;
+  all three listed sizes and SHA-256 values match.
+- Metadata matches SPY, `XNAS.ITCH`, `ohlcv-1m`, `raw_symbol`, the approved UTC
+  bounds, unlimited record count, DBN/zstd and unsplit direct delivery.
+- Source ZIP and private copy have identical SHA-256 values. Storage directories
+  are 0700; archive, receipt and extracted files are 0600. The initial per-file
+  permission check caught extractor-default 0644 modes inside the private directory;
+  those new files were restricted to 0600 and the full check then passed.
+
+The provider condition file declares **1,999 available dates and 3 degraded dates**.
+These are provider status entries, not verified regular-session counts or a clean
+data-quality verdict. Native OHLCV record validation, gap analysis, session
+aggregation, availability/revision semantics and strategy evaluation have not run.
+No market returns or holdout outcomes were evaluated.
+
+After completion, billing displayed **$112.68 remaining credits**, **$0.00 due** and
+zero subscription plans/licenses. The displayed credit deduction is exactly **$0.89**,
+matching the completed job's displayed cost and remaining below the $1 authority.
+This verifies current portal accounting to cents, not an exact API cost or a
+month-end invoice. No cash payment, subscription or billing-setting change occurred.
+
+The request ID, provider hashes and detailed receipt stay private; only sanitized
+scope, aggregate verification and accounting findings are recorded here. Product
+tests were not rerun: no product code, configuration or dependencies changed.
+
+Current disposition: **approved underlying-bars acquisition complete and byte
+integrity verified; native source integration and the exact option-quote package
+remain unfinished; economic/live eligibility unchanged.**
+Final receipt verification was recorded at 2026-09-23 00:00:06 UTC.
