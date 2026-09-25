@@ -1,6 +1,6 @@
 # Native options data integration for a targeted acquisition manifest
 
-Status: **Design brief approved; written specification awaiting operator review**.
+Status: **Written specification approved; implementation plan awaiting operator review**.
 Prepared 2026-09-25 UTC against `8a3a55485a0da66a6645f5703fb4f5e2f596c277`.
 This is an architectural specification, not implemented behavior or economic evidence.
 
@@ -380,12 +380,12 @@ Buying more data is not proof that this conclusion will change.
 
 ## 10. Review checkpoint and next gate
 
-The operator approved the integrated design brief on 2026-09-25. This written spec
-is prepared for review and has been checked for scope, version compatibility, missing
-source claims and acquisition-authority separation. Product implementation has not
-started. Written-spec approval permits preparation of the implementation plan; review
-that plan before Native implementation. The earlier Native workflow preference is
-retained, not treated as approval of an unwritten new plan.
+The operator approved the integrated design brief and then the written specification
+on 2026-09-25. The replies “I do approve of the plan” and “Yes, I do” approved the
+written specification presented at commit `c69cc90`, not a then-unwritten implementation
+plan. The [implementation plan](../plans/2026-09-25-native-options-data-integration.md)
+is now prepared for review. Product implementation has not started. Review that plan
+before Native implementation; the earlier Native workflow preference is retained.
 
 All capital assumptions and limits remain unchanged: $100 assumed capital, $150 live
 equity ceiling, 0.5% per-trade risk ($0.50 at $100), $50 outer per-trade ceiling,
