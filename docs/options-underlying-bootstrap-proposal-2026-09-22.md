@@ -6,6 +6,10 @@ decreased by $0.89 and amount due remains $0.00. Local receipt/integrity checks
 passed; native semantic normalization remains unimplemented as recorded below.
 **Not a complete options dataset or economic validation.**
 
+Current follow-up: [2026-09-25 authority and native-quality checkpoint](options-data-validation-handoff-2026-09-25.md).
+It records the expanded credit-only purchase authority and fresh native observations;
+the historical bars-only approval and acquisition receipts below are preserved.
+
 ## Recommendation and exact request
 
 Acquire the following small underlying-data prerequisite before paying for option

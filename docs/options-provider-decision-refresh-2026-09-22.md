@@ -4,6 +4,11 @@ Recorded 2026-09-22 UTC against `01e2a8423668fef4bafcf7805eeb259a400ec988`.
 Scope: provider selection, public documentation, existing-session billing observation
 and free portal estimates. No acquisition, subscription or trading authorization.
 
+Subsequent authority/status: [2026-09-25 data-validation handoff](options-data-validation-handoff-2026-09-25.md)
+supersedes this note's separate per-purchase approval requirement with necessary
+historical-data purchases from existing credits only. This comparison remains a
+historical record; its estimates are not fresh quotes or a complete package price.
+
 ## Decision
 
 **Prioritize targeted Databento acquisition planning; retain ThetaData as fallback.**
