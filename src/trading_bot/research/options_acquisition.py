@@ -143,8 +143,12 @@ def _phases(
         )
         if not _covers(underlying, as_of, last + 1):
             incomplete.add(result.session_id + ":underlying_quotes")
-    warmup = tuple(r for r in applicable if r.role == "warmup" and r.window.symbol == "SPY")
-    if not any(r.window.start_ns < as_of and r.window.end_ns <= as_of for r in warmup):
+    warmup = tuple(
+        r
+        for r in applicable
+        if r.role == "warmup" and r.window.symbol == "SPY" and r.window.end_ns <= as_of
+    )
+    if not warmup or not _covers(warmup, min(r.window.start_ns for r in warmup), as_of):
         incomplete.add(result.session_id + ":warmup")
 
 
@@ -303,16 +307,12 @@ def build_coverage_manifest(
                     reasons.add("duplicate_resolution_request")
             by_identity[(item.dataset, item.symbol)].append(item)
     if study.purpose == "qualification":
-        warmups = [r.window.start_ns for r in study.requirements if r.role == "warmup"]
-        if (
-            not warmups
-            or study.requested_end_ns - min(warmups)
-            < research.history_calendar_days * 86400 * 10**9
-            or len(study.session_ids)
-            < research.walk_forward_folds * research.minimum_test_bars_per_fold
-            or len(study.session_ids) < research.minimum_independent_opportunities
-        ):
-            reasons.add("research_history_insufficient")
+        # V1 records declared windows/session IDs, not verified observed history,
+        # fold membership or independent opportunities. Neither an old start date
+        # nor 750 planned decisions establishes the configured 750-bar minimum.
+        # Keep qualification blocked until a reviewed observed-history contract
+        # can establish every emitted minimum; engineering pilots remain usable.
+        reasons.add("research_history_insufficient")
     if incomplete:
         reasons.add("coverage_obligations_incomplete")
     links = tuple(

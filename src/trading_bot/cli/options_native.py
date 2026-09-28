@@ -173,7 +173,9 @@ def options_coverage_manifest(
             )
         )
         selected = []
-        records = 0
+        # The index already bounds entries and aggregate input bytes. Each
+        # recomputation enforces its own record cap; summing per-session source
+        # counts would incorrectly reject valid multi-session studies.
         for entry in index:
             body = read_native_document(entry.input.path, loaded=loaded, repository_root=_ROOT)
             check(
@@ -182,8 +184,6 @@ def options_coverage_manifest(
             )
             request = decode_verified_shortlist_input(body, loaded=loaded)
             result = select_verified_shortlist(request, loaded=loaded, repository_root=_ROOT)
-            records += result.input_record_count
-            check(records <= loaded.config.options.research_shortlist.max_input_records)
             if (
                 hashlib.sha256(encode_verified_shortlist_result(result)).hexdigest()
                 != entry.expected_result_hash

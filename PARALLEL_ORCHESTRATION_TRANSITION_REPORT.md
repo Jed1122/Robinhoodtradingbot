@@ -1,5 +1,31 @@
 # Parallel Orchestration Transition Report
 
+## Current checkpoint — 2026-09-28 UTC
+
+This checkpoint supersedes conflicting current-status and authority statements in the
+historical snapshots below. The options-only [master specification](docs/options-only-build-spec.md)
+governs the migration. The eight-task [native-data milestone](docs/options-native-data.md)
+is implemented and fixture-tested within its bounded offline contract; actual-source
+qualification, complete option/underlying quote coverage, and genuine economic validation
+remain incomplete. The [real-data research design](docs/superpowers/specs/2026-09-28-real-data-options-research-design.md)
+was approved; its implementation plan awaits review. See [PR #2](https://github.com/Jed1122/Robinhoodtradingbot/pull/2)
+for the exact integration head and current CI/review verdicts, not this historical snapshot.
+
+[Standing operator authority](docs/operator-authority.md) permits reviewed, in-scope
+merges and necessary Databento purchases within remaining authorized credits without
+repeat approvals. Required checks, complete scope/cost verification and all separate
+live, deployment, risk, cash and subscription boundaries remain unchanged.
+
+The critical path is actual-source verification, preregistered complete coverage,
+credit-bounded quote acquisition, causal historical execution/accounting, and after-cost
+uncertainty evaluation. Credential-free work can proceed independently of broker access.
+Production lifecycle composition and verified broker/runtime capabilities are separate
+incomplete workstreams; no fresh deployment or account verification is claimed here.
+Live trading remains **NO-GO**. Neither funding, data integrity nor synthetic results
+supplies missing economic, capability or operator-activation evidence.
+
+## Historical snapshots
+
 Snapshot date: 2026-09-17 (UTC)
 
 Repository: `Jed1122/Robinhoodtradingbot`

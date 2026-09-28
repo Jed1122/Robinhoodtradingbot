@@ -310,6 +310,65 @@ def test_qualification_cannot_relabel_short_pilot_history(tmp_path, monkeypatch)
     assert "research_history_insufficient" in result.reasons and not result.economic_eligible
 
 
+@pytest.mark.parametrize("planned_sessions", [250, 749, 750])
+def test_declared_session_count_cannot_prove_observed_history_bars(
+    tmp_path, monkeypatch, planned_sessions
+):
+    value = fixture_case(tmp_path, monkeypatch)
+    session_ids = tuple(
+        sorted(
+            (
+                value.results[0].session_id,
+                *(f"planned-{index:04d}" for index in range(planned_sessions - 1)),
+            )
+        )
+    )
+    result = build(value, purpose="qualification", session_ids=session_ids)
+    # Ten years of declared windows and enough planned folds are not 750 observed bars.
+    assert result.status == "blocked"
+    assert "research_history_insufficient" in result.reasons
+
+
+@pytest.mark.parametrize("missing", ["tail", "interior"])
+def test_warmup_must_cover_continuously_through_decision(tmp_path, monkeypatch, missing):
+    value = fixture_case(tmp_path, monkeypatch)
+    warmup = next(r for r in value.study.requirements if r.role == "warmup")
+    midpoint = (warmup.window.start_ns + value.decision) // 2
+    left = replace(warmup, window=replace(warmup.window, end_ns=midpoint))
+    replacements = (left,)
+    if missing == "interior":
+        right = replace(
+            warmup,
+            requirement_id="warmup-right",
+            window=replace(
+                warmup.window,
+                start_ns=midpoint + 1,
+                requirement_ids=("warmup-right",),
+            ),
+        )
+        replacements += (right,)
+    requirements = tuple(r for r in value.study.requirements if r.role != "warmup")
+    result = build(value, requirements=(*requirements, *replacements))
+    assert result.status == "blocked"
+    assert value.results[0].session_id + ":warmup" in result.incomplete_obligations
+
+
+def test_adjacent_warmup_windows_cover_decision_without_false_gap(tmp_path, monkeypatch):
+    value = fixture_case(tmp_path, monkeypatch)
+    warmup = next(r for r in value.study.requirements if r.role == "warmup")
+    midpoint = (warmup.window.start_ns + value.decision) // 2
+    left = replace(warmup, window=replace(warmup.window, end_ns=midpoint))
+    right = replace(
+        warmup,
+        requirement_id="warmup-right",
+        window=replace(warmup.window, start_ns=midpoint, requirement_ids=("warmup-right",)),
+    )
+    requirements = tuple(r for r in value.study.requirements if r.role != "warmup")
+    result = build(value, requirements=(*requirements, right, left))
+    assert result.status == "requirements_complete"
+    assert not result.incomplete_obligations
+
+
 @pytest.mark.parametrize("role", ["initialization", "entry", "monitoring", "exit", "expiry"])
 def test_one_quote_stream_cannot_initialize_or_complete_another(tmp_path, monkeypatch, role):
     value = fixture_case(tmp_path, monkeypatch)

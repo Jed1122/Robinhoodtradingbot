@@ -135,9 +135,13 @@ selected contract. An unrelated feed cannot initialize it or fill its coverage g
 no cross-feed compatibility rule is currently approved. Existing consumer and source
 semantics checks remain independently required.
 Times come from explicit requirements and hash-matched canonical contracts, never
-an assumed holding period or settlement lag. Warmup is required. Qualification
-coverage retains canonical history/fold/opportunity constraints; even complete
-engineering-pilot coverage remains `economic_eligible=false`.
+an assumed holding period or settlement lag. Warmup must cover the declared history
+continuously through the decision boundary; an old window or an interior gap cannot
+satisfy it. Qualification remains blocked with `research_history_insufficient` because
+v1 carries declared windows/session IDs, not independently verified observed history
+counts and fold/opportunity evidence. It cannot establish the retained 750-bar minimum
+by counting planned sessions. Even complete engineering-pilot coverage remains
+`economic_eligible=false`.
 
 Exact source/consumer semantics must appear in each session's recomputed source
 findings. Coverage outside their verified era, missing references or state, and

@@ -8,6 +8,7 @@ import os
 import socket
 import subprocess
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 from typer.testing import CliRunner
@@ -20,6 +21,7 @@ from tests.unit.market_data._options_source_fixtures import private_file as fixt
 from tests.unit.research.test_options_shortlist_v2 import arrangement, install_fixture_rules
 from trading_bot.cli.options_research import app
 from trading_bot.market_data.options_source_wire import encode_source_bundle
+from trading_bot.research.options_shortlist_models import ShortlistCalendarDay
 from trading_bot.research.options_shortlist_v2_wire import encode_verified_shortlist_input
 
 
@@ -215,6 +217,70 @@ def test_saved_result_index_is_recomputed_before_coverage(tmp_path, monkeypatch)
     assert result.exit_code == 2, result.output
     assert json.loads(result.output)["reasons"] == ["shortlist_result_identity_mismatch"]
     assert not list(output.rglob("*.json"))
+
+
+def test_coverage_keeps_individually_bounded_sessions_when_total_records_exceed_limit(tmp_path):
+    value, _, _, output = setup_case(tmp_path)
+    settings = config().config.options.research_shortlist
+    per_session_count = settings.max_input_records // 2 + 1
+    padding_count = per_session_count - value.request.record_count
+    first_day = value.request.session.calendar_days[0].trading_date
+    # Fabricated calendar declarations exercise real record counting without generating
+    # thousands of native files. The shipped rulebook still denies these source claims;
+    # denied sessions must reach coverage planning just like other bounded diagnostics.
+    calendar = (
+        *(
+            ShortlistCalendarDay(first_day - timedelta(days=offset), None)
+            for offset in range(padding_count, 0, -1)
+        ),
+        *value.request.session.calendar_days,
+    )
+    entries = []
+    for index in range(2):
+        request = replace(
+            value.request,
+            session=replace(
+                value.request.session,
+                current=replace(
+                    value.request.session.current, session_id=f"synthetic-index-session-{index}"
+                ),
+                calendar_days=calendar,
+            ),
+        )
+        assert request.record_count == per_session_count <= settings.max_input_records
+        source = private_file(
+            tmp_path / f"input-{index}.json", encode_verified_shortlist_input(request)
+        )
+        shortlisted = invoke("native-options-shortlist", source, output)
+        assert shortlisted.exit_code == 2, shortlisted.output
+        summary = json.loads(shortlisted.output)
+        assert summary["status"] == "no_candidate"
+        assert "source_evidence_unverified" in summary["reasons"]
+        entries.append(
+            {
+                "input": {
+                    "path": str(source.path),
+                    "sha256": source.sha256,
+                    "byte_count": source.byte_count,
+                },
+                "expected_result_hash": summary["artifact_hash"],
+            }
+        )
+    assert 2 * per_session_count > settings.max_input_records
+    index = private_file(
+        tmp_path / "index.json",
+        json.dumps({"schema": "options-shortlist-index-v1", "entries": entries}).encode(),
+    )
+    result = invoke("options-coverage-manifest", index, output)
+    assert result.exit_code == 2, result.output
+    summary = json.loads(result.output)
+    assert summary["status"] == "blocked"
+    assert summary["reasons"] == ["coverage_requirements_missing"]
+    assert summary["session_count"] == 2
+    saved = json.loads((output / "manifests" / f"{summary['artifact_hash']}.json").read_bytes())
+    assert len(saved["sessions"]) == 2
+    assert all(session["input_record_count"] == per_session_count for session in saved["sessions"])
+    assert not saved["economic_eligible"]
 
 
 @pytest.mark.parametrize("change", ["duplicate", "extra", "wrong_hash", "oversized"])
