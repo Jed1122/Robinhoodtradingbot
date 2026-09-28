@@ -715,7 +715,7 @@ use strict UTC strings converted without floats. In `options_native_io.py`, prov
   -> tuple[ShortlistIndexEntry, ...]`; reject duplicate identities and bound index size
   by the existing shortlist record/byte ceilings. Iterate sessions, not all native history.
 
-- [ ] **8.1 Write failing end-to-end and capability-denial tests:**
+- [x] **8.1 Write failing end-to-end and capability-denial tests:**
 
 ```python
 def test_real_source_without_publication_evidence_stays_blocked(cli_denial_case):
@@ -741,25 +741,25 @@ containing private paths, provider payload, raw symbol/price or exception text f
 `test_saved_result_index_is_recomputed_before_coverage` substitutes a fabricated
 result hash and asserts exit 2 with no `requirements_complete` report.
 
-- [ ] **8.2 Run red:**
+- [x] **8.2 Run red:**
   `PYTHONPATH=src uv run --project research --frozen pytest tests/integration/cli/test_options_native.py tests/integration/research/test_native_options_pipeline.py -q`.
-- [ ] **8.3 Implement the four callback registrations and private artifact composition.**
+- [x] **8.3 Implement the four callback registrations and private artifact composition.**
   Bind code inventories to all new/verifier modules without rewriting historical
   hashes. Update the research workflow's explicit test list; native backend tests
   must execute. Keep general CLI, runtime, deployment and all live locks untouched.
-- [ ] **8.4 Run narrow suites green, then the verification matrix below.** Record
+- [x] **8.4 Run narrow suites green, then the verification matrix below.** Record
   failures with provenance, including baseline missing files, rather than suppressing
   tests. No fresh baseline claim is made in this planning document.
-- [ ] **8.5 Privately run the actual acquired-data intake after code review.** Preserve
+- [x] **8.5 Privately run the actual acquired-data intake after code review.** Preserve
   immutable archives and receipts. Compare current observations to the prior profile
   without treating that profile as an immutable expectation if source identity changed.
   Emit the exact missing semantic/reference/study dependencies. Do not evaluate returns,
   fabricate point-in-time claims or publish licensed rows. Benchmark peak memory and
   runtime locally, without hardware purchases or deployment changes.
-- [ ] **8.6 Complete the Native whole-branch review, address findings and rerun affected
+- [x] **8.6 Complete the Native whole-branch review, address findings and rerun affected
   checks.** Reviewer receives only code and fabricated fixtures on exact committed base,
   never the real archives or account records. Primary agent owns final integration.
-- [ ] **8.7 Update the new guide with actual outcomes and commit owned Task 8 files:**
+- [x] **8.7 Update the new guide with actual outcomes and commit owned Task 8 files:**
   `feat(cli): expose fail-closed native options research workflow`.
 
 ## Verification matrix and safe commands
@@ -842,7 +842,8 @@ verified implementation with missing real source facts is **not** qualified hist
 research. A complete quote request with adequate credits is **not** economic acceptance.
 This milestone must not claim genuine economic testing or live readiness is complete.
 
-Planning self-review covers spec mapping, exact interfaces, v1 compatibility, five
-Review Focus cases, scope and task size. All implementation checkboxes remain unchecked.
-Next gate: operator reviews this plan; after approval, execute using the preserved
-Native method. No product implementation or new data purchase occurred while writing it.
+Implementation completed through Task 8 on 2026-09-28, with one fresh whole-branch
+review and a regression-tested fix pass. See `docs/options-native-data.md` for measured
+results and limitations. The original planning statements above are historical context;
+the checked task steps and guide record execution. Real-source qualification, economic
+evidence, and live eligibility remain blocked. No new acquisition or deployment occurred.

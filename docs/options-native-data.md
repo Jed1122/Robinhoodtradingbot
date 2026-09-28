@@ -51,12 +51,72 @@ the same artifact; disk-full or interrupted publication does not replace earlier
 reports. The fixed v2 code inventory includes this composition and coverage modules;
 old v1 identities are unchanged.
 
-## Verification status before final review
+## Verified implementation and remaining limits — 2026-09-28
 
-The complete locked research-backend selection passes 466 tests, including 17 new
-command/pipeline tests. Positive cases use fabricated archives and private test-only
-rules; the installed actual-provider rulebook remains empty. Mypy and Bandit pass.
-Full branch coverage and independent review are pending at this checkpoint.
+The complete locked research-backend selection passes **473 tests**, including 17
+command/pipeline cases. The main suite passes **5,804 tests**, with 29 skips and one
+existing Starlette/httpx warning. Optional backend cases skipped in the main environment
+execute in the mandatory research selection without skips. Four encrypted backup tests
+still cannot run because `age` is absent; no extra tool was installed.
+
+Branch-enabled overall coverage is **82.48%**, exceeding the unchanged 80% gate; the unchanged 90%
+per-critical-file branch gate passes. Ruff, Mypy (261 source files), Bandit, both lock
+checks, and both registry dependency advisory audits pass. The research advisory export
+excludes only local editable source, which is checked locally, not a registry package.
+SBOM/deployment checks: 24 passed, four missing-`age` skips. Generated SBOM stayed in a
+private temporary directory; the tracked SBOM and both lockfiles are unchanged. The
+generator is an empty-component lock-digest artifact, not a full dependency inventory.
+All four deployment shell scripts pass syntax checks. The installed standalone
+`docker-compose config --quiet` passes; the `docker compose` plugin is unavailable.
+No deployment or authenticated test was run.
+
+One fresh read-only review covered the exact committed implementation range. Its two
+Important findings were fixed with seven failing-then-passing regression cases: bind
+definition projections before duplicate collapse, and prevent cross-feed quote phase
+substitution. The affected 124-test selection and both full suites pass afterward.
+There were no Critical or deferred Minor findings. No second review is claimed.
+
+### Actual private intake
+
+After code review and the targeted fix pass, the new CLI imported the already-acquired
+`XNAS.ITCH` SPY minute bars for `[2018-05-01, 2026-01-01)` UTC:
+
+- 1,421,744 decoded records; 1,421,742 structurally accepted, two undefined-OHLC rows
+  retained as rejected observations, zero duplicate rows.
+- 1,929 private Parquet parts, 81,704,154 bytes. These date partitions are not proof of
+  complete trading sessions. Provider declarations remain 1,999 available / three degraded
+  dates, not an exchange calendar or an overall clean-data verdict.
+- Aggregate counts agree with the earlier independent native profile. No original archive,
+  receipt or downloaded file was changed, and no record was repaired or fabricated.
+- Local import plus reverification took 62.69 seconds with 85 MiB peak resident memory.
+  This was a local development run alongside other checks, not a production resource
+  benchmark or justification for changing DigitalOcean hardware.
+
+The existing staged definitions archive was reverified locally: 6,821,768 records,
+1.79 seconds, 54.5 MiB peak resident memory. This verifies the existing archive snapshot,
+not native-to-projection semantics or account/executable contract eligibility. All new
+private files/directories passed 0600/0700 permission checks. Licensed rows, private paths,
+provider request identifiers and detailed receipts remain outside Git and reviewer context.
+
+A source-verification command bound both current manifests but supplied no invented
+source claims. It returned exit 2, `historical_availability_unverified`, with all authority
+flags false. Missing dependencies remain explicit:
+
+1. Reviewed provider-era publication/revision and definition-update/mapping protocols,
+   including exact native/projection bindings and partial-chain coverage.
+2. Verified session/holiday/early-close and corporate-action/dividend coverage, resolution
+   of degraded dates, and explicit missing/no-trade interval treatment.
+3. Canonical contract/deliverable/exercise/expiry/settlement reference facts.
+4. Genuine option bid/ask and matching underlying quote coverage through initialization,
+   entry, monitoring, exits and settlement, with independently verified source semantics.
+5. An approved preregistered study/consumer and complete session/window requirements,
+   followed by actual history/sample adequacy and after-cost uncertainty testing.
+
+**Disposition:** native engineering milestone implemented and fixture-tested; actual
+archive integrity verified; real-source qualification blocked; no acquisition-ready
+study or genuine economic result; broker/runtime/live eligibility unchanged. No credits
+were spent, and no account, broker, deployment or risk setting was changed. A structural
+`requirements_complete` fixture is not economic acceptance or a promise of returns.
 
 ## Complete data-coverage planning
 
