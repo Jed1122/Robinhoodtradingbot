@@ -5,10 +5,33 @@
 Native SPY minute-bar scanning, canonical resource controls, private bar storage
 and byte-bound native bar/definition readers are implemented. Scoped source-evidence
 contracts and recomputation are implemented, but no actual provider-era semantic
-rule is approved. Verified session/contract inputs,
+rule is approved. Evidence-bound regular-session assembly is implemented; contract inputs,
 the imported-data shortlist and complete quote coverage remain subsequent tasks in
 the [approved integration plan](superpowers/plans/2026-09-25-native-options-data-integration.md).
 There is not yet a native-bars CLI or a real-data economic result.
+
+## Regular-session inputs
+
+`assemble_session_inputs` requires exact, hash-bound prior/current sessions,
+complete intervening calendar declarations, corporate-action coverage and bar
+publication facts. It does not infer holidays from weekdays. Synthetic tests cover
+both DST changes, explicit exceptional closures and early closes.
+
+Only accepted regular-session rows from one publisher/instrument series contribute
+to unadjusted first/max/min/last/summed-volume aggregation. After-hours observations,
+rejected observations and duplicate observations remain separately accounted for.
+A degraded provider day stays denied even if an offending observation is outside
+regular hours. Missing final minutes require exact verified no-trade coverage; they
+are never interpolated. Dividends remain context, while splits and unsupported
+deliverable/reference changes deny assembly.
+
+The close is labelled `source_last_trade`, not an official consolidated close or an
+executable quote. Availability uses the verified as-of upper bound, never an assumed
+interval-end publication. Canonical fact hashes must match the actual supplied
+values, and the native manifest, configuration and installed source code must still
+match verification. These diagnostic records are not reusable trust certificates;
+the imported-data bridge must reverify their source bundle. All authority flags
+remain false, and the empty actual-source rulebook still blocks real qualification.
 
 ## Private storage and readers
 

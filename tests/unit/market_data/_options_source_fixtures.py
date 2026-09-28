@@ -128,3 +128,75 @@ def verify_fixture_bundle(bundle, context, rules):
     return module("verify")._verify_with_rules(
         bundle, context=context, loaded=config(), repository_root=ROOT, rules=rules
     )
+
+
+def verified_facts(tmp_path, facts, *, start_ns, end_ns, as_of_ns, manifests=()):
+    """Build exact fabricated role facts for downstream assemblers; never install rules."""
+    models = module("models")
+    document = private_file(tmp_path, "protocol.txt", DOCUMENT)
+    claims, rules, descriptors = [], [], list(manifests)
+    for role, payloads in sorted(facts.items()):
+        rows = [
+            {
+                "published_at_ns": as_of_ns,
+                "effective_start_ns": start_ns,
+                "effective_end_ns": end_ns,
+                "record": value,
+            }
+            for value in payloads
+        ]
+        manifest = {
+            "schema": "synthetic-source-records-v1",
+            "source_id": "synthetic.source",
+            "role": role,
+            "era_start_ns": 1,
+            "era_end_ns": 2**63 - 1,
+            "records": rows,
+        }
+        descriptor = private_file(tmp_path, role + ".json", canonical_json(manifest).encode())
+        descriptors.append(descriptor)
+        rule = models.SourceRule(
+            "fixture." + role,
+            role,
+            "synthetic.source",
+            "synthetic-source-records-v1",
+            1,
+            2**63 - 1,
+            (document.sha256,),
+            "synthetic-records-v1",
+        )
+        rules.append(rule)
+        coverage = digest(
+            {
+                "role": role,
+                "start_ns": start_ns,
+                "end_ns": end_ns,
+                "record_hashes": sorted({digest(row) for row in rows}),
+            }
+        )
+        claims.append(
+            models.SourceClaim(
+                role,
+                rule.source_id,
+                rule.schema,
+                1,
+                2**63 - 1,
+                (descriptor.sha256,),
+                OBSERVED,
+                as_of_ns,
+                start_ns,
+                end_ns,
+                coverage,
+                rule.rule_id,
+            )
+        )
+    bundle = models.SourceEvidenceBundle(tuple(claims), (document,), tuple(descriptors))
+    context = models.VerificationContext(
+        as_of_ns,
+        start_ns,
+        end_ns,
+        config().config_hash,
+        module("rules").source_code_hash(),
+        digest([asdict(rule) for rule in rules]),
+    )
+    return bundle, verify_fixture_bundle(bundle, context, tuple(rules))

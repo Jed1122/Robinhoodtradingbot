@@ -408,7 +408,7 @@ envelope carries verified provenance without widening v1 `ShortlistEvidence` sem
 *, verification: SourceVerification, loaded: LoadedConfig, repository_root: Path)
 -> SessionInputs` rechecks exact scope before assembling.
 
-- [ ] **4.1 Write failing assembly tests:**
+- [x] **4.1 Write failing assembly tests:**
 
 ```python
 def test_regular_close_uses_exact_session_not_after_hours(regular_and_extended_case):
@@ -431,17 +431,17 @@ future dividend revision, unknown/split/deliverable changes and empty action cov
 An absent final minute does not get filled; accept an earlier last trade only with
 verified no-trade coverage through the actual close, otherwise deny.
 
-- [ ] **4.2 Run red:**
+- [x] **4.2 Run red:**
   `PYTHONPATH=src uv run --project research --frozen pytest tests/unit/market_data/test_options_session_inputs.py -q`.
-- [ ] **4.3 Implement the specified assembler.** Exact first/max/min/last/sum within
+- [x] **4.3 Implement the specified assembler.** Exact first/max/min/last/sum within
   the regular-session interval; use `source_last_trade`, unadjusted/no interpolation.
   Reject unresolved degraded coverage even when offending rows are extended-hours.
   Verify the immediate previous eligible session rather than weekdays or UTC dates.
   Keep visible dividends as context; do not insert an adjustment policy.
-- [ ] **4.4 Run green plus `tests/unit/research/test_options_shortlist.py` calendar,
+- [x] **4.4 Run green plus `tests/unit/research/test_options_shortlist.py` calendar,
   close and action regressions.** Assert each source row is included, excluded,
   duplicate or rejected exactly once in the session accounting.
-- [ ] **4.5 Update the new guide and commit:**
+- [x] **4.5 Update the new guide and commit:**
   `feat(data): assemble evidence-bound regular-session inputs`.
 
 ## Task 5: As-known definition state, contract enrichment and whole-chain assembly
