@@ -1,6 +1,6 @@
 # Complete real-data options research path
 
-Status: **Design brief approved; written specification awaiting operator review.**
+Status: **Written specification approved by the operator on 2026-09-28 UTC.**
 Prepared 2026-09-28 UTC against `2e3bf74aba14864ae5a43bb518a17c665ea633c4`.
 This is a proposed design, not implemented behavior or empirical economic evidence.
 
@@ -370,8 +370,8 @@ profitability, live readiness, deployment, or that the remaining credits are suf
 
 ## 12. Review handoff
 
-This written specification requires operator review before an implementation plan is
-prepared. The approved brief permitted writing it, not implementing unreviewed new
-interfaces. After written-spec approval, prepare the dependency-aware plan and execution
-handoff. Existing merge and credit-only acquisition grants remain in effect throughout;
-do not request them again.
+The operator approved this written specification on 2026-09-28 UTC. The dependency-aware
+[implementation plan](../plans/2026-09-28-real-data-options-research.md) now requires
+review before implementation; the previously selected native execution method is retained.
+Existing merge and credit-only acquisition grants remain in effect throughout; do not
+request them again.
