@@ -52,8 +52,9 @@ under that skill, respecting repository restrictions; a reviewer must not receiv
 licensed data or decide source authority, strategy, exposure or execution policy.
 
 Existing native definitions/storage and synthetic shortlist are implemented. Task 1
-adds native bars scanning and canonical limits; private bars storage, semantic source
-verification, v2 imported shortlist and complete coverage manifests remain pending.
+adds native bars scanning and canonical limits; Task 2 adds private bar storage and
+byte-bound native readers. Semantic source verification, v2 imported shortlist and
+complete coverage manifests remain pending.
 Source facts and study requirements remain externally
 unverified. A tested denial path is useful progress, not evidence that those facts
 have been obtained. No point-in-time publication rule is approved by this plan alone.
@@ -246,7 +247,7 @@ existing `_open_root`, `_read`, `_publish`, `_subdirectory`, `_connection`,
   loaded: LoadedConfig, repository_root: Path) -> Iterator[NativeDefinitionRow]`.
   Readers consume rehashed private snapshots, not later reopened mutable source paths.
 
-- [ ] **2.1 Write failing private-store tests:**
+- [x] **2.1 Write failing private-store tests:**
 
 ```python
 def test_failed_footer_publishes_no_success_manifest(interrupted_stage):
@@ -272,17 +273,17 @@ deterministically; sentinels/duplicates retained; part tampering and query-windo
 No provider URL is fetched. Manifest publication is last; orphan task-owned parts
 after interruption are not proof of completion and cannot harm an older manifest.
 
-- [ ] **2.2 Run red:**
+- [x] **2.2 Run red:**
   `PYTHONPATH=src uv run --project research --frozen pytest tests/integration/market_data/test_databento_bar_store.py tests/integration/market_data/test_databento_native_rows.py -q`.
   Expected: missing-interface failures with no network.
-- [ ] **2.3 Implement these store/reader signatures.** Use schemas
+- [x] **2.3 Implement these store/reader signatures.** Use schemas
   `databento-native-bars-parquet-v1` and `databento-native-bars-part-v1`; raw integer
   columns, closed manifest keys, fixed false flags. Partition by UTC interval date,
   with ordinal/hash/disposition preserved; never create `underlying_quote` records
   from bars. Reuse storage and connection primitives rather than adding a second store.
-- [ ] **2.4 Run green plus existing `test_databento_stage.py`, `test_options_parquet.py`
+- [x] **2.4 Run green plus existing `test_databento_stage.py`, `test_options_parquet.py`
   and Task 1 tests.** Expected: exact integer/hash round trips, all failures closed.
-- [ ] **2.5 Review/stage only Task 2 files and commit:**
+- [x] **2.5 Review/stage only Task 2 files and commit:**
   `feat(data): persist and reverify immutable native bar parts`.
 
 ## Task 3: Recomputed source-verification contracts and reviewed rulebook

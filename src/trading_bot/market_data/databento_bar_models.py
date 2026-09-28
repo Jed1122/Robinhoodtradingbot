@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, fields
+from datetime import date
+from pathlib import Path
 from typing import Literal
 
 from trading_bot.config.loader import LoadedConfig
-from trading_bot.domain import DataHash, ExecutionMode
-from trading_bot.market_data.databento_batch import DatabentoImportError, require
+from trading_bot.domain import ConfigHash, DataHash, ExecutionMode
+from trading_bot.market_data.databento_batch import BatchFile, DatabentoImportError, require
 from trading_bot.market_data.databento_native_io import DefinitionLimits
 
 MINUTE_NS = 60_000_000_000
@@ -156,3 +158,113 @@ def native_limits(loaded: LoadedConfig) -> DefinitionLimits:
     return DefinitionLimits(
         **{item.name: getattr(settings, item.name) for item in fields(DefinitionLimits)}
     )
+
+
+@dataclass(frozen=True, slots=True)
+class NativeCondition:
+    trading_date: date
+    state: Literal["available", "degraded", "missing"]
+    last_modified_date: date | None
+
+    def __post_init__(self) -> None:
+        require(type(self.trading_date) is date)
+        require(type(self.state) is str and self.state in ("available", "degraded", "missing"))
+        require(self.last_modified_date is None or type(self.last_modified_date) is date)
+
+
+def _files(value: tuple[BatchFile, ...]) -> None:
+    require(type(value) is tuple and len(value) == 4)
+    require(all(type(item) is BatchFile for item in value))
+    for item in value:
+        require(
+            type(item.name) is str
+            and ".." not in item.name
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", item.name) is not None
+        )
+        require(_integer(item.size, 1, 536870912) and _hash(item.sha256))
+    names = tuple(item.name for item in value)
+    require(names == tuple(sorted(set(names))))
+    require({"metadata.json", "condition.json", "manifest.json"} < set(names))
+    require(sum(name.endswith(".ohlcv-1m.dbn.zst") for name in names) == 1)
+
+
+def _conditions(value: tuple[NativeCondition, ...], request: NativeBarRequest) -> None:
+    require(type(value) is tuple and 0 < len(value) <= 10000)
+    require(all(type(item) is NativeCondition for item in value))
+    days = tuple(item.trading_date for item in value)
+    require(days == tuple(sorted(set(days))))
+    for day in days:
+        stamp = (day - date(1970, 1, 1)).days * 86400 * 10**9
+        require(request.start_ns <= stamp < request.end_ns)
+
+
+@dataclass(frozen=True, slots=True)
+class NativeBarBatch:
+    request: NativeBarRequest
+    files: tuple[BatchFile, ...]
+    bar_file: str
+    conditions: tuple[NativeCondition, ...]
+
+    def __post_init__(self) -> None:
+        require(type(self.request) is NativeBarRequest)
+        _files(self.files)
+        require(type(self.bar_file) is str and self.bar_file.endswith(".ohlcv-1m.dbn.zst"))
+        require(self.bar_file in {item.name for item in self.files})
+        _conditions(self.conditions, self.request)
+
+
+@dataclass(frozen=True, slots=True)
+class NativeBarPart:
+    path: str
+    sha256: DataHash
+    byte_count: int
+    record_count: int
+
+    def __post_init__(self) -> None:
+        require(
+            type(self.path) is str
+            and re.fullmatch(
+                r"parts/interval_date=\d{4}-\d{2}-\d{2}/[0-9a-f]{64}\.parquet", self.path
+            )
+            is not None
+        )
+        require(_hash(self.sha256) and Path(self.path).stem == self.sha256)
+        require(_integer(self.byte_count, 1, 16777216))
+        require(_integer(self.record_count, 1, 10000))
+
+
+@dataclass(frozen=True, slots=True)
+class NativeBarDataset:
+    manifest_path: Path = field(repr=False)
+    manifest_hash: DataHash
+    config_hash: ConfigHash
+    request: NativeBarRequest
+    profile: NativeBarProfile
+    parts: tuple[NativeBarPart, ...]
+    files: tuple[BatchFile, ...]
+    conditions: tuple[NativeCondition, ...]
+    production_eligible: Literal[False] = field(default=False, init=False)
+    evidence_promotable: Literal[False] = field(default=False, init=False)
+    download_authorized: Literal[False] = field(default=False, init=False)
+    live_authorized: Literal[False] = field(default=False, init=False)
+    economic_evidence: Literal[False] = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        require(isinstance(self.manifest_path, Path) and self.manifest_path.is_absolute())
+        require(_hash(self.manifest_hash) and _hash(self.config_hash))
+        require(self.manifest_path.name == self.manifest_hash + ".json")
+        require(self.manifest_path.parent.name == "manifests")
+        require(type(self.request) is NativeBarRequest and type(self.profile) is NativeBarProfile)
+        require(self.profile.request == self.request)
+        require(type(self.parts) is tuple and 0 < len(self.parts) <= 10000)
+        require(all(type(item) is NativeBarPart for item in self.parts))
+        require(len({item.path for item in self.parts}) == len(self.parts))
+        require(sum(item.record_count for item in self.parts) == self.profile.decoded_count)
+        _files(self.files)
+        _conditions(self.conditions, self.request)
+        require(
+            any(
+                item.sha256 == self.profile.raw_hash and item.name.endswith(".ohlcv-1m.dbn.zst")
+                for item in self.files
+            )
+        )

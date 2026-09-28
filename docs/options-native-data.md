@@ -2,11 +2,41 @@
 
 ## Implementation status
 
-Native SPY minute-bar scanning and canonical resource controls are implemented.
-Private bar storage, historical source verification, verified session/contract inputs,
+Native SPY minute-bar scanning, canonical resource controls, private bar storage
+and byte-bound native bar/definition readers are implemented.
+Historical source verification, verified session/contract inputs,
 the imported-data shortlist and complete quote coverage remain subsequent tasks in
 the [approved integration plan](superpowers/plans/2026-09-25-native-options-data-integration.md).
 There is not yet a native-bars CLI or a real-data economic result.
+
+## Private storage and readers
+
+`validate_bar_batch` accepts exactly the bar DBN file, `metadata.json`,
+`condition.json` and `manifest.json`, with matching query, customization, size and
+hash declarations. Provider URLs are inert and excluded from published reports.
+Condition dates and optional last-modified dates are preserved without inventing a
+publication instant. No provider request or credential is used.
+
+`stage_bars` partitions raw integer observations by UTC interval date in bounded
+Parquet parts. Rejected and duplicate rows retain their ordinal, native record hash
+and raw archive hash. The content-addressed manifest is published last, only after
+full stream validation and a final source recheck. Identical repeats are idempotent;
+conflicting content cannot overwrite earlier artifacts. An interrupted publication
+may leave task-owned orphan parts, which are not evidence of a completed import.
+
+Sources and destinations must be outside Git checkouts, with owner-only 0700/0600
+directories/files. Symlink traversal, hard-linked files, wrong ownership and broader
+permissions deny. Original source archives are not modified or deleted.
+
+`verify_bar_stage` reconstructs row counts, quality/disposition counts and native
+record hashes using the exact private snapshots it hashed. Readers validate all
+parts before yielding a requested window and query those same snapshots; a later
+source-path replacement cannot inherit earlier verification. Existing definition
+staging remains v1; its new reader preserves all native columns and nullable terms,
+including unknown multipliers. This integration remains SPY-only.
+
+Neither schema is canonical market evidence. Source publication rules, sessions,
+corporate actions and contract-term authority remain unverified.
 
 ## Intake boundary
 
