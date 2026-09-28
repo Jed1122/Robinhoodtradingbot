@@ -621,7 +621,7 @@ existing canonical hashes and native resource limits. No cost/data HTTP client.
   -> StudyCoverageRequirements`; `encode_coverage_manifest(manifest: CoverageManifest)
   -> bytes`, with schemas `options-study-coverage-v1` and `options-acquisition-manifest-v1`.
 
-- [ ] **7.1 Write failing union/coverage tests:**
+- [x] **7.1 Write failing union/coverage tests:**
 
 ```python
 def test_missing_preregistration_cannot_create_purchase_ready_list(shortlists, loaded):
@@ -648,17 +648,17 @@ pre-feed-change event schema and selected-but-unquoted contracts. Minute-sampled
 must not satisfy an event-age requirement. An unavailable candidate remains selected
 in the record; it is not replaced. Cover missing initialization state before first quote.
 
-- [ ] **7.2 Run red:**
+- [x] **7.2 Run red:**
   `PYTHONPATH=src uv run --project research --frozen pytest tests/unit/research/test_options_acquisition.py tests/unit/research/test_options_acquisition_wire.py -q`.
-- [ ] **7.3 Implement deterministic exact-window union.** Group only compatible
+- [x] **7.3 Implement deterministic exact-window union.** Group only compatible
   dataset/schema/symbology/symbol requirements; merge overlapping/adjacent coverage,
   retain disjoint intervals, sort stable and preserve all reverse links. Batch at most
   100 symbols only when their exact windows/schema agree. Keep required tail/reference
   gaps explicit and preserve every denial. Do not create duplicate minute and event
   purchases by default or infer consumer requirements from prices/outcomes.
-- [ ] **7.4 Run green plus Task 6 tests and existing cost-request tests.** Confirm
+- [x] **7.4 Run green plus Task 6 tests and existing cost-request tests.** Confirm
   CMBP-1 coverage descriptors do not broaden the CBBO-only diagnostic or enable a data API.
-- [ ] **7.5 Document the separate credit handoff and commit:**
+- [x] **7.5 Document the separate credit handoff and commit:**
   `feat(research): freeze complete deduplicated data coverage requests`.
   The handoff must compare exact customized-request costs for the entire dependent
   package, using fresh applicable credits less pending accepted costs and prior use

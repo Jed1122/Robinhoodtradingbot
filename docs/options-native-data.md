@@ -6,9 +6,58 @@ Native SPY minute-bar scanning, canonical resource controls, private bar storage
 and byte-bound native bar/definition readers are implemented. Scoped source-evidence
 contracts and recomputation are implemented, but no actual provider-era semantic
 rule is approved. Evidence-bound regular-session and contract-chain assembly are
-implemented, along with the independent imported-data shortlist; complete quote coverage remains subsequent work in
+implemented, along with the independent imported-data shortlist and coverage planner in
 the [approved integration plan](superpowers/plans/2026-09-25-native-options-data-integration.md).
 There is not yet a native-bars CLI or a real-data economic result.
+
+## Complete data-coverage planning
+
+`options-study-coverage-v1` is an explicit private declaration, not an automatically
+chosen study. It binds preregistration and selection-freeze times, exact decision
+range/session IDs, canonical configuration and shortlist code, consumer identity,
+contract references and phase-labelled windows. Historical market time remains
+separate from registration time: registering a historical study does not claim the
+plan existed before those markets traded. No actual study declaration is supplied
+by this implementation.
+
+The planner checks both selected contracts, prior initialization, entry, monitoring,
+exit before trading ends, underlying quotes, expiry and settlement follow-through.
+Times come from explicit requirements and hash-matched canonical contracts, never
+an assumed holding period or settlement lag. Warmup is required. Qualification
+coverage retains canonical history/fold/opportunity constraints; even complete
+engineering-pilot coverage remains `economic_eligible=false`.
+
+Exact source/consumer semantics must appear in each session's recomputed source
+findings. Coverage outside their verified era, missing references or state, and
+minute-snapshot quotes offered for event-age requirements block completion. The
+planner cannot approve actual provider semantics; the shipped source rulebook is
+still empty. Later audit invalidations block dependent coverage without deleting
+the original as-known candidates. Missing and denied sessions stay in the report.
+
+Compatible adjacent/overlapping per-symbol windows are unioned without clipping
+exit/settlement tails at calendar year ends. Disjoint intervals remain separate.
+Reverse links retain every requirement and selection. Transport-shaped diagnostic
+batches contain at most 100 symbols and only identical dataset/schema/symbology/time
+windows. Overlapping event/minute-resolution requests are flagged, not automatically
+bought twice. No API, price filter or replacement-candidate behavior is introduced.
+
+`options-acquisition-manifest-v1` reports `requirements_complete` or `blocked`.
+Neither status authorizes spending or trading. Its requests describe complete data
+obligations, not a ready-to-execute shopping cart. Before using the separately
+recorded credit-only grant, the operator must:
+
+1. Reverify existing acquired scopes and subtract already covered data; do not buy it again.
+2. Price the exact customized requests for the entire dependent package, including tails
+   and underlying/reference requirements. The existing diagnostic remains CBBO-only;
+   CMBP descriptors do not unlock it or introduce an acquisition API.
+3. Refresh applicable credits and subtract accepted/pending jobs and prior use of the
+   grant. Reconcile uncertain acceptance before retries.
+4. Proceed only when necessary complete coverage fits that grant without cash,
+   subscriptions, a new agreement or other expanded scope. Otherwise retain a
+   blocked feasibility report instead of spending on an unusable partial package.
+
+No purchase has been made by this workflow. All production, promotion, download and
+live authorization flags are immutable false.
 
 ## Independently verified imported shortlist
 
