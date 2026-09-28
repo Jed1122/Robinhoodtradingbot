@@ -316,6 +316,12 @@ The installed rulebook is deliberately empty. The fixed synthetic record parser
 and fabricated private test rules validate software behavior only; no CLI, profile
 or environment variable can install those fixture rules as provider approvals.
 
+The 2026-09-28 economic-path audit confirmed this is also an implementation gap:
+`_verify_with_rules` currently dispatches only to `_fixture_records`, which rejects
+real-provider identities. Adding reference documents or rulebook entries alone
+cannot qualify Databento data. A separately reviewed provider parser must derive
+the required facts from the preserved source bytes, with era-specific semantics.
+
 | Required role | Actual evidence status |
 | --- | --- |
 | Calendar and exceptional sessions | No reviewed source/era rule |
@@ -328,6 +334,58 @@ or environment variable can install those fixture rules as provider approvals.
 This is an explicit real-data qualification blocker, not a completed economic
 validation. Diagnostic verification reports have no trusted-result decoder and
 retain all four false production, promotion, download and live authority flags.
+
+## Economic-validation continuation checkpoint (2026-09-28)
+
+Standing automatic-merge and remaining-credit acquisition authority is recorded
+in [Operator authority](operator-authority.md). Missing purchase permission is
+not the blocker. After the operator restored the portal session, authenticated
+Billing showed **$112.68 remaining credits and $0.00 due** around 04:31 UTC.
+The download center showed the existing SPY bars and definitions jobs ready,
+plus provider examples, with no pending job visible. No new request was submitted.
+[Billing](https://databento.com/portal/billing),
+[download center](https://databento.com/portal/download-center).
+
+The credit-details panel still displayed the original $125 historical credit
+grant, whereas Data usage displayed $12.33 of usage and the Billing summary showed
+$112.68 remaining. Do not count the original grant as available again. Preserve
+the one-cent display/rounding difference and use the lesser conservative balance
+after reconciling exact costs before any submission; neither display alone is a
+hard cash-charge cap. No billing, subscription, or account setting changed.
+
+Code inspection at `591715a01072318d77520701c2a30d74befe0147` establishes this
+remaining dependency chain:
+
+1. Implement real-source semantic verification and supply reviewed calendar,
+   publication/revision, corporate-action, definition and contract-term evidence.
+2. Freeze a study and its complete quote-consumer requirements, then produce the
+   existing causal call/put shortlist and deduplicated acquisition manifest.
+3. Reconcile existing acquisitions, price the entire missing package, and purchase
+   only within freshly verified remaining credits. Normalize actual option bid/ask
+   and matching underlying observations, with initialization, coverage and tails.
+4. Compose imported-data historical options evaluation and quote-bound reports.
+   The existing `OptionsReplayRequest` deliberately rejects imported records;
+   it must not be weakened or given relabelled data to bypass that boundary.
+5. Evaluate actual after-cost outcomes, incomplete episodes, operating costs,
+   cash/no-trade baselines, dependent-outcome uncertainty and untouched tests.
+   Reusable generic metrics do not supply those missing options compositions.
+
+Current public Databento documentation describes minute-bar timestamps as interval
+starts, and explicitly notes that vendor aggregation and retroactive trade handling
+can differ. It does not establish the original publication time of these private
+historical bars. [OHLCV documentation](https://databento.com/docs/schemas-and-data-formats/ohlcv).
+Databento's consolidated OPRA quote announcement states CMBP-1/TCBBO history starts
+on March 28, 2023; the earlier portion of the purchased definition range must not
+be assumed to have matching consolidated quotes.
+[OPRA migration](https://databento.com/blog/opra-migration).
+
+The coverage planner's qualification-history check compares the requested study
+end to the earliest declared warmup start; it is not proof of actual usable bars
+or ten years of option quotes. The canonical 3,650-day history request, 750 daily
+observations, five folds, 50 test observations per fold and 30 independent
+opportunities remain unchanged. The already acquired underlying range alone is
+shorter than that history request. No shorter pilot can be relabelled as accepted
+economic evidence. Economic readiness remains **ECONOMIC_NO_GO**.
 
 ## Intake boundary
 

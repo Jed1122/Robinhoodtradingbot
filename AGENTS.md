@@ -5,6 +5,8 @@ This repository is an existing, safety-gated Robinhood multi-asset trading syste
 ## Persistent authority and safety rules
 
 - The primary orchestrator owns the integration branch, dependency graph, final review, and release decision.
+- The operator has authorized automatic integration and merging of in-scope project work without another per-merge approval. Review the exact diff and current CI first; do not bypass checks, include unrelated dirty work, or interpret a merge as deployment/live authorization. The standing grant and established integration target are recorded in [Operator authority](docs/operator-authority.md).
+- The existing Databento grant covers necessary historical data using all remaining authorized credits, without another per-purchase approval inside that scope. Verify exact coverage, fresh applicable credits, outstanding charges, and the complete quoted cost before submission; no cash spending, subscriptions, upgrades, or new agreements are included. See [Operator authority](docs/operator-authority.md) and the [acquisition controls](docs/options-data-validation-handoff-2026-09-25.md).
 - The default service stays paused, fail-closed, and unable to submit orders.
 - Live operation is explicit opt-in only and remains blocked until every documented promotion, authorization, lease, reconciliation, runtime-control, and manual-review gate is satisfied.
 - Never weaken or bypass risk limits, capability boundaries, evidence requirements, code/config identity checks, or elapsed-time gates.
