@@ -471,6 +471,21 @@ class OptionsShortlistSettings(StrictModel):
     max_decision_sessions: StrictInt = Field(ge=1, le=1)
 
 
+class OptionsNativeDataSettings(StrictModel):
+    """Offline intake resource ceilings, not economic or execution permission."""
+
+    enabled: StrictBool
+    max_compressed_bytes: StrictInt = Field(ge=1, le=536870912)
+    max_decompressed_bytes: StrictInt = Field(ge=1, le=4294967296)
+    max_metadata_bytes: StrictInt = Field(ge=1, le=268435456)
+    max_records: StrictInt = Field(ge=1, le=10000000)
+    max_unique_symbols: StrictInt = Field(ge=1, le=1000000)
+    max_part_rows: StrictInt = Field(ge=1, le=10000)
+    max_part_bytes: StrictInt = Field(ge=1, le=16777216)
+    max_parts: StrictInt = Field(ge=1, le=10000)
+    max_manifest_bytes: StrictInt = Field(ge=1, le=16777216)
+
+
 class OptionsSettings(StrictModel):
     """Options-only research extension; all percentages use whole-percent units."""
 
@@ -493,6 +508,7 @@ class OptionsSettings(StrictModel):
     zero_dte_live_enabled: StrictFalse
     overnight_session_entries_enabled: StrictFalse
     research_shortlist: OptionsShortlistSettings
+    native_data: OptionsNativeDataSettings
 
     @model_validator(mode="after")
     def validate_risk_hierarchy(self) -> Self:
@@ -534,6 +550,11 @@ class AppConfig(StrictModel):
 
     @model_validator(mode="after")
     def live_flag_never_unpauses_startup(self) -> Self:
+        if self.options.native_data.enabled and (
+            not self.options.enabled
+            or self.mode not in {ExecutionMode.BACKTEST, ExecutionMode.SIMULATION}
+        ):
+            raise ValueError("native data requires an explicit offline options research mode")
         if self.options.research_shortlist.enabled and (
             not self.options.enabled
             or self.mode not in {ExecutionMode.BACKTEST, ExecutionMode.SIMULATION}

@@ -41,8 +41,9 @@
 Planning base: `c69cc90d1a7cc4e0dbc9187ff4ecbbee55491ea6`, branch
 `codex/continue-implementation-from-commit-7c4dcd1`. Work in the existing Robinhood
 implementation worktree, not the unrelated Polymarket workspace. The operator's
-2026-09-25 approval applies to the written specification at that base. This new plan
-still requires review before implementation. **Preserve the selected Native method.**
+2026-09-25 approval applies to the written specification at that base. The operator
+subsequently approved this implementation plan on 2026-09-27; implementation starts
+from `37a461fa0eee348e475b1b7cfe68ed9cf073d306`. **Preserve the selected Native method.**
 
 The coordinator implements these tightly coupled interfaces sequentially. Use
 `superpowers:executing-plans` after plan approval. Do not dispatch Cloud jobs or
@@ -50,19 +51,20 @@ implementation subagents. Perform the required fresh whole-branch review at the 
 under that skill, respecting repository restrictions; a reviewer must not receive
 licensed data or decide source authority, strategy, exposure or execution policy.
 
-Existing native definitions/storage and synthetic shortlist are implemented; native
-bars integration, semantic source verification, v2 imported shortlist and complete
-coverage manifests are not. Source facts and study requirements remain externally
+Existing native definitions/storage and synthetic shortlist are implemented. Task 1
+adds native bars scanning and canonical limits; private bars storage, semantic source
+verification, v2 imported shortlist and complete coverage manifests remain pending.
+Source facts and study requirements remain externally
 unverified. A tested denial path is useful progress, not evidence that those facts
 have been obtained. No point-in-time publication rule is approved by this plan alone.
 
 Preserve existing dirty README, architecture/research/limitations/transition documents,
 tracked SBOM, general CLI, equity replay files and tests. The worktree inspection also
 found **seven pre-existing tracked deletions**: the Terraform lockfile, migration
-template and migrations 0001–0005. This task neither made nor restored them. Record
-their effect on a baseline; do not silently restore them or include them in commits.
-If they prevent meaningful verification, resolve ownership with the operator before
-claiming the broader suite passes. Unrelated failures are not grounds to weaken gates.
+template and migrations 0001–0005. Following explicit operator approval on 2026-09-27,
+those exact paths were restored from HEAD and both broken local environments were
+rebuilt from their unchanged lockfiles. No production migration ran; old environments
+remain recoverable in the plan workspace. Unrelated failures are not grounds to weaken gates.
 
 Before each task: inspect HEAD, index and owned paths; stop on overlapping changes.
 Use exact staging paths and path-scoped commits, never `git add .`. Protect the
@@ -149,7 +151,7 @@ exports and error codes through wrappers if helpers move.
   -> tuple[bytes, NativeBarRequest, str]`: fabricated compressed DBN, request, SHA-256;
   timestamps are distinct minute starts in a fixed synthetic UTC query.
 
-- [ ] **1.1 Write failing decoder/config tests** with these named assertions; generate
+- [x] **1.1 Write failing decoder/config tests** with these named assertions; generate
   DBN v1/v2/v3 via the pinned SDK, not licensed examples.
 
 ```python
@@ -189,19 +191,19 @@ including environment overrides and an envelope ceiling exceeded by one.
 `valid_profile` scans the default `bar_fixture`; `load_native_config` is a test callable
 that loads base/native-simulation/envelope files with an explicitly empty environment.
 
-- [ ] **1.2 Run the new tests red:**
+- [x] **1.2 Run the new tests red:**
   `PYTHONPATH=src uv run --project research --frozen pytest tests/unit/market_data/test_databento_bars.py tests/unit/config/test_options_native_data_config.py -q`.
   Expected: failure for missing new interfaces, not skipped backends or credentials.
-- [ ] **1.3 Implement the defined models, scanner and settings.** Extract only the
+- [x] **1.3 Implement the defined models, scanner and settings.** Extract only the
   current dependency/decompression/reader helpers; the legacy OPRA metadata validator
   keeps its exact request restriction. Pin decoder versions, bound metadata before
   decoding, map sentinels before canonical arithmetic and verify the compressed digest
   at EOF. No canonical bars or historical availability are inferred here.
-- [ ] **1.4 Run the new tests green**, then existing
+- [x] **1.4 Run the new tests green**, then existing
   `tests/integration/market_data/test_databento_definitions.py`,
   `tests/unit/market_data/test_databento_batch.py` and all `tests/unit/config`.
   Expected: zero failures; backend tests must run, not silently skip.
-- [ ] **1.5 Review/stage only Task 1 files and commit:**
+- [x] **1.5 Review/stage only Task 1 files and commit:**
   `feat(data): add bounded native SPY minute-bar intake`.
 
 ## Task 2: Immutable native bars storage and byte-bound row readers

@@ -294,6 +294,24 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
             f"options.{name}", getattr(config.options, name), getattr(envelope.options, name)
         )
 
+    native = config.options.native_data
+    native_bound = envelope.options.native_data
+    _require_not_enabled("options.native_data.enabled", native.enabled, native_bound.enabled)
+    for name in (
+        "max_compressed_bytes",
+        "max_decompressed_bytes",
+        "max_metadata_bytes",
+        "max_records",
+        "max_unique_symbols",
+        "max_part_rows",
+        "max_part_bytes",
+        "max_parts",
+        "max_manifest_bytes",
+    ):
+        _require_at_most(
+            f"options.native_data.{name}", getattr(native, name), getattr(native_bound, name)
+        )
+
     shortlist = config.options.research_shortlist
     shortlist_bound = envelope.options.research_shortlist
     _require_not_enabled(
