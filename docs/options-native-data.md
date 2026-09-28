@@ -5,8 +5,8 @@
 Native SPY minute-bar scanning, canonical resource controls, private bar storage
 and byte-bound native bar/definition readers are implemented. Scoped source-evidence
 contracts and recomputation are implemented, but no actual provider-era semantic
-rule is approved. Evidence-bound regular-session assembly is implemented; contract inputs,
-the imported-data shortlist and complete quote coverage remain subsequent tasks in
+rule is approved. Evidence-bound regular-session and contract-chain assembly are
+implemented; the imported-data shortlist and complete quote coverage remain subsequent tasks in
 the [approved integration plan](superpowers/plans/2026-09-25-native-options-data-integration.md).
 There is not yet a native-bars CLI or a real-data economic result.
 
@@ -32,6 +32,34 @@ values, and the native manifest, configuration and installed source code must st
 match verification. These diagnostic records are not reusable trust certificates;
 the imported-data bridge must reverify their source bundle. All authority flags
 remain false, and the empty actual-source rulebook still blocks real qualification.
+
+## As-known definition inputs
+
+`assemble_definition_inputs` reconstructs a complete explicitly evidenced baseline
+plus visible additions, modifications and deletions. Every native row needs a verified
+publication instant and a unique dated publisher/instrument-to-symbol mapping. Exact
+duplicates are collapsed; conflicting simultaneous revisions, unexplained deletes
+and unknown update actions deny. Historical ID reuse needs non-overlapping half-open
+mapping windows. Partial-symbol metadata needs explicit scoped coverage, not an
+automatic pass or blanket rejection.
+
+Independent pinned term and calendar facts must establish standard SPY/USD contracts:
+100-share deliverable and premium multiplier, American exercise, physical PM
+settlement, historical tick and eligible sessions, exact OCC strike/type/expiry,
+last trading and expected settlement times. A native multiplier sentinel remains
+unknown. Date-only midnight expiry never supplies a trading deadline. There are no
+generic multiplier, settlement-delay or adjusted-contract fallbacks.
+
+All active members are constructed before ranking. More than 10,000 contracts denies
+the whole chain; nothing is silently trimmed to nearby strikes. The legacy native
+manifest is unchanged and its completeness/availability flags stay false. New
+derived records are labelled imported and remain research-only. Their causal hash
+binds visible native rows, canonical terms and installed code/configuration/rulebook;
+later native records or a one-nanosecond-late publication cannot alter that identity.
+The complete source archive/claim hashes remain separately auditable.
+
+Only fabricated, fixed-protocol source fixtures currently exercise successful
+enrichment. No actual provider parser/term protocol has been approved or installed.
 
 ## Private storage and readers
 

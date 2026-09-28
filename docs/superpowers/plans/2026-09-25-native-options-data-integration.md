@@ -467,7 +467,7 @@ terms from these references, not an unchecked caller-supplied contract.
 *, verification: SourceVerification, as_of: datetime, loaded: LoadedConfig,
 repository_root: Path) -> DefinitionInputs`.
 
-- [ ] **5.1 Write failing chain tests:**
+- [x] **5.1 Write failing chain tests:**
 
 ```python
 def test_future_definition_does_not_enter_open_chain(future_addition_case):
@@ -488,18 +488,18 @@ multiplier sentinel; unsupported adjusted contracts; missing tick or eligible se
 whole chain of 10,001 members; a definition visible one nanosecond after the open.
 Source update semantics must be evidenced; an unknown action is never treated as ADD.
 
-- [ ] **5.2 Run red:**
+- [x] **5.2 Run red:**
   `PYTHONPATH=src uv run --project research --frozen pytest tests/unit/market_data/test_options_definition_inputs.py -q`.
-- [ ] **5.3 Implement as-known membership and term enrichment.** Use explicit verified
+- [x] **5.3 Implement as-known membership and term enrichment.** Use explicit verified
   baseline plus visible update/delete state, never the daily union or current IDs.
   Build the complete declared chain before existing eligibility/ranking; no nearby-strike
   truncation. Require multiplier/deliverable 100, USD, American/physical/PM, unadjusted,
   exact OCC identity, historical tick, last-trading and settlement reference times.
   Unknown or conflicting facts yield no canonical chain and fixed reasons.
-- [ ] **5.4 Run green plus `test_options_records.py`, `test_options_data_codec.py`,
+- [x] **5.4 Run green plus `test_options_records.py`, `test_options_data_codec.py`,
   and native-definition regressions.** Existing staging's false verification flags
   remain false; enrichment is a new derived artifact, not a rewritten manifest.
-- [ ] **5.5 Update the guide and commit:**
+- [x] **5.5 Update the guide and commit:**
   `feat(data): reconstruct scoped point-in-time option chains`.
 
 ## Task 6: Verified v2 shortlist bridge with unchanged v1 behavior
