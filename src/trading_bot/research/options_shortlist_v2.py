@@ -56,6 +56,12 @@ from trading_bot.research.options_shortlist_models import (
 
 REASONS = POLICY_REASONS | SESSION_REASONS | DEFINITION_REASONS
 _CODE_FILES = (
+    "cli/options_native.py",
+    "cli/options_research.py",
+    "research/options_native_io.py",
+    "research/options_acquisition.py",
+    "research/options_acquisition_models.py",
+    "research/options_acquisition_wire.py",
     "clock.py",
     "domain/decimal_utils.py",
     "domain/market.py",

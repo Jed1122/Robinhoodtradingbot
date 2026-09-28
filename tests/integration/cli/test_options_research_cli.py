@@ -82,6 +82,11 @@ def test_offline_options_modules_cannot_import_broker_or_persistence_capabilitie
     root = Path(__file__).parents[3] / "src/trading_bot"
     files = [
         root / "cli/options_research.py",
+        root / "cli/options_native.py",
+        root / "research/options_native_io.py",
+        *sorted((root / "research").glob("options_acquisition*.py")),
+        *sorted((root / "market_data").glob("options_source*.py")),
+        *sorted((root / "market_data").glob("databento_*.py")),
         *sorted((root / "simulation").glob("options_*.py")),
         *sorted((root / "strategies/options").rglob("*.py")),
         *sorted((root / "research").glob("options_shortlist*.py")),

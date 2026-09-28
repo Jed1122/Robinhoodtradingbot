@@ -11,6 +11,12 @@ from typing import Annotated
 
 import typer
 
+from trading_bot.cli.options_native import (
+    native_bars_import,
+    native_options_shortlist,
+    native_source_verify,
+    options_coverage_manifest,
+)
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.domain.decimal_utils import parse_decimal, require_bounded_decimal
 from trading_bot.domain.options import OptionKind
@@ -37,6 +43,10 @@ from trading_bot.simulation.options_replay_io import (
 from trading_bot.simulation.options_replay_models import SOURCE, OptionsReplayResult
 
 app = typer.Typer(no_args_is_help=True)
+app.command("native-bars-import")(native_bars_import)
+app.command("native-source-verify")(native_source_verify)
+app.command("native-options-shortlist")(native_options_shortlist)
+app.command("options-coverage-manifest")(options_coverage_manifest)
 CAPITAL_TIERS = (100, 500, 1000, 2500, 5000, 10000, 25000, 50000)
 
 

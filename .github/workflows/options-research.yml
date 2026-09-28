@@ -45,3 +45,17 @@ jobs:
           tests/integration/market_data/test_databento_definitions.py
           tests/integration/market_data/test_databento_stage.py
           tests/integration/cli/test_databento_import.py
+          tests/unit/market_data/test_databento_bars.py
+          tests/unit/config/test_options_native_data_config.py
+          tests/integration/market_data/test_databento_bar_store.py
+          tests/integration/market_data/test_databento_native_rows.py
+          tests/unit/market_data/test_options_source_contracts.py
+          tests/unit/market_data/test_options_source_verify.py
+          tests/unit/market_data/test_options_session_inputs.py
+          tests/unit/market_data/test_options_definition_inputs.py
+          tests/unit/research/test_options_shortlist_v2.py
+          tests/unit/research/test_options_shortlist_v2_wire.py
+          tests/unit/research/test_options_acquisition.py
+          tests/unit/research/test_options_acquisition_wire.py
+          tests/integration/cli/test_options_native.py
+          tests/integration/research/test_native_options_pipeline.py

@@ -8,7 +8,55 @@ contracts and recomputation are implemented, but no actual provider-era semantic
 rule is approved. Evidence-bound regular-session and contract-chain assembly are
 implemented, along with the independent imported-data shortlist and coverage planner in
 the [approved integration plan](superpowers/plans/2026-09-25-native-options-data-integration.md).
-There is not yet a native-bars CLI or a real-data economic result.
+The four offline commands below are implemented. There is no real-data economic result.
+
+## Offline operator commands
+
+Use the locked research environment from the implementation checkout. Source files,
+input documents and existing output directories must be private, owner-controlled,
+outside every Git checkout, and free of symlinks/hardlinks. Directories use mode 0700
+and files 0600. These examples are templates, not acquisition or deployment commands:
+
+```sh
+PYTHONPATH=src uv run --project research --frozen --no-sync python -m trading_bot.cli.options_research native-bars-import /absolute/private/download --start 2023-01-01T00:00:00.000000Z --end 2026-01-01T00:00:00.000000Z --output-root /absolute/private/research
+PYTHONPATH=src uv run --project research --frozen --no-sync python -m trading_bot.cli.options_research native-source-verify /absolute/private/evidence.json --as-of 2023-01-03T14:30:00.000000Z --start 2023-01-02T14:30:00.000000Z --end 2023-01-03T14:30:00.000000Z --output-root /absolute/private/research
+PYTHONPATH=src uv run --project research --frozen --no-sync python -m trading_bot.cli.options_research native-options-shortlist /absolute/private/input.json --output-root /absolute/private/research
+PYTHONPATH=src uv run --project research --frozen --no-sync python -m trading_bot.cli.options_research options-coverage-manifest /absolute/private/index.json --requirements /absolute/private/study.json --output-root /absolute/private/research
+```
+
+All accept `--config-dir` and load `options/native-data/simulation.yaml` with an
+explicitly empty environment. UTC arguments require six fractional digits and `Z`;
+conversion uses integer arithmetic. No credential, network, rule-injection, live or
+purchase flags exist. Omitting `--requirements` produces a blocked diagnostic rather
+than inventing a study. A source verification success is scoped only to its submitted
+roles, not blanket data qualification.
+
+Exit 0 means the named operation completed: bar **integrity**, scoped verification,
+selected research pair, or structural coverage requirements. Exit 2 means semantic
+denial/incompleteness or a stale index. Exit 1 means malformed input/storage failure.
+None means economic acceptance or permission to buy data/trade. Console output contains
+only status, fixed reasons, counts, hashes and four false authority flags; private
+reports retain detailed diagnostics under `manifests/<artifact-hash>.json`.
+
+`options-shortlist-index-v1` has exactly `schema` and `entries`; each entry has
+`input: {path, sha256, byte_count}` and `expected_result_hash`. The expected hash is
+SHA-256 of the exact encoded shortlist report, also printed as `artifact_hash`, not
+the causal decision hash. Every referenced input is privately reread, hash checked,
+decoded and recomputed. Duplicates, aggregate byte/record excess and mismatched results
+deny; the latter publishes no coverage report. Source/code/rule changes therefore
+require explicitly regenerating the index. No glob or saved-result trust path exists.
+
+Publication uses the existing atomic no-overwrite store. Repeat execution reproduces
+the same artifact; disk-full or interrupted publication does not replace earlier
+reports. The fixed v2 code inventory includes this composition and coverage modules;
+old v1 identities are unchanged.
+
+## Verification status before final review
+
+The complete locked research-backend selection passes 466 tests, including 17 new
+command/pipeline tests. Positive cases use fabricated archives and private test-only
+rules; the installed actual-provider rulebook remains empty. Mypy and Bandit pass.
+Full branch coverage and independent review are pending at this checkpoint.
 
 ## Complete data-coverage planning
 
