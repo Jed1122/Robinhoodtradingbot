@@ -22,7 +22,11 @@ from trading_bot.domain.options import (
 from trading_bot.market_data.bundle_codec import _array, _digest, _integer, _json, _mapping, _string
 from trading_bot.market_data.databento_bar_models import native_limits
 from trading_bot.market_data.databento_bar_wire import bounds
-from trading_bot.market_data.databento_native_rows import NativeDefinitionRow, read_definition_rows
+from trading_bot.market_data.databento_native_rows import (
+    NativeDefinitionRow,
+    definition_projection_hash,
+    read_definition_rows,
+)
 from trading_bot.market_data.databento_stage import verify_staged
 from trading_bot.market_data.options_data_codec import _contract
 from trading_bot.market_data.options_records import ChainSnapshot, OptionsDataRecord, select_chain
@@ -237,13 +241,22 @@ def _mapping_matches(
 def _members(
     rows: tuple[NativeDefinitionRow, ...], state: dict[str, object], as_of_ns: int
 ) -> tuple[dict[tuple[int, int], NativeDefinitionRow], tuple[DataHash, ...], int, int]:
-    observed = {row.record_sha256: row for row in rows}
     publications: dict[str, int] = {}
+    projections: dict[str, str] = {}
     for value in _array(state["publications"]):
-        item = _mapping(value, {"native_hash", "published_at_ns"})
+        item = _mapping(value, {"native_hash", "projection_hash", "published_at_ns"})
         publication_hash, stamp = _digest(item["native_hash"]), _integer(item["published_at_ns"])
         _require(publication_hash not in publications, "chain_coverage_unverified")
         publications[publication_hash] = stamp
+        projections[publication_hash] = _digest(item["projection_hash"])
+    # Check EVERY row before deduplication: a changed duplicate must not be hidden.
+    # The old archive preserves a projection, not enough bytes to reconstruct DBN.
+    for row in rows:
+        _require(
+            projections.get(row.record_sha256) == definition_projection_hash(row),
+            "source_integrity_invalid",
+        )
+    observed = {row.record_sha256: row for row in rows}
     _require(set(publications) == set(observed), "chain_coverage_unverified")
     visible = {digest: row for digest, row in observed.items() if publications[digest] <= as_of_ns}
     revisions: dict[tuple[object, ...], str] = {}

@@ -109,6 +109,17 @@ def _phases(
             for role in ("initialization", "entry", "monitoring", "exit", "expiry", "settlement")
         }
         prefix = f"{result.session_id}:{candidate.standardized_id}:"
+        streams = {
+            (r.window.dataset, r.window.schema, r.window.stype_in, r.window.symbol)
+            for role, entries in by_role.items()
+            if role != "settlement"
+            for r in entries
+        }
+        # Without an independently reviewed compatibility contract, one feed cannot
+        # initialize another or bridge gaps in its required event history.
+        if len(streams) != 1:
+            reasons.add("quote_semantics_incompatible")
+            incomplete.add(prefix + "quote_stream")
         for role, entries in by_role.items():
             if not entries:
                 incomplete.add(prefix + role)

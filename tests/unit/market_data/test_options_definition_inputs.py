@@ -22,7 +22,10 @@ from trading_bot.domain.options import (
     SettlementKind,
     SettlementTiming,
 )
-from trading_bot.market_data.databento_native_rows import read_definition_rows
+from trading_bot.market_data.databento_native_rows import (
+    definition_projection_hash,
+    read_definition_rows,
+)
 from trading_bot.market_data.databento_stage import stage_batch, verify_staged
 from trading_bot.market_data.options_records import select_chain
 from trading_bot.market_data.options_session_inputs import _ns
@@ -131,6 +134,7 @@ def case(
         "publications": [
             {
                 "native_hash": row.record_sha256,
+                "projection_hash": definition_projection_hash(row),
                 "published_at_ns": (publication_changes or {}).get(row.record_sha256, row.ts_recv),
             }
             for row in {r.record_sha256: r for r in visible}.values()
@@ -257,6 +261,81 @@ def test_visible_deletion_removes_membership(tmp_path):
     ]
     result = assemble(case(tmp_path, rows=rows))
     assert result.contract_ids == (PUT,) and result.delete_count == 1
+
+
+def test_rehashed_projection_cannot_reuse_unchanged_native_publication_evidence(tmp_path):
+    """Outer file integrity must not authorize a changed meaning for a native record."""
+    import hashlib
+
+    from trading_bot.market_data.options_parquet import _connection
+
+    value = case(
+        tmp_path / "original",
+        rows=[
+            native(),
+            native(ident=43, symbol=PUT),
+            native(stamp=BASELINE + 1000, action=dbn.SecurityUpdateAction.MODIFY),
+        ],
+    )
+    manifest = json.loads(value.path.read_bytes())
+    root = value.path.parent.parent
+    part = manifest["files"][0]
+    old_path = root / part["path"]
+    changed = old_path.with_name("changed.parquet")
+    connection = _connection(old_path.parent)
+    try:
+        connection.execute(
+            "COPY (SELECT * REPLACE (CASE WHEN security_update_action = 'M' THEN 'D' "
+            "ELSE security_update_action END AS security_update_action) "
+            "FROM read_parquet(?, hive_partitioning=false)) TO ? (FORMAT PARQUET)",
+            [str(changed), str(old_path)],
+        )
+    finally:
+        connection.close()
+    changed.chmod(0o600)
+    body = changed.read_bytes()
+    digest = hashlib.sha256(body).hexdigest()
+    renamed = changed.with_name(digest + ".parquet")
+    changed.rename(renamed)
+    part.update(path=str(renamed.relative_to(root)), sha256=digest, byte_count=len(body))
+    encoded = canonical_json(manifest).encode()
+    path = value.path.with_name(hashlib.sha256(encoded).hexdigest() + ".json")
+    path.write_bytes(encoded)
+    path.chmod(0o600)
+    descriptor = PrivateArtifactRef(path, DataHash(path.stem), len(encoded))
+    bundle, verification = verified_facts(
+        tmp_path / "reverified",
+        value.facts,
+        start_ns=OPEN - 1,
+        end_ns=OPEN,
+        as_of_ns=OPEN,
+        manifests=(descriptor,),
+    )
+    assert verification.status == "verified"
+    reference = api().ContractReferenceInput(
+        tuple(r for r in bundle.manifests if r.path != path), verification.visible_claim_hashes
+    )
+    attacked = SimpleNamespace(path=path, reference=reference, verification=verification)
+    result = assemble(attacked)
+    assert result.records == ()
+    assert "source_integrity_invalid" in result.reasons
+
+
+def test_projection_binding_precedes_native_hash_duplicate_collapse(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    value = case(tmp_path)
+    module = api()
+    original = module.read_definition_rows
+
+    def altered(*args, **kwargs):
+        rows = tuple(original(*args, **kwargs))
+        yield replace(rows[0], security_update_action="D")
+        yield from rows
+
+    monkeypatch.setattr(module, "read_definition_rows", altered)
+    result = assemble(value)
+    assert result.records == () and "source_integrity_invalid" in result.reasons
 
 
 def test_unexplained_delete_and_unknown_action_deny(tmp_path):

@@ -310,6 +310,26 @@ def test_qualification_cannot_relabel_short_pilot_history(tmp_path, monkeypatch)
     assert "research_history_insufficient" in result.reasons and not result.economic_eligible
 
 
+@pytest.mark.parametrize("role", ["initialization", "entry", "monitoring", "exit", "expiry"])
+def test_one_quote_stream_cannot_initialize_or_complete_another(tmp_path, monkeypatch, role):
+    value = fixture_case(tmp_path, monkeypatch)
+    other = value.study.semantics[1]
+    changed = tuple(
+        replace(
+            r,
+            semantics_hash=other.fact_hash,
+            window=replace(r.window, dataset=other.dataset, schema=other.schema),
+        )
+        if r.role == role
+        else r
+        for r in value.study.requirements
+    )
+    result = build(value, requirements=changed)
+    assert result.status == "blocked"
+    assert "quote_semantics_incompatible" in result.reasons
+    assert result.sessions[0].candidates == value.results[0].candidates
+
+
 def test_exact_union_preserves_disjoint_ranges_and_reverse_links():
     models = api("_models")
     windows = (

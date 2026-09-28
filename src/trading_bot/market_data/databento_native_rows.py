@@ -9,7 +9,7 @@ import struct
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -30,7 +30,7 @@ from trading_bot.market_data.databento_batch import DatabentoImportError, requir
 from trading_bot.market_data.databento_stage import _COLUMNS as DEFINITION_COLUMNS
 from trading_bot.market_data.databento_stage import verify_staged
 from trading_bot.market_data.options_parquet import _connection, _private_temp_directory
-from trading_bot.market_data.recording import canonical_json
+from trading_bot.market_data.recording import canonical_json, content_hash
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +87,14 @@ class NativeDefinitionRow:
         ):
             require(type(getattr(self, name)) is int)
         require(_integer(self.dbn_version, 1, 3) and _hash(self.record_sha256))
+
+
+def definition_projection_hash(row: NativeDefinitionRow) -> str:
+    """Bind the exact projection, not omitted native bytes or file-order diagnostics."""
+    require(type(row) is NativeDefinitionRow)
+    value = asdict(row)
+    value.pop("record_ordinal")
+    return content_hash({"schema": "native-definition-projection-v1", "fields": value})
 
 
 def _snapshot(parent: int, relative: str, size: int, digest: str, target: Path) -> Path:

@@ -70,6 +70,10 @@ by this implementation.
 
 The planner checks both selected contracts, prior initialization, entry, monitoring,
 exit before trading ends, underlying quotes, expiry and settlement follow-through.
+Option quote phases must use one dataset/schema/symbology/symbol stream for each
+selected contract. An unrelated feed cannot initialize it or fill its coverage gaps;
+no cross-feed compatibility rule is currently approved. Existing consumer and source
+semantics checks remain independently required.
 Times come from explicit requirements and hash-matched canonical contracts, never
 an assumed holding period or settlement lag. Warmup is required. Qualification
 coverage retains canonical history/fold/opportunity constraints; even complete
@@ -168,6 +172,17 @@ duplicates are collapsed; conflicting simultaneous revisions, unexplained delete
 and unknown update actions deny. Historical ID reuse needs non-overlapping half-open
 mapping windows. Partial-symbol metadata needs explicit scoped coverage, not an
 automatic pass or blanket rejection.
+
+Publication evidence must also bind `projection_hash`, the canonical
+`native-definition-projection-v1` identity of every projected field except the
+ordering-only `record_ordinal`. This is checked for every row before deduplication or
+membership changes, including deletions. Rehashing a changed Parquet file cannot
+reuse unchanged publication evidence. The legacy archive remains readable but its
+stored native digest does not by itself prove the meaning of projected columns:
+omitted native bytes cannot be reconstructed. Missing projection evidence denies
+assembly. A future real-provider verifier must derive both identities from native
+source bytes; the installed rulebook remains empty. Exact duplicate and file-order
+invariance are preserved, and no historical archive hash is rewritten.
 
 Independent pinned term and calendar facts must establish standard SPY/USD contracts:
 100-share deliverable and premium multiplier, American exercise, physical PM
