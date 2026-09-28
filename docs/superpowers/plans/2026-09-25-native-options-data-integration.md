@@ -53,8 +53,9 @@ licensed data or decide source authority, strategy, exposure or execution policy
 
 Existing native definitions/storage and synthetic shortlist are implemented. Task 1
 adds native bars scanning and canonical limits; Task 2 adds private bar storage and
-byte-bound native readers. Semantic source verification, v2 imported shortlist and
-complete coverage manifests remain pending.
+byte-bound native readers. Task 3 implements scoped source verification with no
+approved real-provider semantic rules. Verified session/contract assembly, v2 imported
+shortlist and complete coverage manifests remain pending.
 Source facts and study requirements remain externally
 unverified. A tested denial path is useful progress, not evidence that those facts
 have been obtained. No point-in-time publication rule is approved by this plan alone.
@@ -340,7 +341,7 @@ codecs and `OptionsNativeDataSettings`. No transport or source-trust booleans.
   `encode_source_verification(result: SourceVerification) -> bytes` emits the private
   `options-source-verification-v1` report; it is diagnostic output, not a trust-token decoder.
 
-- [ ] **3.1 Write failing contract/verification tests:**
+- [x] **3.1 Write failing contract/verification tests:**
 
 ```python
 def test_nanosecond_availability_is_not_rounded_into_past():
@@ -366,9 +367,9 @@ expiry/era boundaries, whole-file future additions and post-hash mutation. Param
 scope substitution over source/schema/window/config/code/rulebook/record identity.
 Use fixed fixture hashes; fixture success cannot satisfy a shipped provider claim.
 
-- [ ] **3.2 Run red:**
+- [x] **3.2 Run red:**
   `PYTHONPATH=src uv run --project research --frozen pytest tests/unit/market_data/test_options_source_contracts.py tests/unit/market_data/test_options_source_verify.py -q`.
-- [ ] **3.3 Implement the closed models/codecs and verifier.** Recompute every derived
+- [x] **3.3 Implement the closed models/codecs and verifier.** Recompute every derived
   claim from immutable bytes using reviewed schema/era rules. Missing actual publication,
   reference, baseline or term evidence denies the affected role while other diagnostics
   remain available. Preserve unknowns; no default `available_at=interval_end`.
@@ -378,10 +379,10 @@ Use fixed fixture hashes; fixture success cannot satisfy a shipped provider clai
   Record that blocker explicitly; an empty/partial rulebook is not completed real-data
   qualification. No data-purchase permission or accepted private-use attestation is
   repurposed as technical source proof.
-- [ ] **3.4 Run green and the existing options-record/codec and bundle-verification
+- [x] **3.4 Run green and the existing options-record/codec and bundle-verification
   tests.** Check raw record visibility using nanoseconds before canonical conversion.
   Invalidations live outside causal input hashes; never invent historically known warnings.
-- [ ] **3.5 Update the new operator guide's evidence matrix and commit Task 3:**
+- [x] **3.5 Update the new operator guide's evidence matrix and commit Task 3:**
   `feat(data): verify scoped source claims without caller trust flags`.
 
 ## Task 4: Calendar, corporate events and regular-session close assembly

@@ -3,8 +3,9 @@
 ## Implementation status
 
 Native SPY minute-bar scanning, canonical resource controls, private bar storage
-and byte-bound native bar/definition readers are implemented.
-Historical source verification, verified session/contract inputs,
+and byte-bound native bar/definition readers are implemented. Scoped source-evidence
+contracts and recomputation are implemented, but no actual provider-era semantic
+rule is approved. Verified session/contract inputs,
 the imported-data shortlist and complete quote coverage remain subsequent tasks in
 the [approved integration plan](superpowers/plans/2026-09-25-native-options-data-integration.md).
 There is not yet a native-bars CLI or a real-data economic result.
@@ -37,6 +38,44 @@ including unknown multipliers. This integration remains SPY-only.
 
 Neither schema is canonical market evidence. Source publication rules, sessions,
 corporate actions and contract-term authority remain unverified.
+
+## Historical source-evidence boundary
+
+`options-source-evidence-v1` contains strict claims and explicit private artifact
+references. The verifier rechecks file bytes, exact source/schema/era/coverage,
+pinned reference-document identities, installed verifier/rulebook identities and
+the canonical configuration identity. It never treats a successful download, usage
+attestation, caller `verified=true`, or a current public document as a historical
+publication guarantee. Unknown fields, dispatch names and substituted scopes deny.
+
+Publication visibility is compared using native integer nanoseconds before any
+datetime conversion; availability is rounded upward at a microsecond boundary.
+Missing publication remains unknown. A claimed publication cannot postdate its
+recorded observation. No default `available_at=interval_end` is supplied.
+
+Parsed fact hashes are exposed for downstream value comparisons; coverage and
+visible-claim hashes also bind their publication/effective-time record envelopes.
+Whole-file hashes remain diagnostic, so appending a future record cannot rewrite
+an earlier as-known selection. Later-discovered invalidations are reported separately
+and never silently backdated. A missing rule for one role does not clear another
+role's finding. A verified role alone is not a complete dataset qualification.
+
+The installed rulebook is deliberately empty. The fixed synthetic record parser
+and fabricated private test rules validate software behavior only; no CLI, profile
+or environment variable can install those fixture rules as provider approvals.
+
+| Required role | Actual evidence status |
+| --- | --- |
+| Calendar and exceptional sessions | No reviewed source/era rule |
+| Historical bar publication and no-trade semantics | No reviewed source/era rule |
+| Corporate actions, including explicit empty coverage | No reviewed source/era rule |
+| Definition baseline and update/delete semantics | No reviewed source/era rule |
+| Contract terms, sessions and deadlines | No reviewed source/era rule |
+| Option/underlying quote semantics | No reviewed source/era rule |
+
+This is an explicit real-data qualification blocker, not a completed economic
+validation. Diagnostic verification reports have no trusted-result decoder and
+retain all four false production, promotion, download and live authority flags.
 
 ## Intake boundary
 
