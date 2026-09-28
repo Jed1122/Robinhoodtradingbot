@@ -4,6 +4,8 @@ options:
   enabled: true
   native_data:
     enabled: true
+  research_shortlist:
+    enabled: true
 equities:
   enabled: false
 crypto:

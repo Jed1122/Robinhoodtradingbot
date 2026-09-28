@@ -120,14 +120,16 @@ def _facts(
     facts: dict[str, list[dict[str, object]]] = {}
     count = 0
     for body in bodies.values():
-        document = _mapping(
-            _json(
-                body,
-                max_bytes=loaded.config.options.research_shortlist.max_input_bytes,
-                limits=bounds(loaded),
-            ),
-            {"schema", "source_id", "role", "era_start_ns", "era_end_ns", "records"},
+        decoded = _json(
+            body,
+            max_bytes=loaded.config.options.research_shortlist.max_input_bytes,
+            limits=bounds(loaded),
         )
+        check(type(decoded) is dict)
+        keys = {"schema", "source_id", "role", "era_start_ns", "era_end_ns", "records"}
+        if "invalidations" in cast(dict[str, object], decoded):
+            keys.add("invalidations")
+        document = _mapping(decoded, keys)
         # No installed provider rules use this fixed protocol; provider prose cannot qualify.
         check(document["schema"] == "synthetic-source-records-v1")
         check(_string(document["source_id"]).startswith("synthetic."))

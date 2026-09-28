@@ -288,7 +288,7 @@ def test_partial_symbol_requires_exact_interval_explanation(tmp_path, explained)
         ("exercise_style", "european"),
         ("settlement_timing", "am"),
         ("currency", "EUR"),
-        ("last_trading_at", "2023-01-20T00:00:00+00:00"),
+        ("last_trading_at", "2023-01-20T00:00:00.000000Z"),
         ("underlying", "QQQ"),
     ],
 )

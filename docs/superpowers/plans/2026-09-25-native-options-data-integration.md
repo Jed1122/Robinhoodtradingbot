@@ -543,7 +543,7 @@ the result schema; no public decoder turns a saved result into trusted selection
 fixed installed inventory, including Task 3's source-rule identity and shared policy;
 Task 8 adds its composition modules to that inventory. V1's stored identities remain intact.
 
-- [ ] **6.1 Write failing bridge and compatibility tests:**
+- [x] **6.1 Write failing bridge and compatibility tests:**
 
 ```python
 def test_v1_imported_input_stays_denied(loaded):
@@ -577,17 +577,17 @@ but not stored as-known candidates/hash. No request accepts quote/outcome fields
 Test-only positive compositions use fabricated rulebooks from Task 3; shipped CLI has
 no switch to enable them. Production semantic blockers remain visible, not fixture-cleared.
 
-- [ ] **6.2 Run red:**
+- [x] **6.2 Run red:**
   `PYTHONPATH=src uv run --project research --frozen pytest tests/unit/research/test_options_shortlist_v2.py tests/unit/research/test_options_shortlist_v2_wire.py -q`.
-- [ ] **6.3 Implement the bridge and closed v2 codecs.** Share ranking/identity checks
+- [x] **6.3 Implement the bridge and closed v2 codecs.** Share ranking/identity checks
   without routing imported data through a synthetic label or loosening v1 validators.
   Recompute evidence from exact inputs, not caller verification objects. V1 decision
   hashes are preserved for identical supplied identities; installed-code hashes may
   change normally. V2 causal hashes exclude irrelevant future/full-archive integrity.
-- [ ] **6.4 Run green and all existing `tests/unit/research/test_options_shortlist*`
+- [x] **6.4 Run green and all existing `tests/unit/research/test_options_shortlist*`
   plus `tests/integration/cli/test_options_shortlist.py`.** Snapshot false live locks
   and unchanged synthetic replay source rejection.
-- [ ] **6.5 Update the guide and commit:**
+- [x] **6.5 Update the guide and commit:**
   `feat(research): add independently verified imported shortlist bridge`.
 
 ## Task 7: Complete quote-coverage manifest and purchase handoff

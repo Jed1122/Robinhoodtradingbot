@@ -6,9 +6,38 @@ Native SPY minute-bar scanning, canonical resource controls, private bar storage
 and byte-bound native bar/definition readers are implemented. Scoped source-evidence
 contracts and recomputation are implemented, but no actual provider-era semantic
 rule is approved. Evidence-bound regular-session and contract-chain assembly are
-implemented; the imported-data shortlist and complete quote coverage remain subsequent tasks in
+implemented, along with the independent imported-data shortlist; complete quote coverage remains subsequent work in
 the [approved integration plan](superpowers/plans/2026-09-25-native-options-data-integration.md).
 There is not yet a native-bars CLI or a real-data economic result.
+
+## Independently verified imported shortlist
+
+`options-shortlist-input-v2` binds explicit private bar/definition manifests, source
+claims and session/contract references to the canonical configuration. Every call
+rehashes and reparses the required source evidence and assembles canonical inputs
+again. There is no `verified=true` switch, accepted saved verification token, or
+quote/return input. Closed request fields, aggregate record/byte bounds and code
+identity checks stay in force. Results are path-free diagnostics, not trust tokens.
+
+The bridge calls the unchanged v1 identity, eligibility and ranking functions:
+previous regular-session close, one call and put, common expiry closest to 30 days
+within 21–45, earlier-expiry and lower-strike ties. V1 imported requests still deny;
+explicit original v1 wire/decision hashes are regression-tested. The synthetic-only
+replay has not been opened to imported data.
+
+All five input roles must verify independently. An unrelated quote-semantics denial
+remains visible but does not block shortlisting; it still blocks dependent quote
+acquisition work. Source mutation, altered canonical result hashes or a changed
+rulebook forces re-evaluation. Whole-archive hashes are diagnostic: future records,
+file-order changes and later audit invalidations cannot rewrite as-known candidates.
+Later invalidations remain in the verification report and must block affected future
+use, even when historical selection status is `selected`.
+
+The native simulation profile explicitly enables both intake and the existing
+research shortlist. Base/production defaults remain disabled; risk limits and live
+locks are unchanged. This profile change invalidates older native-profile identities
+and requires re-verification/restaging, not automatic reuse. Only test-private
+fabricated rules currently exercise successful selections; real imports still deny.
 
 ## Regular-session inputs
 
