@@ -7,8 +7,8 @@ from typing import Literal
 from trading_bot.domain import DataHash
 from trading_bot.domain.enums import OrderEvent, OrderState
 from trading_bot.domain.options import OptionsOrderIntent, StructureKind
-from trading_bot.market_data.options_session_inputs import _ns
 from trading_bot.market_data.options_source_models import check, hashes, instant
+from trading_bot.market_data.options_source_verify import ceil_available_at
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +38,8 @@ class HistoricalOrder:
         check(self.intent.structure.kind in (StructureKind.LONG_CALL, StructureKind.LONG_PUT))
         check(len(self.intent.structure.legs) == 1 and self.intent.structure.legs[0].ratio == 1)
         instant(self.decision_ns)
-        check(_ns(self.intent.created_at) >= self.decision_ns)
+        # Datetime carries microseconds; only its exact upward ns projection is valid.
+        check(self.intent.created_at == ceil_available_at(self.decision_ns))
         check(type(self.filled_units) is int and 0 <= self.filled_units <= self.intent.quantity)
         for value in (self.accepted_ns, self.cancel_requested_ns, self.last_event_ns):
             if value is not None:

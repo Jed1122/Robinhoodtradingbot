@@ -55,7 +55,14 @@ def propose_order(intent: OptionsOrderIntent, *, available_ns: int) -> Historica
 def request_cancel(order: HistoricalOrder, *, available_ns: int) -> HistoricalOrderStep:
     check(available_ns >= (order.last_event_ns or order.decision_ns))
     return _move(
-        replace(order, cancel_requested_ns=available_ns), OrderEvent.REQUEST_CANCEL, available_ns
+        replace(
+            order,
+            cancel_requested_ns=available_ns,
+            last_event_ns=available_ns,
+            seen_at_last_ns=order.seen_at_last_ns if available_ns == order.last_event_ns else (),
+        ),
+        OrderEvent.REQUEST_CANCEL,
+        available_ns,
     )
 
 
@@ -123,7 +130,11 @@ def _advance(
             if outcome < scenario.reject_ppm + scenario.ambiguous_ppm
             else OrderEvent.BROKER_ACCEPTED
         )
-        return _move(replace(order, accepted_ns=at), action, at)
+        return _move(
+            replace(order, accepted_ns=at if action is OrderEvent.BROKER_ACCEPTED else None),
+            action,
+            at,
+        )
     if order.state not in FILLABLE:
         return HistoricalOrderStep(order)
     cancel_due = (
@@ -134,6 +145,13 @@ def _advance(
         return _move(order, OrderEvent.CANCEL_CONFIRMED, at)
     fill = _fill(order, event, scenario, seed, consumed)
     if fill.fill_units:
+        if cancel_due and fill.order.state is OrderState.CANCEL_PENDING:
+            canceled = _move(fill.order, OrderEvent.CANCEL_CONFIRMED, at)
+            return replace(
+                fill,
+                order=canceled.order,
+                transitions=(*fill.transitions, *canceled.transitions),
+            )
         return fill
     if cancel_due:
         return _move(order, OrderEvent.CANCEL_CONFIRMED, at)

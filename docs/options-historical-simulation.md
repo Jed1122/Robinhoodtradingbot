@@ -17,6 +17,12 @@ owner must perform canonical risk checks before invoking it. Scenario/seed chang
 are rejected after binding. Acknowledgement and fill occur on separate later
 eligible events. Quotes do not prove real fills.
 
+The proposal time must match the intent's exact upward nanosecond-to-microsecond
+projection. Cancellation advances the event clock and cannot admit an older unseen
+quote. Rejected/ambiguous submissions have no acceptance timestamp. When a due
+cancel loses a race to a partial fill, that fill is recorded before the same-event
+acknowledgement cancels the unfilled remainder; later quotes cannot keep filling it.
+
 Fills use integer available size, explicit participation, side-aware adverse tick
 slippage and the original limit price. Cancellation ordering is explicit; unknown
 acceptance remains unresolved. Duplicate events within timestamp ties cannot reuse

@@ -238,3 +238,60 @@ def test_nonadjacent_same_timestamp_duplicate_cannot_reuse_fill(tmp_path, monkey
     observed = execution.advance_order(partial.order, control, scenario=s, seed=7)
     repeated = execution.advance_order(observed.order, events[1], scenario=s, seed=7)
     assert repeated.fill_units == 0 and repeated.order.filled_units == 1
+
+
+def test_proposal_cannot_use_an_intent_from_the_future(tmp_path, monkeypatch):
+    execution, proposed, _ = arrangement(tmp_path, monkeypatch)
+    future = replace(
+        proposed.order.intent, created_at=proposed.order.intent.created_at + timedelta(seconds=1)
+    )
+    with pytest.raises(ValueError):
+        execution.propose_order(future, available_ns=proposed.order.decision_ns)
+
+
+@pytest.mark.parametrize("offset", [1, 999, 1000])
+def test_proposal_binds_exact_upward_datetime_projection(tmp_path, monkeypatch, offset):
+    execution, proposed, _ = arrangement(tmp_path, monkeypatch)
+    intent = replace(
+        proposed.order.intent,
+        created_at=proposed.order.intent.created_at + timedelta(microseconds=1),
+    )
+    result = execution.propose_order(intent, available_ns=proposed.order.decision_ns + offset)
+    assert result.order.decision_ns == proposed.order.decision_ns + offset
+
+
+def test_cancellation_cannot_process_older_unseen_market_event(tmp_path, monkeypatch):
+    execution, proposed, events = arrangement(tmp_path, monkeypatch)
+    s = scenario()
+    ack = execution.advance_order(proposed.order, events[0], scenario=s, seed=7)
+    cancel = execution.request_cancel(ack.order, available_ns=events[3].available_ns)
+    with pytest.raises(ValueError):
+        execution.advance_order(cancel.order, events[1], scenario=s, seed=7)
+
+
+@pytest.mark.parametrize("field", ["reject_ppm", "ambiguous_ppm"])
+def test_nonaccepted_outcome_has_no_acceptance_timestamp(tmp_path, monkeypatch, field):
+    execution, proposed, events = arrangement(tmp_path, monkeypatch)
+    result = execution.advance_order(
+        proposed.order, events[0], scenario=scenario(**{field: 1000000}), seed=7
+    )
+    assert result.order.accepted_ns is None
+
+
+def test_due_cancel_follows_partial_fill_at_same_event(tmp_path, monkeypatch):
+    from trading_bot.domain.enums import OrderEvent
+
+    execution, proposed, events = arrangement(tmp_path, monkeypatch, units=3)
+    s = scenario(participation_pct=Decimal("50"))
+    ack = execution.advance_order(proposed.order, events[0], scenario=s, seed=7)
+    cancel = execution.request_cancel(ack.order, available_ns=events[0].available_ns)
+    result = execution.advance_order(cancel.order, events[3], scenario=s, seed=7)
+    assert result.fill_units == 1 and result.order.filled_units == 1
+    assert result.order.state is OrderState.CANCELED
+    assert tuple(t.event for t in result.transitions) == (
+        OrderEvent.PARTIAL_FILL,
+        OrderEvent.CANCEL_CONFIRMED,
+    )
+    assert result.cash_flow == Decimal("-25.50") and result.fee == Decimal("0.50")
+    later = execution.advance_order(result.order, events[4], scenario=s, seed=7)
+    assert later.fill_units == 0 and later.order == result.order
