@@ -89,6 +89,24 @@ the fix; all five new regression cases pass afterward. The complete definition s
 passes 37 tests and the locked research selection passes 485 tests at this checkpoint.
 This is a fixture-backed correction, not actual-source qualification.
 
+### Closed source dispatch — 2026-09-29
+
+The approved real-data plan's first task is implemented: immutable versioned parsed
+facts, closed parser dispatch and a shared hash-bound artifact read. Legacy synthetic
+record/claim/coverage/manifest hashes remain unchanged. Native and reviewed-reference
+parser IDs are reserved but deny; the installed actual-source rulebook is still empty.
+The [source protocol review](options-source-protocols.md) records the remaining gaps.
+
+Fresh local-workspace verification (including preserved unrelated work): 5,817 main
+tests passed, 29 skipped; 498 research-selection tests passed with no skips. Overall
+branch-enabled coverage is 82.53%; the unchanged critical branch gate passes. Ruff,
+Mypy (262 files), Bandit, both unchanged lockfiles and both locked dependency advisory
+audits pass. Documentation/SBOM/deployment selection: 25 passed, four missing-`age`
+skips. The four deployment shell scripts and standalone Compose validation pass.
+SBOM generation uses temporary outputs; no deployment, acquisition or broker call ran.
+These are local results, not a claim of current remote CI, final whole-plan review,
+implemented Task 2 adapters or completed economic validation.
+
 ### Actual private intake
 
 After code review and the targeted fix pass, the new CLI imported the already-acquired

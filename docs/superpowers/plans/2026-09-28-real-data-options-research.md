@@ -112,17 +112,22 @@ native-envelope/canonical-fact hash pairs and `SourceInvalidation` records.
 New IDs: `databento-native-v1` and `reviewed-reference-v1`; retain `synthetic-records-v1`.
 An ID names code, not approval. Extend code-hash dependency lists for every new parser.
 
-- [ ] Write tests `test_unknown_verifier_denies`, `test_synthetic_rule_cannot_approve_native`,
+- [x] Write tests `test_unknown_verifier_denies`, `test_synthetic_rule_cannot_approve_native`,
   and `test_original_synthetic_claim_hash_unchanged`; assert denial or literal stored
   pre-change synthetic hashes, never expected hashes computed by the new parser.
   Representative assertion: `assert verification.status == "denied"`.
-- [ ] Run `PYTHONPATH=src uv run --project research --frozen --no-sync pytest tests/unit/market_data/test_options_source_dispatch.py -q`; verify the missing dispatch fails.
-- [ ] Implement dispatch and existing synthetic adapter; stream native artifacts via
+- [x] Run `PYTHONPATH=src uv run --project research --frozen --no-sync pytest tests/unit/market_data/test_options_source_dispatch.py -q`; verify the missing dispatch fails.
+- [x] Implement dispatch and existing synthetic adapter; stream native artifacts via
   their verified manifests rather than loading multi-gigabyte bytes into `_snapshots`.
   Keep native/reference rules uninstalled until Task 2 supplies reviewed era evidence.
-- [ ] Run that file plus `tests/unit/market_data/test_options_source_verify.py` and
+- [x] Run that file plus `tests/unit/market_data/test_options_source_verify.py` and
   `test_options_source_contracts.py`; expect all pass and empty actual rulebook still denies.
-- [ ] Commit only the listed files: `feat: add closed options source parser dispatch`.
+- [x] Commit only the listed files: `feat: add closed options source parser dispatch`.
+
+Task 1 checkpoint: commit `8ab401b`, 57 source tests passed. The existing verifier's
+mutation-during-read test followed the extracted read helper without changing its
+assertions. Actual native/reference adapters and rules remain Task 2 work; Task 1
+does not claim to decode or qualify them.
 
 ## Task 2: Independently reviewed actual-source roles
 
