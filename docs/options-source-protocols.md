@@ -17,6 +17,25 @@ they must not be installed as semantic document evidence. Usable preserved conte
 hashes and historical applicability still need verification. No raw licensed records,
 credentials or account identifiers were captured or committed.
 
+### Immutable decoder references
+
+The locked `databento-dbn 0.69.0` source is available at commit
+`a7d8ee93a5d5d0b7082d0ca15ab85c01e3cce550`:
+[flag definitions](https://github.com/databento/dbn/blob/a7d8ee93a5d5d0b7082d0ca15ab85c01e3cce550/rust/dbn/src/flags.rs)
+and [record declarations](https://github.com/databento/dbn/blob/a7d8ee93a5d5d0b7082d0ca15ab85c01e3cce550/rust/dbn/src/record.rs).
+These identify decoder fields, not historical source completeness. Snapshot indicates
+replay origin; bad-book identifies an unrecoverable channel gap. Snapshot/last bits
+alone do not specify when a prior gap is resolved. The causal consumer's matching
+initialization policy therefore remains fixture-only behind the empty actual rulebook.
+
+The dated [OPRA migration announcement](https://databento.com/blog/opra-migration)
+describes new consolidated schemas and removal of regional depth/sequence fields.
+The [history improvement announcement](https://databento.com/blog/opra-improvements-coming-soon)
+describes reprocessing historical captures to repair gaps. Acquisition/version
+identity is consequently required; current clean bytes cannot prove the original
+delivery was complete. No support outreach or actual-source approval resulted from
+this public-source recheck.
+
 ## Role/era evidence matrix
 
 The test names in the last column are planned Task 2 acceptance work, not completed tests.

@@ -528,3 +528,33 @@ deployment or risk-limit changes are introduced.
 
 Existing capital assumptions and safety controls remain unchanged. These synthetic
 tests validate the software boundary, not an options strategy's economic performance.
+
+## Causal quote consumer (Task 4)
+
+`QuoteStreamRequest` binds one option and one explicitly exchange-specific underlying
+archive, private source evidence, exact known contracts/sessions and a half-open
+nanosecond window. `iter_quote_events` re-verifies the installed source rules and
+every archived raw/Parquet part before emitting its first event. Restarting the
+iterator rechecks everything; a prior successful verification is not a reusable
+trust token. The two archive cursors and one deadline per symbol bound memory.
+
+The consumer preserves native ordinals and nanosecond ordering. Datetime projections
+round upward. `can_follow` requires strictly later availability than the decision;
+it is an ordering/quality predicate, not a simulated fill or execution capability.
+Resets, bad-book observations, stale deadlines and session boundaries clear quote
+state. Option continuity still ages when underlying data is missing. Zero bids and
+locked observations retain their canonical entry-denial reasons. Invalid native
+timestamps remain intact in denied events rather than being silently corrected.
+
+The current `snapshot_last_v1` initialization policy is exercised only by explicit
+fabricated protocol fixtures. It does not assert that native snapshot/last flags
+prove complete OPRA initialization. No actual-source rules are installed. Unobserved
+halts, missing feed controls and historical correction semantics remain Task 2
+qualification dependencies; silence is not evidence of a healthy unchanged quote.
+Exchange-specific underlying data is never relabelled NBBO. Every emitted event
+keeps production, economic, promotion and live-authorization flags false.
+
+Next: freeze the study, derive actual history coverage, and implement complete
+acquisition coverage. Purchase remains gated on source qualification, a working
+consumer and the full cost fitting freshly verified applicable credits. Historical
+execution/accounting, after-cost uncertainty and genuine validation are not complete.
