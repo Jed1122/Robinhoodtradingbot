@@ -13,20 +13,14 @@ from trading_bot.market_data.options_source_models import check
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.options_study_models import StudyScenario
 from trading_bot.simulation.options_historical_models import (
+    HISTORICAL_TERMINAL as TERMINAL,
+)
+from trading_bot.simulation.options_historical_models import (
     HistoricalOrder,
     HistoricalOrderStep,
     HistoricalTransition,
 )
 
-TERMINAL = frozenset(
-    (
-        OrderState.FILLED,
-        OrderState.CANCELED,
-        OrderState.REJECTED,
-        OrderState.EXPIRED,
-        OrderState.RISK_REJECTED,
-    )
-)
 FILLABLE = frozenset((OrderState.SUBMITTED, OrderState.PARTIALLY_FILLED, OrderState.CANCEL_PENDING))
 
 

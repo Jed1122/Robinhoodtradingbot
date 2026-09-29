@@ -9,7 +9,15 @@ is implemented and fixture-tested within its bounded offline contract; actual-so
 qualification, complete option/underlying quote coverage, and genuine economic validation
 remain incomplete. The [real-data research design](docs/superpowers/specs/2026-09-28-real-data-options-research-design.md)
 and [implementation plan](docs/superpowers/plans/2026-09-28-real-data-options-research.md)
-are approved; native execution is underway. See [PR #2](https://github.com/Jed1122/Robinhoodtradingbot/pull/2)
+are approved. Closed source dispatch, bounded native quote archives, the causal
+quote stream and frozen study/history contracts are implemented and fixture-tested.
+Order-step simulation and independent account-journal reconstruction are partial
+foundations: complete historical episode/path orchestration, cost attribution,
+dependent-outcome uncertainty and research CLI/report composition are still pending.
+Actual-source rules remain unverified (Task 2); a complete qualified credit-bounded
+data package remains blocked on those inputs (Task 6). No genuine economic outcome,
+new data purchase, broker write, deployment or live activation is claimed.
+See [PR #2](https://github.com/Jed1122/Robinhoodtradingbot/pull/2)
 for the exact integration head and current CI/review verdicts, not this historical snapshot.
 
 [Standing operator authority](docs/operator-authority.md) permits reviewed, in-scope

@@ -75,6 +75,8 @@ def quality_reasons(
     ask_px: int,
     bid_sz: int,
     ask_sz: int,
+    bid_pb: int | None,
+    ask_pb: int | None,
 ) -> tuple[str, ...]:
     reasons = []
     # Quarantine disagreement with the documented normalization. This does not
@@ -83,6 +85,8 @@ def quality_reasons(
         ts_in_delta != 0
         or (action != "T" and publisher_id != 30)
         or (action == "T" and (side != "N" or publisher_id == 30))
+        or bid_pb == 30
+        or ask_pb == 30
     ):
         reasons.append("native_provider_inconsistent")
     if flags & 8 or not 0 < ts_event <= ts_recv < 2**63:
@@ -187,6 +191,8 @@ class NativeQuoteRow:
                 ask_px=self.ask_px,
                 bid_sz=self.bid_sz,
                 ask_sz=self.ask_sz,
+                bid_pb=self.bid_pb,
+                ask_pb=self.ask_pb,
             )
         )
         expected = "control" if self.action == "R" else "rejected" if self.reasons else "accepted"

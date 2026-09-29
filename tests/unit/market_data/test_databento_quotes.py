@@ -108,6 +108,19 @@ def test_valid_opra_trade_and_reserved_bytes_remain_lossless():
     assert rows[0].raw_record_hex == value.hex()
 
 
+@pytest.mark.parametrize("field", ["bid_pb", "ask_pb"])
+def test_consolidator_cannot_be_a_best_quote_participant(field):
+    levels = dict(bid_px=1000000001, ask_px=1200000003, bid_sz=2, ask_sz=3, bid_pb=20, ask_pb=22)
+    levels[field] = 30
+    raw = record(levels=dbn.ConsolidatedBidAskPair(**levels))
+    profile, rows = scan(compressed([raw]))
+    assert profile.accepted_count == 0 and profile.rejected_count == 1
+    assert "native_provider_inconsistent" in rows[0].reasons
+    assert rows[0].raw_record_hex == raw.hex()
+    with pytest.raises(DatabentoImportError):
+        replace(rows[0], reasons=(), disposition="accepted")
+
+
 def test_event_time_outside_window_does_not_replace_receive_index():
     profile, rows = scan(compressed([record(stamp=1)]))
     assert profile.accepted_count == 1

@@ -1,7 +1,8 @@
 # Historical options simulation implementation status
 
 The historical path is **partial**. This checkpoint implements pure modeled order
-steps, not the complete imported-data episode, continuing account runner or CLI.
+steps and an independent accounting journal, not the complete imported-data episode,
+continuing strategy/account runner or CLI.
 Actual-source qualification remains blocked and no economic conclusion is available.
 
 `StudyScenario` binds explicit latency, acknowledgement/cancel timing, rejection,
@@ -38,6 +39,40 @@ notional ceiling prevents the $25 premium at the larger tier. Increasing the
 hypothetical balance does not remove that cap. Pending settlement retains the full 26.00 trial
 reservation. This is not the complete episode acceptance test: it does not yet
 exercise continuous event time, automatic signal/expiry exits or settled outcomes.
+
+## Independent accounting foundation
+
+`OptionsAccountPathState` and the closed `options-account-journal-entry-v1` facts
+bind study, canonical configuration, scenario, hypothetical capital, initial time
+and event-prefix hashes. Replay must start from the exact genesis and full ordered
+prefix; a claimed intermediate snapshot is not a restart token. Exact duplicate
+facts have no effect; conflicting identities, reordered/missing predecessors,
+changed configuration/scenario and backwards clocks deny reconstruction.
+
+The journal recomputes premium cash using price, whole units and the contract
+multiplier, and separately checks scenario fees, side limits, ticks, cumulative
+quantities, owned closing quantities and canonical order transitions. It does not
+accept a supplied aggregate cash delta. Book cash includes unsettled flows;
+`available_cash` additionally excludes positive unsettled proceeds. It is **not**
+a buying-power or unencumbered-cash authorization: the execution owner must still
+apply canonical reservation, portfolio, freshness and risk checks.
+
+Full premium-plus-bounded-fees trial reservations persist until explicit completion
+with flat positions, terminal known orders, modeled settlement and final fees.
+Unknown outcomes cannot become reconciled fills from status labels alone. Profits,
+deposits and restarts do not replenish consumed losing-episode capacity. Sizing
+capital is capped at its initial hypothetical authorization and reduced by
+flow-adjusted liquidation equity. Missing liquidation marks contribute zero to
+the conservative arithmetic; this is not evidence of a zero-price executable exit.
+Incidents and halts are retained; negative cash is automatically an incident.
+
+This is accounting validation, **not policy admission**. Its multi-unit and $25
+premium fixtures are hypothetical accounting cases, not admissible trial trades.
+It does not validate mark provenance, evaluate loss-window halts, select contracts,
+perform expiry monitoring or run continuous strategy decisions. No production
+database or durable file format is changed. The simulated account identity prefix
+does not relabel imported market data as synthetic. Real-data qualification and
+economic assessment must still be established by the later episode/path consumer.
 
 Next: compose the reverified study, shortlist input preimage and causal stream into
 the historical episode; add signal-invalidation/preceding-session expiry exits and

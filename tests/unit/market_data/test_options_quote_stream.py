@@ -83,6 +83,8 @@ def row(*, underlying=False, offset=1, event_offset=None, snapshot=True, **chang
                 "ask_px",
                 "bid_sz",
                 "ask_sz",
+                "bid_pb",
+                "ask_pb",
             )
         }
     )

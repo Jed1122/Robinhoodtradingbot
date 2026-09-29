@@ -106,6 +106,8 @@ def _row(
                 "ask_px",
                 "bid_sz",
                 "ask_sz",
+                "bid_pb",
+                "ask_pb",
             )
         }
     )
