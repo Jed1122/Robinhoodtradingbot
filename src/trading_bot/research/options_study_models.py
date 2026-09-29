@@ -2,12 +2,13 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from itertools import pairwise
 from typing import Literal
 
 from trading_bot.clock import require_utc
 from trading_bot.domain import Bar, ConfigHash, DataHash
+from trading_bot.domain.decimal_utils import require_bounded_decimal
 from trading_bot.domain.enums import BarInterval
 from trading_bot.domain.options import OptionContract, OptionSession
 from trading_bot.market_data.options_session_inputs import _ns
@@ -31,6 +32,54 @@ REJECTION_CRITERIA = (
     "genuine_sources",
     "no_censored_obligations",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class StudyScenario:
+    """Explicit modeled assumptions. References alone do not certify calibration."""
+
+    name: Literal["base", "conservative", "optimistic"]
+    latency_ns: int
+    acknowledgement_ns: int
+    cancel_acknowledgement_ns: int
+    reject_ppm: int
+    unfilled_ppm: int
+    ambiguous_ppm: int
+    participation_pct: Decimal
+    slippage_ticks: int
+    cancel_race: Literal["fill_before_ack", "ack_before_fill"]
+    entry_fee: Decimal
+    exit_fee: Decimal
+    fee_bound_per_unit: Decimal
+    settlement_delay_ns: int
+    calibration_hashes: tuple[DataHash, ...]
+
+    def __post_init__(self) -> None:
+        check(self.name in ("base", "conservative", "optimistic"))
+        for value in (
+            self.latency_ns,
+            self.acknowledgement_ns,
+            self.cancel_acknowledgement_ns,
+            self.settlement_delay_ns,
+        ):
+            instant(value)
+        for value in (self.reject_ppm, self.unfilled_ppm, self.ambiguous_ppm):
+            check(type(value) is int and 0 <= value <= 1000000)
+        check(self.reject_ppm + self.ambiguous_ppm <= 1000000)
+        require_bounded_decimal(self.participation_pct, "participation", positive=True)
+        check(self.participation_pct <= 100)
+        check(type(self.slippage_ticks) is int and 0 <= self.slippage_ticks <= 1000000)
+        check(self.cancel_race in ("fill_before_ack", "ack_before_fill"))
+        for fee in (self.entry_fee, self.exit_fee, self.fee_bound_per_unit):
+            require_bounded_decimal(fee, "fee", nonnegative=True)
+        with localcontext() as context:
+            context.prec = 2048
+            check(self.entry_fee + self.exit_fee <= self.fee_bound_per_unit)
+        hashes(self.calibration_hashes)
+
+    @property
+    def scenario_hash(self) -> DataHash:
+        return content_hash({"schema": "options-study-scenario-v1", "scenario": self})
 
 
 def session_ids(values: tuple[str, ...]) -> None:

@@ -184,6 +184,17 @@ def test_requires_discovered_simulation_lifecycle_modules(tmp_path: Path) -> Non
     ]
 
 
+def test_requires_historical_options_execution_branches(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    _source(root, "src/trading_bot/simulation/options_historical_execution.py")
+    _source(root, "src/trading_bot/simulation/options_historical_models.py")
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        "missing branch coverage for src/trading_bot/simulation/options_historical_execution.py",
+        "missing branch coverage for src/trading_bot/simulation/options_historical_models.py",
+    ]
+
+
 def test_fails_a_single_module_below_threshold_even_if_the_combined_rate_is_90_percent(
     tmp_path: Path,
 ) -> None:
