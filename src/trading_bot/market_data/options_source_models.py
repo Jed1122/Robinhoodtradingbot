@@ -192,6 +192,26 @@ class SourceInvalidation:
 
 
 @dataclass(frozen=True, slots=True)
+class ParsedSourceFacts:
+    """Hash-bound parser output, not a verified source or execution capability."""
+
+    record_pairs: tuple[tuple[DataHash, DataHash], ...]
+    invalidations: tuple[SourceInvalidation, ...]
+    schema: Literal["parsed-source-facts-v1"] = field(default="parsed-source-facts-v1", init=False)
+
+    def __post_init__(self) -> None:
+        check(type(self.record_pairs) is tuple and len(self.record_pairs) <= 25000)
+        for pair in self.record_pairs:
+            check(type(pair) is tuple and len(pair) == 2)
+            for value in pair:
+                hashes((value,))
+        check(self.record_pairs == tuple(sorted(set(self.record_pairs))))
+        check(len({envelope for envelope, _ in self.record_pairs}) == len(self.record_pairs))
+        check(type(self.invalidations) is tuple and len(self.invalidations) <= 25000)
+        check(all(type(item) is SourceInvalidation for item in self.invalidations))
+
+
+@dataclass(frozen=True, slots=True)
 class SourceVerification:
     context: VerificationContext
     status: Literal["verified", "denied"]
@@ -233,7 +253,7 @@ class SourceRule:
     era_start_ns: int
     era_end_ns: int
     document_hashes: tuple[DataHash, ...]
-    verifier_id: Literal["synthetic-records-v1"]
+    verifier_id: Literal["synthetic-records-v1", "databento-native-v1", "reviewed-reference-v1"]
 
     def __post_init__(self) -> None:
         for value in (self.rule_id, self.source_id, self.schema):
@@ -241,4 +261,8 @@ class SourceRule:
         check(type(self.role) is str and self.role in ROLES)
         window(self.era_start_ns, self.era_end_ns)
         hashes(self.document_hashes, nonempty=True)
-        check(type(self.verifier_id) is str and self.verifier_id == "synthetic-records-v1")
+        check(
+            type(self.verifier_id) is str
+            and self.verifier_id
+            in ("synthetic-records-v1", "databento-native-v1", "reviewed-reference-v1")
+        )

@@ -15,6 +15,7 @@ _SOURCE_FILES = (
     "market_data/options_source_wire.py",
     "market_data/options_source_rules.py",
     "market_data/options_source_verify.py",
+    "market_data/options_source_dispatch.py",
     "market_data/databento_bar_models.py",
     "market_data/databento_bar_store.py",
     "market_data/databento_bar_wire.py",

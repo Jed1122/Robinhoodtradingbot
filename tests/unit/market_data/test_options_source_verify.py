@@ -151,7 +151,7 @@ def test_loaded_config_identity_is_recomputed_not_trusted(tmp_path):
 
 def test_verified_source_bytes_are_not_reopened_after_hashing(tmp_path, monkeypatch):
     bundle, context, rules = arrangement(tmp_path)
-    api = module("verify")
+    api = module("dispatch")
     original = api._read
 
     def replacing_read(directory, name, maximum):

@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-import hashlib
-import os
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import cast
 
 from trading_bot.config import LoadedConfig
 from trading_bot.config.hashing import hash_loaded_config
 from trading_bot.domain import DataHash
-from trading_bot.market_data.bundle_codec import _array, _digest, _json, _mapping, _string, _time
 from trading_bot.market_data.databento_bar_models import native_limits
-from trading_bot.market_data.databento_bar_store import _private_root, _read
-from trading_bot.market_data.databento_bar_wire import bounds
+from trading_bot.market_data.options_source_dispatch import (
+    _parse_source_snapshot,
+    _read_source_artifact,
+)
 from trading_bot.market_data.options_source_models import (
-    SourceClaim,
     SourceEvidenceBundle,
     SourceFinding,
     SourceInvalidation,
@@ -27,7 +24,6 @@ from trading_bot.market_data.options_source_models import (
     VerificationContext,
     check,
     instant,
-    window,
 )
 from trading_bot.market_data.options_source_rules import load_reviewed_rules, source_code_hash
 from trading_bot.market_data.recording import content_hash
@@ -67,74 +63,10 @@ def _snapshots(
     for reference in bundle.references + bundle.manifests:
         total += reference.byte_count
         check(total <= settings.max_input_bytes)
-        parent = _private_root(reference.path.parent, repository_root)
-        try:
-            encoded = _read(parent, reference.path.name, reference.byte_count)
-        finally:
-            os.close(parent)
-        check(
-            len(encoded) == reference.byte_count
-            and hashlib.sha256(encoded).hexdigest() == reference.sha256
+        bodies[reference.sha256] = _read_source_artifact(
+            reference, loaded=loaded, repository_root=repository_root
         )
-        bodies[reference.sha256] = encoded
     return bodies
-
-
-def _fixture_records(
-    claim: SourceClaim,
-    rule: SourceRule,
-    body: bytes,
-    context: VerificationContext,
-    loaded: LoadedConfig,
-) -> tuple[tuple[tuple[DataHash, DataHash], ...], tuple[SourceInvalidation, ...]]:
-    """Fixed synthetic protocol only. It cannot parse or qualify a provider dataset."""
-    check(rule.verifier_id == "synthetic-records-v1" and rule.source_id.startswith("synthetic."))
-    check(rule.schema == "synthetic-source-records-v1")
-    decoded = _json(
-        body,
-        max_bytes=loaded.config.options.research_shortlist.max_input_bytes,
-        limits=bounds(loaded),
-    )
-    check(type(decoded) is dict)
-    keys = {"schema", "source_id", "role", "era_start_ns", "era_end_ns", "records"}
-    if "invalidations" in cast(dict[str, object], decoded):
-        keys.add("invalidations")
-    wire = _mapping(decoded, keys)
-    check(
-        (wire["schema"], wire["source_id"], wire["role"], wire["era_start_ns"], wire["era_end_ns"])
-        == (rule.schema, rule.source_id, rule.role, rule.era_start_ns, rule.era_end_ns)
-    )
-    items = _array(wire["records"])
-    check(len(items) <= loaded.config.options.research_shortlist.max_input_records)
-    visible = []
-    latest_publication = 0
-    for value in items:
-        row = _mapping(
-            value, {"published_at_ns", "effective_start_ns", "effective_end_ns", "record"}
-        )
-        published = row["published_at_ns"]
-        start, end = cast(int, row["effective_start_ns"]), cast(int, row["effective_end_ns"])
-        window(start, end)
-        check(type(row["record"]) is dict)
-        if published is None:
-            continue
-        instant(cast(int, published))
-        if cast(int, published) > context.as_of_ns:
-            continue
-        if start <= context.start_ns and context.end_ns <= end:
-            visible.append((content_hash(row), content_hash(row["record"])))
-            latest_publication = max(latest_publication, cast(int, published))
-    check(not visible or latest_publication == claim.published_at_ns)
-    invalidations = []
-    for value in _array(wire.get("invalidations", [])):
-        row = _mapping(value, {"affected_hash", "discovered_at", "reason"})
-        invalidation = SourceInvalidation(
-            _digest(row["affected_hash"]), _time(row["discovered_at"]), _string(row["reason"])
-        )
-        check(invalidation.discovered_at <= claim.observed_at)
-        invalidations.append(invalidation)
-    check(len(invalidations) <= loaded.config.options.research_shortlist.max_input_records)
-    return tuple(sorted(set(visible))), tuple(invalidations)
 
 
 def _verify_with_rules(
@@ -198,13 +130,17 @@ def _verify_with_rules(
             continue
         try:
             parsed = tuple(
-                _fixture_records(claim, rule, bodies[raw_hash], context, loaded)
+                _parse_source_snapshot(
+                    claim, rule, bodies[raw_hash], context=context, loaded=loaded
+                )
                 for raw_hash in claim.raw_hashes
             )
-            envelopes = tuple(sorted({envelope for pairs, _ in parsed for envelope, _ in pairs}))
-            visible = tuple(sorted({fact for pairs, _ in parsed for _, fact in pairs}))
-            for _, observations in parsed:
-                for observation in observations:
+            envelopes = tuple(
+                sorted({envelope for facts in parsed for envelope, _ in facts.record_pairs})
+            )
+            visible = tuple(sorted({fact for facts in parsed for _, fact in facts.record_pairs}))
+            for facts in parsed:
+                for observation in facts.invalidations:
                     invalidations.add(observation)
                     if observation.affected_hash in visible:
                         since_epoch = observation.discovered_at - datetime(1970, 1, 1, tzinfo=UTC)
