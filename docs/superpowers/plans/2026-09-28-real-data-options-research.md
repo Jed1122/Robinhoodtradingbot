@@ -15,8 +15,9 @@ Keep acquisition outside the credential-free program and all trading capabilitie
 Parquet/DuckDB, existing optional QuantLib backend, pytest/Hypothesis, Typer.
 
 **Spec:** [Approved real-data design](../specs/2026-09-28-real-data-options-research-design.md).
-Written specification approved by the operator on 2026-09-28 UTC. This implementation
-plan awaits review; no new subsystem implementation is authorized by its publication.
+Written specification approved by the operator on 2026-09-28 UTC. The operator
+approved this implementation plan on 2026-09-29; native/inline execution proceeds
+within the unchanged authority and safety boundaries below.
 
 ## Global Constraints
 
@@ -519,5 +520,5 @@ the plan does not invent usable source protocols, a sufficient credit balance or
 Recommended execution: **native**, preserving the operator's prior selection and the
 single-owner protected-component boundary. Independent fixture/documentation reviews
 may run in parallel only after their exact interfaces and owned paths are committed.
-Please review this plan before implementation begins. Standing merge and credit-only
-purchase grants do not need to be requested again.
+The operator approved this plan on 2026-09-29. Standing merge and credit-only
+purchase grants do not need to be requested again within their recorded bounds.

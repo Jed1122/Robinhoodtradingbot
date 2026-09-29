@@ -1,6 +1,6 @@
 # Parallel Orchestration Transition Report
 
-## Current checkpoint — 2026-09-28 UTC
+## Current checkpoint — 2026-09-29 UTC
 
 This checkpoint supersedes conflicting current-status and authority statements in the
 historical snapshots below. The options-only [master specification](docs/options-only-build-spec.md)
@@ -8,7 +8,8 @@ governs the migration. The eight-task [native-data milestone](docs/options-nativ
 is implemented and fixture-tested within its bounded offline contract; actual-source
 qualification, complete option/underlying quote coverage, and genuine economic validation
 remain incomplete. The [real-data research design](docs/superpowers/specs/2026-09-28-real-data-options-research-design.md)
-was approved; its implementation plan awaits review. See [PR #2](https://github.com/Jed1122/Robinhoodtradingbot/pull/2)
+and [implementation plan](docs/superpowers/plans/2026-09-28-real-data-options-research.md)
+are approved; native execution is underway. See [PR #2](https://github.com/Jed1122/Robinhoodtradingbot/pull/2)
 for the exact integration head and current CI/review verdicts, not this historical snapshot.
 
 [Standing operator authority](docs/operator-authority.md) permits reviewed, in-scope
