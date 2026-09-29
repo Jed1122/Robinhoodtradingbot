@@ -107,7 +107,73 @@ SBOM generation uses temporary outputs; no deployment, acquisition or broker cal
 These are local results, not a claim of current remote CI, final whole-plan review,
 implemented Task 2 adapters or completed economic validation.
 
-### Actual private intake
+### Native event-quote archive — 2026-09-29
+
+The real-data plan's Task 3 now supplies library-only `stage_quotes` and
+`verify_quote_stage` in `market_data/databento_quote_store.py`. It accepts exact
+`NativeQuoteRequest` scopes for `OPRA.PILLAR/cmbp-1` SPY option raw symbols and
+`XNAS.ITCH/mbp-1` SPY underlying quotes. The latter is an exchange-specific feed,
+**not a claim of consolidated underlying NBBO**. There is no quote CLI, purchase,
+canonical quote consumer or economic evaluation in this slice.
+
+The `native-quotes-v1` manifest binds the existing loaded configuration, complete
+raw batch receipt/metadata/conditions/compressed input, and date-partitioned Parquet.
+Raw inputs are preserved in private, hash-addressed chunks of at most 1 MiB. Existing
+compressed/decompressed/metadata/record/part caps and the 10,000-row part ceiling
+remain unchanged. Publication uses the existing no-overwrite/fsync primitives;
+all inputs must be private and outside Git, with aliases and hardlinks rejected.
+No source file or prior bar archive is modified. A failed publication may leave
+complete unreferenced blobs; retry verifies/reuses them without publishing a partial
+manifest or deleting earlier artifacts.
+
+The pinned DBN 0.69.0 backend round-trips versions 1–3, retaining every original
+80-byte record (including reserved bytes), source ordinal, nanosecond timestamp,
+integer price, size, flag, action and dataset-specific field. Metadata schema and
+rtype are both checked. Request membership and dated raw-symbol mapping use the
+native receive/index timestamp; event time remains independent. Schema/version
+compatibility is not evidence that the provider supplied a historical era.
+
+Every occurrence survives, including byte-identical observations and timestamp/
+sequence ties. `adjacent_repeat_count` is diagnostic, not deduplication: one source
+message can yield multiple native records. At verification, every Parquet row is
+compared to a new decode of the exact preserved archive. A changed projection or
+ordinal is rejected even with self-consistent replacement manifest/part hashes.
+Queries use private snapshots, and DuckDB network/extension access stays disabled.
+
+Zero bids and locked books are retained observations. Undefined/invalid/crossed
+prices, missing sizes, incomplete event flags, bad timestamp/book flags and
+inconsistent OPRA normalization receive fixed quality reasons. Reset actions are
+retained as control records, never accepted entry quotes. `accepted_count` means
+only that these conservative intake checks passed; it does not establish a usable
+session, an initialized book, firm/executable prices, a fill, or a verified source.
+Unknown schemas/actions, unmapped identities, contradictory dated mappings,
+truncation, integrity failures and resource-limit breaches deny the entire stage.
+
+Current public [OPRA normalization](https://databento.com/docs/venues-and-datasets/opra-pillar),
+[MBP/CMBP layouts](https://databento.com/docs/schemas-and-data-formats/mbp-1), and
+[version-pinned publisher definitions](https://github.com/databento/dbn/blob/v0.69.0/rust/dbn/src/publishers.rs)
+inform these parser checks. They do not install Task 2 historical semantic rules.
+All production, promotion, download, live, historical-availability and economic
+eligibility remain false. Testing uses fabricated records only; no actual quote
+purchase or intake was performed, and Databento support was not contacted.
+
+Fresh local-workspace verification: 82 new quote cases pass; the mandatory locked
+research selection passes 580 tests without skips. The main suite passes 5,817 tests
+with 31 skips and one existing warning; 80.39% branch-enabled overall coverage and
+the unchanged 90% critical-module branch gate pass. Ruff, Mypy (268 files), Bandit,
+both unchanged lockfile checks and both registry dependency audits pass. The research
+registry audit excludes only the local editable project, which is tested and scanned
+locally. Documentation/SBOM/deployment checks pass 27 tests, with four encrypted-backup
+tests skipped because `age` is unavailable. Shell syntax and standalone Compose checks
+pass. These are local results including preserved unrelated workspace changes, not
+a claim of current remote CI or economic readiness.
+
+Next: complete provider/reference source qualification without support outreach;
+build the causal quote stream and freeze the study/coverage requirements; then verify
+fresh credits and complete costs before any authorized purchase. Historical
+after-cost accounting and uncertainty evaluation follow. Live trading remains blocked.
+
+### Previously acquired bar/definition intake
 
 After code review and the targeted fix pass, the new CLI imported the already-acquired
 `XNAS.ITCH` SPY minute bars for `[2018-05-01, 2026-01-01)` UTC:
