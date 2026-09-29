@@ -52,7 +52,13 @@ as an unbounded reference blob.
 No Task 2 adapter or its acceptance suite is claimed complete. Existing synthetic
 session/definition tests cover useful boundary cases but are not real-provider evidence.
 
-## Draft questions for Databento — not sent
+## Archived technical questions — do not send
+
+On 2026-09-29 the operator instructed that these questions must not be sent and
+reports affirmative answers. No support response was received, and support outreach
+is no longer a pending action. Preserve this as operator-provided information;
+the field-level protocols and historical applicability remain to be established
+from available documentation and data before enabling actual-source rules.
 
 1. For historical XNAS.ITCH minute bars covering 2018–2025, what documented bound
    establishes when each stored bar was first available, and how are later trade
@@ -69,12 +75,14 @@ session/definition tests cover useful boundary cases but are not real-provider e
    and explicit no-event coverage? Please identify existing documentation or required
    data products; do not initiate a purchase or subscription.
 
-Sending this draft to support would be a separate external communication. No support
-message has been sent and no response or historical guarantee is assumed.
+No support message has been sent. Do not send this archived draft unless the operator
+later changes the instruction. It remains a checklist for documentation/data review,
+not a questionnaire awaiting operator approval or a verified historical guarantee.
 
 ## Next work
 
-Resolve and pin each actual-source protocol independently. Fixture-only native quote
+Resolve and pin each actual-source protocol independently using available documentation
+and preserved data, without support outreach. Fixture-only native quote
 decoding/storage and causal-stream work can proceed without enabling source trust.
 Then freeze the study and complete quote coverage, verify total cost against fresh
 remaining credits, and acquire only a necessary package the working consumer can use.

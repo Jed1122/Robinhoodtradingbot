@@ -67,6 +67,19 @@ purchases are authorized. Additional unrelated future credit grants do not
 automatically enlarge this scope. Missing access or an undefined/unusable data
 package pauses only dependent acquisition, not credential-free development.
 
+## Databento support outreach — 2026-09-29 update
+
+The operator instructed that the proposed technical questions must not be sent to
+Databento support and reports that the answers are affirmative. Do not send those
+questions or treat outreach approval as pending. Retain the report as operator-provided
+information, not as a provider document or independently verified protocol.
+
+Continue the approved credential-free implementation and examine available public
+documentation and preserved data. Exact timestamp, correction, initialization,
+mapping and coverage rules still require reproducible evidence before actual-source
+qualification. This update does not install source rules, change risk limits or
+authorize live operation. The existing credit-only acquisition grant is unchanged.
+
 ## Unchanged boundaries
 
 No broker order review, placement, cancellation, real-money test trade, transfer,
