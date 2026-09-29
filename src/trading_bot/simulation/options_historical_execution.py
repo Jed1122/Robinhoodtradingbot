@@ -166,7 +166,8 @@ def _fill(
     if (
         order.accepted_ns is None
         or not event.can_follow(order.accepted_ns)
-        or event.event_ns <= order.decision_ns
+        # A late receipt cannot make pre-acceptance market liquidity executable.
+        or event.event_ns <= order.accepted_ns
         or event.available_ns < order.decision_ns + scenario.latency_ns
         or event.event_ns < order.decision_ns + scenario.latency_ns
         or event.available_ns >= _ns(order.intent.expires_at)

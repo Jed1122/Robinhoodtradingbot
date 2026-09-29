@@ -295,3 +295,32 @@ def test_due_cancel_follows_partial_fill_at_same_event(tmp_path, monkeypatch):
     assert result.cash_flow == Decimal("-25.50") and result.fee == Decimal("0.50")
     later = execution.advance_order(result.order, events[4], scenario=s, seed=7)
     assert later.fill_units == 0 and later.order == result.order
+
+
+@pytest.mark.parametrize("market_offset", [1, 3])
+def test_delayed_preacceptance_or_exact_acceptance_quote_cannot_fill(
+    tmp_path, monkeypatch, market_offset
+):
+    from trading_bot.market_data.options_source_verify import ceil_available_at
+
+    execution, proposed, events = arrangement(tmp_path, monkeypatch)
+    s = scenario(acknowledgement_ns=3)
+    ack = execution.advance_order(proposed.order, events[2], scenario=s, seed=7)
+    assert ack.order.accepted_ns == events[2].available_ns
+    template = events[4]
+    record = template.record
+    assert record is not None
+    event_ns = proposed.order.decision_ns + market_offset
+    delayed = replace(
+        template,
+        event_ns=event_ns,
+        record=replace(
+            record,
+            event_at=ceil_available_at(event_ns),
+            value=replace(record.value, event_at=ceil_available_at(event_ns)),
+        ),
+    )
+    denied = execution.advance_order(ack.order, delayed, scenario=s, seed=7)
+    assert denied.fill_units == 0 and denied.order.state is OrderState.SUBMITTED
+    later = execution.advance_order(denied.order, events[5], scenario=s, seed=7)
+    assert later.fill_units == 1
