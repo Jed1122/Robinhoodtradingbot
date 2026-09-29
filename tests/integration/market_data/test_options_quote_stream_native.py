@@ -15,7 +15,7 @@ from trading_bot.market_data.options_source_models import SourceEvidenceError
 pytest.importorskip("duckdb")
 
 
-def archives(tmp_path):
+def archives(tmp_path, *, condition_states=None):
     paths = {}
     for underlying in (True, False):
         label = "underlying" if underlying else "options"
@@ -55,7 +55,13 @@ def archives(tmp_path):
         )
         (source / "condition.json").write_text(
             json.dumps(
-                [{"date": "2024-01-02", "condition": "available", "last_modified_date": None}]
+                [
+                    {
+                        "date": "2024-01-02",
+                        "condition": (condition_states or {}).get(label, "available"),
+                        "last_modified_date": None,
+                    }
+                ]
             )
         )
         receipts = []
@@ -93,6 +99,20 @@ def test_real_native_snapshots_produce_only_fixture_events(tmp_path, monkeypatch
     assert len([v for v in result if v.record]) == 2
     assert all(v.record.source_kind == "synthetic" for v in result if v.record)
     assert all(not v.economic_evidence and not v.production_eligible for v in result)
+
+
+@pytest.mark.parametrize("feed", ["options", "underlying"])
+@pytest.mark.parametrize("condition", ["degraded", "missing"])
+def test_provider_warning_blocks_native_rows_before_first_event(
+    tmp_path, monkeypatch, feed, condition
+):
+    paths = archives(tmp_path, condition_states={feed: condition})
+    request_value, loaded = setup(tmp_path, monkeypatch, native_stages=paths)
+    from trading_bot.market_data.options_quote_stream import iter_quote_events
+
+    stream = iter_quote_events(request_value, loaded=loaded, repository_root=ROOT)
+    with pytest.raises(SourceEvidenceError):
+        next(stream)
 
 
 @pytest.mark.parametrize("target", ["part", "blob"])

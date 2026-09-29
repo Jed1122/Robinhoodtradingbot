@@ -23,6 +23,7 @@ from trading_bot.market_data.options_source_models import (
 )
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.options_acquisition_models import CoverageSemantics
+from trading_bot.research.options_shortlist_models import ShortlistAction
 
 CAPITAL_TIERS = tuple(Decimal(n) for n in (100, 500, 1000, 2500, 5000, 10000, 25000, 50000))
 REJECTION_CRITERIA = (
@@ -126,6 +127,8 @@ class VerifiedHistoryCoverage:
     actions_coverage_hash: DataHash
     source_bundle: SourceEvidenceBundle
     context: VerificationContext
+    actions: tuple[ShortlistAction, ...] = ()
+    visible_claim_hashes: tuple[DataHash, ...] = ()
 
     def __post_init__(self) -> None:
         window(self.start_ns, self.end_ns)
@@ -140,6 +143,9 @@ class VerifiedHistoryCoverage:
         check(_ns(self.sessions[-1].closes_at) < self.end_ns)
         check(all(_ns(o.available_at) <= self.end_ns for o in self.observations))
         hashes((self.actions_coverage_hash,))
+        check(type(self.actions) is tuple and len(self.actions) <= 25000)
+        check(all(type(a) is ShortlistAction for a in self.actions))
+        hashes(self.visible_claim_hashes)
         check(type(self.source_bundle) is SourceEvidenceBundle)
         check(type(self.context) is VerificationContext)
         check(
@@ -148,16 +154,30 @@ class VerifiedHistoryCoverage:
         )
 
     @property
+    def actions_fact(self) -> dict[str, object]:
+        """Exact history scope, including an explicit empty action coverage assertion."""
+        return {
+            "kind": "history-actions-v1",
+            "underlying": "SPY",
+            "start_ns": self.start_ns,
+            "end_ns": self.end_ns,
+            "adjustment": "unadjusted",
+            "actions": self.actions,
+        }
+
+    @property
     def history_hash(self) -> DataHash:
         return content_hash(
             {
-                "schema": "options-observed-history-v1",
+                "schema": "options-observed-history-v2",
                 "observations": self.observations,
                 "sessions": self.sessions,
                 "start_ns": self.start_ns,
                 "end_ns": self.end_ns,
                 "actions_coverage_hash": self.actions_coverage_hash,
+                "actions": self.actions_fact,
                 "context": self.context,
+                "visible_claim_hashes": self.visible_claim_hashes,
                 "source_hashes": tuple(
                     sorted(
                         r.sha256

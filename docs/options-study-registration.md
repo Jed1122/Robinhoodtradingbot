@@ -33,6 +33,13 @@ installed source verifier. Duplicate session dates, bar identities and overlappi
 native observations cannot inflate the count. Interpolated or non-daily bars deny.
 Calendar, publication and actions coverage are independently required.
 
+The `options-observed-history-v2` preimage retains the exact SPY/unadjusted action
+coverage window and its typed actions (including explicit empty coverage), plus
+the source verifier's causal claim hashes. Registration recomputes those claims;
+identical file bytes do not permit substituting different coverage/provenance.
+Earlier study files remain readable, but their previous history/code identities
+cannot qualify under the changed verifier and require a new registration.
+
 Registration checks 750 observed daily bars, the declared and verified 3,650-day
 history span, five chronological test folds of at least 50 sessions, and a separate
 final test of at least 50. Training outcomes plus embargo must end before each test;
@@ -44,6 +51,9 @@ proof of sufficient independent outcomes; that evaluation remains a later stage.
 artifacts. Qualification declarations with failed prerequisites deny. An explicitly
 labelled engineering pilot may retain insufficient-history/split diagnostics but
 cannot ignore source-integrity or identity failures. Known late registration denies.
+Synthetic history adds `study_sources_not_genuine` to qualification declarations
+and their v2 acquisition diagnostics; such declarations cannot be frozen. Fixtures
+can be frozen only as explicitly non-qualifying engineering pilots.
 The declaration alone cannot prove an operator never inspected outcomes outside the
 program: the later consumer must enforce its freeze-before-open access journal.
 

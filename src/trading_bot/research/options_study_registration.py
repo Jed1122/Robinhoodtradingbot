@@ -98,10 +98,14 @@ def validate_study_registration(
     study_settings(loaded)
     check(type(spec) is OptionsStudySpec and type(history) is VerifiedHistoryCoverage)
     limit = loaded.config.options.research_shortlist
-    check(len(canonical_json((spec, history.observations)).encode()) <= limit.max_input_bytes)
+    check(
+        len(canonical_json((spec, history.observations, history.actions)).encode())
+        <= limit.max_input_bytes
+    )
     check(
         len(spec.decision_sessions)
         + len(history.observations)
+        + len(history.actions)
         + sum(len(f.train_session_ids) + len(f.test_session_ids) for f in spec.folds)
         <= limit.max_input_records
     )
@@ -134,13 +138,14 @@ def validate_study_registration(
     }
     history_ok = (
         verified.status == "verified"
+        and history.visible_claim_hashes == verified.visible_claim_hashes
+        and bool(history.visible_claim_hashes)
         and _fact(verified, "calendar", calendar)
-        and history.actions_coverage_hash in verified.record_hashes
-        and any(
-            f.role == "actions"
-            and f.status == "verified"
-            and history.actions_coverage_hash in f.visible_hashes
-            for f in verified.findings
+        and history.actions_coverage_hash == content_hash(history.actions_fact)
+        and _fact(verified, "actions", history.actions_fact)
+        and all(
+            a.action.instrument_id == "SPY" and _ns(a.available_at) <= history.end_ns
+            for a in history.actions
         )
         and all(
             _fact(
@@ -197,6 +202,8 @@ def validate_study_registration(
     genuine = history_ok and all(
         not c.source_id.startswith("synthetic.") for c in history.source_bundle.claims
     )
+    if spec.purpose == "qualification" and not genuine:
+        reasons.add("study_sources_not_genuine")
     return StudyRegistrationReport(
         spec.study_hash, history.history_hash, count, days, genuine, tuple(sorted(reasons))
     )

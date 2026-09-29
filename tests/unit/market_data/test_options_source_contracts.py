@@ -3,6 +3,7 @@
 import json
 from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -91,3 +92,26 @@ def test_claim_publication_cannot_postdate_its_observation(tmp_path):
     bundle, _, _ = arrangement(tmp_path)
     with pytest.raises(ValueError):
         replace(bundle.claims[0], observed_at=datetime(2020, 1, 1, tzinfo=UTC))
+
+
+@pytest.mark.parametrize(
+    "dependency", ["market_data/databento_native_rows.py", "domain/options.py"]
+)
+def test_changed_transitive_quote_dependency_invalidates_source_context(
+    tmp_path, monkeypatch, dependency
+):
+    from tests.unit.market_data._options_source_fixtures import ROOT, verify_fixture_bundle
+
+    bundle, context, rules = arrangement(tmp_path)
+    assert verify_fixture_bundle(bundle, context, rules).status == "verified"
+    changed_path = ROOT / "src" / "trading_bot" / dependency
+    original_read = Path.read_bytes
+
+    def installed_source(path):
+        body = original_read(path)
+        return body + b"\n# changed installed dependency\n" if path == changed_path else body
+
+    monkeypatch.setattr(Path, "read_bytes", installed_source)
+    result = verify_fixture_bundle(bundle, context, rules)
+    assert result.status == "denied"
+    assert result.reasons == ("source_scope_mismatch",)

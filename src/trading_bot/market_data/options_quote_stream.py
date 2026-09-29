@@ -341,6 +341,16 @@ def iter_quote_events(
                     else tuple(sorted(c.standardized_id for c in request.contracts))
                 )
                 check(dataset.request.symbols == expected)
+                # Preserved provider warnings are not cured by rows being present.
+                # Check both feeds before yielding even the first boundary event.
+                for session in request.sessions:
+                    if _ns(session.opens_at) < request.end_ns and request.start_ns < _ns(
+                        session.closes_at
+                    ):
+                        conditions = tuple(
+                            c for c in dataset.conditions if c.trading_date == session.trading_date
+                        )
+                        check(len(conditions) == 1 and conditions[0].state == "available")
                 if is_underlying:
                     books["SPY"] = _Book(feed, "SPY", None)
                 else:

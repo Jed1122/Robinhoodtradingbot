@@ -17,6 +17,7 @@ from tests.unit.market_data._options_source_fixtures import (
     private_file,
     verified_facts,
 )
+from trading_bot.market_data.databento_bar_models import NativeCondition
 from trading_bot.market_data.databento_quote_models import NativeQuoteRequest, NativeQuoteRow
 from trading_bot.market_data.options_source_models import SourceEvidenceError, SourceRule
 from trading_bot.market_data.recording import canonical_json
@@ -100,6 +101,7 @@ def setup(
     underlying=None,
     end_offset=60 * NS,
     native_stages=None,
+    condition_states=("available",),
 ):
     stream = api()
     loaded = config()
@@ -157,6 +159,9 @@ def setup(
             ),
             profile=SimpleNamespace(raw_hash=("b" if is_underlying else "c") * 64),
             config_hash=loaded.config_hash,
+            conditions=tuple(
+                NativeCondition(session.trading_date, state, None) for state in condition_states
+            ),
         )
         observations[manifest.sha256] = tuple(rows)
     bundle, verified = verified_facts(
@@ -219,6 +224,16 @@ def events(request, loaded):
 
 def option_events(values):
     return [v for v in values if v.symbol == SYMBOL]
+
+
+@pytest.mark.parametrize("states", [(), ("degraded",), ("missing",), ("available", "available")])
+def test_exact_available_date_coverage_is_required_before_first_event(
+    tmp_path, monkeypatch, states
+):
+    request, loaded = setup(tmp_path, monkeypatch, condition_states=states)
+    stream = api().iter_quote_events(request, loaded=loaded, repository_root=ROOT)
+    with pytest.raises(SourceEvidenceError):
+        next(stream)
 
 
 def test_reset_does_not_carry_last_quote(tmp_path, monkeypatch):

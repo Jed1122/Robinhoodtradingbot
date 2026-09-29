@@ -41,7 +41,7 @@ def session(day):
     )
 
 
-def arrangement(tmp_path, monkeypatch, count=750):
+def arrangement(tmp_path, monkeypatch, count=750, *, action_changes=None, retained_actions=()):
     import trading_bot.market_data.options_source_verify as verifier
     from tests.unit.market_data import _options_source_fixtures as fixtures
 
@@ -80,11 +80,13 @@ def arrangement(tmp_path, monkeypatch, count=750):
     end_ns = _ns(decisions[0].opens_at)
     actions = {
         "kind": "history-actions-v1",
+        "underlying": "SPY",
         "start_ns": start_ns,
         "end_ns": end_ns,
         "adjustment": "unadjusted",
-        "actions": [],
+        "actions": retained_actions,
     }
+    actions.update(action_changes or {})
     availability = {"kind": "study-availability-v1", "sessions": decisions}
     bundle, verified = fixtures.verified_facts(
         tmp_path / "sources",
@@ -130,6 +132,8 @@ def arrangement(tmp_path, monkeypatch, count=750):
         content_hash(actions),
         bundle,
         verified.context,
+        actions=retained_actions,
+        visible_claim_hashes=verified.visible_claim_hashes,
     )
     folds = tuple(
         models.StudyFold(
@@ -255,6 +259,7 @@ def test_freeze_is_private_immutable_and_rechecks_input_bytes(tmp_path, monkeypa
     from tests.unit.market_data._options_source_fixtures import ROOT
 
     spec, history, loaded = arrangement(tmp_path, monkeypatch)
+    spec = replace(spec, purpose="engineering_pilot")
     output = tmp_path / "registered"
     output.mkdir(mode=0o700)
     freeze = api().freeze_options_study
@@ -282,6 +287,88 @@ def test_pilot_is_not_silently_promoted(tmp_path, monkeypatch):
     assert result.economic_eligible is False
 
 
+def test_synthetic_history_cannot_freeze_a_qualification_study(tmp_path, monkeypatch):
+    from tests.unit.market_data._options_source_fixtures import ROOT
+
+    spec, history, loaded = arrangement(tmp_path, monkeypatch)
+    result = report(spec, history, loaded)
+    assert result.genuine_sources is False
+    assert "study_sources_not_genuine" in result.reasons
+    output = tmp_path / "disallowed"
+    output.mkdir(mode=0o700)
+    with pytest.raises(SourceEvidenceError):
+        api().freeze_options_study(
+            spec, history=history, loaded=loaded, output_root=output, repository_root=ROOT
+        )
+    assert not tuple(output.iterdir())
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"underlying": "AAPL"},
+        {"start_ns": 1},
+        {"end_ns": 2**63 - 1},
+        {"adjustment": "split_adjusted"},
+        {"kind": "unrelated-action-fact"},
+    ],
+)
+def test_unrelated_verified_action_fact_cannot_establish_history(tmp_path, monkeypatch, changes):
+    spec, history, loaded = arrangement(tmp_path, monkeypatch, action_changes=changes)
+    result = report(spec, history, loaded)
+    assert "study_history_unverified" in result.reasons
+    assert result.observed_daily_bars == 0
+
+
+def test_changed_valid_claim_scope_cannot_reuse_frozen_history(tmp_path, monkeypatch):
+    from tests.unit.market_data._options_source_fixtures import ROOT
+    from trading_bot.market_data.options_source_verify import verify_source_bundle
+
+    spec, history, loaded = arrangement(tmp_path, monkeypatch)
+    bundle = history.source_bundle
+    changed_bundle = replace(
+        bundle,
+        claims=(
+            replace(bundle.claims[0], effective_start_ns=history.start_ns - 1),
+            *bundle.claims[1:],
+        ),
+    )
+    verified = verify_source_bundle(
+        changed_bundle, context=history.context, loaded=loaded, repository_root=ROOT
+    )
+    assert verified.status == "verified"  # Same bytes still satisfy the changed, wider claim.
+    changed = replace(history, source_bundle=changed_bundle)
+    assert "study_history_unverified" in report(spec, changed, loaded).reasons
+    rebound = replace(changed, visible_claim_hashes=verified.visible_claim_hashes)
+    assert rebound.history_hash != history.history_hash
+    assert "study_identity_mismatch" in report(spec, rebound, loaded).reasons
+
+
+def test_verified_dividend_cannot_be_omitted_from_history_preimage(tmp_path, monkeypatch):
+    from trading_bot.domain import CorporateAction
+    from trading_bot.research.options_shortlist_models import ShortlistAction
+
+    action = ShortlistAction(
+        CorporateAction(
+            "SPY",
+            "dividend",
+            date(2019, 1, 3),
+            datetime(2019, 1, 1, tzinfo=UTC),
+            None,
+            Decimal("1.00"),
+            content_hash("fixture-dividend"),
+        ),
+        datetime(2019, 1, 1, tzinfo=UTC),
+    )
+    spec, history, loaded = arrangement(tmp_path, monkeypatch, retained_actions=(action,))
+    assert "study_history_unverified" not in report(spec, history, loaded).reasons
+    omitted = replace(history, actions=())
+    assert omitted.history_hash != history.history_hash
+    # Updating the declared hash alone still cannot change source-established facts.
+    altered_spec = replace(spec, history_hash=omitted.history_hash)
+    assert "study_history_unverified" in report(altered_spec, omitted, loaded).reasons
+
+
 def test_unreviewed_source_rules_remain_denied(tmp_path, monkeypatch):
     spec, history, loaded = arrangement(tmp_path, monkeypatch)
     import trading_bot.market_data.options_source_verify as verifier
@@ -304,6 +391,7 @@ def test_v2_missing_selections_preserves_each_missing_session(tmp_path, monkeypa
     assert value.schema == "options-acquisition-manifest-v2"
     assert set(value.missing_sessions) == {s.session_id for s in spec.decision_sessions}
     assert "selection_sessions_incomplete" in value.reasons
+    assert "study_sources_not_genuine" in value.reasons
     assert value.download_authorized is False and value.economic_eligible is False
 
 

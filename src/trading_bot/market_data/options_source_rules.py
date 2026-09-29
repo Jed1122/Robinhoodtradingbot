@@ -7,31 +7,6 @@ from trading_bot.domain import DataHash
 from trading_bot.market_data.options_source_models import SourceEvidenceError, SourceRule
 from trading_bot.market_data.recording import content_hash
 
-_SOURCE_FILES = (
-    "config/hashing.py",
-    "config/loader.py",
-    "config/models.py",
-    "market_data/options_source_models.py",
-    "market_data/options_source_wire.py",
-    "market_data/options_source_rules.py",
-    "market_data/options_source_verify.py",
-    "market_data/options_source_dispatch.py",
-    "market_data/options_quote_stream_models.py",
-    "market_data/options_quote_stream.py",
-    "market_data/databento_quote_models.py",
-    "market_data/databento_quote_metadata.py",
-    "market_data/databento_quotes.py",
-    "market_data/databento_quote_wire.py",
-    "market_data/databento_quote_archive.py",
-    "market_data/databento_quote_store.py",
-    "market_data/databento_bar_models.py",
-    "market_data/databento_bar_store.py",
-    "market_data/databento_bar_wire.py",
-    "market_data/bundle_store.py",
-    "market_data/bundle_codec.py",
-    "market_data/recording.py",
-)
-
 
 def load_reviewed_rules() -> tuple[SourceRule, ...]:
     """Missing reviewed source-era evidence is a real-data blocker, not inferred approval."""
@@ -43,14 +18,21 @@ def reviewed_rulebook_hash() -> DataHash:
 
 
 def source_code_hash() -> DataHash:
-    """Fixed installed-source identity, not a deployment signature or trust certificate."""
+    """Whole installed Python boundary; no transitive consumer helper is omitted.
+
+    Unrelated Python changes also invalidate earlier verification contexts. This
+    conservative identity is not a deployment signature or trust certificate.
+    """
     try:
         root = Path(__file__).resolve().parents[1]
         return content_hash(
-            tuple(
-                (name, hashlib.sha256((root / name).read_bytes()).hexdigest())
-                for name in _SOURCE_FILES
-            )
+            {
+                "schema": "options-source-code-v2",
+                "files": tuple(
+                    (str(path.relative_to(root)), hashlib.sha256(path.read_bytes()).hexdigest())
+                    for path in sorted(root.rglob("*.py"))
+                ),
+            }
         )
     except Exception:
         raise SourceEvidenceError() from None

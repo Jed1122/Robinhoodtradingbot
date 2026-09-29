@@ -42,6 +42,7 @@ REASONS = frozenset(
         "study_identity_mismatch",
         "study_availability_unverified",
         "study_history_unverified",
+        "study_sources_not_genuine",
         "study_splits_invalid",
     }
 )

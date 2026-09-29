@@ -538,6 +538,17 @@ every archived raw/Parquet part before emitting its first event. Restarting the
 iterator rechecks everything; a prior successful verification is not a reusable
 trust token. The two archive cursors and one deadline per symbol bound memory.
 
+Before the first event, both archives must contain exactly one `available` condition
+for every requested overlapping session date. Degraded, missing, absent or duplicate
+conditions deny the stream even when quote rows exist. Retaining those rows at intake
+does not make them executable. An `available` label is still not sufficient to qualify
+source semantics or establish uninterrupted feed health.
+
+The versioned source-code identity covers the entire installed Python package,
+including transitive row decoders and domain quote-quality helpers. Changing any
+Python module invalidates older verification contexts; no saved evidence is silently
+reused under changed consumer behavior.
+
 The consumer preserves native ordinals and nanosecond ordering. Datetime projections
 round upward. `can_follow` requires strictly later availability than the decision;
 it is an ordering/quality predicate, not a simulated fill or execution capability.
