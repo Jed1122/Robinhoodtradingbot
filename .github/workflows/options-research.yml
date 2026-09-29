@@ -62,5 +62,7 @@ jobs:
           tests/unit/research/test_options_shortlist_v2_wire.py
           tests/unit/research/test_options_acquisition.py
           tests/unit/research/test_options_acquisition_wire.py
+          tests/unit/research/test_options_study_registration.py
+          tests/unit/config/test_options_study_config.py
           tests/integration/cli/test_options_native.py
           tests/integration/research/test_native_options_pipeline.py

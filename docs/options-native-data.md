@@ -554,7 +554,9 @@ qualification dependencies; silence is not evidence of a healthy unchanged quote
 Exchange-specific underlying data is never relabelled NBBO. Every emitted event
 keeps production, economic, promotion and live-authorization flags false.
 
-Next: freeze the study, derive actual history coverage, and implement complete
-acquisition coverage. Purchase remains gated on source qualification, a working
-consumer and the full cost fitting freshly verified applicable credits. Historical
-execution/accounting, after-cost uncertainty and genuine validation are not complete.
+The subsequent [study registration and v2 coverage library](options-study-registration.md)
+now binds observed daily history, exact splits and complete paired-contract data
+obligations. This is fixture-validated infrastructure, not actual qualified history.
+Purchase remains gated on source qualification, a working consumer and the full cost
+fitting freshly verified applicable credits. Historical execution/accounting,
+after-cost uncertainty and genuine validation are not complete.

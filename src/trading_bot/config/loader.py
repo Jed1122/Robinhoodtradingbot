@@ -336,6 +336,17 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
         if getattr(shortlist, name) != getattr(shortlist_bound, name):
             raise UnsafeConfiguration("options shortlist policy is not release-allowed")
 
+    study = config.options.research_study
+    study_bound = envelope.options.research_study
+    _require_not_enabled("options.research_study.enabled", study.enabled, study_bound.enabled)
+    _require_at_least(
+        "options.research_study.confidence_level_pct",
+        study.confidence_level_pct,
+        study_bound.confidence_level_pct,
+    )
+    if study.exit_policy != study_bound.exit_policy:
+        raise UnsafeConfiguration("options study exit policy is not release-allowed")
+
     max_pairs = (
         (
             "portfolio.expected_starting_equity_usd",

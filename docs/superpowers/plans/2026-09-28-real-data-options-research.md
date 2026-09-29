@@ -180,20 +180,20 @@ loaded: LoadedConfig, repository_root: Path) -> Path` returns a manifest path.
 -> VerifiedQuoteStage` returns hash, request, part identities and quality counts,
 not economic eligibility. Wire schema: `native-quotes-v1`.
 
-- [ ] Write literal fixtures for zero bid, lock, cross, sentinel price, schema mismatch,
+- [x] Write literal fixtures for zero bid, lock, cross, sentinel price, schema mismatch,
   duplicate/conflict, bad timestamp/book flags, truncation, nanosecond ties and reset.
   Assert exact retained integers and rejected counts; never convert prices through float.
   For a zero-bid fixture: `assert row.bid_px == 0` and
   `assert profile.rejected_count == 0` (entry eligibility is tested separately).
-- [ ] Run the two files and see decoder/storage failures before writing the implementation.
-- [ ] Implement OPRA consolidated event quote and explicitly identified underlying
+- [x] Run the two files and see decoder/storage failures before writing the implementation.
+- [x] Implement OPRA consolidated event quote and explicitly identified underlying
   quote schema adapters only; unsupported schemas deny. Reuse native I/O limits,
   private directory/file and atomic publication primitives without changing bar archives.
   Respect the existing 10,000-row/part and other configured caps; split larger acquisitions
   into bounded native datasets instead of increasing limits implicitly.
-- [ ] Test part replacement, alias/symlink/hardlink rejection, disk-full/interrupt retry,
+- [x] Test part replacement, alias/symlink/hardlink rejection, disk-full/interrupt retry,
   idempotent publication, bounded decompression and DuckDB network/extension denial.
-- [ ] Run both files and native bar/store regressions; commit `feat: preserve native options quote archives`.
+- [x] Run both files and native bar/store regressions; commit `feat: preserve native options quote archives`.
 
 ## Task 4: Causal initialized quote stream
 
@@ -209,17 +209,22 @@ QuoteStreamRequest, *, loaded: LoadedConfig, repository_root: Path)
 `OptionsDataRecord`, and quality reasons. Canonical datetime projection uses ceiling,
 never truncation that makes data available early; ordering retains native nanoseconds.
 
-- [ ] Write `test_reset_does_not_carry_last_quote`, `test_missing_feed_is_not_unchanged_quote`,
+- [x] Write `test_reset_does_not_carry_last_quote`, `test_missing_feed_is_not_unchanged_quote`,
   `test_same_timestamp_cannot_fill_earlier`, and `test_mutated_part_invalidates_resume`.
   Assert no executable quote before complete initialization or after an unresolved gap.
   Representative assertion: `assert after_reset.record is None`.
-- [ ] Run the new test file; confirm the missing stateful stream fails.
-- [ ] Implement deterministic ordered merge, explicit initialization/reset semantics,
+- [x] Run the new test file; confirm the missing stateful stream fails.
+- [x] Implement deterministic ordered merge, explicit initialization/reset semantics,
   canonical age/skew checks and original source identities. An exchange-specific
   underlying quote remains labelled exchange-specific. Do not infer NBBO.
-- [ ] Run stream and Task 3 tests plus `tests/unit/market_data/test_options_records.py`;
+- [x] Run stream and Task 3 tests plus `tests/unit/market_data/test_options_records.py`;
   verify future corrections cannot alter earlier visible event decisions.
-- [ ] Commit `feat: build causal verified options quote streams`.
+- [x] Commit `feat: build causal verified options quote streams`.
+
+Task 4 checkpoint: `3944ad9`, 198 relevant tests passed. Immutable models are in
+`options_quote_stream_models.py`; real native-to-stream integrity regressions are
+in `tests/integration/market_data/test_options_quote_stream_native.py`. Initialization
+is fixture-protocol-qualified only; native flags do not install actual-source trust.
 
 ## Task 5: Frozen study, history counts and complete coverage
 
@@ -242,13 +247,13 @@ output_root: Path, repository_root: Path) -> DataHash` is immutable local public
 history: VerifiedHistoryCoverage, loaded: LoadedConfig) -> CoverageManifest` uses
 versioned v2 coverage requirements; keep v1 qualification denied and readable.
 
-- [ ] Write tests for 749 versus 750 distinct observed daily bars, insufficient folds,
+- [x] Write tests for 749 versus 750 distinct observed daily bars, insufficient folds,
   overlapping observation identities, shortened declared history, changed consumer,
   duplicated coverage, holdout mutation and late registration. Assert missing facts
   produce explicit denial, not `requirements_complete` from session counts alone.
   Representative assertion: `assert "research_history_insufficient" in manifest.reasons`.
-- [ ] Run both new files; observe failure before adding schema/configuration.
-- [ ] Add `options.research_study` to the existing graph: disabled by default,
+- [x] Run both new files; observe failure before adding schema/configuration.
+- [x] Add `options.research_study` to the existing graph: disabled by default,
   `exit_policy=signal_invalidation_or_prior_session_expiry`,
   `confidence_level_pct=95`, and immutable false execution/promotion flags. Existing
   study resource ceilings come from native/shortlist config; scenario numbers must be
@@ -256,16 +261,16 @@ versioned v2 coverage requirements; keep v1 qualification denied and readable.
   Enable the new subtree only in the new simulation profile, alongside native intake
   and shortlist; stock/crypto/prediction entries and live remain disabled. Base and
   production profiles keep the new study feature disabled.
-- [ ] Freeze the data-availability-selected decision range before quote outcomes are
+- [x] Freeze the data-availability-selected decision range before quote outcomes are
   read. Require five chronological walk-forward tests of at least 50 sessions each,
   followed by a distinct untouched final test of at least the same configured minimum.
   Warmup must satisfy 750 actual prior daily bars and the 3,650-day declared/verified
   history requirement; folds do not substitute for feature warmup. Purge/embargo by
   complete outcome horizon. If availability cannot meet this, issue a non-qualifying pilot.
-- [ ] Derive both shortlisted candidates' initialization/entry/monitoring/exit/expiry/
+- [x] Derive both shortlisted candidates' initialization/entry/monitoring/exit/expiry/
   settlement windows plus underlying/references. Preserve gaps and all missing/denied
   sessions. Run registration/config/acquisition/shortlist suites and legacy hash tests.
-- [ ] Commit `feat: freeze options studies with observed history coverage`.
+- [x] Commit `feat: freeze options studies with observed history coverage`.
 
 ## Task 6: Credit-bounded narrow pilot and capital evidence
 

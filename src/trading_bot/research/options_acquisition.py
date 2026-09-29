@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 from trading_bot.config import LoadedConfig
 from trading_bot.config.hashing import hash_loaded_config
@@ -14,8 +15,12 @@ from trading_bot.research.options_acquisition_models import (
     CoverageManifest,
     CoverageRequirement,
     CoverageWindow,
+    StudyCoverageManifest,
     StudyCoverageRequirements,
 )
+
+if TYPE_CHECKING:
+    from trading_bot.research.options_study_models import OptionsStudySpec, VerifiedHistoryCoverage
 from trading_bot.research.options_shortlist_v2 import (
     VerifiedShortlistResult,
     verified_shortlist_code_hash,
@@ -340,3 +345,16 @@ def build_coverage_manifest(
         content_hash(study),
         minimums,
     )
+
+
+def plan_options_study_coverage(
+    spec: "OptionsStudySpec",
+    *,
+    shortlists: tuple[VerifiedShortlistResult, ...],
+    history: "VerifiedHistoryCoverage",
+    loaded: LoadedConfig,
+) -> StudyCoverageManifest:
+    """V2 adds reverified history/split constraints; v1 qualification stays denied."""
+    from trading_bot.research.options_study_coverage import plan_study_coverage
+
+    return plan_study_coverage(spec, shortlists=shortlists, history=history, loaded=loaded)

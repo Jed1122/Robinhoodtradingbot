@@ -14,6 +14,7 @@ from trading_bot.research.options_acquisition_models import (
     CoverageRequirement,
     CoverageSemantics,
     CoverageWindow,
+    StudyCoverageManifest,
     StudyCoverageRequirements,
 )
 
@@ -66,5 +67,5 @@ def decode_coverage_requirements(body: bytes, *, loaded: LoadedConfig) -> StudyC
 
 
 def encode_coverage_manifest(manifest: CoverageManifest) -> bytes:
-    check(type(manifest) is CoverageManifest)
+    check(type(manifest) in (CoverageManifest, StudyCoverageManifest))
     return canonical_json({**asdict(manifest), "manifest_hash": manifest.manifest_hash}).encode()

@@ -486,6 +486,16 @@ class OptionsNativeDataSettings(StrictModel):
     max_manifest_bytes: StrictInt = Field(ge=1, le=16777216)
 
 
+class OptionsStudySettings(StrictModel):
+    """Preregistered offline hypothesis; whole-percent confidence, never execution."""
+
+    enabled: StrictBool
+    exit_policy: Literal["signal_invalidation_or_prior_session_expiry"]
+    confidence_level_pct: Pct = Field(ge=95, lt=100)
+    execution_enabled: StrictFalse
+    evidence_promotable: StrictFalse
+
+
 class OptionsSettings(StrictModel):
     """Options-only research extension; all percentages use whole-percent units."""
 
@@ -509,6 +519,7 @@ class OptionsSettings(StrictModel):
     overnight_session_entries_enabled: StrictFalse
     research_shortlist: OptionsShortlistSettings
     native_data: OptionsNativeDataSettings
+    research_study: OptionsStudySettings
 
     @model_validator(mode="after")
     def validate_risk_hierarchy(self) -> Self:
@@ -550,6 +561,13 @@ class AppConfig(StrictModel):
 
     @model_validator(mode="after")
     def live_flag_never_unpauses_startup(self) -> Self:
+        if self.options.research_study.enabled and (
+            not self.options.enabled
+            or not self.options.native_data.enabled
+            or not self.options.research_shortlist.enabled
+            or self.mode not in {ExecutionMode.BACKTEST, ExecutionMode.SIMULATION}
+        ):
+            raise ValueError("study requires explicit offline options, native intake and shortlist")
         if self.options.native_data.enabled and (
             not self.options.enabled
             or self.mode not in {ExecutionMode.BACKTEST, ExecutionMode.SIMULATION}

@@ -24,6 +24,12 @@ options:
   uncovered_options_enabled: false
   zero_dte_live_enabled: false
   overnight_session_entries_enabled: false
+  research_study:
+    enabled: false
+    exit_policy: signal_invalidation_or_prior_session_expiry
+    confidence_level_pct: 95
+    execution_enabled: false
+    evidence_promotable: false
   native_data:
     enabled: false
     max_compressed_bytes: 536870912

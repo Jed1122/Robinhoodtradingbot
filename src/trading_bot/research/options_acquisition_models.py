@@ -39,6 +39,10 @@ REASONS = frozenset(
         "research_history_insufficient",
         "duplicate_resolution_request",
         "coverage_contract_unverified",
+        "study_identity_mismatch",
+        "study_availability_unverified",
+        "study_history_unverified",
+        "study_splits_invalid",
     }
 )
 
@@ -208,7 +212,7 @@ class CoverageManifest:
     reasons: tuple[str, ...]
     requirements_hash: DataHash | None
     research_minimums: tuple[tuple[str, int], ...]
-    schema: Literal["options-acquisition-manifest-v1"] = field(
+    schema: Literal["options-acquisition-manifest-v1", "options-acquisition-manifest-v2"] = field(
         default="options-acquisition-manifest-v1", init=False
     )
     production_eligible: Literal[False] = field(default=False, init=False)
@@ -247,3 +251,18 @@ class CoverageManifest:
     @property
     def manifest_hash(self) -> DataHash:
         return content_hash(self)
+
+
+@dataclass(frozen=True, slots=True)
+class StudyCoverageManifest(CoverageManifest):
+    study_hash: DataHash
+    history_hash: DataHash
+    schema: Literal["options-acquisition-manifest-v1", "options-acquisition-manifest-v2"] = field(
+        default="options-acquisition-manifest-v2",
+        init=False,
+    )
+
+    def __post_init__(self) -> None:
+        CoverageManifest.__post_init__(self)
+        hashes((self.study_hash,))
+        hashes((self.history_hash,))
