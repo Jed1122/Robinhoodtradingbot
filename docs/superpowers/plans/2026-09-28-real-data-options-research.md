@@ -301,6 +301,20 @@ artifacts. The offline consumer never receives purchase authority.
 
 ## Task 7: Complete imported historical episode
 
+Execution checkpoint (2026-09-29): **in progress**, not accepted. The immutable
+order helper and independent journal are joined by an internal
+`simulation/options_historical_clock.py` composition, tested in
+`tests/unit/simulation/test_options_historical_clock.py`. It adds chronological
+cancel/expiry/settlement timers, atomic event application, shared observation
+liquidity and independently reconciled execution cash/fees. Expiry assessments
+identify required exits and preserve missed-deadline incidents; closing strategy
+intents are not yet generated. The public historical request/runner, fresh source
+preimage composition and full-policy decision owner remain unimplemented. Task 8's
+continuous path and active-order cursor/restart contract remain incomplete.
+The $25-premium example below is accounting-only: the unchanged $15 order cap
+denies it even at $10,000. Use an admissible smaller-premium case for the complete
+policy-positive acceptance test; do not relax the cap to satisfy that example.
+
 **Files:** Create `simulation/options_historical_models.py`,
 `simulation/options_historical.py`, `simulation/options_historical_execution.py`;
 test `tests/integration/simulation/test_options_historical_episode.py` and

@@ -11,8 +11,11 @@ remain incomplete. The [real-data research design](docs/superpowers/specs/2026-0
 and [implementation plan](docs/superpowers/plans/2026-09-28-real-data-options-research.md)
 are approved. Closed source dispatch, bounded native quote archives, the causal
 quote stream and frozen study/history contracts are implemented and fixture-tested.
-Order-step simulation and independent account-journal reconstruction are partial
-foundations: complete historical episode/path orchestration, cost attribution,
+Order-step simulation, an internal modeled lifecycle clock and independent
+account-journal reconstruction are partial foundations. The clock composes
+cancel/expiry/settlement timers and incident-preserving accounting, but does not
+select strategies, verify source preimages or admit risk. Complete historical
+episode/path orchestration, active-order restart cursors, cost attribution,
 dependent-outcome uncertainty and research CLI/report composition are still pending.
 Actual-source rules remain unverified (Task 2); a complete qualified credit-bounded
 data package remains blocked on those inputs (Task 6). No genuine economic outcome,

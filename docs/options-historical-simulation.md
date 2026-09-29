@@ -1,7 +1,8 @@
 # Historical options simulation implementation status
 
 The historical path is **partial**. This checkpoint implements pure modeled order
-steps and an independent accounting journal, not the complete imported-data episode,
+steps, an internal event-clock composition and an independent accounting journal,
+not the complete imported-data episode,
 continuing strategy/account runner or CLI.
 Actual-source qualification remains blocked and no economic conclusion is available.
 
@@ -17,6 +18,10 @@ it performs no actual broker review and is not risk admission. The later episode
 owner must perform canonical risk checks before invoking it. Scenario/seed changes
 are rejected after binding. Acknowledgement and fill occur on separate later
 eligible events. Quotes do not prove real fills.
+
+Both native market time and availability must strictly follow modeled acceptance.
+A quote received late cannot fill the order using market liquidity observed before
+or exactly at acceptance. This applies even when it otherwise follows the decision.
 
 The proposal time must match the intent's exact upward nanosecond-to-microsecond
 projection. Cancellation advances the event clock and cannot admit an older unseen
@@ -73,6 +78,44 @@ perform expiry monitoring or run continuous strategy decisions. No production
 database or durable file format is changed. The simulated account identity prefix
 does not relabel imported market data as synthetic. Real-data qualification and
 economic assessment must still be established by the later episode/path consumer.
+
+## Internal lifecycle clock
+
+`_EpisodeClock` connects modeled order steps to the independent journal. It is an
+internal component, not an alternative replay command, strategy selector, source
+verifier or risk-admission API. Its supplied intents and calendar preimages need
+the forthcoming historical episode owner's verification. It performs no broker
+review, order call, deployment, account lookup or real settlement operation.
+
+Known DAY expirations and explicitly modeled cancel/settlement timers advance in
+chronological order. A cancel timer exactly tied to a quote uses the scenario's
+race policy; an earlier timer precedes that observation. An unacknowledged order
+at its deadline becomes unknown, not flat. Unknown outcomes retain reservations.
+Only a flat, terminal, incident-free episode with final modeled settlement completes.
+End of quotes never forces a sale, write-off, exercise or release of reservations.
+
+Execution cash/fee deltas and order states are compared with the independent
+fact-based journal projection. Multi-order observations share a bounded quantity
+budget. A failed observation or timer batch rolls back all of its local mutations,
+including liquidity consumption, so retry cannot retain a half-applied fill.
+Exact duplicate observations are no-ops; backwards time is rejected.
+
+Expiry assessment reuses the existing preceding-eligible-session policy. At that
+session's open, the result identifies a required exit; it does **not yet generate
+the strategy's closing intent**. A reached deadline records a latched incident at
+the modeled deadline without flattening exposure. Missing calendars and unknown
+orders cannot clear expiry readiness. Calendar binding does not certify its source.
+
+Reconstruction uses the complete journal prefix, not a supplied balance snapshot.
+Terminal/unknown orders and existing obligations can be inspected and continued;
+active-order restart is deliberately rejected until a separately bound execution
+cursor is implemented. No durable restart format is claimed. All result economic,
+production and promotion eligibility flags remain false.
+
+The composed -25.50/+19.50/-6.00 example remains a hypothetical accounting fixture
+denied by the unchanged $15 notional cap, not a full-policy admitted trade. These
+tests establish lifecycle mechanics only. A complete source-bound strategy/risk
+vertical slice and an admissible small-premium example are still required.
 
 Next: compose the reverified study, shortlist input preimage and causal stream into
 the historical episode; add signal-invalidation/preceding-session expiry exits and

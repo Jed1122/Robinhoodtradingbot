@@ -65,6 +65,7 @@ jobs:
           tests/unit/research/test_options_study_registration.py
           tests/unit/config/test_options_study_config.py
           tests/unit/simulation/test_options_historical_execution.py
+          tests/unit/simulation/test_options_historical_clock.py
           tests/unit/research/test_options_account_journal.py
           tests/integration/simulation/test_options_historical_order_steps.py
           tests/integration/cli/test_options_native.py
