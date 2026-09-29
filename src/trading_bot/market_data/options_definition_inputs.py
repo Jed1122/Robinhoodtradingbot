@@ -229,11 +229,14 @@ def _mapping_index(mappings: list[object]) -> dict[tuple[int, int], list[dict[st
 
 
 def _mapping_matches(
-    row: NativeDefinitionRow, mappings: dict[tuple[int, int], list[dict[str, object]]]
+    row: NativeDefinitionRow,
+    mappings: dict[tuple[int, int], list[dict[str, object]]],
+    *,
+    at_ns: int,
 ) -> bool:
     matches = []
     for item in mappings.get((row.publisher_id, row.instrument_id), ()):
-        if cast(int, item["start_ns"]) <= cast(int, row.ts_recv) < cast(int, item["end_ns"]):
+        if cast(int, item["start_ns"]) <= at_ns < cast(int, item["end_ns"]):
             matches.append(item)
     return len(matches) == 1 and matches[0]["raw_symbol"] == row.raw_symbol
 
@@ -274,7 +277,10 @@ def _members(
             "definition_state_conflict",
         )
         revisions[revision_key] = digest
-        _require(_mapping_matches(row, mappings), "definition_mapping_unverified")
+        _require(
+            _mapping_matches(row, mappings, at_ns=cast(int, row.ts_recv)),
+            "definition_mapping_unverified",
+        )
         _require(row.security_update_action in {"A", "M", "D"}, "definition_state_conflict")
     baseline = cast(int, state["baseline_at_ns"])
     baseline_hashes = tuple(_digest(item) for item in _array(state["baseline_hashes"]))
@@ -319,6 +325,12 @@ def _members(
             else:
                 members[key] = row
                 updates += 1
+    # Historical mapping proves what an event described, not current membership.
+    # Deleted contracts need no current mapping; every surviving member does.
+    for row in members.values():
+        _require(
+            _mapping_matches(row, mappings, at_ns=as_of_ns), "definition_mapping_unverified"
+        )
     return members, tuple(sorted(DataHash(digest) for digest in visible)), updates, deletes
 
 

@@ -402,6 +402,55 @@ def test_mapping_window_is_half_open(tmp_path):
     assert result.records == () and "definition_mapping_unverified" in result.reasons
 
 
+@pytest.mark.parametrize("transition", ["expired", "remapped", "overlapping"])
+def test_surviving_contract_requires_unique_mapping_at_decision(tmp_path, transition):
+    def change(state):
+        original = state["mappings"][0]
+        if transition != "overlapping":
+            original["end_ns"] = OPEN
+        if transition != "expired":
+            state["mappings"].append(
+                {
+                    **original,
+                    "raw_symbol": PUT if transition == "remapped" else CALL,
+                    "start_ns": OPEN,
+                    "end_ns": REQUEST.end_ns,
+                }
+            )
+
+    result = assemble(case(tmp_path, state_change=change))
+    assert result.records == () and result.contract_ids == ()
+    assert "definition_mapping_unverified" in result.reasons
+
+
+def test_adjacent_matching_mapping_renewal_is_valid_at_decision(tmp_path):
+    def change(state):
+        original = state["mappings"][0]
+        state["mappings"].append({**original, "start_ns": OPEN})
+        original["end_ns"] = OPEN
+
+    result = assemble(case(tmp_path, state_change=change))
+    assert result.contract_ids == (CALL, PUT)
+    assert result.reasons == ()
+
+
+def test_deleted_contract_needs_no_active_mapping_at_decision(tmp_path):
+    rows = [
+        native(),
+        native(ident=43, symbol=PUT),
+        native(stamp=BASELINE + 1000, action=dbn.SecurityUpdateAction.DELETE),
+    ]
+    result = assemble(
+        case(
+            tmp_path,
+            rows=rows,
+            state_change=lambda state: state["mappings"][0].update(end_ns=OPEN),
+        )
+    )
+    assert result.contract_ids == (PUT,) and result.delete_count == 1
+    assert result.reasons == ()
+
+
 def test_calendar_role_is_independently_required(tmp_path):
     result = assemble(case(tmp_path, calendar=False))
     assert result.records == () and "calendar_unverified" in result.reasons

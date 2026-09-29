@@ -42,9 +42,11 @@ reports retain detailed diagnostics under `manifests/<artifact-hash>.json`.
 `input: {path, sha256, byte_count}` and `expected_result_hash`. The expected hash is
 SHA-256 of the exact encoded shortlist report, also printed as `artifact_hash`, not
 the causal decision hash. Every referenced input is privately reread, hash checked,
-decoded and recomputed. Duplicates, aggregate byte/record excess and mismatched results
+decoded and recomputed. Duplicates, index-entry/aggregate-byte excess and mismatched results
 deny; the latter publishes no coverage report. Source/code/rule changes therefore
-require explicitly regenerating the index. No glob or saved-result trust path exists.
+require explicitly regenerating the index. Per-input record limits still apply;
+valid multi-session input is not charged against a single-session record cap.
+No glob or saved-result trust path exists.
 
 Publication uses the existing atomic no-overwrite store. Repeat execution reproduces
 the same artifact; disk-full or interrupted publication does not replace earlier
@@ -53,13 +55,13 @@ old v1 identities are unchanged.
 
 ## Verified implementation and remaining limits — 2026-09-28
 
-The complete locked research-backend selection passes **473 tests**, including 17
+The complete locked research-backend selection passes **480 tests**, including 17
 command/pipeline cases. The main suite passes **5,804 tests**, with 29 skips and one
 existing Starlette/httpx warning. Optional backend cases skipped in the main environment
 execute in the mandatory research selection without skips. Four encrypted backup tests
 still cannot run because `age` is absent; no extra tool was installed.
 
-Branch-enabled overall coverage is **82.48%**, exceeding the unchanged 80% gate; the unchanged 90%
+Branch-enabled overall coverage is **82.50%**, exceeding the unchanged 80% gate; the unchanged 90%
 per-critical-file branch gate passes. Ruff, Mypy (261 source files), Bandit, both lock
 checks, and both registry dependency advisory audits pass. The research advisory export
 excludes only local editable source, which is checked locally, not a registry package.
@@ -74,7 +76,18 @@ One fresh read-only review covered the exact committed implementation range. Its
 Important findings were fixed with seven failing-then-passing regression cases: bind
 definition projections before duplicate collapse, and prevent cross-feed quote phase
 substitution. The affected 124-test selection and both full suites pass afterward.
-There were no Critical or deferred Minor findings. No second review is claimed.
+There were no Critical or deferred Minor findings in that local review.
+
+### Decision-time mapping correction — 2026-09-29
+
+A subsequent cloud PR review identified an additional current-membership defect.
+Every surviving contract now requires exactly one matching dated instrument mapping
+at the decision timestamp, in addition to historical receive-time mapping checks.
+Expired, remapped and overlapping mappings deny the chain. Adjacent matching renewal
+is allowed; deleted members need no active mapping. Three denial cases failed before
+the fix; all five new regression cases pass afterward. The complete definition suite
+passes 37 tests and the locked research selection passes 485 tests at this checkpoint.
+This is a fixture-backed correction, not actual-source qualification.
 
 ### Actual private intake
 
