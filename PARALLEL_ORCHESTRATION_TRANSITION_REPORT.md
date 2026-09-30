@@ -25,9 +25,11 @@ actual test evidence, dependency remediation and broker/runtime limitations.
 Actual-source rules remain unverified (Task 2); a complete qualified credit-bounded
 data package remains blocked on those inputs (Task 6). No genuine economic outcome,
 new data purchase, broker write, deployment or live activation is claimed.
-See [PR #3](https://github.com/Jed1122/Robinhoodtradingbot/pull/3)
-for this candidate's exact head and current CI/review verdicts. It must not be
-treated as integrated until its reviewed, exact-head checks pass and it is merged.
+The initial foundation was merged in [PR #3](https://github.com/Jed1122/Robinhoodtradingbot/pull/3).
+See [PR #4](https://github.com/Jed1122/Robinhoodtradingbot/pull/4) for the subsequent
+halt/cursor/reconstruction corrections and their exact-head CI/review verdicts.
+Those corrections must not be treated as integrated until reviewed checks pass
+and the follow-up is merged.
 
 [Standing operator authority](docs/operator-authority.md) permits reviewed, in-scope
 merges and necessary Databento purchases within remaining authorized credits without

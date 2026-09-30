@@ -110,7 +110,11 @@ GitHub review subsequently reproduced pending-entry halt and multi-fill observat
 defects, plus repeated prefix-reduction work. The bounded cancellation/cursor and
 single-pass fixes require fresh integrated verification. The transition report now
 links the same scoped read-only diagnostics without including private account data
-or unrelated pre-existing edits. PR #3 is the current exact-head review/CI authority.
+or unrelated pre-existing edits. GitHub records the owner merging PR #3 at
+2026-09-30 18:33:14 UTC before these additional corrections were included.
+[PR #4](https://github.com/Jed1122/Robinhoodtradingbot/pull/4) carries the subsequent
+corrections; its reviewed exact-head CI must pass before integration. No deployment
+followed either the initial merge or these local changes.
 Four encrypted-backup tests remain skipped without local `age`; optional native
 backends missing from the primary environment were exercised in research. Coverage
 and exact-head remote CI remain separate integration gates; these counts do not
