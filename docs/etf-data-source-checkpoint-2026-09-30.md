@@ -82,7 +82,13 @@ No credentials/environment values or ledger were read and no process was changed
 Renewal/revocation, restoration, fencing and real strategy-heartbeat proofs remain
 unverified. A healthy paused process is not a paper/shadow promotion observation.
 
-Next: review the [ETF specification](superpowers/specs/2026-09-30-focused-etf-research-design.md),
-write its implementation plan, qualify an actual source, then obtain after-cost
-results before qualifying paper and shadow operation. No profitability or launch
-date is established by this checkpoint.
+Continuation: the ETF specification and implementation plan are now approved.
+Alpaca's signed-in paper-only dashboard offers the $99/month paid upgrade, but no
+upgrade was selected. A free issuer workbook contains 40 SPY distribution rows
+across 2016–2025; original/revision visibility and role-specific permission remain
+unqualified. See the [updated provider checkpoint](etf-provider-comparison-2026-09-30.md)
+for the exact evidence and limits. No complete source or economic result is implied.
+
+Next: finish the canonical study foundation, qualify/import an actual source, then
+implement causal account replay, restart and after-cost evaluation before qualifying
+paper and shadow operation. No profitability or launch date is established here.

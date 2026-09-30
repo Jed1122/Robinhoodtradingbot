@@ -58,6 +58,11 @@ Local green tests do not override that restriction or replace required checks.
 Push reviewed scoped changes, obtain current hosted results after billing/reset,
 and merge only when required checks actually pass on the current PR revision.
 
+After pushing reviewed changes through `ce670e6`, the new
+[36778435579 run](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/36778435579)
+was also refused before execution with the same billing annotation. PR #4 remains
+open; no check bypass or merge was performed.
+
 Read-only broker/paused-host findings and their limits are recorded separately in
 [the source/runtime checkpoint](etf-data-source-checkpoint-2026-09-30.md).
 The ETF specification and implementation plan are approved, not implemented by

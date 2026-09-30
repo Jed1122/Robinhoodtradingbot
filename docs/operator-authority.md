@@ -102,3 +102,21 @@ live activation, real-money order, changed strategy, larger risk-equity referenc
 larger order/exposure limits, or weaker loss/reconciliation/kill controls.
 All other capital assumptions and limits remain unchanged. See the current
 [risk-policy amendment](risk-policy.md#account-equity-ceiling-amendment--2026-09-30).
+
+## ETF research priority and paid-data consideration — 2026-09-30
+
+The operator prioritized the focused SPY/cash ETF research pilot, approved its
+written specification and implementation plan, and retained native execution.
+This supersedes options-only research priority, not options evidence, risk limits,
+source qualification, broker/runtime gates or live authorization. The separate
+[approved plan](superpowers/plans/2026-09-30-focused-etf-research.md) governs this
+research identity; do not repurpose the historical four-ETF comparison.
+
+The operator reports installing Massive and is willing to pay for a suitable data
+account. Paid-provider evaluation is therefore no longer constrained to free-only
+recommendations. No exact subscription, recurring total or applicable new agreement
+has yet been selected or accepted. Verify useful coverage, account entitlement,
+permitted automated use/retention and full cost before a purchase commitment;
+the existing Databento credit-only acquisition grant continues independently.
+The [provider comparison](etf-provider-comparison-2026-09-30.md) records public
+coverage/prices and remaining issues. No subscription was purchased in this turn.
