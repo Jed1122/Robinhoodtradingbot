@@ -177,20 +177,40 @@ def evaluate_options_loss_history(
     require_utc(as_of)
     with localcontext() as ctx:
         ctx.prec = 2048
-        return _evaluate(loaded, points, tuple((_ns(p.observed_at), 0) for p in points), _ns(as_of))
+        return _evaluate(
+            loaded, points, tuple((_ns(p.observed_at), 0) for p in points), _ns(as_of)
+        )[-1]
 
 
 def evaluate_options_loss_observations(
     loaded: LoadedConfig, observations: tuple[OptionsLossObservation, ...], *, as_of_ns: int
 ) -> OptionsLossReport:
     """Use the shared reducer without collapsing distinct native observations."""
+    _native_integer(as_of_ns, "evaluation time", positive=True)
+    return evaluate_options_loss_prefixes(loaded, observations, as_of_ns=as_of_ns)[-1]
+
+
+def evaluate_options_loss_prefixes(
+    loaded: LoadedConfig,
+    observations: tuple[OptionsLossObservation, ...],
+    *,
+    as_of_ns: int | None = None,
+) -> tuple[OptionsLossReport, ...]:
+    """One causal pass, one report per input; no persisted reducer state is trusted.
+
+    Journal reconstruction consumes the reports in order and independently binds
+    each observation to its corresponding monetary state. Later observations never
+    influence an earlier report. Omitting as_of evaluates each prefix at its own
+    most recent observation, including idempotent duplicate inputs.
+    """
     if type(observations) is not tuple or any(
         type(o) is not OptionsLossObservation for o in observations
     ):
         raise DomainValidationError("validated native observation tuple required")
     points = tuple(o.point for o in observations)
     _validate(loaded, points)
-    _native_integer(as_of_ns, "evaluation time", positive=True)
+    if as_of_ns is not None:
+        _native_integer(as_of_ns, "evaluation time", positive=True)
     if observations[0].available_ns != _ns(points[0].session_open):
         raise DomainValidationError("exact genesis at session open required")
     with localcontext() as ctx:
@@ -204,8 +224,8 @@ def _evaluate(
     loaded: LoadedConfig,
     points: tuple[OptionsLossPoint, ...],
     keys: tuple[tuple[int, int], ...],
-    as_of_ns: int,
-) -> OptionsLossReport:
+    as_of_ns: int | None,
+) -> tuple[OptionsLossReport, ...]:
     first = last = points[0]
     last_key = keys[0]
     initial = adjusted = peak = first.liquidation_equity
@@ -215,12 +235,14 @@ def _evaluate(
     seen: dict[str, tuple[OptionsLossPoint, tuple[int, int]]] = {}
     sessions = {first.session_id}
     limits = loaded.config.loss_limits
+    reports: list[OptionsLossReport] = []
     for point, key in zip(points, keys, strict=True):
         if point.account_id != first.account_id or point.config_hash != str(loaded.config_hash):
             raise DomainValidationError("account/configuration identity changed")
         if point.event_id in seen:
             if seen[point.event_id] != (point, key):
                 raise DomainValidationError("conflicting duplicate risk event")
+            reports.append(reports[-1])
             continue
         if seen and key <= last_key:
             raise DomainValidationError("risk clock must advance")
@@ -256,34 +278,38 @@ def _evaluate(
         seen[point.event_id] = (point, key)
         last = point
         last_key = key
-    if as_of_ns < last_key[0]:
-        raise DomainValidationError("evaluation precedes risk evidence")
-    # Avoid float or microsecond rounding at a strict freshness boundary.
-    age_seconds = Decimal(as_of_ns - last_key[0]) / 10**9
-    reasons = tuple(
-        name
-        for triggered, name in (
-            (daily_halt, "daily_loss_latched"),
-            (weekly_halt, "weekly_loss_latched"),
-            (drawdown_halt, "drawdown_latched"),
-            (gap, "risk_history_incomplete"),
-            (
-                age_seconds > loaded.config.freshness.max_account_snapshot_age_seconds,
-                "risk_observation_stale",
-            ),
-            (as_of_ns >= _ns(last.session_close), "outside_session"),
+        at = last_key[0] if as_of_ns is None else as_of_ns
+        if at < last_key[0]:
+            raise DomainValidationError("evaluation precedes risk evidence")
+        # Avoid float or microsecond rounding at a strict freshness boundary.
+        age_seconds = Decimal(at - last_key[0]) / 10**9
+        reasons = tuple(
+            name
+            for triggered, name in (
+                (daily_halt, "daily_loss_latched"),
+                (weekly_halt, "weekly_loss_latched"),
+                (drawdown_halt, "drawdown_latched"),
+                (gap, "risk_history_incomplete"),
+                (
+                    age_seconds > loaded.config.freshness.max_account_snapshot_age_seconds,
+                    "risk_observation_stale",
+                ),
+                (at >= _ns(last.session_close), "outside_session"),
+            )
+            if triggered
         )
-        if triggered
-    )
-    return OptionsLossReport(
-        adjusted,
-        min(initial, max(Decimal(0), last.liquidation_equity)),
-        peak,
-        _loss(daily_basis, adjusted),
-        _loss(weekly_basis, adjusted),
-        max(Decimal(0), peak - adjusted),
-        daily_halt,
-        weekly_halt,
-        drawdown_halt,
-        reasons,
-    )
+        reports.append(
+            OptionsLossReport(
+                adjusted,
+                min(initial, max(Decimal(0), last.liquidation_equity)),
+                peak,
+                _loss(daily_basis, adjusted),
+                _loss(weekly_basis, adjusted),
+                max(Decimal(0), peak - adjusted),
+                daily_halt,
+                weekly_halt,
+                drawdown_halt,
+                reasons,
+            )
+        )
+    return tuple(reports)

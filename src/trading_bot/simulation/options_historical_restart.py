@@ -57,6 +57,7 @@ from trading_bot.simulation.options_replay_wire import replay_file_limits
 
 
 def _cursor_hash(clock: _EpisodeClock) -> DataHash:
+    pending = () if clock._pending_quote is None else (clock._pending_quote,)
     return content_hash(
         (
             clock.now_ns,
@@ -64,6 +65,7 @@ def _cursor_hash(clock: _EpisodeClock) -> DataHash:
             clock._event_count,
             tuple(sorted(clock._consumed.items())),
             tuple(sorted(clock._calendars.items())),
+            *pending,
         )
     )
 

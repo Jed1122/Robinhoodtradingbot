@@ -14,16 +14,20 @@ quote stream and frozen study/history contracts are implemented and fixture-test
 The source-reverified single-episode runner now composes fixed shortlist/momentum
 decisions, canonical entry-budget checks, modeled order/expiry/settlement behavior,
 independent cash accounting and exact-prefix offline recovery. Manufactured native
-fixtures remain engineering-only. Continuous account paths, ongoing loss-history
-and liquidation-mark risk evaluation, effective-date costs, dependent-outcome
-uncertainty and research CLI/report composition are still pending. See the separate
+fixtures remain engineering-only. Exact-time journal-bound loss history and offline
+restart are now implemented as a partial account-risk foundation; the continuous
+source-bound account coordinator and liquidation-mark owner remain pending, along
+with effective-date costs, dependent-outcome uncertainty and research CLI/report
+composition. See the [account-risk checkpoint](docs/options-account-risk-checkpoint.md)
+for current scoped evidence and the separate
 [validation and readiness checkpoint](docs/options-real-data-validation.md) for
 actual test evidence, dependency remediation and broker/runtime limitations.
 Actual-source rules remain unverified (Task 2); a complete qualified credit-bounded
 data package remains blocked on those inputs (Task 6). No genuine economic outcome,
 new data purchase, broker write, deployment or live activation is claimed.
-See [PR #2](https://github.com/Jed1122/Robinhoodtradingbot/pull/2)
-for the exact integration head and current CI/review verdicts, not this historical snapshot.
+See [PR #3](https://github.com/Jed1122/Robinhoodtradingbot/pull/3)
+for this candidate's exact head and current CI/review verdicts. It must not be
+treated as integrated until its reviewed, exact-head checks pass and it is merged.
 
 [Standing operator authority](docs/operator-authority.md) permits reviewed, in-scope
 merges and necessary Databento purchases within remaining authorized credits without
@@ -34,7 +38,15 @@ The critical path is actual-source verification, preregistered complete coverage
 credit-bounded quote acquisition, causal historical execution/accounting, and after-cost
 uncertainty evaluation. Credential-free work can proceed independently of broker access.
 Production lifecycle composition and verified broker/runtime capabilities are separate
-incomplete workstreams; no fresh deployment or account verification is claimed here.
+incomplete workstreams. Scoped 2026-09-30 read-only broker calls succeeded: the
+Agentic account reported active Level 2 options permission, and option orders,
+option positions and equity positions were empty. No nonempty lifecycle or order-write
+behavior was verified. Current read-only DigitalOcean inspection found the existing
+health-only service healthy, shadow/paused and not ready (`paused` and
+`external_capability_missing`); no deployment changes occurred. Image/configuration
+identities and remaining standalone-authentication and operational gaps are recorded
+in the account-risk checkpoint. These limited diagnostics do not establish complete
+account eligibility, runtime capability, or promotion readiness.
 Live trading remains **NO-GO**. Neither funding, data integrity nor synthetic results
 supplies missing economic, capability or operator-activation evidence.
 

@@ -375,7 +375,8 @@ cancel-race and fee-bound inputs with calibration references; define it in
 ## Task 8: Continuous full-policy account paths and independent journal
 
 **2026-09-30 checkpoint:** exact-time loss observations, journal-bound risk latches,
-mark/flow checkpoint replay and independent review are implemented in the
+mark/flow checkpoint replay, halt-driven pending-entry cancellation, resumable
+per-fill observation cursors and single-pass risk reconstruction are implemented in the
 [account-risk foundation](../../options-account-risk-checkpoint.md). This does not
 complete this task: the source-bound shared-clock strategy coordinator and its
 overlapping-window/session-close integration remain required. The dated

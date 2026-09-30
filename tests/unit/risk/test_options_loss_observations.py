@@ -125,3 +125,20 @@ def test_deposit_cannot_clear_exact_time_loss_latches():
     assert result.flow_adjusted_equity == Decimal("89")
     assert result.reference_equity == Decimal("100")
     assert result.daily_halt and result.weekly_halt and result.drawdown_halt
+
+
+def test_causal_prefix_reports_match_independent_replays_without_future_loss():
+    close = point("close", "94", at=CLOSE)
+    observations = (
+        observation(point()),
+        observation(point("small-loss", "99", at=OPEN + timedelta(seconds=1))),
+        observation(close),
+        observation(close),
+        observation(next_session(close, "94")),
+    )
+    reports = api.evaluate_options_loss_prefixes(config(), observations)
+    assert len(reports) == len(observations)
+    assert not reports[0].entry_reasons and not reports[1].entry_reasons
+    assert reports[2].weekly_halt and reports[4].weekly_halt
+    for index, report in enumerate(reports):
+        assert report == evaluate(*observations[: index + 1])
