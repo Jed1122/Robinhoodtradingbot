@@ -10,6 +10,7 @@ from trading_bot.domain.enums import OrderEvent
 from trading_bot.domain.options import OptionsOrderIntent
 from trading_bot.market_data.options_source_models import check, hashes, identity, instant
 from trading_bot.market_data.recording import content_hash
+from trading_bot.risk.options_loss_history import OptionsLossObservation
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +89,14 @@ class JournalMark:
             require_bounded_decimal(self.price, "liquidation mark", nonnegative=True)
 
 
+@dataclass(frozen=True, slots=True)
+class JournalRiskObservation:
+    observation: OptionsLossObservation
+
+    def __post_init__(self) -> None:
+        check(type(self.observation) is OptionsLossObservation)
+
+
 type AccountFact = (
     JournalIntent
     | JournalOrderUpdate
@@ -96,6 +105,7 @@ type AccountFact = (
     | JournalExternalFlow
     | JournalIncident
     | JournalMark
+    | JournalRiskObservation
 )
 
 
@@ -120,9 +130,11 @@ class AccountJournalEntry:
                 JournalExternalFlow,
                 JournalIncident,
                 JournalMark,
+                JournalRiskObservation,
             )
         )
 
     @property
     def entry_hash(self) -> DataHash:
-        return content_hash({"schema": "options-account-journal-entry-v1", "entry": self})
+        version = 2 if type(self.fact) is JournalRiskObservation else 1
+        return content_hash({"schema": f"options-account-journal-entry-v{version}", "entry": self})

@@ -27,9 +27,14 @@ from trading_bot.research.options_account_journal_models import (
     JournalIntent,
     JournalMark,
     JournalOrderUpdate,
+    JournalRiskObservation,
     JournalSettlement,
 )
 from trading_bot.research.options_study_models import StudyScenario
+from trading_bot.risk.options_loss_history import (
+    OptionsLossObservation,
+    evaluate_options_loss_observations,
+)
 from trading_bot.simulation.options_historical_models import (
     HISTORICAL_TERMINAL as TERMINAL,
 )
@@ -49,6 +54,7 @@ __all__ = [
     "JournalIntent",
     "JournalMark",
     "JournalOrderUpdate",
+    "JournalRiskObservation",
     "JournalSettlement",
     "initial_account_path",
     "reconcile_account_journal",
@@ -275,11 +281,12 @@ def _apply(
             latched_halts=tuple(sorted(set((*state.latched_halts, fact.reason)))),
         )
     check(isinstance(fact, JournalMark))
-    check(any(p.episode_id == fact.episode_id for p in state.positions))
+    mark = cast(JournalMark, fact)
+    check(any(p.episode_id == mark.episode_id for p in state.positions))
     return replace(
         state,
         positions=tuple(
-            replace(p, liquidation_price=fact.price) if p.episode_id == fact.episode_id else p
+            replace(p, liquidation_price=mark.price) if p.episode_id == mark.episode_id else p
             for p in state.positions
         ),
     )
@@ -305,6 +312,8 @@ def reconstruct_account_journal(
     )
     check(type(entries) is tuple and len(entries) <= loaded.config.options.replay_max_records)
     seen: dict[str, AccountJournalEntry] = {}
+    observations: tuple[OptionsLossObservation, ...] = ()
+    pending_risk: tuple[int, str, str | None] | None = None
     state = initial
     with localcontext() as context:
         context.prec = 2048
@@ -318,7 +327,78 @@ def reconstruct_account_journal(
                 entry.previous_hash == state.journal_hash
                 and entry.available_ns >= state.last_event_ns
             )
-            state = _apply(state, entry, scenario)
+            if type(entry.fact) is JournalRiskObservation:
+                observation = entry.fact.observation
+                point = observation.point
+                check(bool(observations) or state == initial)
+                check(pending_risk is None or pending_risk[0] == entry.available_ns)
+                check(
+                    observation.available_ns == entry.available_ns
+                    and observation.ordinal == len(seen)
+                    and point.account_id == state.path_id
+                    and point.config_hash == state.config_hash
+                    and point.source_hash == state.journal_hash
+                    and point.liquidation_equity == state.marked_equity
+                    and point.cumulative_external_flows == state.cumulative_external_flows
+                )
+                check(
+                    not point.complete
+                    or (
+                        all(p.liquidation_price is not None for p in state.positions)
+                        and not state.incidents
+                        and all(
+                            o.state is not OrderState.UNKNOWN_REQUIRES_RECONCILIATION
+                            for o in state.orders
+                        )
+                    )
+                )
+                observations = (*observations, observation)
+                loss = evaluate_options_loss_observations(
+                    loaded, observations, as_of_ns=entry.available_ns
+                )
+                hard_halts = set(loss.entry_reasons) & {
+                    "weekly_loss_latched",
+                    "drawdown_latched",
+                    "risk_history_incomplete",
+                }
+                # Entry halts are not ownership/settlement incidents. They must
+                # not prevent an independently admitted protective close completing.
+                state = replace(
+                    state, latched_halts=tuple(sorted(set(state.latched_halts) | hard_halts))
+                )
+                pending_risk = None
+            else:
+                filling = type(entry.fact) is JournalOrderUpdate and bool(entry.fact.fill_units)
+                monetary = type(entry.fact) in (JournalMark, JournalExternalFlow) or filling
+                if observations and monetary:
+                    # A same-event fill may receive its first liquidation mark
+                    # before observation. No second mark, flow or fill can erase
+                    # that intermediate valuation. A later timestamp cannot repair
+                    # a skipped observation by backdating its risk history.
+                    check(
+                        pending_risk is None
+                        or (
+                            pending_risk[:2] == (entry.available_ns, "fill")
+                            and type(entry.fact) is JournalMark
+                            and entry.fact.episode_id == pending_risk[2]
+                            and any(
+                                p.episode_id == entry.fact.episode_id
+                                and p.liquidation_price is None
+                                for p in state.positions
+                            )
+                        )
+                    )
+                    filled_order = (
+                        next(o for o in state.orders if o.intent.intent_id == entry.fact.order_id)
+                        if type(entry.fact) is JournalOrderUpdate and filling
+                        else None
+                    )
+                    pending_risk = (
+                        entry.available_ns,
+                        "fill" if filling else "valuation",
+                        filled_order.episode_id if filled_order else None,
+                    )
+                state = _apply(state, entry, scenario)
             if state.cash < 0:
                 state = replace(
                     state,

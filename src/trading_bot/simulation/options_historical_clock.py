@@ -12,7 +12,7 @@ from decimal import Decimal, localcontext
 from typing import Literal
 
 from trading_bot.config import LoadedConfig
-from trading_bot.domain.enums import OrderEvent, OrderState
+from trading_bot.domain.enums import OrderEvent, OrderState, Side
 from trading_bot.domain.options import OptionContract, OptionsOrderIntent
 from trading_bot.domain.order_state_machine import transition
 from trading_bot.lifecycle.options_expiry import (
@@ -30,12 +30,20 @@ from trading_bot.research.options_account_journal_models import (
     AccountFact,
     AccountJournalEntry,
     JournalComplete,
+    JournalExternalFlow,
     JournalIncident,
     JournalIntent,
+    JournalMark,
     JournalOrderUpdate,
+    JournalRiskObservation,
     JournalSettlement,
 )
 from trading_bot.research.options_study_models import StudyScenario
+from trading_bot.risk.options_loss_history import (
+    OptionsLossObservation,
+    OptionsLossReport,
+    evaluate_options_loss_observations,
+)
 from trading_bot.simulation.options_historical_execution import (
     advance_order,
     propose_order,
@@ -99,6 +107,7 @@ class _EpisodeClock:
         self.state, self.journal = state, prefix
         self.now_ns = state.last_event_ns
         self._start_cash, self._start_fees = state.cash, state.fees
+        self._start_flows = state.cumulative_external_flows
         self._cash, self._fees = Decimal(0), Decimal(0)
         self._seen: set[str] = set()
         self._event_count = 0
@@ -205,6 +214,9 @@ class _EpisodeClock:
         self, episode_id: str, session_id: str, intent: OptionsOrderIntent, *, available_ns: int
     ) -> None:
         check(available_ns == self.now_ns)
+        if intent.structure.legs[0].side is Side.BUY:
+            loss = self.loss_report()
+            check(not self.state.latched_halts and (loss is None or not loss.entry_reasons))
         c = intent.structure.legs[0].contract
         check(c.contract_id not in self._calendars or self._calendars[c.contract_id][0] == c)
         proposed = propose_order(intent, available_ns=available_ns)
@@ -212,6 +224,39 @@ class _EpisodeClock:
         self._orders[intent.intent_id] = proposed.order
         self._transitions.extend((intent.intent_id, t) for t in proposed.transitions)
         self._actions.append(("submit", (episode_id, session_id, intent, available_ns)))
+
+    def mark(self, episode_id: str, price: Decimal | None, *, available_ns: int) -> None:
+        """Record a supplied liquidation mark; the owner must verify freshness."""
+        check(available_ns == self.now_ns)
+        self._append((JournalMark(episode_id, price),), available_ns)
+        self._actions.append(("mark", (episode_id, price, available_ns)))
+
+    def external_flow(self, amount: Decimal, *, available_ns: int) -> None:
+        """Hypothetical funding only; never a trading gain or replenished trial loss."""
+        check(available_ns == self.now_ns)
+        self._append((JournalExternalFlow(amount),), available_ns)
+        self._actions.append(("flow", (amount, available_ns)))
+
+    def observe_loss(self, observation: OptionsLossObservation) -> None:
+        check(
+            type(observation) is OptionsLossObservation and observation.available_ns == self.now_ns
+        )
+        self._append((JournalRiskObservation(observation),), self.now_ns)
+        self._actions.append(("loss", observation))
+
+    def loss_report(self) -> OptionsLossReport | None:
+        observations = tuple(
+            e.fact.observation for e in self.journal if type(e.fact) is JournalRiskObservation
+        )
+        if not observations:
+            return None
+        report = evaluate_options_loss_observations(self.loaded, observations, as_of_ns=self.now_ns)
+        if type(self.journal[-1].fact) is not JournalRiskObservation:
+            report = replace(
+                report,
+                entry_reasons=tuple(sorted(set(report.entry_reasons) | {"risk_state_changed"})),
+            )
+        return report
 
     def _apply_step(self, step: HistoricalOrderStep) -> None:
         ident = step.order.intent.intent_id
@@ -375,7 +420,12 @@ class _EpisodeClock:
         self._complete(self.now_ns)
 
     def result(self) -> HistoricalClockResult:
-        reasons = set(self.state.incidents)
+        reasons = set((*self.state.incidents, *self.state.latched_halts))
+        loss = self.loss_report()
+        if loss is not None:
+            reasons.update(
+                set(loss.entry_reasons) & {"risk_state_changed", "risk_observation_stale"}
+            )
         expiry = self._expiry(self.now_ns)
         reasons.update(reason for item in expiry for reason in item.reasons)
         if self.state.positions:
@@ -396,7 +446,14 @@ class _EpisodeClock:
             reconciliation = tuple(
                 name
                 for name, valid in (
-                    ("cash_flow_mismatch", self._start_cash + self._cash == self.state.cash),
+                    (
+                        "cash_flow_mismatch",
+                        self._start_cash
+                        + self._cash
+                        + self.state.cumulative_external_flows
+                        - self._start_flows
+                        == self.state.cash,
+                    ),
                     ("fees_mismatch", self._start_fees + self._fees == self.state.fees),
                     (
                         "order_projection_mismatch",
