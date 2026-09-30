@@ -290,7 +290,7 @@ def _run_episode(
     priced: tuple[tuple[str, OptionQuote], ...] = ()
     entry_decided = False
     exit_requested = False
-    close_sessions: set[str] = set()
+    last_close_id: str | None = None
     histories = {h.end_ns: h for h in r.subsequent_history}
     sessions = iter(s for s in r.stream.sessions if _ns(s.opens_at) > clock.now_ns)
     next_session = next(sessions, None)
@@ -438,20 +438,29 @@ def _run_episode(
                 ),
                 None,
             )
+            close_terminal_ns = clock.terminal_at(last_close_id) if last_close_id else 0
             if (
                 exit_requested
                 and closing_quote is not None
                 and quote_valid(c, closing_quote)
                 and session is not None
-                and session.session_id not in close_sessions
+                and event.record is not None
+                and isinstance(event.record.value, OptionQuote)
+                and event.record.value == closing_quote
+                and not event.quality_reasons
+                and close_terminal_ns is not None
+                and event.event_ns > close_terminal_ns
                 and all(o.state in HISTORICAL_TERMINAL for o in clock.state.orders)
             ):
+                # One new risk-reducing intent per later native quote, never a
+                # transport retry or a resend with pending/unknown acceptance.
+                # The canonical event cap and frozen horizon bound all attempts.
                 closing = intent(c, closing_quote, True)
                 clock.submit(
                     position.episode_id, session.session_id, closing, available_ns=clock.now_ns
                 )
                 intents.append(closing)
-                close_sessions.add(session.session_id)
+                last_close_id = closing.intent_id
     if event_limit is None:
         clock.advance_time(r.stream.end_ns)
     else:

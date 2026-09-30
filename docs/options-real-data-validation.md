@@ -39,6 +39,12 @@ settlement delay, expiry deadlines and open input-end exposure remain distinct o
 The runner does not synthesize an end-of-file closing fill. Repeated records at one native
 quote timestamp cannot replenish consumed liquidity merely by changing source ordinal,
 receipt time or projection hash. XNAS archives reject other publisher identities.
+Protective closes may rearm after a confirmed-terminal unsuccessful attempt, using
+only a current owned-contract quote whose native timestamp is strictly later than
+that terminal transition. Pending or unknown acceptance never permits a replacement.
+Each new intent remains limited to the owned unit; the canonical event cap and frozen
+outcome horizon bound the attempt count. This is offline lifecycle handling, not a
+transport retry, live closing authority, or an increase in entry/exposure limits.
 
 Restart has two separate offline contracts:
 
@@ -122,6 +128,11 @@ package entries changed. Both locked audits then found no known vulnerabilities;
 offline broker/compatibility/smoke tests and bounded local dependency checks passed.
 The primary/research full-suite runs above preceded this dependency-only update; the
 16-test native coverage append and compatibility checks used the updated environments.
+A subsequent full primary run at `0d80510` with the updated dependencies again passed
+6,122 tests (33 skips, one existing warning). A fresh exact-head review independently
+passed 336 focused tests and identified the same-session protective-close defect;
+the subsequent correction is subject to new verification rather than inheriting those
+earlier results.
 These are local checkout results, not exact-head remote CI or deployment claims.
 
 CI retains the 80% overall and 90% per-critical-file branch floors, combining primary

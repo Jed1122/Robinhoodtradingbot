@@ -241,6 +241,11 @@ class _EpisodeClock:
         self._apply_step(request_cancel(self._orders[order_id], available_ns=available_ns))
         self._actions.append(("cancel", (order_id, available_ns)))
 
+    def terminal_at(self, order_id: str) -> int | None:
+        """Modeled terminal transition time, never proof of a broker outcome."""
+        order = self._orders[order_id]
+        return order.last_event_ns if order.state in HISTORICAL_TERMINAL else None
+
     def _move(self, order: HistoricalOrder, event: OrderEvent, at: int) -> None:
         following = transition(order.state, event)
         self._apply_step(

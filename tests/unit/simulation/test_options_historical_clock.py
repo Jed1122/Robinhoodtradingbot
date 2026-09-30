@@ -107,6 +107,18 @@ def test_open_position_never_forces_an_end_fill(tmp_path, monkeypatch):
     assert result.state.trial.reserved_risk == D("26")
 
 
+def test_terminal_time_requires_confirmed_terminal_state(tmp_path, monkeypatch):
+    clock, order, events = setup(tmp_path, monkeypatch)
+    submit(clock, order)
+    assert clock.terminal_at(order.intent_id) is None
+    clock.advance(events[0])
+    assert clock.terminal_at(order.intent_id) is None
+    clock.advance(events[1])
+    assert clock.terminal_at(order.intent_id) == events[1].available_ns
+    clock.advance(events[2])
+    assert clock.terminal_at(order.intent_id) == events[1].available_ns
+
+
 @pytest.mark.parametrize(
     "field,status,reason",
     [
