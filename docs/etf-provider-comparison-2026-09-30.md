@@ -122,6 +122,14 @@ freezing acquisition. If the retained public/account evidence cannot answer thos
 questions, obtain a targeted provider clarification rather than treating a passed
 HTTP request as a license. Do not send correspondence without operator authority.
 
+The operator subsequently explicitly approved one Alpaca support inquiry. A reply
+was sent in the existing support conversation and the mail service returned SENT.
+It requests a human clarification of the paper-only paid SIP entitlement, private
+automated use, retention after cancellation, and earliest original/corrected history.
+No credentials, account identifiers, balances, raw data or subscription acceptance
+were included. The response is outstanding; sending a question is not evidence of
+the answer. Personal message IDs and correspondence remain outside Git.
+
 Ongoing data costs must remain separate from one-time research acquisition costs.
 At $99 each month, the subscription alone would total $1,188 over twelve months
 before any other operating cost. The economic report must charge costs actually

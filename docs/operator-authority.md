@@ -120,3 +120,11 @@ permitted automated use/retention and full cost before a purchase commitment;
 the existing Databento credit-only acquisition grant continues independently.
 The [provider comparison](etf-provider-comparison-2026-09-30.md) records public
 coverage/prices and remaining issues. No subscription was purchased in this turn.
+
+The operator then requested the most cost-effective qualification route, signed
+in for read-only Alpaca plan inspection, and explicitly approved one support
+inquiry about the displayed $99/month paper-only offer, historical SIP use,
+private automated research, retention and original/corrected history. That inquiry
+was sent in the existing support conversation. This does not authorize a paid
+subscription, agreement acceptance, live-account opening/funding or brokerage
+operation. No raw data, credentials or private account identifiers were sent.

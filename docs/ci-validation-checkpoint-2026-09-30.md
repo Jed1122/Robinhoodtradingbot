@@ -63,6 +63,13 @@ After pushing reviewed changes through `ce670e6`, the new
 was also refused before execution with the same billing annotation. PR #4 remains
 open; no check bypass or merge was performed.
 
+The ETF foundation continuation was pushed through `75c62ae`. Its new
+[36781313888 run](https://github.com/Jed1122/Robinhoodtradingbot/actions/runs/36781313888)
+also received the explicit job-not-started billing/spending annotation. Local ETF
+verification passed 6,276 tests / 33 skips on Python 3.12, 3.13 and 3.14, with
+70 native/ETF cases passing and 88.62% branch-inclusive overall coverage on 3.14;
+the existing critical branch gate passed. These results do not bypass hosted CI.
+
 Read-only broker/paused-host findings and their limits are recorded separately in
 [the source/runtime checkpoint](etf-data-source-checkpoint-2026-09-30.md).
 The ETF specification and implementation plan are approved, not implemented by
