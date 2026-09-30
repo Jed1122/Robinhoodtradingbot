@@ -24,6 +24,23 @@ options:
   uncovered_options_enabled: false
   zero_dte_live_enabled: false
   overnight_session_entries_enabled: false
+  research_study:
+    enabled: false
+    exit_policy: signal_invalidation_or_prior_session_expiry
+    confidence_level_pct: 95
+    execution_enabled: false
+    evidence_promotable: false
+  native_data:
+    enabled: false
+    max_compressed_bytes: 536870912
+    max_decompressed_bytes: 4294967296
+    max_metadata_bytes: 268435456
+    max_records: 10000000
+    max_unique_symbols: 1000000
+    max_part_rows: 10000
+    max_part_bytes: 16777216
+    max_parts: 10000
+    max_manifest_bytes: 16777216
   research_shortlist:
     enabled: false
     underlying: SPY

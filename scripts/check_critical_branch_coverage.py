@@ -50,6 +50,11 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
     if simulation_directory.is_dir():
         modules.extend(simulation_directory.glob("lifecycle*.py"))
         modules.extend(simulation_directory.glob("options_replay*.py"))
+        modules.extend(simulation_directory.glob("options_historical*.py"))
+
+    research_directory = source_root / "research"
+    if research_directory.is_dir():
+        modules.extend(research_directory.glob("options_account_*.py"))
 
     return tuple(sorted((module.resolve() for module in modules), key=str))
 

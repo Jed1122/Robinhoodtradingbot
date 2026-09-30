@@ -294,6 +294,24 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
             f"options.{name}", getattr(config.options, name), getattr(envelope.options, name)
         )
 
+    native = config.options.native_data
+    native_bound = envelope.options.native_data
+    _require_not_enabled("options.native_data.enabled", native.enabled, native_bound.enabled)
+    for name in (
+        "max_compressed_bytes",
+        "max_decompressed_bytes",
+        "max_metadata_bytes",
+        "max_records",
+        "max_unique_symbols",
+        "max_part_rows",
+        "max_part_bytes",
+        "max_parts",
+        "max_manifest_bytes",
+    ):
+        _require_at_most(
+            f"options.native_data.{name}", getattr(native, name), getattr(native_bound, name)
+        )
+
     shortlist = config.options.research_shortlist
     shortlist_bound = envelope.options.research_shortlist
     _require_not_enabled(
@@ -317,6 +335,17 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
     ):
         if getattr(shortlist, name) != getattr(shortlist_bound, name):
             raise UnsafeConfiguration("options shortlist policy is not release-allowed")
+
+    study = config.options.research_study
+    study_bound = envelope.options.research_study
+    _require_not_enabled("options.research_study.enabled", study.enabled, study_bound.enabled)
+    _require_at_least(
+        "options.research_study.confidence_level_pct",
+        study.confidence_level_pct,
+        study_bound.confidence_level_pct,
+    )
+    if study.exit_policy != study_bound.exit_policy:
+        raise UnsafeConfiguration("options study exit policy is not release-allowed")
 
     max_pairs = (
         (

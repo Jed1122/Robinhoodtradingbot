@@ -1,5 +1,45 @@
 # Parallel Orchestration Transition Report
 
+## Current checkpoint — 2026-09-30 UTC
+
+This checkpoint supersedes conflicting current-status and authority statements in the
+historical snapshots below. The options-only [master specification](docs/options-only-build-spec.md)
+governs the migration. The eight-task [native-data milestone](docs/options-native-data.md)
+is implemented and fixture-tested within its bounded offline contract; actual-source
+qualification, complete option/underlying quote coverage, and genuine economic validation
+remain incomplete. The [real-data research design](docs/superpowers/specs/2026-09-28-real-data-options-research-design.md)
+and [implementation plan](docs/superpowers/plans/2026-09-28-real-data-options-research.md)
+are approved. Closed source dispatch, bounded native quote archives, the causal
+quote stream and frozen study/history contracts are implemented and fixture-tested.
+The source-reverified single-episode runner now composes fixed shortlist/momentum
+decisions, canonical entry-budget checks, modeled order/expiry/settlement behavior,
+independent cash accounting and exact-prefix offline recovery. Manufactured native
+fixtures remain engineering-only. Continuous account paths, ongoing loss-history
+and liquidation-mark risk evaluation, effective-date costs, dependent-outcome
+uncertainty and research CLI/report composition are still pending. See the separate
+[validation and readiness checkpoint](docs/options-real-data-validation.md) for
+actual test evidence, dependency remediation and broker/runtime limitations.
+Actual-source rules remain unverified (Task 2); a complete qualified credit-bounded
+data package remains blocked on those inputs (Task 6). No genuine economic outcome,
+new data purchase, broker write, deployment or live activation is claimed.
+See [PR #2](https://github.com/Jed1122/Robinhoodtradingbot/pull/2)
+for the exact integration head and current CI/review verdicts, not this historical snapshot.
+
+[Standing operator authority](docs/operator-authority.md) permits reviewed, in-scope
+merges and necessary Databento purchases within remaining authorized credits without
+repeat approvals. Required checks, complete scope/cost verification and all separate
+live, deployment, risk, cash and subscription boundaries remain unchanged.
+
+The critical path is actual-source verification, preregistered complete coverage,
+credit-bounded quote acquisition, causal historical execution/accounting, and after-cost
+uncertainty evaluation. Credential-free work can proceed independently of broker access.
+Production lifecycle composition and verified broker/runtime capabilities are separate
+incomplete workstreams; no fresh deployment or account verification is claimed here.
+Live trading remains **NO-GO**. Neither funding, data integrity nor synthetic results
+supplies missing economic, capability or operator-activation evidence.
+
+## Historical snapshots
+
 Snapshot date: 2026-09-17 (UTC)
 
 Repository: `Jed1122/Robinhoodtradingbot`

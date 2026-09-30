@@ -26,6 +26,16 @@ jobs:
       - run: >
           uv run pytest tests --cov=trading_bot --cov-branch --cov-fail-under=80
           --cov-report=json:coverage.json
+      - name: Sync locked research environment for native coverage
+        run: >
+          uv sync --project research --locked --all-groups
+          --python "${{ matrix.python-version }}"
+      - name: Append native historical episode branch coverage
+        run: >
+          PYTHONPATH=src uv run --project research --no-sync pytest
+          tests/integration/simulation/test_options_historical_episode.py
+          --cov=trading_bot --cov-branch --cov-append --cov-fail-under=80
+          --cov-report=json:coverage.json
       - run: uv run python scripts/check_critical_branch_coverage.py --report coverage.json
 
   bandit:

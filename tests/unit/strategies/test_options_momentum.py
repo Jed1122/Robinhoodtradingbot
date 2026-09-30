@@ -155,14 +155,16 @@ LEGACY_CALL_RESULT_HASHES = (
 @pytest.fixture
 def options_config(monkeypatch: pytest.MonkeyPatch) -> LoadedConfig:
     # These golden results bind the pre-shortlist schema, not today's configuration
-    # identity. Project ONLY this test's newly added research section out before the
-    # real serializer hashes it. Production always binds the full current graph.
+    # identity. Project ONLY the three subsequently added research sections out before
+    # the real serializer hashes it. Production always binds the full current graph.
     original = config_hashing._hash_payload
 
     def legacy_config_identity(payload):
         legacy = deepcopy(payload)
         for name in ("config", "safety_envelope"):
             del legacy[name]["options"]["research_shortlist"]
+            del legacy[name]["options"]["native_data"]
+            del legacy[name]["options"]["research_study"]
         return original(legacy)
 
     monkeypatch.setattr(config_hashing, "_hash_payload", legacy_config_identity)

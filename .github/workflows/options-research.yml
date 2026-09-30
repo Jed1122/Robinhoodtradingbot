@@ -45,3 +45,32 @@ jobs:
           tests/integration/market_data/test_databento_definitions.py
           tests/integration/market_data/test_databento_stage.py
           tests/integration/cli/test_databento_import.py
+          tests/unit/market_data/test_databento_bars.py
+          tests/unit/market_data/test_databento_quotes.py
+          tests/unit/market_data/test_options_quote_stream.py
+          tests/unit/config/test_options_native_data_config.py
+          tests/integration/market_data/test_databento_bar_store.py
+          tests/integration/market_data/test_databento_quote_store.py
+          tests/integration/market_data/test_options_quote_stream_native.py
+          tests/integration/market_data/test_databento_native_rows.py
+          tests/unit/market_data/test_options_source_contracts.py
+          tests/unit/market_data/test_options_source_dispatch.py
+          tests/unit/market_data/test_options_source_verify.py
+          tests/unit/market_data/test_options_session_inputs.py
+          tests/unit/market_data/test_options_definition_inputs.py
+          tests/unit/research/test_options_shortlist_v2.py
+          tests/unit/research/test_options_shortlist_v2_wire.py
+          tests/unit/research/test_options_acquisition.py
+          tests/unit/research/test_options_acquisition_wire.py
+          tests/unit/research/test_options_study_registration.py
+          tests/unit/config/test_options_study_config.py
+          tests/unit/simulation/test_options_historical_execution.py
+          tests/unit/simulation/test_options_historical_clock.py
+          tests/unit/simulation/test_options_historical_policy.py
+          tests/unit/simulation/test_options_historical_restart.py
+          tests/unit/simulation/test_options_historical_restart_adversarial.py
+          tests/unit/research/test_options_account_journal.py
+          tests/integration/simulation/test_options_historical_order_steps.py
+          tests/integration/simulation/test_options_historical_episode.py
+          tests/integration/cli/test_options_native.py
+          tests/integration/research/test_native_options_pipeline.py
