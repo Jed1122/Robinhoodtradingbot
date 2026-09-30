@@ -325,3 +325,50 @@ def test_daily_only_loss_halt_is_reported_without_permanent_weekly_latch(tmp_pat
     assert clock.loss_report().daily_halt and not clock.loss_report().weekly_halt
     assert "daily_loss_latched" in clock.result().reasons
     assert resume(clock).result() == clock.result()
+
+
+@pytest.mark.parametrize("trigger", ["quote", "timer"])
+def test_stale_risk_requests_cancel_before_quote_processing(tmp_path, monkeypatch, trigger):
+    from trading_bot.domain.enums import OrderEvent, OrderState
+    from trading_bot.simulation import options_historical_clock as clock_api
+
+    clock, order, events = setup(tmp_path, monkeypatch, duration=3600 * 10**9)
+    observe(clock, order)
+    submit(clock, order)
+    clock.advance(events[0])
+    boundary = clock.initial.start_ns + int(
+        clock.loaded.config.freshness.max_account_snapshot_age_seconds * 10**9
+    )
+    clock.advance_time(boundary)
+    assert clock.result().orders[0].state is OrderState.SUBMITTED
+    at = boundary + 1
+    if trigger == "timer":
+        clock.advance_time(at)
+        assert clock.result().orders[0].state is OrderState.CANCEL_PENDING
+    else:
+        stamp = ceil_available_at(at)
+        record = events[1].record
+        quote = replace(record.value, event_at=stamp, received_at=stamp, underlying_event_at=stamp)
+        event = replace(
+            events[1],
+            event_ns=at,
+            available_ns=at,
+            record=replace(record, event_at=stamp, available_at=stamp, value=quote),
+        )
+        real = clock_api.advance_order
+        observed = []
+
+        def record_state(current, *args, **kwargs):
+            observed.append(current.state)
+            return real(current, *args, **kwargs)
+
+        with monkeypatch.context() as spy:
+            spy.setattr(clock_api, "advance_order", record_state)
+            clock.advance(event)
+        assert observed == [OrderState.CANCEL_PENDING]
+        # Cancellation is not instantaneous: the quote precedes its modeled ACK.
+        assert clock.result().orders[0].filled_units == 1
+        events_seen = [t.event for _, t in clock.result().transitions]
+        assert events_seen.index(OrderEvent.REQUEST_CANCEL) < events_seen.index(OrderEvent.FILL)
+    assert clock.result().orders[0].cancel_requested_ns == at
+    assert resume(clock).result() == clock.result()

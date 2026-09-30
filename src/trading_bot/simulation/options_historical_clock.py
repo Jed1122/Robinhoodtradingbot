@@ -258,7 +258,8 @@ class _EpisodeClock:
             or loss.daily_halt
             or loss.weekly_halt
             or loss.drawdown_halt
-            or "risk_history_incomplete" in loss.entry_reasons
+            or set(loss.entry_reasons)
+            & {"risk_history_incomplete", "risk_observation_stale", "outside_session"}
         ):
             return
         for order in tuple(self._orders.values()):
@@ -409,6 +410,7 @@ class _EpisodeClock:
         if available_ns > self.now_ns:
             self._seen.clear()
         self.now_ns = available_ns
+        self._cancel_halted_entries()
         self._complete(available_ns)
 
     def advance(self, event: OptionsMarketEvent) -> None:
@@ -438,6 +440,9 @@ class _EpisodeClock:
                 )
             )
         risk_enabled = any(type(e.fact) is JournalRiskObservation for e in self.journal)
+        # Check time-dependent safety before a quote can attempt another fill.
+        # Cancellation latency/races still apply to already transmitted orders.
+        self._cancel_halted_entries()
         for index in range(start, len(order_ids)):
             order = self._orders[order_ids[index]]
             leg = order.intent.structure.legs[0]

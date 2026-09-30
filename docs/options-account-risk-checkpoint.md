@@ -29,6 +29,9 @@ qualify a real-price study, deploy code, or authorize live trading.
   once acceptance is observed. Unknown outcomes retain reservations. Existing cancel
   timers and modeled before/tied-acknowledgement fill races remain intact; a halt
   cannot invent an instantaneous broker cancellation.
+- Timer and quote advances also check stale risk evidence/session closure before
+  quote execution. Ordinary submission/acknowledgement dirtiness is not itself a
+  cancellation trigger. Cancellation races still apply after a stale-state request.
 - A risk-enabled multi-order quote pauses after each fill while orders remain.
   Its owner must supply the same-nanosecond mark/observation before resuming the
   identical quote. Pending cursor/order identities and consumed liquidity survive
