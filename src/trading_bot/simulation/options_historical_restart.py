@@ -13,13 +13,14 @@ from pathlib import Path
 from typing import cast
 
 from trading_bot.config import LoadedConfig
-from trading_bot.domain import DataHash
+from trading_bot.domain import AccountId, DataHash
 from trading_bot.domain.options_serialization import options_intent_from_payload
 from trading_bot.lifecycle.options_expiry import OptionExpiryCalendar
 from trading_bot.market_data.bundle_codec import (
     _array,
     _boolean,
     _date,
+    _decimal,
     _digest,
     _integer,
     _json,
@@ -49,6 +50,7 @@ from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.options_account_journal_models import AccountJournalEntry
 from trading_bot.research.options_study_models import StudyScenario
 from trading_bot.research.options_study_registration import study_code_hash
+from trading_bot.risk.options_loss_history import OptionsLossObservation, OptionsLossPoint
 from trading_bot.simulation.options_historical_clock import _EpisodeClock
 from trading_bot.simulation.options_historical_models import OptionsAccountPathState
 from trading_bot.simulation.options_replay_wire import replay_file_limits
@@ -161,6 +163,43 @@ def _apply(clock: _EpisodeClock, action: object) -> None:
         items = _array(value)
         check(len(items) == 2)
         clock.cancel(_string(items[0]), available_ns=_integer(items[1]))
+    elif name == "mark":
+        items = _array(value)
+        check(len(items) == 3)
+        clock.mark(
+            _string(items[0]),
+            None if items[1] is None else _decimal(items[1]),
+            available_ns=_integer(items[2]),
+        )
+    elif name == "flow":
+        items = _array(value)
+        check(len(items) == 2)
+        clock.external_flow(_decimal(items[0]), available_ns=_integer(items[1]))
+    elif name == "loss":
+        observation = _mapping(value, {"point", "available_ns", "ordinal"})
+        row = _mapping(observation["point"], {f.name for f in fields(OptionsLossPoint)})
+        clock.observe_loss(
+            OptionsLossObservation(
+                OptionsLossPoint(
+                    _string(row["event_id"]),
+                    AccountId(_string(row["account_id"])),
+                    _digest(row["config_hash"]),
+                    _time(row["observed_at"]),
+                    _string(row["session_id"]),
+                    _time(row["session_open"]),
+                    _time(row["session_close"]),
+                    None
+                    if row["previous_session_close"] is None
+                    else _time(row["previous_session_close"]),
+                    _decimal(row["liquidation_equity"]),
+                    _decimal(row["cumulative_external_flows"]),
+                    _digest(row["source_hash"]),
+                    _boolean(row["complete"]),
+                ),
+                _integer(observation["available_ns"]),
+                _integer(observation["ordinal"]),
+            )
+        )
     elif name == "watch":
         items = _array(value)
         check(len(items) == 2)

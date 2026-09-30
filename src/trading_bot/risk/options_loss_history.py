@@ -5,7 +5,7 @@ cash-flow completeness and valuation authentication are separate, still-locked c
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, localcontext
 from typing import Literal
 
@@ -63,6 +63,39 @@ class OptionsLossPoint:
             require_utc(self.previous_session_close)
             if self.previous_session_close >= self.session_open:
                 raise DomainValidationError("prior session must precede current session")
+
+
+def _ns(stamp: datetime) -> int:
+    delta = stamp - datetime(1970, 1, 1, tzinfo=UTC)
+    return (delta.days * 86400 + delta.seconds) * 10**9 + delta.microseconds * 1000
+
+
+def _native_integer(value: int, name: str, *, positive: bool = False) -> None:
+    if type(value) is not int or not (1 if positive else 0) <= value < 2**63:
+        raise DomainValidationError(f"bounded exact {name} required")
+
+
+@dataclass(frozen=True, slots=True)
+class OptionsLossObservation:
+    """Versioned native order wrapper; legacy point fields/preimages stay unchanged.
+
+    The owner supplies the actual availability and causal ordinal, not artificial
+    timestamp increments. These declared inputs are not source attestations.
+    """
+
+    point: OptionsLossPoint
+    available_ns: int
+    ordinal: int
+
+    def __post_init__(self) -> None:
+        if type(self.point) is not OptionsLossPoint:
+            raise DomainValidationError("validated loss point required")
+        _native_integer(self.available_ns, "availability", positive=True)
+        _native_integer(self.ordinal, "ordinal")
+        if _ns(self.point.observed_at) != ((self.available_ns + 999) // 1000) * 1000 or not _ns(
+            self.point.session_open
+        ) <= self.available_ns <= _ns(self.point.session_close):
+            raise DomainValidationError("loss timestamp projection mismatch")
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,28 +177,52 @@ def evaluate_options_loss_history(
     require_utc(as_of)
     with localcontext() as ctx:
         ctx.prec = 2048
-        return _evaluate(loaded, points, as_of)
+        return _evaluate(loaded, points, tuple((_ns(p.observed_at), 0) for p in points), _ns(as_of))
+
+
+def evaluate_options_loss_observations(
+    loaded: LoadedConfig, observations: tuple[OptionsLossObservation, ...], *, as_of_ns: int
+) -> OptionsLossReport:
+    """Use the shared reducer without collapsing distinct native observations."""
+    if type(observations) is not tuple or any(
+        type(o) is not OptionsLossObservation for o in observations
+    ):
+        raise DomainValidationError("validated native observation tuple required")
+    points = tuple(o.point for o in observations)
+    _validate(loaded, points)
+    _native_integer(as_of_ns, "evaluation time", positive=True)
+    if observations[0].available_ns != _ns(points[0].session_open):
+        raise DomainValidationError("exact genesis at session open required")
+    with localcontext() as ctx:
+        ctx.prec = 2048
+        return _evaluate(
+            loaded, points, tuple((o.available_ns, o.ordinal) for o in observations), as_of_ns
+        )
 
 
 def _evaluate(
-    loaded: LoadedConfig, points: tuple[OptionsLossPoint, ...], as_of: datetime
+    loaded: LoadedConfig,
+    points: tuple[OptionsLossPoint, ...],
+    keys: tuple[tuple[int, int], ...],
+    as_of_ns: int,
 ) -> OptionsLossReport:
     first = last = points[0]
+    last_key = keys[0]
     initial = adjusted = peak = first.liquidation_equity
     daily_basis: Decimal | None = initial
     weekly_basis: Decimal | None = initial
     daily_halt = weekly_halt = drawdown_halt = gap = False
-    seen: dict[str, OptionsLossPoint] = {}
+    seen: dict[str, tuple[OptionsLossPoint, tuple[int, int]]] = {}
     sessions = {first.session_id}
     limits = loaded.config.loss_limits
-    for point in points:
+    for point, key in zip(points, keys, strict=True):
         if point.account_id != first.account_id or point.config_hash != str(loaded.config_hash):
             raise DomainValidationError("account/configuration identity changed")
         if point.event_id in seen:
-            if seen[point.event_id] != point:
+            if seen[point.event_id] != (point, key):
                 raise DomainValidationError("conflicting duplicate risk event")
             continue
-        if seen and point.observed_at <= last.observed_at:
+        if seen and key <= last_key:
             raise DomainValidationError("risk clock must advance")
         if point.session_id == last.session_id:
             if (point.session_open, point.session_close, point.previous_session_close) != (
@@ -179,7 +236,7 @@ def _evaluate(
                 raise DomainValidationError("overlapping or reused session")
             closed = (
                 point.previous_session_close == last.session_close
-                and last.observed_at == last.session_close
+                and last_key[0] == _ns(last.session_close)
                 and last.complete
             )
             gap = gap or not closed
@@ -196,13 +253,13 @@ def _evaluate(
         drawdown_halt = drawdown_halt or _breached(
             peak, adjusted, limits.max_peak_to_trough_drawdown_pct
         )
-        seen[point.event_id] = point
+        seen[point.event_id] = (point, key)
         last = point
-    if as_of < last.observed_at:
+        last_key = key
+    if as_of_ns < last_key[0]:
         raise DomainValidationError("evaluation precedes risk evidence")
-    age = as_of - last.observed_at
-    # Avoid float conversion at a strict freshness boundary.
-    age_seconds = Decimal(age.days * 86400 + age.seconds) + Decimal(age.microseconds) / 1000000
+    # Avoid float or microsecond rounding at a strict freshness boundary.
+    age_seconds = Decimal(as_of_ns - last_key[0]) / 10**9
     reasons = tuple(
         name
         for triggered, name in (
@@ -214,7 +271,7 @@ def _evaluate(
                 age_seconds > loaded.config.freshness.max_account_snapshot_age_seconds,
                 "risk_observation_stale",
             ),
-            (as_of >= last.session_close, "outside_session"),
+            (as_of_ns >= _ns(last.session_close), "outside_session"),
         )
         if triggered
     )

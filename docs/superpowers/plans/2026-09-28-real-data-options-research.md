@@ -374,6 +374,15 @@ cancel-race and fee-bound inputs with calibration references; define it in
 
 ## Task 8: Continuous full-policy account paths and independent journal
 
+**2026-09-30 checkpoint:** exact-time loss observations, journal-bound risk latches,
+mark/flow checkpoint replay and independent review are implemented in the
+[account-risk foundation](../../options-account-risk-checkpoint.md). This does not
+complete this task: the source-bound shared-clock strategy coordinator and its
+overlapping-window/session-close integration remain required. The dated
+[source audit](../../options-actual-source-readiness-2026-09-30.md) and
+[broker audit](../../options-broker-runtime-readiness-2026-09-30.md) retain independent
+NO-GO boundaries; successful read-only diagnostics do not grant live capability.
+
 **Files:** Create `research/options_account_paths.py`,
 `research/options_account_journal.py`; test
 `tests/integration/research/test_options_account_paths.py` and
