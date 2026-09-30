@@ -110,7 +110,7 @@ the 100-paper-cycle/seven-UTC-date promotion clocks or implements broker writes.
   -> EtfStudy`. Invalid identity/type/window denies; previous examination is a
   retained non-promotability reason, never silently reset.
 
-- [ ] Write tests: disabled defaults cannot construct execution; unknown/bool/NaN
+- [x] Write tests: disabled defaults cannot construct execution; unknown/bool/NaN
   financial inputs deny; study hashes bind each source/cost/split/reference value;
   four-ETF config/identity stays unchanged; hypothetical cash never replaces risk
   reference; prior holdout access stays blocked; old evidence bytes remain readable.
@@ -125,13 +125,19 @@ the 100-paper-cycle/seven-UTC-date promotion clocks or implements broker writes.
   assert study.evidence_promotable is False
   ```
 
-- [ ] Run `PYTHONPATH=src .venv/bin/python -m pytest tests/unit/research/test_etf_study.py -q`.
+- [x] Run `PYTHONPATH=src .venv/bin/python -m pytest tests/unit/research/test_etf_study.py -q`.
   Expected: new contract tests fail before implementation.
-- [ ] Implement exact-type immutable records and canonical registration. Preserve
+- [x] Implement exact-type immutable records and canonical registration. Preserve
   historical hash versions; do not rewrite expected legacy hashes to new settings.
-- [ ] Run the new tests plus `tests/unit/config`, `tests/unit/risk`, and historical
+- [x] Run the new tests plus `tests/unit/config`, `tests/unit/risk`, and historical
   research compatibility tests. Expected: pass without enabling a runtime.
-- [ ] Commit only this task's exact paths: `feat: register locked focused ETF study`.
+- [x] Commit only this task's exact paths: `feat: register locked focused ETF study`.
+
+Task 1 local verification: 6,276 passed / 33 skipped on Python 3.12, 3.13 and 3.14;
+70 native/ETF cases passed; 88.62% overall coverage and the existing critical-branch
+gate passed on 3.14. The scoped independent review finding was reproduced and fixed.
+Ruff, Mypy, Bandit and both lock checks passed. Hosted CI is separate and remains
+required before merge. Tasks 2–6 and genuine economic validation remain outstanding.
 
 ### Task 2: Qualify sources and freeze a usable acquisition package
 

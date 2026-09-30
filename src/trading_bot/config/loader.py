@@ -269,6 +269,12 @@ def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None
     if config.prediction_markets.live_enabled or envelope.prediction_live_permitted:
         raise UnsafeConfiguration("prediction live execution is always prohibited")
 
+    _require_not_enabled(
+        "equity_strategies.etf_pilot.enabled",
+        config.equity_strategies.etf_pilot.enabled,
+        envelope.equity_strategies.etf_pilot.enabled,
+    )
+
     for name in (
         "max_per_trade_loss_usd",
         "cumulative_trial_loss_limit_usd",
