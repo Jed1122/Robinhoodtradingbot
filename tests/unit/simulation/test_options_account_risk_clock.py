@@ -238,3 +238,40 @@ def test_partial_fill_cannot_replace_existing_valuation_before_risk_observation(
     clock.mark("episode-1", D("1"), available_ns=clock.now_ns)
     observe(clock, order)
     assert resume(clock).result() == clock.result()
+
+
+@pytest.mark.parametrize("observe_final", [False, True])
+def test_terminal_flat_book_is_not_complete_with_missing_final_risk_observation(
+    tmp_path, monkeypatch, observe_final
+):
+    clock, order, events = setup(tmp_path, monkeypatch)
+    observe(clock, order)
+    submit(clock, order)
+    clock.advance(events[0])
+    clock.advance(events[1])
+    clock.mark("episode-1", D("0.20"), available_ns=clock.now_ns)
+    observe(clock, order)
+    submit(clock, closing(order, events[1].available_ns))
+    clock.advance(events[2])
+    clock.advance(events[3])
+    if observe_final:
+        observe(clock, order)
+    clock.advance_time(events[3].available_ns + 10)
+    if observe_final:
+        observe(clock, order)
+    result = clock.result()
+    assert result.state.positions == result.state.unsettled == ()
+    assert result.state.episodes[0].finalized
+    assert result.state.trial.consumed_loss == D("6")
+    assert result.status == ("completed" if observe_final else "incomplete")
+    assert ("risk_state_changed" in result.reasons) is not observe_final
+    assert resume(clock).result() == result
+
+
+def test_stale_initialized_risk_history_cannot_report_complete(tmp_path, monkeypatch):
+    clock, order, _ = setup(tmp_path, monkeypatch)
+    observe(clock, order)
+    age = clock.loaded.config.freshness.max_account_snapshot_age_seconds
+    clock.advance_time(clock.now_ns + int(age * 10**9) + 1)
+    assert clock.result().status == "incomplete"
+    assert "risk_observation_stale" in clock.result().reasons

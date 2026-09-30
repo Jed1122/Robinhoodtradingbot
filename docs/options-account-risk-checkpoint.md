@@ -28,6 +28,9 @@ qualify a real-price study, deploy code, or authorize live trading.
 - Closed checkpoint commands now include marks, hypothetical external flows and
   risk observations. Restore replays and validates the commands rather than trusting
   saved balances, loss counters or a clean-status flag.
+- A terminal, flat, settled book is still reported incomplete if initialized risk
+  history is stale or lacks the final monetary observation. Lifecycle completion
+  cannot silently stand in for complete loss history.
 
 ### Owner contract and limitations
 
@@ -84,9 +87,13 @@ Test-first regressions reproduced missing exact-time observation/clock behavior,
 then two independent-review findings: skipped loss marks and an overly broad
 fill-to-mark exception. Both bypasses were fixed and independently reproduced as
 denials. The reviewer passed 151 focused tests and cleared this foundation only.
-The final source tree passed 6,155 primary tests (33 skips, one existing Starlette
+The first reviewed candidate passed 6,155 primary tests (33 skips, one existing Starlette
 warning) and 1,498 research-environment tests without skips. Ruff, Mypy (282 source
 files), Bandit, both frozen lock checks and the main locked-dependency audit passed.
+Its combined native/primary coverage was 89.02%, passing the unchanged 90% per-critical-
+file branch gate. Final whole-commit review then found the incomplete-final-risk
+reporting defect described above; its correction requires fresh verification rather
+than inheriting that candidate's successful checks.
 Four encrypted-backup tests remain skipped without local `age`; optional native
 backends missing from the primary environment were exercised in research. Coverage
 and exact-head remote CI remain separate integration gates; these counts do not

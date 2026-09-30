@@ -421,6 +421,11 @@ class _EpisodeClock:
 
     def result(self) -> HistoricalClockResult:
         reasons = set((*self.state.incidents, *self.state.latched_halts))
+        loss = self.loss_report()
+        if loss is not None:
+            reasons.update(
+                set(loss.entry_reasons) & {"risk_state_changed", "risk_observation_stale"}
+            )
         expiry = self._expiry(self.now_ns)
         reasons.update(reason for item in expiry for reason in item.reasons)
         if self.state.positions:
