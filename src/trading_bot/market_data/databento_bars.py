@@ -146,6 +146,7 @@ def scan_bars(
                     type(record) is dbn.OHLCVMsg and int(record.rtype) == 33,
                     "databento_dbn_invalid",
                 )
+                require(int(record.publisher_id) == 2, "databento_dbn_invalid")
                 raw = bytes(record)
                 require(len(raw) == 56, "databento_dbn_invalid")
                 count += 1

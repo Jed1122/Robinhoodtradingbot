@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import heapq
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass
 from decimal import Decimal
@@ -302,7 +302,7 @@ def iter_quote_events(
     *,
     loaded: LoadedConfig,
     repository_root: Path,
-) -> Iterator[OptionsMarketEvent]:
+) -> Generator[OptionsMarketEvent, None, None]:
     """Validate all archives before the first event; reopening always revalidates.
 
     Native flags alone do not qualify real providers. Installed reviewed source

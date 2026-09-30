@@ -94,12 +94,15 @@ class _EpisodeClock:
             )
         )
         self.initial, self.loaded, self.scenario, self.seed = initial, loaded, scenario, seed
+        self._prefix = prefix
+        self._actions: list[tuple[str, object]] = []
         self.state, self.journal = state, prefix
         self.now_ns = state.last_event_ns
         self._start_cash, self._start_fees = state.cash, state.fees
         self._cash, self._fees = Decimal(0), Decimal(0)
         self._seen: set[str] = set()
         self._event_count = 0
+        self._consumed: dict[tuple[str, str, int, str], int] = {}
         self._orders = {
             o.intent.intent_id: HistoricalOrder(
                 o.intent,
@@ -130,6 +133,7 @@ class _EpisodeClock:
             )
         )
         self._calendars[contract.contract_id] = binding
+        self._actions.append(("watch", binding))
 
     def _expiry(self, at: int) -> tuple[OptionExpiryAssessment, ...]:
         contracts = {p.contract.contract_id: p.contract for p in self.state.positions}
@@ -176,6 +180,7 @@ class _EpisodeClock:
             self._fees,
             self._seen.copy(),
             self._event_count,
+            self._consumed.copy(),
             self._orders.copy(),
             self._transitions.copy(),
         )
@@ -190,6 +195,7 @@ class _EpisodeClock:
                 self._fees,
                 self._seen,
                 self._event_count,
+                self._consumed,
                 self._orders,
                 self._transitions,
             ) = before
@@ -205,6 +211,7 @@ class _EpisodeClock:
         self._append((JournalIntent(episode_id, session_id, intent),), available_ns)
         self._orders[intent.intent_id] = proposed.order
         self._transitions.extend((intent.intent_id, t) for t in proposed.transitions)
+        self._actions.append(("submit", (episode_id, session_id, intent, available_ns)))
 
     def _apply_step(self, step: HistoricalOrderStep) -> None:
         ident = step.order.intent.intent_id
@@ -232,6 +239,7 @@ class _EpisodeClock:
     def cancel(self, order_id: str, *, available_ns: int) -> None:
         check(available_ns == self.now_ns and order_id in self._orders)
         self._apply_step(request_cancel(self._orders[order_id], available_ns=available_ns))
+        self._actions.append(("cancel", (order_id, available_ns)))
 
     def _move(self, order: HistoricalOrder, event: OrderEvent, at: int) -> None:
         following = transition(order.state, event)
@@ -316,6 +324,7 @@ class _EpisodeClock:
     def advance_time(self, available_ns: int) -> None:
         with self._atomic_event():
             self._advance_time(available_ns)
+        self._actions.append(("time", available_ns))
 
     def _advance_time(self, available_ns: int) -> None:
         instant(available_ns)
@@ -329,6 +338,7 @@ class _EpisodeClock:
     def advance(self, event: OptionsMarketEvent) -> None:
         with self._atomic_event():
             self._advance(event)
+        self._actions.append(("quote", event))
 
     def _advance(self, event: OptionsMarketEvent) -> None:
         check(type(event) is OptionsMarketEvent and event.available_ns >= self.now_ns)
@@ -339,19 +349,22 @@ class _EpisodeClock:
         if event.available_ns > self.now_ns:
             self._seen.clear()
         self.now_ns = event.available_ns
-        consumed: dict[tuple[str, str], int] = {}
         for order in tuple(self._orders.values()):
             leg = order.intent.structure.legs[0]
-            key = (leg.contract.contract_id, leg.side.value)
+            # Source ordinals/projection hashes and receipt times do not establish
+            # replenishment. Conservatively share same-native-time side liquidity,
+            # including repeated records delivered after a gap or a later receipt.
+            key = (event.source, event.symbol, event.event_ns, leg.side.value)
             step = advance_order(
                 order,
                 event,
                 scenario=self.scenario,
                 seed=self.seed,
-                consumed_units=consumed.get(key, 0),
+                consumed_units=self._consumed.get(key, 0),
             )
             self._apply_step(step)
-            consumed[key] = consumed.get(key, 0) + step.fill_units
+            if step.fill_units:
+                self._consumed[key] = self._consumed.get(key, 0) + step.fill_units
         self._seen.add(event.identity)
         self._event_count += 1
         self._complete(self.now_ns)

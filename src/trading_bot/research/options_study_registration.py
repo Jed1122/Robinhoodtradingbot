@@ -10,7 +10,11 @@ from trading_bot.domain import DataHash
 from trading_bot.market_data.databento_bar_models import native_limits
 from trading_bot.market_data.databento_bar_store import _private_root, _publish_checked
 from trading_bot.market_data.options_session_inputs import _fact, _ns
-from trading_bot.market_data.options_source_models import SourceEvidenceError, check
+from trading_bot.market_data.options_source_models import (
+    SourceEvidenceError,
+    SourceVerification,
+    check,
+)
 from trading_bot.market_data.options_source_verify import verify_source_bundle
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.options_study_models import (
@@ -42,6 +46,43 @@ def study_settings(loaded: LoadedConfig) -> None:
     canonical, digest = hash_loaded_config(loaded.config, loaded.safety_envelope)
     check(canonical == loaded.canonical_json and digest == loaded.config_hash)
     check(loaded.config.options.research_study.enabled)
+
+
+def history_is_verified(history: VerifiedHistoryCoverage, verified: SourceVerification) -> bool:
+    """Shared exact history preimage checks, never trust a saved verification result."""
+    return (
+        verified.status == "verified"
+        and verified.context == history.context
+        and history.visible_claim_hashes == verified.visible_claim_hashes
+        and bool(history.visible_claim_hashes)
+        and _fact(
+            verified,
+            "calendar",
+            {
+                "kind": "history-calendar-v1",
+                "start_ns": history.start_ns,
+                "end_ns": history.end_ns,
+                "sessions": history.sessions,
+            },
+        )
+        and history.actions_coverage_hash == content_hash(history.actions_fact)
+        and _fact(verified, "actions", history.actions_fact)
+        and all(
+            a.action.instrument_id == "SPY" and _ns(a.available_at) <= history.end_ns
+            for a in history.actions
+        )
+        and all(
+            _fact(
+                verified,
+                "bar_publication",
+                {
+                    "kind": "study-daily-bar-v1",
+                    "observation": o,
+                },
+            )
+            for o in history.observations
+        )
+    )
 
 
 def _splits_valid(spec: OptionsStudySpec, loaded: LoadedConfig) -> bool:
@@ -130,35 +171,7 @@ def validate_study_registration(
         loaded=loaded,
         repository_root=repository_root,
     )
-    calendar = {
-        "kind": "history-calendar-v1",
-        "start_ns": history.start_ns,
-        "end_ns": history.end_ns,
-        "sessions": history.sessions,
-    }
-    history_ok = (
-        verified.status == "verified"
-        and history.visible_claim_hashes == verified.visible_claim_hashes
-        and bool(history.visible_claim_hashes)
-        and _fact(verified, "calendar", calendar)
-        and history.actions_coverage_hash == content_hash(history.actions_fact)
-        and _fact(verified, "actions", history.actions_fact)
-        and all(
-            a.action.instrument_id == "SPY" and _ns(a.available_at) <= history.end_ns
-            for a in history.actions
-        )
-        and all(
-            _fact(
-                verified,
-                "bar_publication",
-                {
-                    "kind": "study-daily-bar-v1",
-                    "observation": o,
-                },
-            )
-            for o in history.observations
-        )
-    )
+    history_ok = history_is_verified(history, verified)
     if not history_ok:
         reasons.add("study_history_unverified")
     if (

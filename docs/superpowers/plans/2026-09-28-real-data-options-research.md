@@ -301,6 +301,24 @@ artifacts. The offline consumer never receives purchase authority.
 
 ## Task 7: Complete imported historical episode
 
+Continuation checkpoint (2026-09-30): the public source-reverified single-episode
+runner and immutable request/result now exist, together with shared-feature/canonical
+entry-budget composition, signal-invalidation/expiry close generation, independent
+cash reconciliation, and both active-clock and source-reverified prefix recovery.
+Native manufactured fixtures exercise both call and put, mixed-signal denial, the
+$100 denial case, exact -$2.00 round-trip cash/$1.00 fees at an explicitly hypothetical
+$10,000 tier, rejected/unfilled/ambiguous orders and incomplete settlement. The
+unchanged $15 order cap still prevents the $25-premium example from being a policy
+acceptance case. Current source files are `options_historical.py`,
+`options_historical_policy.py` and `options_historical_restart.py`; no actual-source
+rule, broker write or production capability was enabled. Public replay rejects a
+stream exceeding the frozen outcome horizon. Private checkpoint bounds remain intact.
+Independent review found and verified fixes for completed-checkpoint recovery,
+result/checkpoint resource-limit coupling and the missing frozen-horizon check.
+Final current-tree verification is recorded in `docs/options-real-data-validation.md`.
+Task 8 full-policy continuity, genuine costs/uncertainty and actual-source qualification
+remain incomplete; these episode tests do not accept those milestones.
+
 Execution checkpoint (2026-09-29): **in progress**, not accepted. The immutable
 order helper and independent journal are joined by an internal
 `simulation/options_historical_clock.py` composition, tested in

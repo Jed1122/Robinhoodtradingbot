@@ -74,6 +74,17 @@ def test_supported_versions_preserve_native_integer_values_and_record_hash(versi
         profile.accepted_count = 5
 
 
+@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("publisher_id", [1, 3, 30])
+def test_uniform_non_xnas_publishers_cannot_supply_spy_bars(version, publisher_id):
+    records = (
+        native_record(publisher_id=publisher_id),
+        native_record(stamp=STAMP + MINUTE, publisher_id=publisher_id),
+    )
+    with pytest.raises(DatabentoImportError, match="databento_dbn_invalid"):
+        scan(native_bytes(version=version, records=records))
+
+
 def test_undefined_ohlc_is_rejected_even_when_ordering_matches():
     body, request, digest = bar_fixture(prices=(2**63 - 1,) * 4)
     rows = []
@@ -265,11 +276,11 @@ def test_row_rejects_boolean_and_float_financial_fields():
             replace(rows[0], **changes)
 
 
-def test_expansion_limit_and_same_minute_state_are_bounded():
+def test_expansion_limit_and_mixed_publisher_stream_fail_closed():
     with pytest.raises(DatabentoImportError, match="databento_limit_exceeded"):
         scan(b"x" * 500_000, limits=replace(DefinitionLimits(), max_decompressed_bytes=1000))
     records = (native_record(), native_record(publisher_id=3))
-    with pytest.raises(DatabentoImportError, match="databento_limit_exceeded"):
+    with pytest.raises(DatabentoImportError, match="databento_dbn_invalid"):
         scan(
             native_bytes(records=records), limits=replace(DefinitionLimits(), max_unique_symbols=1)
         )

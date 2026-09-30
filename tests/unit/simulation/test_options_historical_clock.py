@@ -380,6 +380,36 @@ def test_shared_observation_liquidity_cannot_be_reused_between_orders(tmp_path, 
     assert result.orders[1].state is OrderState.SUBMITTED
 
 
+@pytest.mark.parametrize("later_receipt", [False, True])
+def test_repeated_native_quote_cannot_replenish_displayed_liquidity(
+    tmp_path, monkeypatch, later_receipt
+):
+    clock, order, events = setup(tmp_path, monkeypatch, units=5)
+    submit(clock, order)
+    clock.advance(events[0])
+    clock.advance(events[1])
+    original = events[1]
+    stamp = original.available_ns + int(later_receipt)
+    duplicate = replace(
+        original,
+        available_ns=stamp,
+        record_ordinal=original.record_ordinal + 100,
+        record=replace(
+            original.record,
+            available_at=ceil_available_at(stamp),
+            value=replace(original.record.value, data_hash=content_hash("duplicate-projection")),
+        ),
+    )
+    assert duplicate.identity != original.identity
+    clock.advance(duplicate)
+    result = clock.result()
+    assert result.orders[0].filled_units == 3
+    assert result.net_cash_flow == D("-76.50")
+    # A genuinely later native observation may supply new displayed liquidity.
+    clock.advance(events[3])
+    assert clock.result().orders[0].filled_units == 5
+
+
 def test_failed_event_rolls_back_partial_accounting_and_liquidity(tmp_path, monkeypatch):
     clock, order, events = setup(tmp_path, monkeypatch)
     two_orders(clock, order)

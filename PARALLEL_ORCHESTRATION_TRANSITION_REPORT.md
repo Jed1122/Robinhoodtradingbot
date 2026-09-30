@@ -1,6 +1,6 @@
 # Parallel Orchestration Transition Report
 
-## Current checkpoint — 2026-09-29 UTC
+## Current checkpoint — 2026-09-30 UTC
 
 This checkpoint supersedes conflicting current-status and authority statements in the
 historical snapshots below. The options-only [master specification](docs/options-only-build-spec.md)
@@ -11,12 +11,14 @@ remain incomplete. The [real-data research design](docs/superpowers/specs/2026-0
 and [implementation plan](docs/superpowers/plans/2026-09-28-real-data-options-research.md)
 are approved. Closed source dispatch, bounded native quote archives, the causal
 quote stream and frozen study/history contracts are implemented and fixture-tested.
-Order-step simulation, an internal modeled lifecycle clock and independent
-account-journal reconstruction are partial foundations. The clock composes
-cancel/expiry/settlement timers and incident-preserving accounting, but does not
-select strategies, verify source preimages or admit risk. Complete historical
-episode/path orchestration, active-order restart cursors, cost attribution,
-dependent-outcome uncertainty and research CLI/report composition are still pending.
+The source-reverified single-episode runner now composes fixed shortlist/momentum
+decisions, canonical entry-budget checks, modeled order/expiry/settlement behavior,
+independent cash accounting and exact-prefix offline recovery. Manufactured native
+fixtures remain engineering-only. Continuous account paths, ongoing loss-history
+and liquidation-mark risk evaluation, effective-date costs, dependent-outcome
+uncertainty and research CLI/report composition are still pending. See the separate
+[validation and readiness checkpoint](docs/options-real-data-validation.md) for
+actual test evidence, dependency remediation and broker/runtime limitations.
 Actual-source rules remain unverified (Task 2); a complete qualified credit-bounded
 data package remains blocked on those inputs (Task 6). No genuine economic outcome,
 new data purchase, broker write, deployment or live activation is claimed.

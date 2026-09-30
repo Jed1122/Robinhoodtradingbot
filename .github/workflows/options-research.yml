@@ -66,7 +66,11 @@ jobs:
           tests/unit/config/test_options_study_config.py
           tests/unit/simulation/test_options_historical_execution.py
           tests/unit/simulation/test_options_historical_clock.py
+          tests/unit/simulation/test_options_historical_policy.py
+          tests/unit/simulation/test_options_historical_restart.py
+          tests/unit/simulation/test_options_historical_restart_adversarial.py
           tests/unit/research/test_options_account_journal.py
           tests/integration/simulation/test_options_historical_order_steps.py
+          tests/integration/simulation/test_options_historical_episode.py
           tests/integration/cli/test_options_native.py
           tests/integration/research/test_native_options_pipeline.py

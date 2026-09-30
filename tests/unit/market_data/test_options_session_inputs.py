@@ -19,6 +19,7 @@ from trading_bot.domain import CorporateAction, DataHash, InstrumentId
 from trading_bot.domain.options import OptionSession
 from trading_bot.market_data.databento_bar_models import NativeBarRequest
 from trading_bot.market_data.databento_bar_store import stage_bars, verify_bar_stage
+from trading_bot.market_data.databento_batch import DatabentoImportError
 from trading_bot.research.options_shortlist_models import (
     ShortlistAction,
     ShortlistCalendarDay,
@@ -304,9 +305,9 @@ def test_visible_splits_deny_and_dividends_remain_unadjusted_context(tmp_path, a
         assert result.bar.close == Decimal("101")
 
 
-def test_mixed_publishers_cannot_be_aggregated_as_one_underlying_series(tmp_path):
-    result = assemble(case(tmp_path, mixed_publishers=True))
-    assert result.bar is None and "source_data_unusable" in result.reasons
+def test_mixed_publishers_are_rejected_before_underlying_session_assembly(tmp_path):
+    with pytest.raises(DatabentoImportError, match="databento_dbn_invalid"):
+        case(tmp_path, mixed_publishers=True)
 
 
 @pytest.mark.parametrize("kind", ["unknown", "deliverable_change"])
