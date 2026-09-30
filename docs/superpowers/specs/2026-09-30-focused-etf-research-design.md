@@ -1,6 +1,6 @@
 # Focused SPY-plus-cash research pilot
 
-Date: 2026-09-30. Status: **written specification awaiting operator review**.
+Date: 2026-09-30. Status: **written specification approved by the operator**.
 This is a new research identity, not an implemented strategy, economic result,
 options replacement, account allocation, or permission to trade.
 
