@@ -234,8 +234,9 @@ async def test_result_flags_cannot_be_requested_or_replaced():
     with pytest.raises(TypeError):
         module.EquityStrategyReplayResult()
     result = await module.replay_equity_strategy(replay_scenario())
-    with pytest.raises(ValueError):
+    with pytest.raises((TypeError, ValueError), match="init=False"):
         replace(result, evidence_promotable=True)
+    assert result.evidence_promotable is False
 
 
 @pytest.mark.asyncio

@@ -44,8 +44,9 @@ def test_request_detaches_config_and_derives_only_a_synthetic_account():
         assert getattr(value, name) is False
         with pytest.raises(FrozenInstanceError):
             setattr(value, name, True)
-        with pytest.raises(ValueError):
+        with pytest.raises((TypeError, ValueError), match="init=False"):
             replace(value, **{name: True})
+        assert getattr(value, name) is False
 
 
 @pytest.mark.parametrize(

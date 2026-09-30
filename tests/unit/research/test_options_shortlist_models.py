@@ -104,8 +104,9 @@ def test_result_is_frozen_and_has_no_caller_authority() -> None:
         "live_authorized",
     ):
         assert getattr(result, flag) is False
-        with pytest.raises((FrozenInstanceError, ValueError)):
+        with pytest.raises((TypeError, ValueError), match="init=False"):
             replace(result, **{flag: True})
+        assert getattr(result, flag) is False
     with pytest.raises(FrozenInstanceError):
         result.status = "no_candidate"
 

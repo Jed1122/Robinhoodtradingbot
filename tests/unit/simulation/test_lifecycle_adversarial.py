@@ -207,8 +207,9 @@ def test_result_rejects_invalid_record_shapes(changes):
 
 def test_result_flags_cannot_be_enabled_or_changed():
     result = replay_order_lifecycle(make_request())
-    with pytest.raises(ValueError):
+    with pytest.raises((TypeError, ValueError), match="init=False"):
         replace(result, evidence_promotable=True)
+    assert result.evidence_promotable is False
     with pytest.raises(FrozenInstanceError):
         result.source_kind = "real"
 

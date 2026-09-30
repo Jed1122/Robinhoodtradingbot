@@ -63,7 +63,7 @@ options:
 
 portfolio:
   expected_starting_equity_usd: 100
-  live_account_equity_ceiling_usd: 150
+  live_account_equity_ceiling_usd: 1000
   max_total_gross_exposure_pct: 60
   min_cash_reserve_pct: 40
   max_open_positions: 5

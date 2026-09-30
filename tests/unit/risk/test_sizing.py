@@ -182,11 +182,15 @@ def test_absolute_order_notional_cap_cannot_be_bypassed() -> None:
     assert decision.max_notional == Decimal("5")
 
 
-def test_authorized_reference_prevents_gain_based_auto_scaling() -> None:
+@pytest.mark.parametrize("reconciled_equity", ["120", "500", "1000"])
+def test_authorized_reference_prevents_gain_or_deposit_based_auto_scaling(
+    reconciled_equity: str,
+) -> None:
     baseline = size_position(sizing_request())
-    higher = size_position(sizing_request(reconciled_equity=Decimal("120")))
+    higher = size_position(sizing_request(reconciled_equity=Decimal(reconciled_equity)))
 
     assert higher.risk_budget == baseline.risk_budget
+    assert higher.risk_budget == Decimal("0.50")
     assert higher.quantity == baseline.quantity
 
 

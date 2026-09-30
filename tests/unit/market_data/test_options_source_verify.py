@@ -191,8 +191,9 @@ def test_unknown_rule_cannot_be_promoted_by_a_claim(tmp_path):
         "download_authorized",
         "live_authorized",
     ):
-        with pytest.raises(ValueError):
+        with pytest.raises((TypeError, ValueError), match="init=False"):
             replace(result, **{field: True})
+        assert getattr(result, field) is False
 
 
 def test_visible_fact_identity_is_recomputable_by_downstream_assemblers(tmp_path):

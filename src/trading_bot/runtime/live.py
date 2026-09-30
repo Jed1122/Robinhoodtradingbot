@@ -7,6 +7,8 @@ from enum import StrEnum
 
 from trading_bot.authorization import LiveAuthorization, LiveLease, PreflightReport
 from trading_bot.brokers.protocols import BrokerCancelOnly, BrokerPlace, BrokerRead
+from trading_bot.config import LoadedConfig, enforce_safety_envelope
+from trading_bot.config.hashing import hash_loaded_config
 from trading_bot.domain import PromotionAttestation, RuntimeState
 
 
@@ -45,11 +47,25 @@ class LiveApplication:
             raise LiveNotReady("live application is paused")
 
 
-def evaluate_live_preflight(report: PreflightReport, *, now: datetime) -> LivePreflightResult:
+def evaluate_live_preflight(
+    report: PreflightReport, *, loaded_config: LoadedConfig, now: datetime
+) -> LivePreflightResult:
+    if type(loaded_config) is not LoadedConfig:
+        raise LiveNotReady("canonical loaded configuration is required")
+    config = loaded_config.config
+    enforce_safety_envelope(config, loaded_config.safety_envelope)
+    canonical, config_hash = hash_loaded_config(config, loaded_config.safety_envelope)
+    if (
+        (canonical, config_hash) != (loaded_config.canonical_json, loaded_config.config_hash)
+        or report.config_hash != config_hash
+    ):
+        return LivePreflightResult(False, ("configuration_identity_mismatch",))
     reasons: list[str] = []
+    if report.stage is not config.mode:
+        reasons.append("configuration_stage_mismatch")
     if report.observed_at > now or (now - report.observed_at).total_seconds() > 300:
         reasons.append("stale_preflight")
-    if report.equity > 150:
+    if report.equity > config.portfolio.live_account_equity_ceiling_usd:
         reasons.append("account_equity_ceiling")
     flags = {
         "account_inactive": not report.account_active or report.account_restricted,
@@ -74,6 +90,7 @@ def build_cancel_only_recovery(
 
 def build_live_application(
     *,
+    loaded_config: LoadedConfig,
     live_trading_enabled: bool,
     preflight: PreflightReport,
     authorization: LiveAuthorization | None,
@@ -84,9 +101,11 @@ def build_live_application(
 ) -> LiveApplication:
     if not live_trading_enabled:
         raise LiveNotReady("live trading is disabled")
-    readiness = evaluate_live_preflight(preflight, now=now)
+    readiness = evaluate_live_preflight(preflight, loaded_config=loaded_config, now=now)
     if not readiness.ready:
         raise LiveNotReady("live preflight is not ready")
+    if not loaded_config.config.live_trading_enabled:
+        raise LiveNotReady("live trading is disabled by configuration")
     if promotion is None or not promotion.eligible:
         raise LiveNotReady("promotion evidence is required")
     expected_stage = preflight.stage.value

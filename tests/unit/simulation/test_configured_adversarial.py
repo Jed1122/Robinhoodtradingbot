@@ -69,8 +69,9 @@ def test_settings_and_seed_changes_are_hash_bound_without_output_promotion():
         assert other.input_hash != result.input_hash
         assert other.result_hash != result.result_hash
         assert not other.evidence_promotable and not other.assumptions_validated
-    with pytest.raises(ValueError):
+    with pytest.raises((TypeError, ValueError), match="init=False"):
         replace(result, evidence_promotable=True)
+    assert result.evidence_promotable is False
     with pytest.raises(FrozenInstanceError):
         result.result_hash = "wrong"
 

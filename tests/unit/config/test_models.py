@@ -127,7 +127,7 @@ def test_approved_portfolio_risk_activity_and_asset_values_are_exact() -> None:
     config = load_backtest().config
 
     assert config.portfolio.expected_starting_equity_usd == Decimal("100")
-    assert config.portfolio.live_account_equity_ceiling_usd == Decimal("150")
+    assert config.portfolio.live_account_equity_ceiling_usd == Decimal("1000")
     assert config.portfolio.max_total_gross_exposure_pct == Decimal("60")
     assert config.portfolio.min_cash_reserve_pct == Decimal("40")
     assert config.portfolio.max_open_positions == 5

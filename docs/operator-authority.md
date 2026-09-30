@@ -1,8 +1,9 @@
 # Standing operator authority
 
 Recorded 2026-09-28 UTC from the operator's direct instructions in this project.
-This record updates workflow authority; it does not change software risk policy,
+The original grants update workflow authority, not software risk policy,
 economic acceptance criteria, credentials, account permissions, or live controls.
+The separately dated account-ceiling amendment below records a later narrow exception.
 Later explicit operator instructions supersede this record.
 
 ## Automatic integration and merging
@@ -84,8 +85,20 @@ authorize live operation. The existing credit-only acquisition grant is unchange
 
 No broker order review, placement, cancellation, real-money test trade, transfer,
 credential change, deployment, live activation, or risk-limit increase follows
-from either grant above. Existing separately approved read-only checks retain
-their original scope. Research data and secrets must not enter Git or Cloud
+from the integration or data-acquisition grants above. Existing separately
+approved read-only checks retain their original scope. Research data and secrets must not enter Git or Cloud
 agents. Genuine economic validation still requires actual option bid/ask and
 underlying data, defensible costs and uncertainty, and all canonical acceptance
 criteria; a synthetic run or an engineering pilot cannot stand in for it.
+
+## Account-equity ceiling — explicit 2026-09-30 amendment
+
+The operator requested: "also change the $150 live account ceiling to $1,000."
+
+This authorizes changing only the configured account-equity ceiling and its
+canonical release bound from $150 to $1,000, with consistent enforcement and
+regression tests. It does not authorize a transfer, balance inspection, deployment,
+live activation, real-money order, changed strategy, larger risk-equity reference,
+larger order/exposure limits, or weaker loss/reconciliation/kill controls.
+All other capital assumptions and limits remain unchanged. See the current
+[risk-policy amendment](risk-policy.md#account-equity-ceiling-amendment--2026-09-30).
