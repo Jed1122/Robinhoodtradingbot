@@ -9,6 +9,7 @@ import hashlib
 import os
 import stat
 from dataclasses import asdict, replace
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -23,6 +24,11 @@ from trading_bot.market_data.bundle_store import (
     _publish,
     _read,
     _subdirectory,
+)
+from trading_bot.market_data.etf_calendar import EtfCalendarArchive, parse_etf_calendar
+from trading_bot.market_data.etf_issuer_distributions import (
+    EtfIssuerDistributionArchive,
+    parse_spy_issuer_distributions,
 )
 from trading_bot.market_data.etf_native_archive import read_etf_native_bars
 from trading_bot.market_data.recording import canonical_json, content_hash
@@ -112,15 +118,19 @@ def _report(state: EtfAccountResult, operating_cost: Decimal) -> dict[str, objec
     }
 
 
-def _publish_report(directory: Path, report: dict[str, object]) -> str:
+def _publish_report_fd(descriptor: int, report: dict[str, object]) -> str:
     encoded = canonical_json(report).encode()
     digest = hashlib.sha256(encoded).hexdigest()
+    _publish(descriptor, digest + ".etf-report.json", encoded)
+    return digest
+
+
+def _publish_report(directory: Path, report: dict[str, object]) -> str:
     descriptor = _open_root(directory, _REPOSITORY)
     try:
-        _publish(descriptor, digest + ".etf-report.json", encoded)
+        return _publish_report_fd(descriptor, report)
     finally:
         os.close(descriptor)
-    return digest
 
 
 def _fixture(config_dir: Path, capital: str, scenario: str) -> EtfAccountRequest:
@@ -289,12 +299,14 @@ def latest_vintage_run(
     config_dir: Annotated[Path, typer.Option()] = Path("configs"),
 ) -> None:
     """Run fixed development signals from saved SIP bars; holdout/fills stay blocked."""
+    report_descriptor = -1
     try:
         source = read_etf_native_bars(capture_dir, manifest_hash, repository_root=_REPOSITORY)
         study = _study(_load(config_dir), source_plan_hash=latest_vintage_source_plan_hash(source))
         # Publish the protocol before any outcomes are evaluated.
-        _publish_report(
-            report_dir,
+        report_descriptor = _open_root(report_dir, _REPOSITORY)
+        _publish_report_fd(
+            report_descriptor,
             {
                 "schema": "etf-latest-vintage-preregistration-v1",
                 "study": study,
@@ -311,16 +323,106 @@ def latest_vintage_run(
             "result_hash": result.result_hash,
             "live_authorized": False,
         }
-        digest = _publish_report(report_dir, report)
+        digest = _publish_report_fd(report_descriptor, report)
     except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
         _invalid()
         return
+    finally:
+        if report_descriptor >= 0:
+            os.close(report_descriptor)
     typer.echo(
         canonical_json(
             {
                 "report_hash": digest,
                 "study_hash": study.study_hash,
                 "development_records": result.development_records,
+                "holdout_evaluated": False,
+                "economic_verdict": result.economic_verdict,
+                "execution_enabled": False,
+                "evidence_promotable": False,
+            }
+        )
+    )
+
+
+def _read_reference_inputs(
+    root: Path, calendar_hash: str, issuer_hash: str
+) -> tuple[EtfCalendarArchive, EtfIssuerDistributionArchive]:
+    descriptor = _open_root(root, _REPOSITORY)
+    try:
+        calendar_body = _read(descriptor, "calendar.json", 1048576)
+        issuer_body = _read(descriptor, "ssga-distributions.xlsx", 2 * 1048576)
+    finally:
+        os.close(descriptor)
+    return (
+        parse_etf_calendar(calendar_body, calendar_hash),
+        parse_spy_issuer_distributions(
+            issuer_body, issuer_hash, start_date=date(2016, 1, 1), end_date=date(2025, 12, 31)
+        ),
+    )
+
+
+@app.command("benchmark-screen-run")
+def benchmark_screen_run(
+    capture_dir: Annotated[Path, typer.Option()],
+    manifest_hash: Annotated[str, typer.Option()],
+    reference_dir: Annotated[Path, typer.Option()],
+    calendar_hash: Annotated[str, typer.Option()],
+    issuer_hash: Annotated[str, typer.Option()],
+    report_dir: Annotated[Path, typer.Option()],
+    config_dir: Annotated[Path, typer.Option()] = Path("configs"),
+) -> None:
+    """Matched cash/buy-hold price references, not a strategy execution backtest."""
+    report_descriptor = -1
+    try:
+        source = read_etf_native_bars(capture_dir, manifest_hash, repository_root=_REPOSITORY)
+        calendar, issuer = _read_reference_inputs(reference_dir, calendar_hash, issuer_hash)
+        from trading_bot.research.etf_benchmark_screen import (
+            EtfBenchmarkScreenRequest,
+            etf_benchmark_screen_plan_hash,
+            run_etf_benchmark_screen,
+        )
+
+        study = _study(
+            _load(config_dir),
+            source_plan_hash=etf_benchmark_screen_plan_hash(source, calendar, issuer),
+        )
+        request = EtfBenchmarkScreenRequest(study, source, calendar, issuer)
+        report_descriptor = _open_root(report_dir, _REPOSITORY)
+        _publish_report_fd(
+            report_descriptor,
+            {
+                "schema": "etf-benchmark-screen-preregistration-v1",
+                "study": study,
+                "source_plan_hash": study.source_plan_hash,
+                "economic_verdict": "NOT_EVALUATED",
+                "execution_enabled": False,
+                "evidence_promotable": False,
+            },
+        )
+        result = run_etf_benchmark_screen(request)
+        digest = _publish_report_fd(
+            report_descriptor,
+            {
+                "schema": "etf-benchmark-screen-report-v1",
+                **asdict(result),
+                "result_hash": result.result_hash,
+                "live_authorized": False,
+            },
+        )
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _invalid()
+        return
+    finally:
+        if report_descriptor >= 0:
+            os.close(report_descriptor)
+    typer.echo(
+        canonical_json(
+            {
+                "report_hash": digest,
+                "study_hash": study.study_hash,
+                "evaluation_records": result.evaluation_records,
+                "retained_holdout_records": result.retained_holdout_records,
                 "holdout_evaluated": False,
                 "economic_verdict": result.economic_verdict,
                 "execution_enabled": False,

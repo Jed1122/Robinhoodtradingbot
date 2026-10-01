@@ -4,8 +4,8 @@ Status: 2026-10-01 development increment, not yet merged. Native capture PR #6
 is merged at `a2b3921635fd489db87c4dd1f7451789fbdb6162`; that merge does not
 qualify the captured data or approve economic results, deployment or trading.
 
-The three runnable standalone commands use the canonical backtest configuration
-and locked `spy-cash-momentum-20-100-v1` research identity. A fourth command,
+The four runnable standalone commands use the canonical backtest configuration
+and locked `spy-cash-momentum-20-100-v1` research identity. A fifth command,
 `account-ledger-run`, explicitly denies before mutation. None constructs network
 or broker transport, opens credentials, submits orders or enables live execution
 or promotion. The existing main operator CLI is not their entry point.
@@ -21,7 +21,8 @@ Run from the repository root in its existing locked Python environment:
 PYTHONPATH=src .venv/bin/python -m trading_bot.cli.etf_research --help
 ```
 
-`account-fixture-run`, `account-checkpoint-run` and `latest-vintage-run` accept
+`account-fixture-run`, `account-checkpoint-run`, `latest-vintage-run` and
+`benchmark-screen-run` accept
 `--config-dir` (default `configs`). They enable only the research profile inside
 the canonical configuration; execution and promotability remain false. The
 denied ledger command accepts only `--output-dir`, not `--config-dir`.
@@ -148,29 +149,75 @@ entries and remains `ECONOMIC_NO_GO`; no fills, trading returns, matched after-c
 benchmarks or empirical edge are established. The waiver does not qualify
 execution data, calibrated costs, economics, paper/shadow promotion or live use.
 
+## Current-access historical reference screen
+
+The additional command joins the retained native bars, an independently captured
+Alpaca calendar response, and the issuer's public distribution workbook. Store
+the two reference files as `calendar.json` and `ssga-distributions.xlsx` in an
+existing private reference root; pass their independently checked SHA256 values:
+
+```sh
+etf_benchmark_root=$(mktemp -d /private/tmp/etf-benchmark-report.XXXXXX)
+
+PYTHONPATH=src .venv/bin/python -m trading_bot.cli.etf_research benchmark-screen-run \
+  --capture-dir /absolute/private/native-capture \
+  --manifest-hash REVIEWED_MANIFEST_SHA256 \
+  --reference-dir /absolute/private/reference-inputs \
+  --calendar-hash REVIEWED_CALENDAR_SHA256 \
+  --issuer-hash REVIEWED_WORKBOOK_SHA256 \
+  --report-dir "$etf_benchmark_root"
+```
+
+The October 1 saved inputs matched all 2,514 individual bar/session dates, with
+zero missing or unexpected dates. The bounded issuer parser retained 40 quarterly
+2016–2025 distributions and explicitly excluded 96 out-of-window SPY rows.
+This is date and requested-window coverage, not corporate-action continuity,
+original availability, historical control-message or executable-quote proof.
+See [current-access qualification](etf-current-access-qualification.md).
+
+The command publishes its bound protocol before outcomes. It preserves the
+750-bar warmup, evaluates 1,262 development observations, and retains all 502
+2024–2025 holdout bars without evaluating them. All 12 predefined combinations
+run: two cash tiers, capped-notional and fully-invested mathematical buy-and-hold
+references, and zero/5/25-basis-point uncalibrated cost scenarios. Fully invested
+is an unauthorized reference, not a sizing recommendation. The capped reference
+also does not verify stop-based or fractional-order risk admission.
+
+Cash distributions are credited on pay dates; unpaid receivables and terminal
+shares remain visible. No final sale or realized trading P&L is invented.
+Entry costs, paid entry fees and estimated liquidation costs are separate and
+counted once. Zero-yield cash is a mathematical reference, not verified broker
+cash yield. Dependent-resampling intervals and monthly break-even cost proxies
+are descriptive reference statistics, not strategy acceptance evidence.
+
+The actual saved-data screen ran successfully and returned `ECONOMIC_NO_GO`.
+It is real-input exploratory benchmark research, not candidate after-cost
+execution testing; source qualification and promotability remain false.
+Private reports bind the complete working-source fingerprint. A later clean
+committed rerun must retain its own identity rather than relabel earlier output.
+
 ## Interpreting results and readiness
 
 Successful fixture/checkpoint command completion exits `0`; a valid incomplete
 account report exits `2`. The SQLite ledger command always denies as described
 above. Other input validation emits sanitized
 `etf_research_input_invalid` and exits `1`; command-line usage errors are separate.
-A successful latest-vintage command can exit `0` while its economic verdict is
+A successful latest-vintage or benchmark-screen command can exit `0` while its economic verdict is
 `ECONOMIC_NO_GO`. Exit success means the diagnostic ran, not economic acceptance.
 There is no `--live` or `--assumptions-validated` override.
 
 | Independent gate | Current evidence / remaining boundary |
 |---|---|
-| Engineering | Runnable fixture, descriptor-bound private checkpoint/restart and latest-vintage diagnostic increment; SQLite pathname CLI denied. Independent review has no residual actionable findings; 112 final focused tests and current static/critical-coverage checks passed. Exact committed hosted regression remains required. |
-| Data qualification | Receipt-verified latest-vintage native bars; `source_qualified=false`. Session/control, corporate-action/payment and executable quote/fractional-term coverage remain unqualified. |
-| Economics | `ECONOMIC_NO_GO`; fixtures and signal counts cannot establish profitability. Complete actual outcomes, calibrated costs, matched benchmarks, uncertainty and canonical acceptance evidence remain separate. |
+| Engineering | Runnable fixture, descriptor-bound private checkpoint/restart, latest-vintage diagnostic and daily historical reference screen; SQLite pathname CLI denied. Independent integrated review found no remaining issues; 509 ETF-focused tests and 98.65% coverage across the four new source/reference modules passed. Exact final-revision regression remains required. |
+| Data qualification | Receipt-verified latest-vintage native bars, exact provider-calendar date match, and bounded 40-distribution issuer import; `source_qualified=false`. Historical controls, action continuity and executable quote/fractional-term coverage remain unqualified. |
+| Economics | `ECONOMIC_NO_GO`; actual daily-price buy-and-hold/cash references are available, but candidate execution outcomes, calibrated costs, effective opportunities and canonical acceptance evidence remain separate. |
 | Broker/runtime | October 1 scoped Agentic reads observed an active cash account with level-2 options permission, no equity/options position or order rows and no further pages; SPY was active, tradable and fractional-eligible. Droplet metadata returned the existing 2 GB target, but SSH authentication failed and service/image/authentication state remains unverified. These session observations do not verify standalone DigitalOcean authentication, write semantics, unattended renewal or order integration. |
 | Qualifying paper/shadow | Not ready; accepted research and trusted composition plus 100 eligible paper cycles and seven distinct UTC shadow dates are still required. Fixtures do not start these clocks. |
 | Live authority | `live_authorized=false`, `execution_enabled=false`, `evidence_promotable=false`; no live writes, deployment or automatic promotion. |
 
 ## Next steps
 
-Complete integrated source/account/checkpoint/store/economics review and the current
-revision's narrow tests first, then full supported-Python regression, the 80%
+Complete the current revision's full supported-Python regression, the 80%
 overall and per-critical-module 90% branch gates, Ruff, Mypy, Bandit, locked audits,
 SBOM and deployment-manifest checks. Do not substitute prior pass counts for this
 increment's evidence or bypass required hosted checks before integration.
@@ -178,7 +225,7 @@ increment's evidence or bypass required hosted checks before integration.
 Continue the approved plan's credential-free implementation while completing
 the retained data and cost evidence required by each claim. Genuine qualified
 market-execution replay is not implemented by these commands; there is no
-conditional price-proxy study command. Genuine economic validation and later
+strategy-execution price-proxy study command. Genuine economic validation and later
 paper/shadow composition need their own complete evidence; standalone broker/runtime
 proof and explicit live authorization remain independent. No new subscription,
 credential operation, deployment or real-money test is implied by these steps.

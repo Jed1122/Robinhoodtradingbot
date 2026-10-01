@@ -108,3 +108,25 @@ def test_source_identity_and_short_history_fail_closed():
     result = api().run_latest_vintage_etf(api().EtfLatestVintageRequest(frozen, source))
     assert result.evaluated_observations == 0
     assert "study_warmup_incomplete" in result.reasons
+
+
+def test_source_rejects_wrong_request_kind_and_rounded_midnight_identity():
+    source = archive(760)
+    altered = (
+        replace(source, request=replace(source.request, kind="quotes")),
+        replace(
+            source,
+            bars=(
+                replace(source.bars[0], timestamp_ns=source.bars[0].timestamp_ns - 1),
+                *source.bars[1:],
+            ),
+        ),
+    )
+    for bad in altered:
+        frozen = replace(
+            study(),
+            policy=api()._policy(study()),
+            source_plan_hash=api().latest_vintage_source_plan_hash(bad),
+        )
+        with pytest.raises(ValueError, match="etf_latest_vintage_invalid"):
+            api().EtfLatestVintageRequest(frozen, bad)

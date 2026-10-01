@@ -71,6 +71,20 @@ parsers can finish while actual-source qualification remains blocked. Task 6 can
 produce genuine results from an unqualified dataset. None of these tasks starts
 the 100-paper-cycle/seven-UTC-date promotion clocks or implements broker writes.
 
+Current-access exploratory increment (primary-owned integration): compare every
+native daily-bar date with a separately hash-bound provider calendar, import the
+public issuer's explicit 2016–2025 distributions, then produce development-only
+matched zero-yield cash and buy-and-hold mathematical references. Freeze all
+zero/5/25-basis-point uncalibrated one-way cost scenarios before outcomes; no
+scenario selection, optimization or holdout evaluation. Report both capped
+notional and separately labeled fully invested unauthorized references, retain
+dividend receivables and terminal shares, and report liquidation proxies rather
+than inventing an ending sale. Common dependent resampling is descriptive only.
+This fulfills the specification's allowed daily-bar exploratory benchmark screen,
+not Task 3 executable strategy results or Task 5 economic acceptance. No original
+publication facts, fractional broker terms, controls or calibrated costs are
+inferred from these calculations. Actual strategy after-cost results stay pending.
+
 - `config/models.py`, base/envelope YAML: one disabled research profile, no parallel loader.
 - `research/etf_study.py`: immutable study identity, chronology and holdout seal.
 - `market_data/etf_source.py`: bounded source qualification and typed visible events.

@@ -31,7 +31,7 @@ from __future__ import annotations
 import hashlib
 import io
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import PurePosixPath
@@ -129,6 +129,8 @@ class EtfIssuerDistributionArchive:
         _check(type(self.excluded_spy_rows) is int and 0 <= self.excluded_spy_rows <= 200)
         _check(type(self.distributions) is tuple and len(self.distributions) <= 200)
         _check(all(type(item) is EtfIssuerDistribution for item in self.distributions))
+        for item in self.distributions:
+            replace(item)
         days = tuple(item.ex_date for item in self.distributions)
         _check(days == tuple(sorted(set(days))))
         _check(all(2016 <= day.year <= 2025 for day in days))

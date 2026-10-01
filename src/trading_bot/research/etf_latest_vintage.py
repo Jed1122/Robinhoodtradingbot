@@ -70,6 +70,9 @@ class EtfLatestVintageRequest:
             ):
                 raise EtfLatestVintageError()
             require_utc(self.archive.captured_at)
+            replace(self.archive.request)
+            if self.archive.request.kind != "bars":
+                raise EtfLatestVintageError()
             previous = -1
             for row in self.archive.bars:
                 if type(row) is not AlpacaBarRecord:
@@ -80,6 +83,7 @@ class EtfLatestVintageRequest:
                     row.timestamp_ns <= previous
                     or min(row.open, row.high, row.low, row.close) <= 0
                     or (start.hour, start.minute, start.second, start.microsecond) != (0, 0, 0, 0)
+                    or _ns(start.astimezone(UTC)) != row.timestamp_ns
                     or not _ns(self.study.requested_start)
                     <= row.timestamp_ns
                     < _ns(self.study.requested_end)

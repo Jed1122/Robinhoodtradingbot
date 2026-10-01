@@ -26,6 +26,26 @@ import pytest
 
 from trading_bot.domain.decimal_utils import DomainValidationError
 
+
+@pytest.mark.parametrize(
+    "attribute,value", [("amount", Decimal("-1")), ("pay_date", date(2016, 3, 17))]
+)
+def test_archive_revalidates_unsafe_nested_financial_records(attribute, value):
+    module = importlib.import_module("trading_bot.market_data.etf_issuer_distributions")
+    result = _parse(_pack(_parts()))
+    object.__setattr__(result.distributions[0], attribute, value)
+    digest = module._archive_hash(
+        result.source_hash,
+        result.start_date,
+        result.end_date,
+        result.distributions,
+        result.excluded_spy_rows,
+        result.limitations,
+    )
+    with pytest.raises(DomainValidationError):
+        replace(result, archive_hash=digest)
+
+
 _NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 _REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _PKG = "http://schemas.openxmlformats.org/package/2006/relationships"
