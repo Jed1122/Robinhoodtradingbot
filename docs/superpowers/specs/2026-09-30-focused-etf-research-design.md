@@ -4,6 +4,18 @@ Date: 2026-09-30. Status: **written specification approved by the operator**.
 This is a new research identity, not an implemented strategy, economic result,
 options replacement, account allocation, or permission to trade.
 
+### Explicit operator amendment — 2026-10-01
+
+The operator waived original publication/correction-timeline evidence for this
+research study and directed completion with existing access without further setup
+questions. The research path may therefore use immutable latest-vintage history,
+with verified retrieval receipts and an explicit later-correction/look-ahead
+limitation. Original-version availability must not be fabricated. This amendment
+supersedes only the original-timeline prerequisite below. Executable data coverage,
+cost/calibration, risk, economic and paper/shadow criteria remain independent.
+Latest-vintage exploratory results remain non-promotable. No live order or
+production deployment is authorized by this amendment.
+
 ## 1. Approved intent and scope
 
 The operator chose to prioritize an ETF research pilot and approved this design

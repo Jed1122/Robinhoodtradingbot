@@ -149,3 +149,25 @@ The operator subsequently reported purchasing Algo Trader Plus. Record this as
 user-reported subscription status, not account-bound access verification. Continue
 read-only market-data access checks and the existing approved offline build; no
 additional purchase, upgrade, broker write or live authorization is implied.
+
+## Latest-vintage ETF research and uninterrupted build — 2026-10-01
+
+The operator explicitly authorized the ETF study without the original publication
+and correction timeline, and instructed the coordinator to finish the ETF bot with
+the existing access without further setup questions. Continue the approved native
+implementation, simulation, restart, reporting and read-only verification work.
+Do not request the same authority again between tasks or merges.
+
+For this research identity only, use immutable history as retrieved, explicitly
+labeled latest-vintage. Retain retrieval timestamps and raw-response hashes;
+never invent original publication or correction timestamps. This supersedes that
+specific research prerequisite in the approved ETF specification, not other data
+coverage requirements, executable quote semantics, cost calibration, objective
+economic criteria, risk controls, paper/shadow elapsed-time gates or live authority.
+Later corrections can affect historical signals; disclose that limitation in every
+actual-data report. Exploratory results remain non-promotable and must not be
+presented as point-in-time validation or expected live performance.
+
+General build permission does not authorize real-money orders, live activation,
+production credential use, deployment changes, a new paid service or higher risk.
+Previously approved scoped read-only market-data/broker checks retain their scope.

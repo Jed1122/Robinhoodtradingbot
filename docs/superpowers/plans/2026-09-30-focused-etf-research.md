@@ -14,12 +14,30 @@ The existing options implementation and four-ETF comparison remain unchanged.
 Parquet/DuckDB, pytest, canonical configuration and content-addressed evidence.
 No new dependency or paid service is required by the offline implementation.
 
+**2026-10-01 account increment:** Explicit synthetic account events now compose
+common sizing/exposure/loss and lifecycle accounting, reservations, distributions
+and settlement, with immutable prefix reconstruction. The internal SQLite store
+has additive schema/fencing tests; the pathname CLI is deliberately unavailable
+because this platform cannot safely bind SQLite journal paths to a checked
+directory descriptor. A private descriptor-bound checkpoint command is runnable
+instead. This is not full qualified-source strategy execution. A retained native
+bar diagnostic evaluates development signals only, not fills or economic edge.
+Independent review found no remaining actionable issues after repairs. Tasks
+2–6 retain their actual-data, calibrated execution, economic and operational gates.
+
 **Spec:** `docs/superpowers/specs/2026-09-30-focused-etf-research-design.md`
 (written specification approved by the operator on 2026-09-30).
 
 **Status:** Operator approved this implementation plan on 2026-09-30 and retained
 native execution. No task below is implemented by writing this plan. Existing CI
 repairs are a separate change.
+
+**2026-10-01 operator amendment:** Finish the build with current access, without
+further setup questions. Original publication/correction timelines are waived for
+this research study. Retain raw receipt/hash evidence and use a separately bound
+latest-vintage exploratory projection; never mutate historical synthetic records
+or certify original availability. Keep executable data, costs, risk and promotion
+gates independent. See the dated amendment in the specification and authority log.
 
 ## Global Constraints
 

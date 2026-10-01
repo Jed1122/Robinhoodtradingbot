@@ -28,7 +28,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
     if capability_verification.is_file():
         modules.append(capability_verification)
 
-    for filename in ("lease.py", "options_trial.py", "options_risk.py"):
+    for filename in ("lease.py", "options_trial.py", "options_risk.py", "etf_history_store.py"):
         persistence_module = source_root / "persistence" / filename
         if persistence_module.is_file():
             modules.append(persistence_module)
@@ -52,6 +52,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.extend(simulation_directory.glob("options_replay*.py"))
         modules.extend(simulation_directory.glob("options_historical*.py"))
         modules.extend(simulation_directory.glob("etf_history*.py"))
+        modules.extend(simulation_directory.glob("etf_account.py"))
 
     research_directory = source_root / "research"
     if research_directory.is_dir():
