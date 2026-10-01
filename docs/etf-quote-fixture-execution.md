@@ -123,3 +123,17 @@ The initial execution review identified three ordering/arithmetic defects; five
 regressions were observed failing before repairs and then passed. The full local
 regression is working-tree evidence, not a claim about every supported Python
 version or an automatic merge/promotion grant.
+
+The separate native-history append passed 20 tests and raised combined coverage
+to 90.04%; the existing per-critical-file 90% branch checker passed. Branch
+coverage was 43/44 for costs, 82/88 for the account owner, 65/68 for quote
+execution and 52/54 for causal history. The append emitted a harmless coverage
+collection warning because a JSON report shared the database filename prefix;
+the JSON was ignored as data and the combined database/report passed the checker.
+Future runs should use distinct database and report prefixes.
+
+An isolated archive of source commit
+`b704b012d0566cebfffff172a7421d00d5f57479` passed 796 ETF-focused tests. This
+separates committed-source evidence from the broader working-tree regression,
+which also included preserved unrelated edits. Subsequent documentation-only
+updates do not alter that source identity. No hosted matrix was awaited.
