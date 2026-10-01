@@ -52,6 +52,11 @@ from trading_bot.simulation.etf_fixtures import (
     synthetic_etf_account_request,
     synthetic_etf_quote_request,
 )
+from trading_bot.simulation.etf_strategy import (
+    resume_etf_fixture_strategy,
+    run_etf_fixture_strategy,
+)
+from trading_bot.simulation.etf_strategy_fixtures import synthetic_etf_strategy_request
 
 app = typer.Typer(no_args_is_help=True)
 _REPOSITORY = Path(__file__).resolve().parents[3]
@@ -163,6 +168,41 @@ def account_fixture_run(
         return
     typer.echo(canonical_json(report))
     if not state.complete:
+        raise typer.Exit(2)
+
+
+@app.command("strategy-fixture-run")
+def strategy_fixture_run(
+    capital: Annotated[str, typer.Option()] = "500",
+    scenario: Annotated[str, typer.Option()] = "completed_stop",
+    restart_after: Annotated[int | None, typer.Option()] = None,
+    config_dir: Annotated[Path, typer.Option()] = Path("configs"),
+) -> None:
+    """Fixed SPY signal, fabricated notices, quote fills and protective exit."""
+    try:
+        study = _study(
+            _load(config_dir), source_plan_hash=content_hash("ETF synthetic strategy fixture v1")
+        )
+        request = synthetic_etf_strategy_request(study, parse_decimal(capital), scenario)
+        if restart_after is None:
+            result = run_etf_fixture_strategy(request)
+        else:
+            checkpoint = run_etf_fixture_strategy(request, through_ordinal=restart_after)
+            result = resume_etf_fixture_strategy(request, checkpoint)
+        report = {
+            **_report(result.account, Decimal("0")),
+            "source_kind": "synthetic-strategy-quotes-v1",
+            "source_prefix_hash": result.source_prefix_hash,
+            "cost_hash": result.cost_hash,
+            "frozen_policies": result.policies,
+            "decisions": result.decisions,
+            "restart_scope": "in-process-consumed-prefix-reconstruction-only",
+        }
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _invalid()
+        return
+    typer.echo(canonical_json(report))
+    if not result.account.complete:
         raise typer.Exit(2)
 
 

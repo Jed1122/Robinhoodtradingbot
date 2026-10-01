@@ -107,6 +107,15 @@ def test_requires_durable_recorded_options_runtime_branches(tmp_path: Path) -> N
     ]
 
 
+def test_requires_etf_strategy_coordinator_branches(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    _source(root, "src/trading_bot/simulation/etf_strategy.py")
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        "missing branch coverage for src/trading_bot/simulation/etf_strategy.py",
+    ]
+
+
 @pytest.mark.parametrize(
     "relative_path",
     [

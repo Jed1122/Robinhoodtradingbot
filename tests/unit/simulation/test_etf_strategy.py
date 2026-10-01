@@ -162,3 +162,10 @@ def test_no_ack_no_end_of_input_liquidation_or_settlement():
     assert result.account.shares == 0 and result.account.reserved_cash == D("15.1")
     assert not result.account.complete
     assert _ns(result.account.orders[0].intent.created_at) == AT + 20_000_000
+
+
+def test_stop_before_acknowledgement_waits_without_inventing_a_cancel_transition():
+    result = run(extra=(quote(753, AT + 40_000_000, bid=D("97.99"), ask=D("98")),))
+    assert result.account.orders[0].order.state is OrderState.SUBMISSION_PENDING
+    assert result.account.reserved_cash == D("15.1") and result.account.shares == 0
+    assert not result.account.complete

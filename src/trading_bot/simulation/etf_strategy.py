@@ -399,10 +399,7 @@ def _run(request: EtfFixtureStrategyRequest, count: int) -> EtfFixtureStrategyRe
                 if active is None or active.intent.side is Side.BUY:
                     mark(event)
                 if active is not None and active.intent.side is Side.BUY:
-                    if active.order.state not in (
-                        OrderState.CANCEL_PENDING,
-                        OrderState.UNKNOWN_REQUIRES_RECONCILIATION,
-                    ):
+                    if active.order.state in (OrderState.SUBMITTED, OrderState.PARTIALLY_FILLED):
                         append(
                             EtfAccountEvent(
                                 content_hash(
