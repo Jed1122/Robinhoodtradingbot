@@ -240,6 +240,14 @@ mark Task 2 complete or treat the SIP samples as a qualified research package.
   Expected: deterministic exact outcomes and denial of all missing critical state.
 - [ ] Commit exact paths: `feat: add causal locked ETF historical account replay`.
 
+Task 3 checkpoint, 2026-10-01: the explicitly named fixture-prefix API now composes
+the frozen policy, common feature/momentum components, then-visible bar revisions
+and five-session cadence. Immutable paused prefix checkpoints are reconstructed
+and compared before fixture resume. This is not the full `EtfHistoryRequest` account
+runner, durable Task 4 storage, a native-source adapter or economic evidence.
+Orders, cash flows, sizing/admission and source qualification remain unavailable.
+The new owner modules are included in the existing critical branch-coverage gate.
+
 ### Task 4: Make replay restart-safe and verify monitoring failure behavior
 
 **Files:** Create `src/trading_bot/persistence/etf_history_store.py`, an additive
