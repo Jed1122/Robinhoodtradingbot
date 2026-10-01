@@ -169,3 +169,33 @@ def test_stop_before_acknowledgement_waits_without_inventing_a_cancel_transition
     assert result.account.orders[0].order.state is OrderState.SUBMISSION_PENDING
     assert result.account.reserved_cash == D("15.1") and result.account.shares == 0
     assert not result.account.complete
+
+
+def test_fresh_quote_recovers_after_wide_spread_without_an_unrelated_account_notice():
+    proposal = run()
+    ack = status(proposal, 752, AT + 21_000_000, OrderEvent.BROKER_ACCEPTED)
+    result = run(
+        extra=(
+            quote(753, AT + 40_000_000, bid=D("90"), ask=D("100")),
+            quote(754, AT + 50_000_000, size=D("1")),
+        ),
+        notices=(ack,),
+    )
+    assert result.account.shares == D(".15")
+    assert result.account.orders[0].order.state is OrderState.FILLED
+
+
+def test_protective_sell_recovers_after_latency_denial_and_prefix_resume():
+    _filled, observed, notices = entry()
+    stop = quote(754, AT + 50_000_000, bid=D("97.99"), ask=D("98"), size=D("1"))
+    pending = run(extra=(*observed, stop), notices=notices)
+    ack = status(pending, 755, AT + 51_000_000, OrderEvent.BROKER_ACCEPTED)
+    early = quote(756, AT + 55_000_000, bid=D("97.99"), ask=D("98"), size=D("1"))
+    eligible = quote(757, AT + 70_000_000, bid=D("97.99"), ask=D("98"), size=D("1"))
+    request = inputs(extra=(*observed, stop, early, eligible), notices=(*notices, ack))
+    checkpoint = api().run_etf_fixture_strategy(request, through_ordinal=756)
+    assert checkpoint.account.shares == D(".15")
+    assert checkpoint.decisions[-1].reason == "fixture_latency_or_ack_pending"
+    final = api().resume_etf_fixture_strategy(request, checkpoint)
+    assert final == api().run_etf_fixture_strategy(request)
+    assert final.account.shares == 0 and final.account.cash == D("499.63553015")

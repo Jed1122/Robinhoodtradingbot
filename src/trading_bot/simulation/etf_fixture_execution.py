@@ -114,13 +114,17 @@ class EtfFixtureExecutionRequest:
         )
         _check(type(self.observations) is tuple and len(self.observations) <= 10000)
         _check(type(self.context) is tuple and len(self.context) <= 10000)
+        # Market observations can advance while no accounting fact occurs (for
+        # example, a rejected wide quote). Bound consumed context by the next
+        # source receipt, rather than requiring an unrelated account mutation.
+        context_limit = (
+            self.observations[0].available_at_ns if self.observations else state.last_at_ns
+        )
         for context_event in self.context:
             _check(type(context_event) in (EtfSessionEvent, EtfControlEvent, EtfObservedQuote))
             replace(context_event.payload)
             replace(context_event)
-            _check(
-                state.last_at_ns is not None and context_event.available_at_ns <= state.last_at_ns
-            )
+            _check(context_limit is not None and context_event.available_at_ns <= context_limit)
             _check(
                 _ns(self.account.study.requested_start)
                 <= context_event.event_at_ns

@@ -534,7 +534,7 @@ def test_reconstructed_context_retains_native_halt_and_equal_timestamp_conflicts
 def test_execution_context_cannot_import_future_controls_or_reuse_pre_proposal_liquidity():
     with pytest.raises(ValueError):
         inputs = api().EtfFixtureExecutionRequest(
-            account(), (quote(2),), costs(), "entry", context=(clock(),)
+            account(), (quote(2),), costs(), "entry", context=(clock(at_ns=ORIGIN + 20_000_000),)
         )
         api().run_etf_fixture_execution(inputs)
     prior = clock(0, ORIGIN - 2_000_000)

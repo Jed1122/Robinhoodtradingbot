@@ -381,6 +381,8 @@ def _run(request: EtfFixtureStrategyRequest, count: int) -> EtfFixtureStrategyRe
                     entry_policy.exit_on_regime_change
                     and frame is not None
                     and frame.observation.on_cadence
+                    and _session_date(frame.observation.observed_at_ns)
+                    == _session_date(event.available_at_ns)
                     and frame.atr is not None
                     and frame.observation.signal is not None
                     and frame.observation.signal.action is StrategyAction.HOLD
