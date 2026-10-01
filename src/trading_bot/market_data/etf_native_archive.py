@@ -1,4 +1,4 @@
-"""Receipt-verified, latest-vintage SIP bars; not executable or original history.
+"""Receipt-verified latest-vintage SIP observations, not executable/original history.
 
 Reads only the saved native capture. The credential path in its manifest is never
 opened. Existing synthetic and qualified-source contracts are left unchanged.
@@ -17,7 +17,9 @@ from trading_bot.domain.decimal_utils import _require_sha256_hex
 from trading_bot.market_data.alpaca_native import (
     MAX_PAGE_BYTES,
     AlpacaBarRecord,
+    AlpacaQuoteRecord,
     AlpacaStockRequest,
+    NativeRecord,
     parse_alpaca_page,
     validate_alpaca_pages,
 )
@@ -78,6 +80,67 @@ class EtfNativeBarsArchive:
 def read_etf_native_bars(
     root: Path, manifest_hash: str, *, repository_root: Path
 ) -> EtfNativeBarsArchive:
+    request, receipts, records, captured_at = _read_etf_native(
+        root, manifest_hash, repository_root=repository_root, kind="bars"
+    )
+    bars = tuple(row for row in records if type(row) is AlpacaBarRecord)
+    _check(len(bars) == len(records))
+    return EtfNativeBarsArchive(manifest_hash, request, receipts, bars, captured_at)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class EtfNativeQuotesArchive:
+    manifest_hash: str
+    request: AlpacaStockRequest
+    receipt_hashes: tuple[str, ...]
+    quotes: tuple[AlpacaQuoteRecord, ...]
+    captured_at: datetime
+    source_kind: Literal["alpaca-sip-latest-vintage-quotes-v1"] = field(
+        default="alpaca-sip-latest-vintage-quotes-v1", init=False
+    )
+    limitations: tuple[str, ...] = field(
+        default=(
+            "retrieval_is_not_historical_availability",
+            "transport_completeness_is_not_quote_coverage",
+            "response_order_is_not_exchange_sequence",
+            "condition_interpretation_unverified",
+            "size_conversion_unverified",
+            "session_control_and_action_coverage_unqualified",
+            "fractional_terms_unverified",
+            "source_rights_unverified",
+            "native_quotes_not_executable",
+        ),
+        init=False,
+    )
+    source_qualified: Literal[False] = field(default=False, init=False)
+    evidence_promotable: Literal[False] = field(default=False, init=False)
+    execution_enabled: Literal[False] = field(default=False, init=False)
+
+    @property
+    def archive_hash(self) -> str:
+        return content_hash({"schema": "etf-native-quotes-archive-v1", "archive": self})
+
+
+def read_etf_native_quotes(
+    root: Path, manifest_hash: str, *, repository_root: Path
+) -> EtfNativeQuotesArchive:
+    """Retain native quote evidence without size conversion, filtering or execution."""
+    request, receipts, records, captured_at = _read_etf_native(
+        root, manifest_hash, repository_root=repository_root, kind="quotes"
+    )
+    quotes = tuple(row for row in records if type(row) is AlpacaQuoteRecord)
+    _check(len(quotes) == len(records))
+    return EtfNativeQuotesArchive(manifest_hash, request, receipts, quotes, captured_at)
+
+
+def _read_etf_native(
+    root: Path,
+    manifest_hash: str,
+    *,
+    repository_root: Path,
+    kind: Literal["bars", "quotes"],
+) -> tuple[AlpacaStockRequest, tuple[str, ...], tuple[NativeRecord, ...], datetime]:
+    """Shared private-FD and exact receipt chain validation for either native kind."""
     descriptor = -1
     try:
         _require_sha256_hex(manifest_hash, "manifest")
@@ -85,7 +148,7 @@ def read_etf_native_bars(
         body = _read(descriptor, manifest_hash + ".capture-manifest.json", 16384)
         _check(hashlib.sha256(body).hexdigest() == manifest_hash)
         manifest = decode_capture_manifest(body)
-        _check(manifest.request.kind == "bars" and manifest.quarantine_root == root)
+        _check(manifest.request.kind == kind and manifest.quarantine_root == root)
         result = _mapping(
             _json(
                 _read(descriptor, manifest_hash + ".capture-result.json", 16384),
@@ -173,9 +236,9 @@ def read_etf_native_bars(
             assessed.pagination_complete
             and assessed.record_count == _integer(result["record_count"])
         )
-        bars = tuple(row for page in pages for row in page.records if type(row) is AlpacaBarRecord)
-        _check(len(bars) == assessed.record_count and 0 < len(bars) <= 10000)
-        return EtfNativeBarsArchive(manifest_hash, manifest.request, receipts, bars, last_time)
+        records = tuple(row for page in pages for row in page.records)
+        _check(len(records) == assessed.record_count and 0 < len(records) <= 10000)
+        return manifest.request, receipts, records, last_time
     except (ValueError, TypeError, ArithmeticError, OSError, AttributeError):
         raise EtfNativeArchiveError() from None
     finally:
