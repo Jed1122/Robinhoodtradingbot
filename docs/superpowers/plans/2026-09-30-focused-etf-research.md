@@ -305,6 +305,35 @@ and one local regression, without waiting for hosted Python 3.12–3.14 quality 
 Existing merge protections, risk gates and separate live authorization remain
 unchanged; no missing check is treated as a pass.
 
+Further Task 3 checkpoint, 2026-10-01: `etf_strategy.py` now binds common causal
+decision frames, portfolio sizing, account-owned pending admission and later
+synthetic quote execution. Frozen stop/target/holding/regime policies drive
+protective orders after partial-entry cancellation reconciliation. Consumed
+market context advances independently of account mutations; repeated fill
+delivery is deduplicated consistently with the account owner. Initial regime
+triggers require a current-session frame; existing protective latches persist.
+`strategy-fixture-run` demonstrates complete stop-loss and incomplete open/cancel
+outcomes plus in-process prefix reconstruction. The coordinator is included in
+the 90% critical branch-coverage gate. See `docs/etf-strategy-coordinator.md`.
+
+The receipt-bound native quote reader separately validates the saved 1,074-row
+probe without granting qualification or execution. A repeated actual-input
+reference screen evaluated 1,262 development observations, left 502 holdout
+observations untouched, and returned `ECONOMIC_NO_GO`. The separate `robinhood-2`
+connection supplied fresh scoped account/equity/SPY reads after the older
+connection required reauthentication; SSH inspection remains denied. Full Task 3 native execution,
+Task 4 durable coordinator restart and qualified economic/paper/shadow/runtime
+acceptance remain open; these narrower increments do not close those tasks.
+
+Central verification at source `1a6b51c`: 7,198 local Python 3.12 tests passed,
+33 optional/tooling skips, one existing warning; 20 separate native-history tests
+passed. Combined coverage 90.15%, all critical 90% branch gates passed. The clean
+committed archive passed 925 focused tests. Both locked dependency audits found
+no known vulnerabilities; Ruff, Mypy305, Bandit, SBOM reproducibility, lock and
+deployment-file checks passed. Full supported-interpreter/hosted-matrix evidence
+was not requested or claimed. Review findings were repaired RED→GREEN before
+this central regression; unrelated dirty work remains excluded from commits.
+
 ### Task 4: Make replay restart-safe and verify monitoring failure behavior
 
 **Files:** Create `src/trading_bot/persistence/etf_history_store.py`, an additive

@@ -164,6 +164,11 @@ execution data, calibrated costs, economics, paper/shadow promotion or live use.
 
 ## Current-access historical reference screen
 
+The additional [strategy fixture command](etf-strategy-coordinator.md) now connects
+the fixed momentum signal to pending orders, quote fills and protective exits.
+Its explicit synthetic acknowledgements/settlements and in-process restart
+demonstrate accounting behavior; native candidate economic testing remains gated.
+
 The additional command joins the retained native bars, an independently captured
 Alpaca calendar response, and the issuer's public distribution workbook. Store
 the two reference files as `calendar.json` and `ssga-distributions.xlsx` in an
@@ -221,10 +226,10 @@ There is no `--live` or `--assumptions-validated` override.
 
 | Independent gate | Current evidence / remaining boundary |
 |---|---|
-| Engineering | Runnable accounting/quote fixtures, private accounting checkpoints, latest-vintage diagnostics and historical references; SQLite pathname CLI denied. Local Python 3.12: 7,069 passed plus 20 native-history tests; 90.04% combined coverage and all critical branch gates passed. An isolated committed-source archive passed 796 ETF-focused tests. Independent fee/CLI checks passed; execution findings were repaired RED→GREEN. Full strategy coordination remains incomplete. See the increment's verification notes for skips/warnings and revision scope. |
+| Engineering | Runnable signal/order/protective-exit fixture coordinator, quote/account ownership, consumed-prefix reconstruction, private account checkpoints, latest-vintage diagnostics and historical references. Native strategy integration and durable coordinator service restart remain incomplete. See [current coordinator verification](etf-strategy-coordinator.md) for revision-scoped results. |
 | Data qualification | Receipt-verified latest-vintage native bars, exact provider-calendar date match, and bounded 40-distribution issuer import; `source_qualified=false`. Historical controls, action continuity and executable quote/fractional-term coverage remain unqualified. |
 | Economics | `ECONOMIC_NO_GO`; actual daily-price buy-and-hold/cash references are available, but candidate execution outcomes, calibrated costs, effective opportunities and canonical acceptance evidence remain separate. |
-| Broker/runtime | October 1 scoped Agentic reads observed an active cash account with level-2 options permission, no equity/options position or order rows and no further pages; SPY was active, tradable and fractional-eligible. Droplet metadata returned the existing 2 GB target, but SSH authentication failed and service/image/authentication state remains unverified. These session observations do not verify standalone DigitalOcean authentication, write semantics, unattended renewal or order integration. |
+| Broker/runtime | October 1 reads through `robinhood-2` verified the active cash Agentic account, empty equity position/order pages and SPY tradable/fractional eligibility. The older connection needs reauthentication. Read-only SSH inspection failed with `Permission denied (publickey)`. Standalone service/image/authentication, write semantics, unattended renewal and order integration remain unverified. |
 | Qualifying paper/shadow | Not ready; accepted research and trusted composition plus 100 eligible paper cycles and seven distinct UTC shadow dates are still required. Fixtures do not start these clocks. |
 | Live authority | `live_authorized=false`, `execution_enabled=false`, `evidence_promotable=false`; no live writes, deployment or automatic promotion. |
 

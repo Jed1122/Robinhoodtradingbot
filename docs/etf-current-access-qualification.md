@@ -19,6 +19,9 @@ No new subscription, data purchase, broker write or deployment followed these ch
   window; whole-archive ZIP/XML security checks still apply. No date is repaired.
 - The previously recorded narrow quote probe demonstrates historical SIP access
   only. It does not cover all entries, monitoring, stops, exits or settlement.
+  The additive native quote archive reader now verifies its two receipts and
+  1,074 observations, preserving original conditions, sizes and timestamps.
+  Transport completeness still does not qualify executable coverage.
 
 Original publication/correction chronology is explicitly waived for latest-vintage
 research under the October 1 operator amendment. Receipt time is not historical
@@ -60,16 +63,17 @@ The public issuer import does not prove split/ticker continuity or every action 
 | Engineering | Account/lifecycle fixture and private checkpoint/restart increment reviewed; source adapters and exploratory references are separately verified increments. |
 | Data | Hash/receipt-verified latest-vintage bars, exact provider-calendar date match and issuer distributions; executable/fractional/control/action continuity coverage remains unqualified. |
 | Economics | No accepted candidate after-cost result. Mathematical reference marks and descriptive uncertainty cannot approve the strategy. |
-| Broker session | Scoped read-only Agentic account/SPY observations succeeded; no review/place/cancel operation occurred. |
-| Standalone runtime | Existing 2 GB droplet metadata read succeeded, SSH authentication did not; actual service health/image/authentication remains unverified. |
+| Broker session | The older app connection requires reauthentication, but the user-configured `robinhood-2` connection succeeded on October 1: active cash Agentic account, empty equity position/order pages without continuations, SPY active/tradable/fractional-eligible, no regular-hours halt reported. These are session reads, not standalone execution evidence. |
+| Standalone runtime | Existing 2 GB droplet metadata was previously observed. The renewed read-only SSH attempt returned `Permission denied (publickey)`; service health/image/authentication remain unverified. |
 | Qualifying paper/shadow | Not begun by fixtures or daily-price reference calculations. Keep 100 eligible paper cycles and seven distinct UTC shadow dates unchanged. |
 | Live authority | False. No automatic promotion, real-money test or production change. |
 
 ## Next steps
 
-Finish exact-revision integration and regressions for the available-data research
-commands. Continue implementing the causal strategy/risk owner using the common
-account lifecycle and truthful data-quality denials, then calibrate and evaluate
+The [synthetic strategy coordinator](etf-strategy-coordinator.md) now connects
+signals, pending reservations, later quote execution and protective exits through
+the common account owner. Complete native source qualification and durable
+coordinator restart, then calibrate and evaluate
 actual matched after-cost candidate outcomes when executable evidence supports
 them. Keep the final holdout untouched until independent acceptance criteria are
 met. Complete broker/runtime and qualifying paper/shadow evidence separately.
