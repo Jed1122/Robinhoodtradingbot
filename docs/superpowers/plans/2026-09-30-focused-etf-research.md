@@ -14,12 +14,30 @@ The existing options implementation and four-ETF comparison remain unchanged.
 Parquet/DuckDB, pytest, canonical configuration and content-addressed evidence.
 No new dependency or paid service is required by the offline implementation.
 
+**2026-10-01 account increment:** Explicit synthetic account events now compose
+common sizing/exposure/loss and lifecycle accounting, reservations, distributions
+and settlement, with immutable prefix reconstruction. The internal SQLite store
+has additive schema/fencing tests; the pathname CLI is deliberately unavailable
+because this platform cannot safely bind SQLite journal paths to a checked
+directory descriptor. A private descriptor-bound checkpoint command is runnable
+instead. This is not full qualified-source strategy execution. A retained native
+bar diagnostic evaluates development signals only, not fills or economic edge.
+Independent review found no remaining actionable issues after repairs. Tasks
+2–6 retain their actual-data, calibrated execution, economic and operational gates.
+
 **Spec:** `docs/superpowers/specs/2026-09-30-focused-etf-research-design.md`
 (written specification approved by the operator on 2026-09-30).
 
 **Status:** Operator approved this implementation plan on 2026-09-30 and retained
 native execution. No task below is implemented by writing this plan. Existing CI
 repairs are a separate change.
+
+**2026-10-01 operator amendment:** Finish the build with current access, without
+further setup questions. Original publication/correction timelines are waived for
+this research study. Retain raw receipt/hash evidence and use a separately bound
+latest-vintage exploratory projection; never mutate historical synthetic records
+or certify original availability. Keep executable data, costs, risk and promotion
+gates independent. See the dated amendment in the specification and authority log.
 
 ## Global Constraints
 
@@ -52,6 +70,20 @@ Tasks 1 → 2 → 3 → 4 → 5 → 6. Task 2 has an external evidence gate: fix
 parsers can finish while actual-source qualification remains blocked. Task 6 cannot
 produce genuine results from an unqualified dataset. None of these tasks starts
 the 100-paper-cycle/seven-UTC-date promotion clocks or implements broker writes.
+
+Current-access exploratory increment (primary-owned integration): compare every
+native daily-bar date with a separately hash-bound provider calendar, import the
+public issuer's explicit 2016–2025 distributions, then produce development-only
+matched zero-yield cash and buy-and-hold mathematical references. Freeze all
+zero/5/25-basis-point uncalibrated one-way cost scenarios before outcomes; no
+scenario selection, optimization or holdout evaluation. Report both capped
+notional and separately labeled fully invested unauthorized references, retain
+dividend receivables and terminal shares, and report liquidation proxies rather
+than inventing an ending sale. Common dependent resampling is descriptive only.
+This fulfills the specification's allowed daily-bar exploratory benchmark screen,
+not Task 3 executable strategy results or Task 5 economic acceptance. No original
+publication facts, fractional broker terms, controls or calibrated costs are
+inferred from these calculations. Actual strategy after-cost results stay pending.
 
 - `config/models.py`, base/envelope YAML: one disabled research profile, no parallel loader.
 - `research/etf_study.py`: immutable study identity, chronology and holdout seal.
@@ -246,7 +278,61 @@ and five-session cadence. Immutable paused prefix checkpoints are reconstructed
 and compared before fixture resume. This is not the full `EtfHistoryRequest` account
 runner, durable Task 4 storage, a native-source adapter or economic evidence.
 Orders, cash flows, sizing/admission and source qualification remain unavailable.
+The subsequent account-owned increment supplies explicit synthetic accounting
+facts and additive `pending_intent` / `admit_etf_pending_intent` admission. Pending
+reservations require explicit acknowledgement; duplicated event/order identities
+cannot regrant scheduling permission, and reconciliation statuses cannot invent
+fills. Common activity applies to new pending BUY admissions without changing
+valid legacy accepted-fact hashes. This closes an account scheduling seam only;
+the full quote/control/cost-driven history coordinator remains pending. See
+`docs/etf-pending-account-seam.md`.
 The new owner modules are included in the existing critical branch-coverage gate.
+
+Further Task 3 checkpoint: additive causal decision frames retain the common
+feature/momentum pipeline and legacy observation hashes. The synthetic quote
+execution seam now handles explicit acknowledgements, conservative tick/limit
+prices, exact incremental fees, native-time controls/quote frontiers, displayed
+capacity and verified source-prefix resume around the sole account owner.
+`quote-fixture-run` demonstrates full/partial/pending-ack outcomes without
+inventing exits or settlement. These are tested building blocks, not completion
+of the strategy-to-order coordinator, qualified execution or economic acceptance.
+Next integration must carry reconstructed pre-proposal control/capacity context,
+freeze exit policies and reconcile partial-entry cancellation before protective
+orders. See `docs/etf-quote-fixture-execution.md`.
+
+Operator workflow amendment: continue implementing with focused local verification
+and one local regression, without waiting for hosted Python 3.12–3.14 quality jobs.
+Existing merge protections, risk gates and separate live authorization remain
+unchanged; no missing check is treated as a pass.
+
+Further Task 3 checkpoint, 2026-10-01: `etf_strategy.py` now binds common causal
+decision frames, portfolio sizing, account-owned pending admission and later
+synthetic quote execution. Frozen stop/target/holding/regime policies drive
+protective orders after partial-entry cancellation reconciliation. Consumed
+market context advances independently of account mutations; repeated fill
+delivery is deduplicated consistently with the account owner. Initial regime
+triggers require a current-session frame; existing protective latches persist.
+`strategy-fixture-run` demonstrates complete stop-loss and incomplete open/cancel
+outcomes plus in-process prefix reconstruction. The coordinator is included in
+the 90% critical branch-coverage gate. See `docs/etf-strategy-coordinator.md`.
+
+The receipt-bound native quote reader separately validates the saved 1,074-row
+probe without granting qualification or execution. A repeated actual-input
+reference screen evaluated 1,262 development observations, left 502 holdout
+observations untouched, and returned `ECONOMIC_NO_GO`. The separate `robinhood-2`
+connection supplied fresh scoped account/equity/SPY reads after the older
+connection required reauthentication; SSH inspection remains denied. Full Task 3 native execution,
+Task 4 durable coordinator restart and qualified economic/paper/shadow/runtime
+acceptance remain open; these narrower increments do not close those tasks.
+
+Central verification at source `1a6b51c`: 7,198 local Python 3.12 tests passed,
+33 optional/tooling skips, one existing warning; 20 separate native-history tests
+passed. Combined coverage 90.15%, all critical 90% branch gates passed. The clean
+committed archive passed 925 focused tests. Both locked dependency audits found
+no known vulnerabilities; Ruff, Mypy305, Bandit, SBOM reproducibility, lock and
+deployment-file checks passed. Full supported-interpreter/hosted-matrix evidence
+was not requested or claimed. Review findings were repaired RED→GREEN before
+this central regression; unrelated dirty work remains excluded from commits.
 
 ### Task 4: Make replay restart-safe and verify monitoring failure behavior
 

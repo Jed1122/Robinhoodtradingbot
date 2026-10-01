@@ -4,7 +4,7 @@ These are not the full historical account/ledger records. No order, fill,
 settlement, or production/promotion observation can be constructed here.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC
 from decimal import Decimal
 from typing import Literal
@@ -14,7 +14,7 @@ from trading_bot.domain import DataHash
 from trading_bot.domain.decimal_utils import _require_sha256_hex, require_bounded_decimal
 from trading_bot.market_data.etf_source import _ceil_time
 from trading_bot.market_data.recording import content_hash
-from trading_bot.strategies.protocol import StrategyAction, StrategyDecision
+from trading_bot.strategies.protocol import FeatureVector, StrategyAction, StrategyDecision
 
 
 class EtfHistoryError(ValueError):
@@ -89,6 +89,67 @@ class EtfDecisionObservation:
     @property
     def decision_hash(self) -> DataHash:
         return content_hash({"schema": "etf-fixture-decision-v1", "observation": self})
+
+
+@dataclass(frozen=True, slots=True)
+class EtfDecisionFrame:
+    """Additive feature seam, never an account admission or broker permission.
+
+    The legacy observation and its hashes are unchanged. A coordinator reconstructs
+    these frames from consumed inputs; no caller-supplied frame is trusted as risk
+    evidence. Missing, blocked or between-cadence observations cannot propose an
+    entry even in the synthetic fixture path.
+    """
+
+    observation: EtfDecisionObservation
+    features: FeatureVector | None
+    execution_enabled: Literal[False] = field(default=False, init=False)
+    evidence_promotable: Literal[False] = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        _check(type(self.observation) is EtfDecisionObservation)
+        replace(self.observation)
+        _check(self.execution_enabled is False and self.evidence_promotable is False)
+        _check((self.features is None) == (self.observation.signal is None))
+        if self.features is not None:
+            vector = self.features
+            _check(type(vector) is FeatureVector and vector.instrument_id == "SPY")
+            require_utc(vector.observed_at)
+            _check(vector.observed_at == _ceil_time(self.observation.observed_at_ns))
+            _require_sha256_hex(vector.data_hash, "feature identity")
+            signal = self.observation.signal
+            _check(signal is not None and vector.data_hash == signal.data_hash)
+            _check(type(vector.values) is tuple and len(vector.values) <= 64)
+            keys: set[str] = set()
+            for row in vector.values:
+                _check(type(row) is tuple and len(row) == 2)
+                key, value = row
+                _check(type(key) is str and 0 < len(key) <= 128 and key not in keys)
+                keys.add(key)
+                _check(type(value) in (Decimal, int, bool, str, type(None)))
+                if type(value) is Decimal:
+                    require_bounded_decimal(value, "feature value")
+
+    @property
+    def atr(self) -> Decimal | None:
+        self.__post_init__()
+        value = (
+            None if self.features is None else dict(self.features.values).get("average_true_range")
+        )
+        return value if type(value) is Decimal and value > 0 else None
+
+    @property
+    def can_propose_fixture_entry(self) -> bool:
+        self.__post_init__()
+        observation = self.observation
+        return (
+            observation.on_cadence
+            and self.atr is not None
+            and observation.signal is not None
+            and observation.signal.action is StrategyAction.ENTER_LONG
+            and set(observation.reasons)
+            <= {"synthetic_inputs_only", "source_coverage_unverified", "execution_not_implemented"}
+        )
 
 
 @dataclass(frozen=True, slots=True)

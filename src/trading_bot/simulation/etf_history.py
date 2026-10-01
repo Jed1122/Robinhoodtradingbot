@@ -36,6 +36,7 @@ from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_study import EtfStudy
 from trading_bot.simulation.etf_history_state import (
     EtfDecisionCheckpoint,
+    EtfDecisionFrame,
     EtfDecisionObservation,
     EtfFixturePrefixResult,
     EtfHistoryError,
@@ -43,7 +44,12 @@ from trading_bot.simulation.etf_history_state import (
 )
 from trading_bot.strategies.features import FeaturePipeline
 from trading_bot.strategies.momentum import MomentumStrategy
-from trading_bot.strategies.protocol import FeatureSnapshot, HistoricalSlice, StrategyContext
+from trading_bot.strategies.protocol import (
+    FeatureSnapshot,
+    FeatureVector,
+    HistoricalSlice,
+    StrategyContext,
+)
 
 _EVENT_TYPES = (EtfObservedBar, EtfObservedQuote, EtfActionEvent, EtfSessionEvent, EtfControlEvent)
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -137,14 +143,14 @@ def _session_date(at_ns: int) -> date:
     return (_EPOCH + timedelta(microseconds=at_ns // 1000)).astimezone(_NEW_YORK).date()
 
 
-def _decision(
+def _decision_frame(
     request: EtfFixturePrefixRequest,
     policy: LoadedConfig,
     event: EtfSessionEvent,
     bars: list[EtfObservedBar],
     actions: list[EtfActionEvent],
     eligible_sessions: int,
-) -> EtfDecisionObservation:
+) -> EtfDecisionFrame:
     at_ns = event.available_at_ns
     visible = _visible_bars(bars, at_ns)
     selected = visible[-request.study.windows[1] :]
@@ -188,6 +194,7 @@ def _decision(
     if action_affected:
         reasons.append("corporate_action_normalization_unimplemented")
     signal = None
+    vector: FeatureVector | None = None
     atr_ready = False
     if history_ready and not action_affected:
         as_of = _ceil_time(at_ns)
@@ -214,7 +221,7 @@ def _decision(
     )
     if cadence is not None and cadence % request.study.rebalance_sessions:
         reasons.append("between_rebalance_sessions")
-    return EtfDecisionObservation(
+    observation = EtfDecisionObservation(
         request.study.study_hash,
         event.source_record_hash,
         event.ordinal,
@@ -225,14 +232,15 @@ def _decision(
         signal,
         tuple(reasons),
     )
+    return EtfDecisionFrame(observation, vector)
 
 
-def _run(request: EtfFixturePrefixRequest, count: int) -> EtfFixturePrefixResult:
+def _frames(request: EtfFixturePrefixRequest, count: int) -> tuple[EtfDecisionFrame, ...]:
     policy = _policy(request.study)
     bars: list[EtfObservedBar] = []
     actions: list[EtfActionEvent] = []
     sessions: set[date] = set()
-    decisions: list[EtfDecisionObservation] = []
+    frames: list[EtfDecisionFrame] = []
     eligible_sessions = 0
     prefix = request.events[:count]
     with localcontext(Context(prec=28, rounding=ROUND_HALF_EVEN)):
@@ -245,12 +253,19 @@ def _run(request: EtfFixturePrefixRequest, count: int) -> EtfFixturePrefixResult
                 day = _session_date(event.event_at_ns)
                 if day in sessions:
                     continue
-                decision = _decision(request, policy, event, bars, actions, eligible_sessions)
-                decisions.append(decision)
+                frame = _decision_frame(request, policy, event, bars, actions, eligible_sessions)
+                frames.append(frame)
+                decision = frame.observation
                 # An ineligible snapshot cannot consume that day's valid opening.
                 if decision.cadence_index is not None:
                     sessions.add(day)
                     eligible_sessions += 1
+    return tuple(frames)
+
+
+def _run(request: EtfFixturePrefixRequest, count: int) -> EtfFixturePrefixResult:
+    decisions = tuple(frame.observation for frame in _frames(request, count))
+    prefix = request.events[:count]
     checkpoint = EtfDecisionCheckpoint(
         request.study.study_hash,
         request.initial_cash,
@@ -261,8 +276,22 @@ def _run(request: EtfFixturePrefixRequest, count: int) -> EtfFixturePrefixResult
         content_hash(tuple(decisions)),
     )
     return EtfFixturePrefixResult(
-        checkpoint, tuple(decisions), request.initial_cash, request.study.risk_equity_reference
+        checkpoint, decisions, request.initial_cash, request.study.risk_equity_reference
     )
+
+
+def etf_fixture_decision_frames(request: EtfFixturePrefixRequest) -> tuple[EtfDecisionFrame, ...]:
+    """Expose the same prior-information features for the fixture account owner.
+
+    No source qualification, risk approval or execution authority is conferred.
+    Existing diagnostic records, signal identity and prefix hashes are preserved.
+    """
+    try:
+        _check(type(request) is EtfFixturePrefixRequest)
+        replace(request)
+        return _frames(request, len(request.events))
+    except (ValueError, TypeError, ArithmeticError, AttributeError, RecursionError):
+        raise EtfHistoryError() from None
 
 
 def run_etf_fixture_prefix(
@@ -304,6 +333,7 @@ def resume_etf_fixture_prefix(
 __all__ = [
     "EtfFixturePrefixRequest",
     "EtfHistoryError",
+    "etf_fixture_decision_frames",
     "resume_etf_fixture_prefix",
     "run_etf_fixture_prefix",
 ]
