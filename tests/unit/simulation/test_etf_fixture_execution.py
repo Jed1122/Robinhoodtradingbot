@@ -256,6 +256,58 @@ def test_partial_handoff_without_consumed_fill_quote_proof_is_denied():
         )
 
 
+@pytest.mark.parametrize("duplicate_kind", ["identical_event", "same_fill_new_event"])
+def test_partial_handoff_deduplicates_delivery_as_the_account_owner_does(duplicate_kind):
+    from trading_bot.simulation.etf_account import EtfAccountEvent, replay_etf_account
+
+    first = quote(size=D(".04"))
+    partial, _ = run((clock(), first))
+    events = list(partial.account_events)
+    original = next(e for e in events if e.fill is not None)
+    if duplicate_kind == "identical_event":
+        events.append(original)
+    else:
+        index = events.index(original)
+        events.insert(index + 1, replace(original, event_id=content_hash("duplicate-envelope")))
+        events = [replace(e, ordinal=i) for i, e in enumerate(events)]
+    prefix = replace(account(), events=tuple(events))
+    before = replay_etf_account(prefix)
+    settled = replace(
+        prefix,
+        events=(
+            *prefix.events,
+            EtfAccountEvent(
+                content_hash("duplicate-settlement"),
+                before.last_ordinal + 1,
+                ORIGIN + 11_000_000,
+                "settlement",
+                fill_ids=(original.fill.id,),
+            ),
+        ),
+    )
+    result = api().run_etf_fixture_execution(
+        api().EtfFixtureExecutionRequest(
+            settled,
+            (quote(2, ORIGIN + 20_000_000, size=D(".06")),),
+            costs(),
+            "entry",
+            context=(clock(), first),
+        )
+    )
+    assert result.account.shares == D(".1") and result.account.fees == D(".031")
+    assert result.account.cash == D("489.969") and result.fill_count == 1
+
+
+def test_conflicting_duplicate_fill_cannot_pass_handoff_reconstruction():
+    partial, _ = run((clock(), quote(size=D(".04"))))
+    original = next(e for e in partial.account_events if e.fill is not None)
+    conflict = replace(original, fill=replace(original.fill, fee=D("0")))
+    with pytest.raises(ValueError):
+        api().EtfFixtureExecutionRequest(
+            replace(account(), events=(*partial.account_events, conflict)), (), costs(), "entry"
+        )
+
+
 def test_sub_increment_capacity_is_not_rounded_up_to_fabricate_shares():
     result, _ = run((clock(), quote(size=D(".0009"))))
     assert result.fill_count == 0 and result.account.shares == 0

@@ -295,11 +295,13 @@ def _consumed_execution(
     schedule: str | None = None
     quantity = ZERO
     fees = ZERO
-    fills = tuple(
-        e
-        for e in request.account.events
-        if e.fill is not None and e.fill.broker_order_id == record.order.broker_order_id
-    )
+    # replay_etf_account has already rejected conflicting duplicates. Preserve
+    # its first-delivery semantics, including the same FillId in a new envelope.
+    fills_by_id: dict[FillId, EtfAccountEvent] = {}
+    for fact in request.account.events:
+        if fact.fill is not None and fact.fill.broker_order_id == record.order.broker_order_id:
+            fills_by_id.setdefault(fact.fill.id, fact)
+    fills = tuple(fills_by_id.values())
     with localcontext(_fee_context()):
         for event in request.context:
             if not isinstance(event, EtfObservedQuote):
