@@ -44,6 +44,8 @@ def test_every_mode_overlay_loads_the_mode_it_names(filename: str, mode: str) ->
 
     assert loaded.config.mode.value == mode
     assert loaded.config.runtime.start_paused
+    assert not loaded.config.live_trading_enabled
+    assert loaded.config.portfolio.live_account_equity_ceiling_usd == Decimal("1000")
 
 
 def test_environment_flag_is_only_one_live_gate_and_never_unpauses() -> None:
@@ -94,6 +96,26 @@ def test_logging_event_bound_environment_override_can_only_tighten() -> None:
 
     with pytest.raises(UnsafeConfiguration, match=r"logging\.max_event_bytes"):
         load(environ={"TRADING_BOT__LOGGING__MAX_EVENT_BYTES": "65537"})
+
+
+@pytest.mark.parametrize("ceiling", ["150", "1000"])
+def test_account_equity_ceiling_override_must_stay_within_release_bound(ceiling: str) -> None:
+    loaded = load(environ={"TRADING_BOT__PORTFOLIO__LIVE_ACCOUNT_EQUITY_CEILING_USD": ceiling})
+
+    assert loaded.config.portfolio.live_account_equity_ceiling_usd == Decimal(ceiling)
+    assert not loaded.config.live_trading_enabled
+    assert loaded.config.runtime.start_paused
+    with pytest.raises(UnsafeConfiguration, match=r"portfolio\.live_account_equity_ceiling_usd"):
+        load(environ={"TRADING_BOT__PORTFOLIO__LIVE_ACCOUNT_EQUITY_CEILING_USD": "1000.01"})
+
+
+def test_account_ceiling_change_invalidates_previous_configuration_identity() -> None:
+    current = load()
+    previous_ceiling = load(
+        environ={"TRADING_BOT__PORTFOLIO__LIVE_ACCOUNT_EQUITY_CEILING_USD": "150"}
+    )
+
+    assert current.config_hash != previous_ceiling.config_hash
 
 
 def test_native_environment_integer_boolean_enum_and_list_values_remain_accepted() -> None:
@@ -374,15 +396,9 @@ def test_malformed_yaml_never_echoes_source_value_in_exception_chain(tmp_path: P
 
 
 def test_malformed_environment_yaml_never_echoes_source_value() -> None:
+    environ = {"TRADING_BOT__CRYPTO__INITIAL_SYMBOL_ALLOWLIST": "[actual-secret-value"}
     with pytest.raises(ConfigLoadError) as captured:
-        # Keep the fake secret off the active call-site line inspected by the assertion.
-        # fmt: off
-        load(
-            environ={
-                "TRADING_BOT__CRYPTO__INITIAL_SYMBOL_ALLOWLIST": "[actual-secret-value"
-            }
-        )
-        # fmt: on
+        load(environ=environ)
 
     _assert_secret_absent(captured.value)
 

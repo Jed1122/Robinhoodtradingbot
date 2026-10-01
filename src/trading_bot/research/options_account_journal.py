@@ -31,10 +31,7 @@ from trading_bot.research.options_account_journal_models import (
     JournalSettlement,
 )
 from trading_bot.research.options_study_models import StudyScenario
-from trading_bot.risk.options_loss_history import (
-    OptionsLossObservation,
-    evaluate_options_loss_observations,
-)
+from trading_bot.risk.options_loss_history import evaluate_options_loss_prefixes
 from trading_bot.simulation.options_historical_models import (
     HISTORICAL_TERMINAL as TERMINAL,
 )
@@ -311,8 +308,18 @@ def reconstruct_account_journal(
         )
     )
     check(type(entries) is tuple and len(entries) <= loaded.config.options.replay_max_records)
+    check(all(type(entry) is AccountJournalEntry for entry in entries))
+    # Evaluate the unique journal risk facts once, retaining causal prefix reports.
+    # Their account/state/hash bindings are still checked below before application.
+    unique = {entry.event_id: entry for entry in entries}
+    observations = tuple(
+        entry.fact.observation
+        for entry in unique.values()
+        if type(entry.fact) is JournalRiskObservation
+    )
+    reports = iter(evaluate_options_loss_prefixes(loaded, observations) if observations else ())
     seen: dict[str, AccountJournalEntry] = {}
-    observations: tuple[OptionsLossObservation, ...] = ()
+    risk_started = False
     pending_risk: tuple[int, str, str | None] | None = None
     state = initial
     with localcontext() as context:
@@ -330,7 +337,7 @@ def reconstruct_account_journal(
             if type(entry.fact) is JournalRiskObservation:
                 observation = entry.fact.observation
                 point = observation.point
-                check(bool(observations) or state == initial)
+                check(risk_started or state == initial)
                 check(pending_risk is None or pending_risk[0] == entry.available_ns)
                 check(
                     observation.available_ns == entry.available_ns
@@ -352,10 +359,8 @@ def reconstruct_account_journal(
                         )
                     )
                 )
-                observations = (*observations, observation)
-                loss = evaluate_options_loss_observations(
-                    loaded, observations, as_of_ns=entry.available_ns
-                )
+                loss = next(reports)
+                risk_started = True
                 hard_halts = set(loss.entry_reasons) & {
                     "weekly_loss_latched",
                     "drawdown_latched",
@@ -370,7 +375,7 @@ def reconstruct_account_journal(
             else:
                 filling = type(entry.fact) is JournalOrderUpdate and bool(entry.fact.fill_units)
                 monetary = type(entry.fact) in (JournalMark, JournalExternalFlow) or filling
-                if observations and monetary:
+                if risk_started and monetary:
                     # A same-event fill may receive its first liquidation mark
                     # before observation. No second mark, flow or fill can erase
                     # that intermediate valuation. A later timestamp cannot repair

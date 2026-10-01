@@ -1,8 +1,9 @@
 # Standing operator authority
 
 Recorded 2026-09-28 UTC from the operator's direct instructions in this project.
-This record updates workflow authority; it does not change software risk policy,
+The original grants update workflow authority, not software risk policy,
 economic acceptance criteria, credentials, account permissions, or live controls.
+The separately dated account-ceiling amendment below records a later narrow exception.
 Later explicit operator instructions supersede this record.
 
 ## Automatic integration and merging
@@ -84,8 +85,67 @@ authorize live operation. The existing credit-only acquisition grant is unchange
 
 No broker order review, placement, cancellation, real-money test trade, transfer,
 credential change, deployment, live activation, or risk-limit increase follows
-from either grant above. Existing separately approved read-only checks retain
-their original scope. Research data and secrets must not enter Git or Cloud
+from the integration or data-acquisition grants above. Existing separately
+approved read-only checks retain their original scope. Research data and secrets must not enter Git or Cloud
 agents. Genuine economic validation still requires actual option bid/ask and
 underlying data, defensible costs and uncertainty, and all canonical acceptance
 criteria; a synthetic run or an engineering pilot cannot stand in for it.
+
+## Account-equity ceiling — explicit 2026-09-30 amendment
+
+The operator requested: "also change the $150 live account ceiling to $1,000."
+
+This authorizes changing only the configured account-equity ceiling and its
+canonical release bound from $150 to $1,000, with consistent enforcement and
+regression tests. It does not authorize a transfer, balance inspection, deployment,
+live activation, real-money order, changed strategy, larger risk-equity reference,
+larger order/exposure limits, or weaker loss/reconciliation/kill controls.
+All other capital assumptions and limits remain unchanged. See the current
+[risk-policy amendment](risk-policy.md#account-equity-ceiling-amendment--2026-09-30).
+
+## ETF research priority and paid-data consideration — 2026-09-30
+
+The operator prioritized the focused SPY/cash ETF research pilot, approved its
+written specification and implementation plan, and retained native execution.
+This supersedes options-only research priority, not options evidence, risk limits,
+source qualification, broker/runtime gates or live authorization. The separate
+[approved plan](superpowers/plans/2026-09-30-focused-etf-research.md) governs this
+research identity; do not repurpose the historical four-ETF comparison.
+
+The operator reports installing Massive and is willing to pay for a suitable data
+account. Paid-provider evaluation is therefore no longer constrained to free-only
+recommendations. No exact subscription, recurring total or applicable new agreement
+has yet been selected or accepted. Verify useful coverage, account entitlement,
+permitted automated use/retention and full cost before a purchase commitment;
+the existing Databento credit-only acquisition grant continues independently.
+The [provider comparison](etf-provider-comparison-2026-09-30.md) records public
+coverage/prices and remaining issues. No subscription was purchased in this turn.
+
+The operator then requested the most cost-effective qualification route, signed
+in for read-only Alpaca plan inspection, and explicitly approved one support
+inquiry about the displayed $99/month paper-only offer, historical SIP use,
+private automated research, retention and original/corrected history. That inquiry
+was sent in the existing support conversation. This does not authorize a paid
+subscription, agreement acceptance, live-account opening/funding or brokerage
+operation. No raw data, credentials or private account identifiers were sent.
+
+## Continue implementation without waiting for support — 2026-10-01
+
+The operator instructed the coordinator to continue building the bot regardless
+of further Alpaca support responses and states that they intend to subscribe.
+Support correspondence is not a prerequisite for credential-free implementation,
+synthetic fixtures, offline replay, restart tests or report development. Continue
+those approved tasks now; do not repeatedly pause them for provider clarification.
+
+A subscription is not assumed active until observed. Once access exists, evaluate
+the actual supported data against the approved source contract and retain explicit
+limitations. Do not turn correspondence, subscription status or a successful API
+request into verified coverage, point-in-time history, accepted economics or live
+authority. Missing evidence limits the dependent claim or operation, not unrelated
+development. This instruction does not authorize a purchase by the coordinator,
+agreement acceptance, account funding, changed risk limits, deployment or orders.
+
+The operator subsequently reported purchasing Algo Trader Plus. Record this as
+user-reported subscription status, not account-bound access verification. Continue
+read-only market-data access checks and the existing approved offline build; no
+additional purchase, upgrade, broker write or live authorization is implied.

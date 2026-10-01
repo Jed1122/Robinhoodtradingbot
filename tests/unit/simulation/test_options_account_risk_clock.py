@@ -15,6 +15,31 @@ from trading_bot.risk.options_loss_history import OptionsLossObservation, Option
 D = Decimal
 
 
+def test_journal_reconstruct_reduces_loss_observations_once(tmp_path, monkeypatch):
+    from trading_bot.research.options_account_journal import reconstruct_account_journal
+    from trading_bot.risk import options_loss_history as loss_api
+
+    clock, order, _ = setup(tmp_path, monkeypatch)
+    for index in range(12):
+        clock.advance_time(clock.initial.start_ns + index)
+        observe(clock, order)
+    original = loss_api._breached
+    calls = []
+
+    def count(*args):
+        calls.append(args)
+        return original(*args)
+
+    monkeypatch.setattr(loss_api, "_breached", count)
+    assert (
+        reconstruct_account_journal(
+            clock.initial, clock.journal, loaded=clock.loaded, scenario=clock.scenario
+        )
+        == clock.state
+    )
+    assert len(calls) == 3 * 12
+
+
 def observe(clock, order, *, complete=True, **changes):
     session = order.structure.legs[0].contract.eligible_sessions[0]
     # These are deliberately fabricated session/mark facts, never provider evidence.
@@ -275,3 +300,75 @@ def test_stale_initialized_risk_history_cannot_report_complete(tmp_path, monkeyp
     clock.advance_time(clock.now_ns + int(age * 10**9) + 1)
     assert clock.result().status == "incomplete"
     assert "risk_observation_stale" in clock.result().reasons
+
+
+def test_daily_only_loss_halt_is_reported_without_permanent_weekly_latch(tmp_path, monkeypatch):
+    clock, order, events = setup(tmp_path, monkeypatch)
+    initial = initial_account_path(
+        study_hash=clock.initial.study_hash,
+        capital=D("100"),
+        start_ns=clock.initial.start_ns,
+        loaded=clock.loaded,
+        scenario=clock.scenario,
+    )
+    clock = type(clock)(initial, (), loaded=clock.loaded, scenario=clock.scenario, seed=7)
+    order = replace(order, account_scope=initial.path_id)
+    observe(clock, order)
+    # Internal accounting only, not an admissible strategy entry at this capital.
+    submit(clock, order)
+    clock.advance(events[0])
+    clock.advance(events[1])
+    clock.mark("episode-1", D("0.22"), available_ns=clock.now_ns)
+    observe(clock, order)
+    assert clock.state.marked_equity == D("96.50")
+    assert clock.state.latched_halts == ()
+    assert clock.loss_report().daily_halt and not clock.loss_report().weekly_halt
+    assert "daily_loss_latched" in clock.result().reasons
+    assert resume(clock).result() == clock.result()
+
+
+@pytest.mark.parametrize("trigger", ["quote", "timer"])
+def test_stale_risk_requests_cancel_before_quote_processing(tmp_path, monkeypatch, trigger):
+    from trading_bot.domain.enums import OrderEvent, OrderState
+    from trading_bot.simulation import options_historical_clock as clock_api
+
+    clock, order, events = setup(tmp_path, monkeypatch, duration=3600 * 10**9)
+    observe(clock, order)
+    submit(clock, order)
+    clock.advance(events[0])
+    boundary = clock.initial.start_ns + int(
+        clock.loaded.config.freshness.max_account_snapshot_age_seconds * 10**9
+    )
+    clock.advance_time(boundary)
+    assert clock.result().orders[0].state is OrderState.SUBMITTED
+    at = boundary + 1
+    if trigger == "timer":
+        clock.advance_time(at)
+        assert clock.result().orders[0].state is OrderState.CANCEL_PENDING
+    else:
+        stamp = ceil_available_at(at)
+        record = events[1].record
+        quote = replace(record.value, event_at=stamp, received_at=stamp, underlying_event_at=stamp)
+        event = replace(
+            events[1],
+            event_ns=at,
+            available_ns=at,
+            record=replace(record, event_at=stamp, available_at=stamp, value=quote),
+        )
+        real = clock_api.advance_order
+        observed = []
+
+        def record_state(current, *args, **kwargs):
+            observed.append(current.state)
+            return real(current, *args, **kwargs)
+
+        with monkeypatch.context() as spy:
+            spy.setattr(clock_api, "advance_order", record_state)
+            clock.advance(event)
+        assert observed == [OrderState.CANCEL_PENDING]
+        # Cancellation is not instantaneous: the quote precedes its modeled ACK.
+        assert clock.result().orders[0].filled_units == 1
+        events_seen = [t.event for _, t in clock.result().transitions]
+        assert events_seen.index(OrderEvent.REQUEST_CANCEL) < events_seen.index(OrderEvent.FILL)
+    assert clock.result().orders[0].cancel_requested_ns == at
+    assert resume(clock).result() == clock.result()

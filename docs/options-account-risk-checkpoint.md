@@ -25,11 +25,26 @@ qualify a real-price study, deploy code, or authorize live trading.
 - Entry halts remain separate from ownership incidents. They deny new BUY intents
   without preventing an independently permitted protective SELL, settlement or
   completion of its economic episode. No live order capability is introduced.
+- A loss halt requests cancellation of already accepted BUYs and of pending BUYs
+  once acceptance is observed. Unknown outcomes retain reservations. Existing cancel
+  timers and modeled before/tied-acknowledgement fill races remain intact; a halt
+  cannot invent an instantaneous broker cancellation.
+- Timer and quote advances also check stale risk evidence/session closure before
+  quote execution. Ordinary submission/acknowledgement dirtiness is not itself a
+  cancellation trigger. Cancellation races still apply after a stale-state request.
+- A risk-enabled multi-order quote pauses after each fill while orders remain.
+  Its owner must supply the same-nanosecond mark/observation before resuming the
+  identical quote. Pending cursor/order identities and consumed liquidity survive
+  checkpoint replay; another quote, time advance or new entry cannot skip them.
+- Journal reconstruction calculates all causal risk prefixes in one shared reducer
+  pass instead of re-evaluating from genesis for every observation. A local synthetic
+  5,000-observation reconstruction took 0.23 seconds; this is not a production-host
+  benchmark or a claim that full command replay has constant per-event cost.
 - Closed checkpoint commands now include marks, hypothetical external flows and
   risk observations. Restore replays and validates the commands rather than trusting
   saved balances, loss counters or a clean-status flag.
 - A terminal, flat, settled book is still reported incomplete if initialized risk
-  history is stale or lacks the final monetary observation. Lifecycle completion
+  history is stale, halted or lacks the final monetary observation. Lifecycle completion
   cannot silently stand in for complete loss history.
 
 ### Owner contract and limitations
@@ -94,6 +109,15 @@ Its combined native/primary coverage was 89.02%, passing the unchanged 90% per-c
 file branch gate. Final whole-commit review then found the incomplete-final-risk
 reporting defect described above; its correction requires fresh verification rather
 than inheriting that candidate's successful checks.
+GitHub review subsequently reproduced pending-entry halt and multi-fill observation
+defects, plus repeated prefix-reduction work. The bounded cancellation/cursor and
+single-pass fixes require fresh integrated verification. The transition report now
+links the same scoped read-only diagnostics without including private account data
+or unrelated pre-existing edits. GitHub records the owner merging PR #3 at
+2026-09-30 18:33:14 UTC before these additional corrections were included.
+[PR #4](https://github.com/Jed1122/Robinhoodtradingbot/pull/4) carries the subsequent
+corrections; its reviewed exact-head CI must pass before integration. No deployment
+followed either the initial merge or these local changes.
 Four encrypted-backup tests remain skipped without local `age`; optional native
 backends missing from the primary environment were exercised in research. Coverage
 and exact-head remote CI remain separate integration gates; these counts do not

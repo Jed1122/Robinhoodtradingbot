@@ -1356,11 +1356,12 @@ def _install_safe_manager_disable_boundary() -> None:
 
 
 def _acquire_logging_registry_lock() -> None:
-    _stdlib_logging._acquireLock()  # type: ignore[attr-defined]
+    # Use the same registry RLock as stdlib; 3.13 removed its helper functions.
+    _stdlib_logging._lock.acquire()  # type: ignore[attr-defined]
 
 
 def _release_logging_registry_lock() -> None:
-    _stdlib_logging._releaseLock()  # type: ignore[attr-defined]
+    _stdlib_logging._lock.release()  # type: ignore[attr-defined]
 
 
 def _replace_logger_extensions(

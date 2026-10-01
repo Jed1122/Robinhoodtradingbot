@@ -124,6 +124,9 @@ class _EpisodeClock:
         }
         self._transitions: list[tuple[str, HistoricalTransition]] = []
         self._calendars: dict[str, tuple[OptionContract, OptionExpiryCalendar]] = {}
+        # A risk-enabled quote can fill several orders. Persist an exact cursor
+        # rather than hiding intermediate monetary states or renewing liquidity.
+        self._pending_quote: tuple[OptionsMarketEvent, tuple[str, ...], int, int] | None = None
 
     def watch_expiry(self, contract: OptionContract, calendar: OptionExpiryCalendar) -> None:
         """Bind immutable calendar preimages; the study owner must verify their source."""
@@ -192,6 +195,7 @@ class _EpisodeClock:
             self._consumed.copy(),
             self._orders.copy(),
             self._transitions.copy(),
+            self._pending_quote,
         )
         try:
             yield
@@ -207,13 +211,14 @@ class _EpisodeClock:
                 self._consumed,
                 self._orders,
                 self._transitions,
+                self._pending_quote,
             ) = before
             raise
 
     def submit(
         self, episode_id: str, session_id: str, intent: OptionsOrderIntent, *, available_ns: int
     ) -> None:
-        check(available_ns == self.now_ns)
+        check(available_ns == self.now_ns and self._pending_quote is None)
         if intent.structure.legs[0].side is Side.BUY:
             loss = self.loss_report()
             check(not self.state.latched_halts and (loss is None or not loss.entry_reasons))
@@ -233,7 +238,7 @@ class _EpisodeClock:
 
     def external_flow(self, amount: Decimal, *, available_ns: int) -> None:
         """Hypothetical funding only; never a trading gain or replenished trial loss."""
-        check(available_ns == self.now_ns)
+        check(available_ns == self.now_ns and self._pending_quote is None)
         self._append((JournalExternalFlow(amount),), available_ns)
         self._actions.append(("flow", (amount, available_ns)))
 
@@ -241,8 +246,30 @@ class _EpisodeClock:
         check(
             type(observation) is OptionsLossObservation and observation.available_ns == self.now_ns
         )
-        self._append((JournalRiskObservation(observation),), self.now_ns)
+        with self._atomic_event():
+            self._append((JournalRiskObservation(observation),), self.now_ns)
+            self._cancel_halted_entries()
         self._actions.append(("loss", observation))
+
+    def _cancel_halted_entries(self) -> None:
+        loss = self.loss_report()
+        if loss is None or not (
+            self.state.latched_halts
+            or loss.daily_halt
+            or loss.weekly_halt
+            or loss.drawdown_halt
+            or set(loss.entry_reasons)
+            & {"risk_history_incomplete", "risk_observation_stale", "outside_session"}
+        ):
+            return
+        for order in tuple(self._orders.values()):
+            if order.intent.structure.legs[0].side is Side.BUY and order.state in (
+                OrderState.SUBMITTED,
+                OrderState.PARTIALLY_FILLED,
+            ):
+                # Preserve modeled cancellation latency/races. Pending submissions
+                # are canceled only after acceptance; unknowns stay unresolved.
+                self._apply_step(request_cancel(order, available_ns=self.now_ns))
 
     def loss_report(self) -> OptionsLossReport | None:
         observations = tuple(
@@ -378,11 +405,12 @@ class _EpisodeClock:
 
     def _advance_time(self, available_ns: int) -> None:
         instant(available_ns)
-        check(available_ns >= self.now_ns)
+        check(available_ns >= self.now_ns and self._pending_quote is None)
         self._timers(available_ns)
         if available_ns > self.now_ns:
             self._seen.clear()
         self.now_ns = available_ns
+        self._cancel_halted_entries()
         self._complete(available_ns)
 
     def advance(self, event: OptionsMarketEvent) -> None:
@@ -392,14 +420,31 @@ class _EpisodeClock:
 
     def _advance(self, event: OptionsMarketEvent) -> None:
         check(type(event) is OptionsMarketEvent and event.available_ns >= self.now_ns)
-        if event.identity in self._seen:
-            return
-        check(self._event_count < self.loaded.config.options.replay_max_records)
-        self._timers(event.available_ns, before_quote=True)
-        if event.available_ns > self.now_ns:
-            self._seen.clear()
-        self.now_ns = event.available_ns
-        for order in tuple(self._orders.values()):
+        if self._pending_quote is None:
+            if event.identity in self._seen:
+                return
+            check(self._event_count < self.loaded.config.options.replay_max_records)
+            self._timers(event.available_ns, before_quote=True)
+            if event.available_ns > self.now_ns:
+                self._seen.clear()
+            self.now_ns = event.available_ns
+            order_ids, start = tuple(self._orders), 0
+            self._event_count += 1
+        else:
+            pending, order_ids, start, boundary = self._pending_quote
+            check(event == pending)
+            check(
+                any(
+                    type(entry.fact) is JournalRiskObservation and entry.available_ns == self.now_ns
+                    for entry in self.journal[boundary:]
+                )
+            )
+        risk_enabled = any(type(e.fact) is JournalRiskObservation for e in self.journal)
+        # Check time-dependent safety before a quote can attempt another fill.
+        # Cancellation latency/races still apply to already transmitted orders.
+        self._cancel_halted_entries()
+        for index in range(start, len(order_ids)):
+            order = self._orders[order_ids[index]]
             leg = order.intent.structure.legs[0]
             # Source ordinals/projection hashes and receipt times do not establish
             # replenishment. Conservatively share same-native-time side liquidity,
@@ -413,19 +458,24 @@ class _EpisodeClock:
                 consumed_units=self._consumed.get(key, 0),
             )
             self._apply_step(step)
+            if step.order.state is OrderState.SUBMITTED:
+                self._cancel_halted_entries()
             if step.fill_units:
                 self._consumed[key] = self._consumed.get(key, 0) + step.fill_units
+                if risk_enabled and index + 1 < len(order_ids):
+                    self._pending_quote = (event, order_ids, index + 1, len(self.journal))
+                    return
+        self._pending_quote = None
         self._seen.add(event.identity)
-        self._event_count += 1
         self._complete(self.now_ns)
 
     def result(self) -> HistoricalClockResult:
         reasons = set((*self.state.incidents, *self.state.latched_halts))
         loss = self.loss_report()
         if loss is not None:
-            reasons.update(
-                set(loss.entry_reasons) & {"risk_state_changed", "risk_observation_stale"}
-            )
+            reasons.update(set(loss.entry_reasons) - {"outside_session"})
+        if self._pending_quote is not None:
+            reasons.add("market_event_pending")
         expiry = self._expiry(self.now_ns)
         reasons.update(reason for item in expiry for reason in item.reasons)
         if self.state.positions:

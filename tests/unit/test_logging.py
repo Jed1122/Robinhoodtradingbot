@@ -453,9 +453,9 @@ def test_hostile_metaclass_metadata_descriptor_is_never_invoked() -> None:
 
 def test_dataclass_with_non_text_storage_key_is_rejected_without_key_equality() -> None:
     value = _FrozenDictEnvelope(safe="visible")
-    instance_values = object.__getattribute__(value, "__dict__")
-    instance_values.pop("safe")
-    instance_values[_HostileDataclassKey()] = "must not be inspected"
+    # A fresh dictionary avoids interpreter-specific shared-key comparisons
+    # during fixture construction; equality must remain forbidden in redaction.
+    object.__setattr__(value, "__dict__", {_HostileDataclassKey(): "must not be inspected"})
 
     event = redact_secrets(None, "info", {"payload": value})
 
@@ -556,6 +556,28 @@ def test_configure_logging_rejects_unknown_levels(level: str) -> None:
 def test_configure_logging_rejects_non_text_level() -> None:
     with pytest.raises(TypeError, match="logging level must be text"):
         configure_logging(20)  # type: ignore[arg-type]
+
+
+def test_registry_lock_serializes_without_removed_stdlib_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def try_registry_lock() -> bool:
+        acquired = stdlib_logging._lock.acquire(blocking=False)
+        if acquired:
+            stdlib_logging._lock.release()
+        return acquired
+
+    with ThreadPoolExecutor(max_workers=1) as executor, monkeypatch.context() as patch:
+        patch.delattr(stdlib_logging, "_acquireLock", raising=False)
+        patch.delattr(stdlib_logging, "_releaseLock", raising=False)
+        logging_module._acquire_logging_registry_lock()
+        try:
+            logging_module._acquire_logging_registry_lock()
+            logging_module._release_logging_registry_lock()
+            assert executor.submit(try_registry_lock).result(timeout=5) is False
+        finally:
+            logging_module._release_logging_registry_lock()
+        assert executor.submit(try_registry_lock).result(timeout=5) is True
 
 
 def test_configure_logging_is_idempotent_and_orders_processors_safely() -> None:

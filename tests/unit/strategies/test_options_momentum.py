@@ -4,6 +4,7 @@ These tests were added after the core put implementation; they are not initial T
 All observations and replay cash flows are fabricated, not market evidence.
 """
 
+import re
 from copy import deepcopy
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -153,9 +154,9 @@ LEGACY_CALL_RESULT_HASHES = (
 
 
 @pytest.fixture
-def options_config(monkeypatch: pytest.MonkeyPatch) -> LoadedConfig:
+def options_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> LoadedConfig:
     # These golden results bind the pre-shortlist schema, not today's configuration
-    # identity. Project ONLY the three subsequently added research sections out before
+    # identity. Project ONLY the subsequently added research sections out before
     # the real serializer hashes it. Production always binds the full current graph.
     original = config_hashing._hash_payload
 
@@ -165,14 +166,26 @@ def options_config(monkeypatch: pytest.MonkeyPatch) -> LoadedConfig:
             del legacy[name]["options"]["research_shortlist"]
             del legacy[name]["options"]["native_data"]
             del legacy[name]["options"]["research_study"]
+        del legacy["config"]["equity_strategies"]["etf_pilot"]
+        del legacy["safety_envelope"]["equity_strategies"]
         return original(legacy)
 
     monkeypatch.setattr(config_hashing, "_hash_payload", legacy_config_identity)
     config_dir = Path(__file__).parents[3] / "configs"
+    # Replay the original $150 policy as actual fixture input, not a forged hash
+    # over today's $1,000 policy. Preserve all other YAML values and Decimal spelling.
+    for filename in ("base.yaml", "safety-envelope.yaml"):
+        historical, replacements = re.subn(
+            r"(?m)^  live_account_equity_ceiling_usd: [^\n]+$",
+            "  live_account_equity_ceiling_usd: 150",
+            (config_dir / filename).read_text(),
+        )
+        assert replacements == 1
+        (tmp_path / filename).write_text(historical)
     loaded = load_config(
-        config_dir / "base.yaml",
+        tmp_path / "base.yaml",
         config_dir / "options/simulation.yaml",
-        config_dir / "safety-envelope.yaml",
+        tmp_path / "safety-envelope.yaml",
         {},
     )
     # Independent original identity: all other policy changes must still fail.

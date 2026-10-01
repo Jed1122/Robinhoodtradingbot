@@ -385,7 +385,41 @@ class BackupSettings(StrictModel):
     encryption_required: StrictTrue
 
 
+class EtfPilotSettings(StrictModel):
+    """Fixed offline study; hypothetical cash never confers execution authority."""
+
+    enabled: StrictBool
+    policy_id: Literal["spy-cash-momentum-20-100-v1"]
+    symbol: Literal["SPY"]
+    short_window: StrictInt = Field(ge=20, le=20)
+    long_window: StrictInt = Field(ge=100, le=100)
+    rebalance_sessions: StrictInt = Field(ge=5, le=5)
+    requested_start: Literal["2016-01-01"]
+    requested_end: Literal["2026-01-01"]
+    holdout_start: Literal["2024-01-01"]
+    capital_tiers: StrictDecimalTuple
+    confidence_level_pct: Pct = Field(ge=95, le=95)
+    block_lengths_sessions: StrictIntegerTuple
+    execution_enabled: StrictFalse
+    evidence_promotable: StrictFalse
+
+    @model_validator(mode="after")
+    def fixed_hypothetical_policy(self) -> Self:
+        if self.capital_tiers != (Decimal("500"), Decimal("1000")):
+            raise ValueError("ETF capital tiers are fixed research scenarios")
+        if self.block_lengths_sessions != (20, 100):
+            raise ValueError("ETF block lengths are preregistered, not tunable")
+        return self
+
+
+class EquityResearchEnvelope(StrictModel):
+    """Only the new research policy, without replacing legacy equity constraints."""
+
+    etf_pilot: EtfPilotSettings
+
+
 class EquityStrategySettings(StrictModel):
+    etf_pilot: EtfPilotSettings
     short_windows: StrictIntegerTuple = Field(min_length=1)
     long_windows: StrictIntegerTuple = Field(min_length=1)
     regime_multipliers: StrictDecimalTuple = Field(min_length=1)
@@ -561,6 +595,13 @@ class AppConfig(StrictModel):
 
     @model_validator(mode="after")
     def live_flag_never_unpauses_startup(self) -> Self:
+        if self.equity_strategies.etf_pilot.enabled and (
+            self.mode not in {ExecutionMode.BACKTEST, ExecutionMode.SIMULATION}
+            or self.live_trading_enabled
+            or self.options.enabled
+            or not self.runtime.start_paused
+        ):
+            raise ValueError("ETF pilot is paused offline research only")
         if self.options.research_study.enabled and (
             not self.options.enabled
             or not self.options.native_data.enabled
@@ -607,6 +648,7 @@ class SafetyEnvelope(StrictModel):
     live_trading_permitted: StrictBool
     prediction_live_permitted: StrictFalse
     options: OptionsSettings
+    equity_strategies: EquityResearchEnvelope
     portfolio: PortfolioSettings
     position_risk: PositionRiskSettings
     loss_limits: LossLimitSettings

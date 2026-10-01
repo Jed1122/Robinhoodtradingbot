@@ -836,6 +836,31 @@ def test_valid_initial_context_runs_same_checks_except_review_match() -> None:
 
 
 @pytest.mark.parametrize(
+    ("equity", "allowed"),
+    [("150.01", True), ("500", True), ("1000", True), ("1000.01", False)],
+)
+def test_account_gate_enforces_configured_equity_ceiling(equity: str, allowed: bool) -> None:
+    harness = valid_harness()
+    original = harness.context.initial
+    balance = Decimal(equity)
+    initial = replace(
+        original,
+        account=replace(original.account, equity=balance, cash=balance),
+        portfolio=replace(original.portfolio, equity=balance, cash=balance),
+        projection=replace(original.projection, equity=balance, cash=balance - Decimal("1.10")),
+    )
+
+    result = harness.engine.evaluate_initial(initial)
+    account_check = next(
+        check for check in result.checks if check.code == PretradeCheckCode.ACCOUNT_ALLOWLIST
+    )
+
+    assert account_check.allowed is allowed
+    assert result.allowed is allowed
+    assert initial.projection.authorized_risk_equity == Decimal("100")
+
+
+@pytest.mark.parametrize(
     ("created_at", "expires_at"),
     [
         (NOW + timedelta(microseconds=1), NOW + timedelta(minutes=5)),
