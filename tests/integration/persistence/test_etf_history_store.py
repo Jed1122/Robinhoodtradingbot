@@ -53,6 +53,30 @@ async def test_reopened_store_reconstructs_partial_cash_and_trial_reservation(et
     await restarted.dispose()
 
 
+async def test_reopened_store_preserves_ambiguous_pending_submission(etf_url):
+    from tests.unit.simulation.test_etf_pending import pending, status
+    from trading_bot.domain import OrderEvent, OrderState
+    from trading_bot.simulation.etf_account import admit_etf_pending_intent
+
+    engine = create_engine(etf_url)
+    factory = async_session_factory(engine)
+    clock = Clock()
+    lease = await LeaseRepository(factory, clock).acquire(AccountId("etf-offline"), owner="fixture")
+    original = request((pending(), status(OrderEvent.BROKER_AMBIGUOUS)))
+    store = store_type()(factory, clock)
+    for cursor, item in enumerate(original.events):
+        checkpoint = await store.append_event(original, lease, expected_cursor=cursor, event=item)
+    await engine.dispose()
+    restarted = create_engine(etf_url)
+    restored = await store_type()(async_session_factory(restarted), clock).restore(original)
+    assert restored == checkpoint and restored.state.paused
+    assert restored.state.orders[0].order.state is OrderState.UNKNOWN_REQUIRES_RECONCILIATION
+    assert restored.state.reserved_cash == restored.state.trial.reserved_risk == D("10.02")
+    assert restored.state.cash == D("500") and restored.state.shares == 0
+    assert not admit_etf_pending_intent(original, original.events[0]).allowed
+    await restarted.dispose()
+
+
 async def test_complete_replay_is_atomic_idempotent_and_identity_bound(etf_url):
     engine = create_engine(etf_url)
     factory = async_session_factory(engine)

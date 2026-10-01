@@ -100,6 +100,12 @@ cursor deny continuation. Use a separate root for the $1,000 tier. Do not delete
 ownership/evidence files to bypass a denial. This fixture restart mechanism is
 not broker authentication, recovery or real-account reconciliation evidence.
 
+The account owner also provides an additive
+[pending-admission seam](etf-pending-account-seam.md) for the next causal fixture
+coordinator. It requires later explicit acknowledgement, preserves reservations
+through ambiguity and denies duplicate event/order scheduling identities. It does
+not change these legacy accepted-fact examples or claim full pretrade eligibility.
+
 ### SQLite pathname boundary
 
 `account-ledger-run` always exits `1` with

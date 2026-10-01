@@ -35,7 +35,12 @@ from trading_bot.market_data.recording import content_hash
 from trading_bot.portfolio.sizing import SizingDecision, SizingRequest
 from trading_bot.research.etf_study import EtfStudy
 from trading_bot.risk.limits import evaluate_exposure_limits
-from trading_bot.risk.losses import LossSnapshot, evaluate_loss_limits
+from trading_bot.risk.losses import (
+    ActivitySnapshot,
+    LossSnapshot,
+    evaluate_activity_limits,
+    evaluate_loss_limits,
+)
 from trading_bot.risk.models import ExposureProjection
 from trading_bot.risk.options_economics import TrialEpisode, TrialLossState
 from trading_bot.simulation.etf_history import _policy
@@ -46,7 +51,16 @@ from trading_bot.simulation.lifecycle_models import LifecycleSnapshot
 ZERO = Decimal("0")
 _ACCOUNT = AccountId("etf-offline")
 _TERMINAL = {OrderState.FILLED, OrderState.CANCELED, OrderState.REJECTED, OrderState.EXPIRED}
-_KINDS = {"intent", "fill", "order_status", "settlement", "dividend_ex", "dividend_pay", "mark"}
+_KINDS = {
+    "intent",  # Legacy explicit synthetic accepted-intent fact; hashes stay unchanged.
+    "pending_intent",  # New scheduling seam: reserves are held before an explicit ack.
+    "fill",
+    "order_status",
+    "settlement",
+    "dividend_ex",
+    "dividend_pay",
+    "mark",
+}
 
 
 class EtfAccountError(ValueError):
@@ -106,6 +120,7 @@ class EtfAccountEvent:
         }
         expected = {
             "intent": {"intent", "instrument", "stop_distance", "fee_bound"},
+            "pending_intent": {"intent", "instrument", "stop_distance", "fee_bound"},
             "fill": {"fill"},
             "order_status": {"order_id", "order_event"},
             "settlement": set(),
@@ -247,16 +262,17 @@ class EtfAccountResult:
         return content_hash({"schema": "etf-account-state-v1", "state": self})
 
 
-def _order(intent: OrderIntent, at_ns: int) -> BrokerOrder:
+def _order(intent: OrderIntent, at_ns: int, *, accepted: bool = True) -> BrokerOrder:
     state = OrderState.PROPOSED
     for event in (
         OrderEvent.RISK_ALLOW,
         OrderEvent.REQUEST_REVIEW,
         OrderEvent.REVIEW_ACCEPTED,
         OrderEvent.PREPARE_SUBMISSION,
-        OrderEvent.BROKER_ACCEPTED,
     ):
         state = transition(state, event)
+    if accepted:
+        state = transition(state, OrderEvent.BROKER_ACCEPTED)
     return BrokerOrder(
         OrderId(intent.id),
         BrokerOrderId(intent.id),
@@ -348,7 +364,7 @@ def _run(request: EtfAccountRequest, count: int) -> EtfAccountResult:
                 day_start, day_equity = current_day, equity
             if current_week != week_start:
                 week_start, week_equity = current_week, equity
-            if event.kind == "intent":
+            if event.kind in ("intent", "pending_intent"):
                 intent, instrument = _required(event.intent), _required(event.instrument)
                 price = _required(intent.limit_price)
                 stop = _required(event.stop_distance)
@@ -395,6 +411,23 @@ def _run(request: EtfAccountRequest, count: int) -> EtfAccountResult:
                             for o in orders.values()
                         )
                     )
+                    if event.kind == "pending_intent":
+                        entries = tuple(
+                            o.intent.created_at
+                            for o in orders.values()
+                            if o.intent.side is Side.BUY
+                        )
+                        todays_entries = sum(at.date() == now.date() for at in entries)
+                        activity = ActivitySnapshot(
+                            _ACCOUNT,
+                            InstrumentId("SPY"),
+                            todays_entries,
+                            todays_entries,
+                            max(entries) if entries else None,
+                            current_day,
+                            now,
+                        )
+                        _check(evaluate_activity_limits(activity, settings=cfg.activity).allowed)
                     sizing = SizingRequest.from_config(
                         reconciled_equity=cash,
                         authorized_risk_equity=request.study.risk_equity_reference,
@@ -455,7 +488,7 @@ def _run(request: EtfAccountRequest, count: int) -> EtfAccountResult:
                 _check(active_episode is not None)
                 orders[intent.id] = EtfAccountOrder(
                     intent,
-                    _order(intent, event.at_ns),
+                    _order(intent, event.at_ns, accepted=event.kind == "intent"),
                     event.at_ns,
                     fee_bound,
                     ZERO,
@@ -529,6 +562,21 @@ def _run(request: EtfAccountRequest, count: int) -> EtfAccountResult:
                 _check(order_id in orders)
                 record = orders[order_id]
                 _check(event.at_ns > record.submitted_at_ns)
+                # Status labels cannot manufacture cash/share facts or erase
+                # observed partial fills. Unknown acceptance retains reserves
+                # until a quantity-consistent status and explicit fills reconcile.
+                if order_event in (OrderEvent.RECONCILE_SUBMITTED, OrderEvent.RECONCILE_REJECTED):
+                    _check(record.order.filled_quantity == 0)
+                if order_event is OrderEvent.RECONCILE_PARTIAL:
+                    _check(0 < record.order.filled_quantity < record.order.requested_quantity)
+                if order_event is OrderEvent.RECONCILE_FILLED:
+                    _check(record.order.filled_quantity == record.order.requested_quantity)
+                if order_event in (
+                    OrderEvent.BROKER_ACCEPTED,
+                    OrderEvent.RECONCILE_SUBMITTED,
+                    OrderEvent.RECONCILE_PARTIAL,
+                ):
+                    _check(event.at_ns < _ns(record.intent.expires_at))
                 next_state = transition(record.order.state, order_event)
                 orders[order_id] = replace(
                     record, order=replace(record.order, state=next_state, updated_at=now)
@@ -666,3 +714,62 @@ def resume_etf_account(
         return replay_etf_account(request)
     except (ValueError, TypeError, ArithmeticError, AttributeError, RuntimeError, StopIteration):
         raise EtfAccountError() from None
+
+
+@dataclass(frozen=True, slots=True)
+class EtfPendingAdmission:
+    """Account-only synthetic admission, not the production 24-check gate.
+
+    Scheduling can consume this zero-effect denial without a second sizing/risk
+    calculator. Allowed results persist only a pending reservation; acceptance,
+    fills, costs, settlement and executable provenance remain separate facts.
+    """
+
+    allowed: bool
+    reason: str
+    candidate_hash: str
+    state: EtfAccountResult
+    scope: Literal["synthetic-account-limits-only-v1"] = field(
+        default="synthetic-account-limits-only-v1", init=False
+    )
+    production_pretrade_eligible: Literal[False] = field(default=False, init=False)
+    execution_enabled: Literal[False] = field(default=False, init=False)
+    evidence_promotable: Literal[False] = field(default=False, init=False)
+
+
+def admit_etf_pending_intent(
+    request: EtfAccountRequest, candidate: EtfAccountEvent
+) -> EtfPendingAdmission:
+    """Reconstruct trusted history first, then apply the same account owner once.
+
+    Invalid existing history raises; it is never replaced with empty cash/state.
+    Candidate admission failures return the unchanged reconstructed state. No
+    broker, mutable reservation, retry or automatic quantity change is introduced.
+    """
+    current = replay_etf_account(request)
+    _check(type(candidate) is EtfAccountEvent and candidate.kind == "pending_intent")
+    replace(candidate)
+    intent = _required(candidate.intent)
+    if any(item.event_id == candidate.event_id for item in request.events) or any(
+        item.intent.id == intent.id for item in current.orders
+    ):
+        # Idempotent replay is not fresh scheduling authority. Even an identical
+        # recorded pending event may now be rejected, ambiguous or filled.
+        return EtfPendingAdmission(
+            False, "duplicate_pending_identity", candidate.event_hash, current
+        )
+    try:
+        proposed = replay_etf_account(replace(request, events=(*request.events, candidate)))
+    except EtfAccountError:
+        return EtfPendingAdmission(
+            False, "canonical_account_admission_denied", candidate.event_hash, current
+        )
+    _check(len(proposed.orders) == len(current.orders) + 1)
+    record = proposed.orders[-1]
+    _check(record.intent == intent and record.order.state is OrderState.SUBMISSION_PENDING)
+    _check(record.order.filled_quantity == 0 and proposed.cash == current.cash)
+    if intent.side is Side.BUY:
+        _check(record.reserved_cash > 0)
+    return EtfPendingAdmission(
+        True, "canonical_account_limits_allow", candidate.event_hash, proposed
+    )

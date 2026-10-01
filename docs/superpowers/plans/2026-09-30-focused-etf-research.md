@@ -278,6 +278,14 @@ and five-session cadence. Immutable paused prefix checkpoints are reconstructed
 and compared before fixture resume. This is not the full `EtfHistoryRequest` account
 runner, durable Task 4 storage, a native-source adapter or economic evidence.
 Orders, cash flows, sizing/admission and source qualification remain unavailable.
+The subsequent account-owned increment supplies explicit synthetic accounting
+facts and additive `pending_intent` / `admit_etf_pending_intent` admission. Pending
+reservations require explicit acknowledgement; duplicated event/order identities
+cannot regrant scheduling permission, and reconciliation statuses cannot invent
+fills. Common activity applies to new pending BUY admissions without changing
+valid legacy accepted-fact hashes. This closes an account scheduling seam only;
+the full quote/control/cost-driven history coordinator remains pending. See
+`docs/etf-pending-account-seam.md`.
 The new owner modules are included in the existing critical branch-coverage gate.
 
 ### Task 4: Make replay restart-safe and verify monitoring failure behavior
