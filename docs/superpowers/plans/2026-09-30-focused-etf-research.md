@@ -168,17 +168,19 @@ unless a failing adapter test requires a narrowly reviewed extension.
   unsupported IEX→SIP substitution. Earlier decision inputs remain byte-identical
   when irrelevant future revisions are added. Synthetic fixtures always deny
   actual-source promotion even when parser mechanics pass.
-- [ ] Run both new files in the locked research environment. Expected: failing
+- [x] Run both new files in the locked research environment. Expected: failing
   missing contract/qualification tests, not invented data access.
 - [ ] Implement bounded no-symlink/no-overwrite input validation, exact Decimal
   projection and visible-event ordering. Reference facts come from reviewed
   code-owned rules with retained primary evidence, not untrusted manifest claims.
-- [ ] Run source/record/Parquet plus new fixture suites. Expected: parser tests
+- [x] Run source/record/Parquet plus new fixture suites. Expected: parser tests
   pass; absent actual evidence returns `BLOCKED_INPUTS` and `dataset is None`.
 - [ ] Separately inventory existing authorized archives/receipts, select a provider
   package by coverage rather than outcomes, and preserve a source qualification
-  report. Alpaca paper-only SIP is excluded by the inspected reply. Never acquire
-  a substitute feed under the old diagnostic approval.
+  report. The earlier paper-only SIP exclusion is historical evidence; the
+  operator now reports a paid plan and a small SIP connector probe succeeded.
+  See the [October 1 checkpoint](../../etf-input-integration-2026-10-01.md).
+  Never acquire a substitute feed under the old diagnostic approval.
 - [ ] For a necessary Databento credit-only package, verify fresh credits/pending
   jobs, original versions/conditions, complete bars/actions/quote/control coverage
   and exact all-in quote before purchase. Unknown no-cash exposure or a new
@@ -186,6 +188,12 @@ unless a failing adapter test requires a narrowly reviewed extension.
 - [ ] Commit parser/tests/public semantic references only. Raw inputs, receipts
   and personal correspondence remain private. Do not mark actual qualification
   complete unless the retained package passes all role/era/coverage checks.
+
+Task 2 checkpoint, 2026-10-01: the partial synthetic parser/event handoff was
+recovered, reviewed and tested locally. Open-session ordering and immutable
+action-date regressions were fixed. Actual-source qualification, native provider
+parsers, fractional terms and payable-action semantics remain incomplete; do not
+mark Task 2 complete or treat the SIP samples as a qualified research package.
 
 ### Task 3: Compose causal strategy, economic risk and historical execution
 
@@ -296,6 +304,12 @@ relaxing their acceptance checks.
   Expected: exact benchmark/cost identities and `ECONOMIC_NO_GO` for every
   incomplete, unqualified, uncalibrated or statistically unsupported case.
 - [ ] Commit exact paths: `feat: report constrained ETF after-cost economics`.
+
+Task 5 checkpoint, 2026-10-01: advanced only the independent private cost-input
+loader against the already-frozen Task 1 contract. It rejects incomplete date
+coverage, future-known rates, nonpositive latency, missing source bytes and
+untrusted calibration claims. Fee attribution, benchmarks and the economic
+evaluator remain pending. This reorder does not supply an account/replay owner.
 
 ### Task 6: Offline operator commands, genuine run and evidence handoff
 

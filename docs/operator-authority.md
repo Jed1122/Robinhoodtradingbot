@@ -128,3 +128,24 @@ private automated research, retention and original/corrected history. That inqui
 was sent in the existing support conversation. This does not authorize a paid
 subscription, agreement acceptance, live-account opening/funding or brokerage
 operation. No raw data, credentials or private account identifiers were sent.
+
+## Continue implementation without waiting for support — 2026-10-01
+
+The operator instructed the coordinator to continue building the bot regardless
+of further Alpaca support responses and states that they intend to subscribe.
+Support correspondence is not a prerequisite for credential-free implementation,
+synthetic fixtures, offline replay, restart tests or report development. Continue
+those approved tasks now; do not repeatedly pause them for provider clarification.
+
+A subscription is not assumed active until observed. Once access exists, evaluate
+the actual supported data against the approved source contract and retain explicit
+limitations. Do not turn correspondence, subscription status or a successful API
+request into verified coverage, point-in-time history, accepted economics or live
+authority. Missing evidence limits the dependent claim or operation, not unrelated
+development. This instruction does not authorize a purchase by the coordinator,
+agreement acceptance, account funding, changed risk limits, deployment or orders.
+
+The operator subsequently reported purchasing Algo Trader Plus. Record this as
+user-reported subscription status, not account-bound access verification. Continue
+read-only market-data access checks and the existing approved offline build; no
+additional purchase, upgrade, broker write or live authorization is implied.
