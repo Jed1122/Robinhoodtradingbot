@@ -195,6 +195,17 @@ def test_requires_historical_options_execution_branches(tmp_path: Path) -> None:
     ]
 
 
+def test_requires_each_etf_history_owner_branch_report(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    names = ("etf_history.py", "etf_history_state.py")
+    for name in names:
+        _source(root, "src/trading_bot/simulation/" + name)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        "missing branch coverage for src/trading_bot/simulation/" + name for name in names
+    ]
+
+
 def test_requires_historical_account_journal_branches(tmp_path: Path) -> None:
     root = tmp_path / "project"
     names = ("options_account_journal.py", "options_account_journal_models.py")
