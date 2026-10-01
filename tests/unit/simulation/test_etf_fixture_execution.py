@@ -217,6 +217,45 @@ def test_partial_liquidity_uses_one_commission_minimum_and_never_reuses_native_q
     assert complete.account.fees == D(".031") and complete.account.cash == D("489.969")
 
 
+def test_incremental_partial_handoff_reconstructs_fees_and_native_capacity():
+    from trading_bot.simulation.etf_account import EtfAccountEvent
+
+    first = quote(size=D(".04"))
+    partial, _ = run((clock(), first))
+    settled = replace(
+        account(),
+        events=(
+            *partial.account_events,
+            EtfAccountEvent(
+                content_hash("handoff-settlement"),
+                partial.account.last_ordinal + 1,
+                ORIGIN + 11_000_000,
+                "settlement",
+                fill_ids=(partial.decisions[0].fill_id,),
+            ),
+        ),
+    )
+    repeated = quote(2, first.event_at_ns, available=ORIGIN + 12_000_000, size=D("1"))
+    fresh = quote(3, ORIGIN + 13_000_000, size=D(".06"))
+    inputs = api().EtfFixtureExecutionRequest(
+        settled, (repeated, fresh), costs(), "entry", context=(clock(), first)
+    )
+    result = api().run_etf_fixture_execution(inputs)
+    assert result.fill_count == 1
+    assert result.account.shares == D(".1")
+    assert result.account.fees == D(".031") and result.account.cash == D("489.969")
+    assert result.capacity[0][-1] == D(".04")
+
+
+def test_partial_handoff_without_consumed_fill_quote_proof_is_denied():
+    partial, _ = run((clock(), quote(size=D(".04"))))
+    prefix = replace(account(), events=partial.account_events)
+    with pytest.raises(ValueError):
+        api().EtfFixtureExecutionRequest(
+            prefix, (quote(2, ORIGIN + 12_000_000),), costs(), "entry", context=(clock(),)
+        )
+
+
 def test_sub_increment_capacity_is_not_rounded_up_to_fabricate_shares():
     result, _ = run((clock(), quote(size=D(".0009"))))
     assert result.fill_count == 0 and result.account.shares == 0
@@ -464,3 +503,45 @@ def test_conflicting_equal_native_quote_does_not_select_later_cheaper_price():
     assert blocked.fill_count == 0 and blocked.account.shares == 0
     result, _ = run((clock(), first, conflict, quote(3, ORIGIN + 40_000_000)))
     assert result.fill_count == 1 and result.decisions[1].fill_id is None
+
+
+def test_consumed_pre_proposal_control_is_reconstructed_without_fabricating_a_new_open():
+    prior = clock(0, ORIGIN - 2_000_000)
+    visible = quote(1, ORIGIN - 1_000_000)
+    inputs = api().EtfFixtureExecutionRequest(
+        account(), (quote(2),), costs(), "entry", context=(prior, visible)
+    )
+    result = api().run_etf_fixture_execution(inputs)
+    assert result.fill_count == 1 and result.account.cash == D("489.969")
+    assert result.source_count == 1
+    checkpoint = api().run_etf_fixture_execution(inputs, through_ordinal=2)
+    assert api().resume_etf_fixture_execution(inputs, checkpoint) == result
+
+
+def test_reconstructed_context_retains_native_halt_and_equal_timestamp_conflicts():
+    stopped = clock(0, ORIGIN - 2_000_000, halted=True)
+    old_open = replace(clock(1, ORIGIN - 3_000_000), available_at_ns=ORIGIN - 1_000_000)
+    inputs = api().EtfFixtureExecutionRequest(
+        account(), (quote(2),), costs(), "entry", context=(stopped, old_open)
+    )
+    assert api().run_etf_fixture_execution(inputs).fill_count == 0
+    same_time_open = replace(old_open, event_at_ns=stopped.event_at_ns, payload=stopped.payload)
+    same_time_open = replace(same_time_open, payload=replace(same_time_open.payload, halted=False))
+    conflict = replace(inputs, context=(stopped, same_time_open))
+    assert api().run_etf_fixture_execution(conflict).fill_count == 0
+
+
+def test_execution_context_cannot_import_future_controls_or_reuse_pre_proposal_liquidity():
+    with pytest.raises(ValueError):
+        inputs = api().EtfFixtureExecutionRequest(
+            account(), (quote(2),), costs(), "entry", context=(clock(),)
+        )
+        api().run_etf_fixture_execution(inputs)
+    prior = clock(0, ORIGIN - 2_000_000)
+    visible = quote(1, ORIGIN - 1_000_000)
+    delayed = quote(2, visible.event_at_ns, available=ORIGIN + 10_000_000)
+    inputs = api().EtfFixtureExecutionRequest(
+        account(), (delayed,), costs(), "entry", context=(prior, visible)
+    )
+    result = api().run_etf_fixture_execution(inputs)
+    assert result.fill_count == 0 and result.account.reserved_cash == D("10.11")

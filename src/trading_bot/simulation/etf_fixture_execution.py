@@ -94,6 +94,7 @@ class EtfFixtureExecutionRequest:
     observations: tuple[EtfFixtureExecutionObservation, ...]
     costs: EtfCostEvidence
     order_id: str
+    context: tuple[EtfSessionEvent | EtfControlEvent | EtfObservedQuote, ...] = ()
 
     def __post_init__(self) -> None:
         _check(type(self.account) is EtfAccountRequest)
@@ -104,7 +105,7 @@ class EtfFixtureExecutionRequest:
         _check(type(self.order_id) is str and 0 < len(self.order_id) <= 128)
         state = replay_etf_account(self.account)
         matches = tuple(o for o in state.orders if o.intent.id == self.order_id)
-        _check(len(matches) == 1 and matches[0].order.filled_quantity == 0)
+        _check(len(matches) == 1)
         _check(
             any(
                 e.kind == "pending_intent" and e.intent is not None and e.intent.id == self.order_id
@@ -112,6 +113,19 @@ class EtfFixtureExecutionRequest:
             )
         )
         _check(type(self.observations) is tuple and len(self.observations) <= 10000)
+        _check(type(self.context) is tuple and len(self.context) <= 10000)
+        for context_event in self.context:
+            _check(type(context_event) in (EtfSessionEvent, EtfControlEvent, EtfObservedQuote))
+            replace(context_event.payload)
+            replace(context_event)
+            _check(
+                state.last_at_ns is not None and context_event.available_at_ns <= state.last_at_ns
+            )
+            _check(
+                _ns(self.account.study.requested_start)
+                <= context_event.event_at_ns
+                < _ns(self.account.study.requested_end)
+            )
         previous: EtfFixtureExecutionObservation | None = None
         seen: set[str] = set()
         for event in self.observations:
@@ -139,8 +153,51 @@ class EtfFixtureExecutionRequest:
             seen.add(event.source_record_hash)
             previous = event
         _sequence(
-            tuple(e for e in self.observations if not isinstance(e, EtfFixtureAccountObservation))
+            (
+                *self.context,
+                *tuple(
+                    e for e in self.observations if not isinstance(e, EtfFixtureAccountObservation)
+                ),
+            )
         )
+        _consumed_execution(self, matches[0])
+
+
+@dataclass(frozen=True, slots=True)
+class _Frontier:
+    clock: EtfSessionEvent | EtfControlEvent | None = None
+    control_conflict: bool = False
+    quote: EtfObservedQuote | None = None
+    quote_conflict: bool = False
+
+
+def _observe(
+    frontier: _Frontier, event: EtfSessionEvent | EtfControlEvent | EtfObservedQuote
+) -> tuple[_Frontier, str | None]:
+    if isinstance(event, (EtfSessionEvent, EtfControlEvent)):
+        if frontier.clock is None or event.event_at_ns > frontier.clock.event_at_ns:
+            frontier = replace(frontier, clock=event, control_conflict=False)
+        elif (
+            event.event_at_ns == frontier.clock.event_at_ns
+            and event.payload != frontier.clock.payload
+        ):
+            frontier = replace(frontier, control_conflict=True)
+        return frontier, None
+    if frontier.quote is None or event.event_at_ns > frontier.quote.event_at_ns:
+        frontier = replace(frontier, quote=event, quote_conflict=False)
+    elif event.event_at_ns < frontier.quote.event_at_ns:
+        return frontier, "fixture_quote_native_time_regression"
+    elif (event.payload.bid, event.payload.ask) != (
+        frontier.quote.payload.bid,
+        frontier.quote.payload.ask,
+    ):
+        frontier = replace(frontier, quote_conflict=True)
+    reason = (
+        "fixture_conflicting_native_observations"
+        if frontier.control_conflict or frontier.quote_conflict
+        else None
+    )
+    return frontier, reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,12 +223,10 @@ class EtfFixtureExecutionResult:
     evidence_promotable: Literal[False] = field(default=False, init=False)
 
 
-def _quote_reason(
+def _market_quote_reason(
     event: EtfObservedQuote,
     clock: EtfSessionEvent | EtfControlEvent | None,
-    record: EtfAccountOrder,
     account: EtfAccountRequest,
-    latency: Decimal,
 ) -> str | None:
     cfg = _policy(account.study).config
     if clock is None:
@@ -190,24 +245,99 @@ def _quote_reason(
         return "fixture_session_unavailable"
     if event.event_at_ns <= clock.event_at_ns:
         return "fixture_quote_before_control_epoch"
-    if event.event_at_ns <= record.submitted_at_ns:
-        return "fixture_quote_before_submission"
     if event.available_at_ns - event.event_at_ns > (
         cfg.freshness.max_executable_quote_age_seconds * _SECOND
     ):
         return "fixture_quote_stale"
-    if event.event_at_ns - record.submitted_at_ns < latency * _SECOND or event.event_at_ns <= _ns(
-        record.order.updated_at
-    ):
-        return "fixture_latency_or_ack_pending"
-    if event.available_at_ns >= _ns(record.intent.expires_at):
-        return "fixture_order_expired"
     quote = event.payload
     # Cross-multiplication keeps exact money arithmetic without requiring an
     # otherwise valid spread percentage to have a terminating decimal quotient.
     if (quote.ask - quote.bid) * 100 > cfg.equities.max_spread_pct * quote.ask:
         return "fixture_spread_too_wide"
     return None
+
+
+def _quote_reason(
+    event: EtfObservedQuote,
+    clock: EtfSessionEvent | EtfControlEvent | None,
+    record: EtfAccountOrder,
+    account: EtfAccountRequest,
+    latency: Decimal,
+) -> str | None:
+    reason = _market_quote_reason(event, clock, account)
+    if reason is not None:
+        return reason
+    if event.event_at_ns <= record.submitted_at_ns:
+        return "fixture_quote_before_submission"
+    if event.event_at_ns - record.submitted_at_ns < latency * _SECOND or event.event_at_ns <= _ns(
+        record.order.updated_at
+    ):
+        return "fixture_latency_or_ack_pending"
+    if event.available_at_ns >= _ns(record.intent.expires_at):
+        return "fixture_order_expired"
+    return None
+
+
+def _consumed_execution(
+    request: EtfFixtureExecutionRequest, record: EtfAccountOrder
+) -> tuple[dict[tuple[int, Side], tuple[Decimal, Decimal]], str | None]:
+    """Verify prior simulated fills before carrying fees/capacity across owners.
+
+    Account facts alone cannot assert quote consumption. Every prior fill must
+    match an actually consumed fixture quote and the frozen schedule identity.
+    This is reconstruction of simulation evidence, never broker authority.
+    """
+    capacity: dict[tuple[int, Side], tuple[Decimal, Decimal]] = {}
+    schedule: str | None = None
+    quantity = ZERO
+    fees = ZERO
+    fills = tuple(
+        e
+        for e in request.account.events
+        if e.fill is not None and e.fill.broker_order_id == record.order.broker_order_id
+    )
+    with localcontext(_fee_context()):
+        for event in request.context:
+            if not isinstance(event, EtfObservedQuote):
+                continue
+            key = (event.event_at_ns, record.intent.side)
+            displayed = event.ask_size if record.intent.side is Side.BUY else event.bid_size
+            cap, used = capacity.get(key, (displayed, ZERO))
+            capacity[key] = (min(cap, displayed), used)
+            for fact in fills:
+                fill = fact.fill
+                if fill is None or fact.at_ns != event.available_at_ns:
+                    continue
+                charges = etf_execution_charges(
+                    request.costs,
+                    at=_ceil_time(fact.at_ns),
+                    prior_quantity=quantity,
+                    quantity=fill.quantity,
+                    price=fill.price,
+                    prior_schedule_hash=schedule,
+                )
+                digest = content_hash(
+                    (
+                        "etf-fixture-fill-v1",
+                        request.order_id,
+                        event.source_record_hash,
+                        fill.quantity,
+                        fill.price,
+                        charges.fee_schedule_hash,
+                    )
+                )
+                if fact.event_id != digest:
+                    continue
+                _check(fill.id == FillId(digest) and fill.data_hash == digest)
+                _check(fill.fee == charges.total_fee_usd)
+                cap, used = capacity[key]
+                _check(used + fill.quantity <= cap)
+                capacity[key] = (cap, used + fill.quantity)
+                quantity += fill.quantity
+                fees += fill.fee
+                schedule = charges.fee_schedule_hash
+        _check(quantity == record.order.filled_quantity and fees == record.fees_paid)
+    return capacity, schedule
 
 
 def _run(request: EtfFixtureExecutionRequest, count: int) -> EtfFixtureExecutionResult:
@@ -223,12 +353,11 @@ def _run(request: EtfFixtureExecutionRequest, count: int) -> EtfFixtureExecution
     if instrument is None:
         raise EtfFixtureExecutionError()
     decisions: list[EtfFixtureExecutionDecision] = []
-    capacity: dict[tuple[int, Side], tuple[Decimal, Decimal]] = {}
-    clock: EtfSessionEvent | EtfControlEvent | None = None
-    control_conflict = False
-    latest_quote: EtfObservedQuote | None = None
-    quote_conflict = False
-    schedule_hash: str | None = None
+    record = next(o for o in state.orders if o.intent.id == request.order_id)
+    capacity, schedule_hash = _consumed_execution(request, record)
+    frontier = _Frontier()
+    for context_event in request.context:
+        frontier, _ = _observe(frontier, context_event)
     fills = 0
 
     def append(event: EtfAccountEvent) -> None:
@@ -258,29 +387,12 @@ def _run(request: EtfFixtureExecutionRequest, count: int) -> EtfFixtureExecution
                 append(event.payload)
                 continue
             if isinstance(event, (EtfSessionEvent, EtfControlEvent)):
-                if clock is None or event.event_at_ns > clock.event_at_ns:
-                    clock = event
-                    control_conflict = False
-                elif event.event_at_ns == clock.event_at_ns and event.payload != clock.payload:
-                    control_conflict = True
-                # A delayed older control cannot replace the most recent native
-                # state. Equal-native conflicts require a newer explicit control.
+                frontier, _ = _observe(frontier, event)
                 continue
             record = next(o for o in state.orders if o.intent.id == request.order_id)
             reason: str | None = None
             fill_id: str | None = None
-            if latest_quote is None or event.event_at_ns > latest_quote.event_at_ns:
-                latest_quote = event
-                quote_conflict = False
-            elif event.event_at_ns < latest_quote.event_at_ns:
-                reason = "fixture_quote_native_time_regression"
-            elif (event.payload.bid, event.payload.ask) != (
-                latest_quote.payload.bid,
-                latest_quote.payload.ask,
-            ):
-                quote_conflict = True
-            if reason is None and (control_conflict or quote_conflict):
-                reason = "fixture_conflicting_native_observations"
+            frontier, reason = _observe(frontier, event)
             if reason is not None:
                 decisions.append(
                     EtfFixtureExecutionDecision(
@@ -307,7 +419,9 @@ def _run(request: EtfFixtureExecutionRequest, count: int) -> EtfFixtureExecution
                     for i in request.costs.intervals
                     if i.starts_at <= record.intent.created_at < i.ends_at
                 }
-                reason = _quote_reason(event, clock, record, account_request, rates["latency"])
+                reason = _quote_reason(
+                    event, frontier.clock, record, account_request, rates["latency"]
+                )
                 if reason is None:
                     mark(event)
                     if record.order.state not in (
@@ -418,7 +532,9 @@ def _run(request: EtfFixtureExecutionRequest, count: int) -> EtfFixtureExecution
     return EtfFixtureExecutionResult(
         count,
         prefix[-1].ordinal if prefix else None,
-        content_hash(prefix),
+        content_hash(prefix)
+        if not request.context
+        else content_hash(("etf-execution-context-prefix-v1", request.context, prefix)),
         request.costs.cost_hash,
         account_request.events,
         state,
