@@ -52,6 +52,90 @@ def test_partial_fixture_has_no_forced_exit_or_completed_profit():
     assert row["reserved_trial_risk"] == "10.02"
 
 
+@pytest.mark.parametrize("capital", ["500", "1000"])
+@pytest.mark.parametrize(
+    "scenario,spent,shares,fees,fill_count,reserved",
+    [
+        ("full", "10.031", "0.1", "0.031", 1, "0"),
+        ("partial", "4.0304", "0.04", "0.0304", 1, "6.0756"),
+        ("pending_ack", "0", "0", "0", 0, "10.11"),
+    ],
+)
+def test_quote_fixture_command_keeps_exact_incomplete_after_fee_accounting(
+    capital, scenario, spent, shares, fees, fill_count, reserved
+):
+    from decimal import Decimal
+
+    result = runner.invoke(
+        app(),
+        [
+            "quote-fixture-run",
+            "--capital",
+            capital,
+            "--scenario",
+            scenario,
+            "--config-dir",
+            str(ROOT / "configs"),
+        ],
+    )
+    assert result.exit_code == 2, result.stdout
+    row = json.loads(result.stdout)
+    assert Decimal(row["cash"]) == Decimal(capital) - Decimal(spent)
+    assert row["shares"] == shares and row["execution_fees"] == fees
+    assert row["fill_count"] == fill_count and row["reserved_cash"] == reserved
+    assert row["reserved_trial_risk"] == "10.11"
+    assert row["source_kind"] == "synthetic-quote-execution-v1"
+    assert row["strategy_selected"] is False
+    assert row["complete"] is False and row["trading_pnl"] is None
+    assert row["operating_profit"] is None and row["economic_verdict"] == "ECONOMIC_NO_GO"
+    assert row["risk_equity_reference"] == "100"
+    assert row["execution_enabled"] is False and row["evidence_promotable"] is False
+    assert row["live_authorized"] is False
+
+
+def test_quote_fixture_restart_reconstructs_the_same_result_without_double_spending():
+    args = ["quote-fixture-run", "--config-dir", str(ROOT / "configs")]
+    uninterrupted = runner.invoke(app(), args)
+    assert uninterrupted.exit_code == 2, uninterrupted.stdout
+    assert json.loads(uninterrupted.stdout)["fill_count"] == 1
+    for ordinal in (0, 1, 2):
+        restarted = runner.invoke(app(), [*args, "--restart-after", str(ordinal)])
+        assert restarted.exit_code == 2, restarted.stdout
+        assert restarted.stdout == uninterrupted.stdout
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--capital", "1001"],
+        ["--scenario", "live"],
+        ["--restart-after", "-1"],
+        ["--restart-after", "3"],
+    ],
+)
+def test_quote_fixture_invalid_input_is_sanitized(extra):
+    result = runner.invoke(
+        app(), ["quote-fixture-run", *extra, "--config-dir", str(ROOT / "configs")]
+    )
+    assert result.exit_code == 1, result.stdout
+    assert json.loads(result.stdout) == {"status": "denied", "reason": "etf_research_input_invalid"}
+
+
+def test_quote_fixture_missing_intent_cannot_depend_on_optimizable_assertion(monkeypatch):
+    module = importlib.import_module("trading_bot.simulation.etf_fixtures")
+    original = module.synthetic_etf_account_request
+
+    def missing(study, cash, scenario):
+        request = original(study, cash, scenario)
+        object.__setattr__(request.events[0], "intent", None)
+        return request
+
+    monkeypatch.setattr(module, "synthetic_etf_account_request", missing)
+    result = runner.invoke(app(), ["quote-fixture-run", "--config-dir", str(ROOT / "configs")])
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["reason"] == "etf_research_input_invalid"
+
+
 def test_ledger_command_restarts_exact_partial_account_and_completes(tmp_path):
     private = tmp_path / "private"
     private.mkdir(mode=0o700)

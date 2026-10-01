@@ -2,16 +2,20 @@
 
 import hashlib
 import os
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from datetime import datetime
-from decimal import Decimal
+from decimal import Context, Decimal, localcontext
 from itertools import pairwise
 from pathlib import Path
 from typing import Literal, cast
 
 from trading_bot.clock import DomainValidationError, require_utc
 from trading_bot.domain import DataHash
-from trading_bot.domain.decimal_utils import _require_sha256_hex, require_bounded_decimal
+from trading_bot.domain.decimal_utils import (
+    MAX_CANONICAL_DECIMAL_TEXT_LENGTH,
+    _require_sha256_hex,
+    require_bounded_decimal,
+)
 from trading_bot.market_data.bundle_codec import (
     _array,
     _decimal,
@@ -25,6 +29,7 @@ from trading_bot.market_data.bundle_models import BundleLimits
 from trading_bot.market_data.bundle_store import _open_root, _read
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_study import EtfStudy
+from trading_bot.simulation.lifecycle_accounting import _context
 
 _UNITS = {
     "commission_per_share": "USD/share",
@@ -78,6 +83,8 @@ class EtfCostEvidence:
             raise DomainValidationError("cost intervals must be a bounded immutable tuple")
         if any(type(i) is not EtfCostInterval for i in self.intervals):
             raise DomainValidationError("invalid cost interval record")
+        for item in self.intervals:
+            replace(item)
         if {i.role for i in self.intervals} != set(_UNITS):
             raise DomainValidationError("missing cost role is not a zero-cost assumption")
         for role in _UNITS:
@@ -105,6 +112,116 @@ class EtfCostSourceError(ValueError):
 
     def __init__(self) -> None:
         super().__init__("etf_cost_source_invalid")
+
+
+def _fee_context() -> Context:
+    context = _context(exact=True)
+    # Three bounded factors plus an incremental minimum require exact arithmetic,
+    # independent of the caller's precision, rounding, flags and exponent limits.
+    context.prec = 4 * MAX_CANONICAL_DECIMAL_TEXT_LENGTH
+    return context
+
+
+@dataclass(frozen=True, slots=True)
+class EtfExecutionCharges:
+    """Incremental fixture charges; neither calibrated fees nor execution authority."""
+
+    commission_usd: Decimal
+    regulatory_fee_usd: Decimal
+    total_fee_usd: Decimal
+    cost_hash: str
+    fee_schedule_hash: str
+    observed_at: datetime
+    regulatory_side_assumption: Literal["both-sides-unverified-upper-bound"] = field(
+        default="both-sides-unverified-upper-bound", init=False
+    )
+    evidence_promotable: Literal[False] = field(default=False, init=False)
+    execution_enabled: Literal[False] = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        for value in (self.commission_usd, self.regulatory_fee_usd, self.total_fee_usd):
+            require_bounded_decimal(value, "execution fee", nonnegative=True)
+        _require_sha256_hex(self.cost_hash, "cost identity")
+        _require_sha256_hex(self.fee_schedule_hash, "active fee schedule")
+        require_utc(self.observed_at)
+        with localcontext(_fee_context()):
+            if self.commission_usd + self.regulatory_fee_usd != self.total_fee_usd:
+                raise DomainValidationError("execution fee total is inconsistent")
+
+
+def etf_execution_charges(
+    costs: EtfCostEvidence,
+    *,
+    at: datetime,
+    prior_quantity: Decimal,
+    quantity: Decimal,
+    price: Decimal,
+    prior_schedule_hash: str | None = None,
+) -> EtfExecutionCharges:
+    """Charge a positive fill once, preserving a per-order minimum across partials.
+
+    All seven active roles must be present and known before their interval starts.
+    Continuations bind that complete active schedule rather than repricing earlier
+    fills under a new epoch. Regulatory charges are a conservative, unverified
+    both-sides assumption, not a claim about any broker's fee policy. Spread and
+    additional slippage belong in the execution price, not a second fee debit.
+    """
+    try:
+        _require(type(costs) is EtfCostEvidence)
+        checked = replace(costs)
+        _require(
+            costs.calibration_status == "unverified"
+            and type(costs.calibration_status) is str
+            and costs.spread_in_fill_price is True
+            and costs.execution_enabled is False
+            and costs.evidence_promotable is False
+            and checked == costs
+        )
+        require_utc(at)
+        require_bounded_decimal(prior_quantity, "prior fill quantity", nonnegative=True)
+        require_bounded_decimal(quantity, "fill quantity", positive=True)
+        require_bounded_decimal(price, "fill price", positive=True)
+        active = tuple(
+            sorted(
+                (item for item in checked.intervals if item.starts_at <= at < item.ends_at),
+                key=lambda item: item.role,
+            )
+        )
+        _require(len(active) == len(_UNITS) and {i.role for i in active} == set(_UNITS))
+        _require(all(item.known_at <= item.starts_at for item in active))
+        rates = {item.role: item.value for item in active}
+        _require(rates["latency"] > 0)
+        schedule_hash = content_hash(active)
+        if prior_quantity == 0:
+            _require(prior_schedule_hash is None)
+        else:
+            _require(type(prior_schedule_hash) is str)
+            _require_sha256_hex(cast(str, prior_schedule_hash), "prior fee schedule")
+            _require(prior_schedule_hash == schedule_hash)
+        with localcontext(_fee_context()):
+            previous = (
+                max(rates["minimum_commission"], prior_quantity * rates["commission_per_share"])
+                if prior_quantity > 0
+                else Decimal(0)
+            )
+            commission = (
+                max(
+                    rates["minimum_commission"],
+                    (prior_quantity + quantity) * rates["commission_per_share"],
+                )
+                - previous
+            )
+            regulatory = quantity * price * rates["regulatory_per_notional"]
+            return EtfExecutionCharges(
+                commission,
+                regulatory,
+                commission + regulatory,
+                checked.cost_hash,
+                schedule_hash,
+                at,
+            )
+    except (ValueError, TypeError, ArithmeticError, RecursionError, AttributeError):
+        raise EtfCostSourceError() from None
 
 
 _MAX_MANIFEST_BYTES = 1048576

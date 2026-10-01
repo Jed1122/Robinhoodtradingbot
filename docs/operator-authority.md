@@ -171,3 +171,13 @@ presented as point-in-time validation or expected live performance.
 General build permission does not authorize real-money orders, live activation,
 production credential use, deployment changes, a new paid service or higher risk.
 Previously approved scoped read-only market-data/broker checks retain their scope.
+
+## Continue building without hosted-matrix waits — 2026-10-01
+
+The operator instructed the coordinator to proceed without waiting for GitHub
+Python 3.12–3.14 quality checks because of their duration. Continue implementation
+with focused local tests and review plus one local regression pass. Do not make
+hosted-matrix polling a dependency of the next development task. This changes
+development scheduling, not risk controls, truthfulness, required merge checks or
+branch protections. It does not authorize bypassing a failed/missing check,
+automatic research promotion, deployment or live trading.

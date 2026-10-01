@@ -108,6 +108,15 @@ def test_recorded_is_provenance_not_a_calibration_or_authority_claim():
         replace(costs, calibration_hashes=("bad",))
 
 
+@pytest.mark.parametrize("field,value", [("value", Decimal("NaN")), ("source_hash", "invalid")])
+def test_cost_evidence_revalidates_unsafe_nested_interval_mutations(field, value):
+    costs = evidence()
+    damaged = replace(costs.intervals[0])
+    object.__setattr__(damaged, field, value)
+    with pytest.raises(ValueError):
+        replace(costs, intervals=(damaged, *costs.intervals[1:]))
+
+
 @pytest.fixture
 def cost_study():
     from trading_bot.config import load_config

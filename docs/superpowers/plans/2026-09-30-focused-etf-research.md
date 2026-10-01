@@ -288,6 +288,23 @@ the full quote/control/cost-driven history coordinator remains pending. See
 `docs/etf-pending-account-seam.md`.
 The new owner modules are included in the existing critical branch-coverage gate.
 
+Further Task 3 checkpoint: additive causal decision frames retain the common
+feature/momentum pipeline and legacy observation hashes. The synthetic quote
+execution seam now handles explicit acknowledgements, conservative tick/limit
+prices, exact incremental fees, native-time controls/quote frontiers, displayed
+capacity and verified source-prefix resume around the sole account owner.
+`quote-fixture-run` demonstrates full/partial/pending-ack outcomes without
+inventing exits or settlement. These are tested building blocks, not completion
+of the strategy-to-order coordinator, qualified execution or economic acceptance.
+Next integration must carry reconstructed pre-proposal control/capacity context,
+freeze exit policies and reconcile partial-entry cancellation before protective
+orders. See `docs/etf-quote-fixture-execution.md`.
+
+Operator workflow amendment: continue implementing with focused local verification
+and one local regression, without waiting for hosted Python 3.12–3.14 quality jobs.
+Existing merge protections, risk gates and separate live authorization remain
+unchanged; no missing check is treated as a pass.
+
 ### Task 4: Make replay restart-safe and verify monitoring failure behavior
 
 **Files:** Create `src/trading_bot/persistence/etf_history_store.py`, an additive

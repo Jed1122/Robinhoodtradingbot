@@ -4,8 +4,8 @@ Status: 2026-10-01 development increment, not yet merged. Native capture PR #6
 is merged at `a2b3921635fd489db87c4dd1f7451789fbdb6162`; that merge does not
 qualify the captured data or approve economic results, deployment or trading.
 
-The four runnable standalone commands use the canonical backtest configuration
-and locked `spy-cash-momentum-20-100-v1` research identity. A fifth command,
+The five runnable standalone commands use the canonical backtest configuration
+and locked `spy-cash-momentum-20-100-v1` research identity. A sixth command,
 `account-ledger-run`, explicitly denies before mutation. None constructs network
 or broker transport, opens credentials, submits orders or enables live execution
 or promotion. The existing main operator CLI is not their entry point.
@@ -21,7 +21,7 @@ Run from the repository root in its existing locked Python environment:
 PYTHONPATH=src .venv/bin/python -m trading_bot.cli.etf_research --help
 ```
 
-`account-fixture-run`, `account-checkpoint-run`, `latest-vintage-run` and
+`account-fixture-run`, `quote-fixture-run`, `account-checkpoint-run`, `latest-vintage-run` and
 `benchmark-screen-run` accept
 `--config-dir` (default `configs`). They enable only the research profile inside
 the canonical configuration; execution and promotability remain false. The
@@ -105,6 +105,13 @@ The account owner also provides an additive
 coordinator. It requires later explicit acknowledgement, preserves reservations
 through ambiguity and denies duplicate event/order scheduling identities. It does
 not change these legacy accepted-fact examples or claim full pretrade eligibility.
+
+The new [quote-fixture execution command and API](etf-quote-fixture-execution.md)
+simulate one reserved order against explicit synthetic acknowledgement, session
+and bid/ask observations. They preserve partial-fill reserves and charge an
+order's commission minimum only once. Source-prefix resume reconstructs consumed
+liquidity; it is not durable recovery. The command does not yet compose a strategy
+signal into an order or supply genuine economic evidence.
 
 ### SQLite pathname boundary
 
@@ -214,7 +221,7 @@ There is no `--live` or `--assumptions-validated` override.
 
 | Independent gate | Current evidence / remaining boundary |
 |---|---|
-| Engineering | Runnable fixture, descriptor-bound private checkpoint/restart, latest-vintage diagnostic and daily historical reference screen; SQLite pathname CLI denied. Independent integrated review found no remaining issues; 509 ETF-focused tests and 98.65% coverage across the four new source/reference modules passed. Exact final-revision regression remains required. |
+| Engineering | Runnable accounting/quote fixtures, private accounting checkpoints, latest-vintage diagnostics and historical references; SQLite pathname CLI denied. Local Python 3.12 working-tree regression: 7,069 passed, 33 skipped and one existing deprecation warning; 84.39% overall coverage before native append. Independent fee/CLI accounting checks passed; execution review findings were repaired RED→GREEN. Full strategy coordination remains incomplete. |
 | Data qualification | Receipt-verified latest-vintage native bars, exact provider-calendar date match, and bounded 40-distribution issuer import; `source_qualified=false`. Historical controls, action continuity and executable quote/fractional-term coverage remain unqualified. |
 | Economics | `ECONOMIC_NO_GO`; actual daily-price buy-and-hold/cash references are available, but candidate execution outcomes, calibrated costs, effective opportunities and canonical acceptance evidence remain separate. |
 | Broker/runtime | October 1 scoped Agentic reads observed an active cash account with level-2 options permission, no equity/options position or order rows and no further pages; SPY was active, tradable and fractional-eligible. Droplet metadata returned the existing 2 GB target, but SSH authentication failed and service/image/authentication state remains unverified. These session observations do not verify standalone DigitalOcean authentication, write semantics, unattended renewal or order integration. |
@@ -223,10 +230,11 @@ There is no `--live` or `--assumptions-validated` override.
 
 ## Next steps
 
-Complete the current revision's full supported-Python regression, the 80%
-overall and per-critical-module 90% branch gates, Ruff, Mypy, Bandit, locked audits,
-SBOM and deployment-manifest checks. Do not substitute prior pass counts for this
-increment's evidence or bypass required hosted checks before integration.
+Continue development using focused local tests, one local regression pass and
+the existing 80% overall / 90% critical branch gates, without waiting on GitHub's
+Python 3.12–3.14 matrix. Retain Ruff, Mypy, Bandit, locked audits, SBOM and manifest
+checks. Required merge checks remain unchanged; do not substitute prior pass
+counts or bypass protections when integrating a revision.
 
 Continue the approved plan's credential-free implementation while completing
 the retained data and cost evidence required by each claim. Genuine qualified

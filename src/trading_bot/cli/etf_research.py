@@ -44,7 +44,14 @@ from trading_bot.simulation.etf_account import (
     EtfAccountResult,
     replay_etf_account,
 )
-from trading_bot.simulation.etf_fixtures import synthetic_etf_account_request
+from trading_bot.simulation.etf_fixture_execution import (
+    resume_etf_fixture_execution,
+    run_etf_fixture_execution,
+)
+from trading_bot.simulation.etf_fixtures import (
+    synthetic_etf_account_request,
+    synthetic_etf_quote_request,
+)
 
 app = typer.Typer(no_args_is_help=True)
 _REPOSITORY = Path(__file__).resolve().parents[3]
@@ -156,6 +163,46 @@ def account_fixture_run(
         return
     typer.echo(canonical_json(report))
     if not state.complete:
+        raise typer.Exit(2)
+
+
+@app.command("quote-fixture-run")
+def quote_fixture_run(
+    capital: Annotated[str, typer.Option()] = "500",
+    scenario: Annotated[str, typer.Option()] = "full",
+    restart_after: Annotated[int | None, typer.Option()] = None,
+    config_dir: Annotated[Path, typer.Option()] = Path("configs"),
+) -> None:
+    """Execute one fabricated order against synthetic quotes; no strategy or broker."""
+    try:
+        study = _study(
+            _load(config_dir), source_plan_hash=content_hash("ETF synthetic quote fixture v1")
+        )
+        request = synthetic_etf_quote_request(study, parse_decimal(capital), scenario)
+        if restart_after is None:
+            result = run_etf_fixture_execution(request)
+        else:
+            if not 0 <= restart_after < len(request.observations):
+                raise ValueError("etf_fixture_cursor_invalid")
+            checkpoint = run_etf_fixture_execution(request, through_ordinal=restart_after)
+            result = resume_etf_fixture_execution(request, checkpoint)
+        report = {
+            **_report(result.account, Decimal("0")),
+            "source_kind": "synthetic-quote-execution-v1",
+            "execution_fees": result.account.fees,
+            "fill_count": result.fill_count,
+            "source_count": result.source_count,
+            "source_prefix_hash": result.source_prefix_hash,
+            "cost_hash": result.cost_hash,
+            "execution_decisions": result.decisions,
+            "risk_equity_reference": study.risk_equity_reference,
+            "strategy_selected": False,
+        }
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _invalid()
+        return
+    typer.echo(canonical_json(report))
+    if not result.account.complete:
         raise typer.Exit(2)
 
 

@@ -206,6 +206,24 @@ def test_requires_each_etf_history_owner_branch_report(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "src/trading_bot/simulation/etf_fixture_execution.py",
+        "src/trading_bot/research/etf_costs.py",
+    ],
+)
+def test_requires_etf_execution_and_charge_branch_reports(
+    tmp_path: Path, relative_path: str
+) -> None:
+    root = tmp_path / "project"
+    _source(root, relative_path)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative_path}",
+    ]
+
+
 def test_requires_historical_account_journal_branches(tmp_path: Path) -> None:
     root = tmp_path / "project"
     names = ("options_account_journal.py", "options_account_journal_models.py")
