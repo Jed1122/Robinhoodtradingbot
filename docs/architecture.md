@@ -24,9 +24,17 @@ daemon wiring or order capability in this workflow.
 
 Accepted raw frames and chained receipts are retained in existing owner-private directories
 outside the checkout and Cloud. Receipts bind exact bytes, frame/row identities, local UTC and
-monotonic times; they do not establish executable eligibility or broker latency. Every segment
-starts with unknown controls. A deliberate restart revalidates its predecessor result and records
-a discontinuity; it cannot backfill historical halt/LULD or transport continuity. `audit` runs
+monotonic times; they do not establish executable eligibility or broker latency. New
+`alpaca-observation-result-v2` captures record a bounded local monotonic collection start after
+handshake and end before connection close. The `audit-v2` report verifies that receipts fall within
+this window and checks a declared duration limit using the exact elapsed integer nanoseconds
+against the plan's requested duration. Legacy `result-v1` declarations have no collection pair;
+their duration stops remain `duration_limit_unverified` with
+`duration_limit_elapsed_verified=false`, while retained observation counts remain auditable.
+Every segment starts with unknown controls. A deliberate restart rehashes its direct predecessor
+result and referenced plan, checks their limits, and records a discontinuity. Predecessor frames
+are audited separately. Historical halt/LULD and transport continuity remain unqualified.
+`audit` runs
 offline from a clean committed checkout, binds the auditor revision separately from the capture
 revision, reparses retained bytes and writes an unqualified aggregate report without opening
 credentials. Empty frames carry no observations; fewer than two frames leave the interframe gap
@@ -35,7 +43,10 @@ unknown.
 `calibrate-costs` is offline and groups supplied partial fills by terminal order before describing
 charged fees, signed slippage and same-clock receipt durations. The CLI requires a clean committed
 calibrator revision and binds it into the report before hashing and publication; the pure loader's
-unbound draft identity remains separate. Source hashes establish integrity,
+unbound draft identity remains separate. Before returning, pure measurement validates the entire
+derived report with the storage encoder. Products, sums and descriptive ratios must satisfy the
+same 512-character canonical Decimal bound as inputs; an unencodable derived value yields the
+sanitized `etf_cost_calibration_invalid` denial. Source hashes establish integrity,
 not customer authenticity or representative calibration. The actual supplied input contains zero
 orders and returns `BLOCKED_INPUTS`; missing fees, slippage, timings, cash yield and operating costs
 remain missing. Canonical cost evidence, accounting, risk limits, paused runtime and paper/shadow

@@ -13,8 +13,14 @@ activation occurred.
 Both captures used clean implementation revision
 `e104f4f1be204db71e9e830303c12d3a0fd13878`, the existing explicitly selected
 local key, fixed SIP endpoint and SPY subscriptions. Authentication and exact
-subscription acknowledgement succeeded. Collection stopped at the reviewed
-duration limit: 60 seconds followed by a deliberate 10-second restart.
+subscription acknowledgement succeeded. The reviewed collection scopes were
+60 seconds for the initial plan and 10 seconds for the deliberate restart.
+Both retained `alpaca-observation-result-v1` records declared `duration_limit`
+but contain no collection start/end monotonic pair. An `audit-v2` re-audit will
+retain the observation counts and report `declared_termination="duration_limit"`,
+`termination="duration_limit_unverified"` and
+`duration_limit_elapsed_verified=false`. Actual elapsed collection time remains
+unverified for these two captures.
 
 | Segment | Quote observations | Uncrossed | Locked | Crossed/inactive | Status/LULD |
 |---|---:|---:|---:|---:|---:|
@@ -30,6 +36,7 @@ were observed; that does not establish market eligibility. Locked quotes are
 retained and are excluded from the descriptive uncrossed-spread inventory.
 Both CLI audits were repeated from clean auditor revision
 `cf2a5a02d94051cda8a5576a48de6db3c765bf7b`, which is recorded in the reports.
+The listed audit artifacts predate `audit-v2` and its elapsed-time distinction.
 The empty customer assessment was repeated from clean calibrator revision
 `7480984b7aa3df9c0dc2151e57c532e74308e11c`. Its report identity includes that
 revision, and the linked retained history/result source bytes were rehashed.
@@ -101,6 +108,21 @@ per frame. Plan validity is 30 minutes. Authentication/subscription have a share
 failure or clock regression stop collection; expiry jumps leave incomplete
 evidence rather than publishing an invalid terminal result.
 
+New captures write `alpaca-observation-result-v2`, recording
+`collection_started_monotonic_ns` after the subscription handshake and
+`collection_finished_monotonic_ns` before connection close. These are bounded
+local integer nanoseconds. `alpaca-observation-audit-v2` checks that each retained
+receipt lies within that collection window. A declared `duration_limit` requires
+the exact integer difference to be at least `duration_seconds * 1_000_000_000`;
+handshake and connection-close time fall outside this window. A failure before
+collection leaves both fields null and retains no frames.
+
+Legacy `alpaca-observation-result-v1` records remain readable and their retained
+bytes and observations remain auditable. They have no collection window, so a
+declared `duration_limit` is reported as `duration_limit_unverified` with
+`duration_limit_elapsed_verified=false`. UTC run timestamps and interframe gaps
+do not establish the missing collection interval.
+
 Each accepted frame is retained privately with its raw SHA256. Its receipt binds
 the plan, ordinal, UTC receipt time, local monotonic time, preceding receipt and
 all parsed observation identities. Duplicate JSON keys and unsupported rows are
@@ -125,13 +147,18 @@ frame is at most 1 MiB. Declared observation counts must be integers, not boolea
 A transport failure while closing can still produce `capture_failed` after the
 last planned frame; retained frames do not turn that failure into success.
 An operational receive or storage timeout remains `capture_failed`; only expiry
-of the actual collection timeout context yields `duration_limit`.
+of the actual collection timeout context with a recorded collection window at
+least as long as the requested duration can yield a new `duration_limit` result.
+An earlier measured end fails closed as `capture_failed`.
 
 For a deliberate restart, prepare a new plan with
-`--predecessor-result-hash SHA256`. The preceding terminal result must be retained
-and its exact bytes revalidated. Its frames are not recursively reverified by the
-new segment's audit; audit each segment separately. The interval between segments
-remains a discontinuity. A failed or uncertain attempt cannot replay its consumed
+`--predecessor-result-hash SHA256`. The preceding terminal result and its referenced
+plan must be retained. Their exact bytes are rehashed, and the direct predecessor's
+counts, termination and any recorded collection window are checked against its
+own plan limits. A legacy duration declaration remains elapsed-time unverified.
+Its frames are not recursively reverified by the new segment's audit; audit each
+segment separately. The interval between segments remains a discontinuity.
+A failed or uncertain attempt cannot replay its consumed
 `.observation.attempt` marker. Never remove markers to force a retry.
 Predecessor bytes must have the exact terminal-result schema with bounded hashes,
 times, counts, sizes and unqualified flags; a partial result-shaped object is denied.
@@ -179,7 +206,8 @@ Each terminal order contains exactly:
 | `charged_fees` | Either null or exactly `commission`, `sec`, `taf`, `cat`, `other`, `total`, `source_hash`. Every amount must be explicit and nonnegative; components must sum exactly to total. |
 
 All decimal values are canonical finite decimal **strings**, without exponent
-notation. Digests are lowercase SHA256. The input is bounded to 1 MiB, 1,000
+notation, within the shared 512-character canonical Decimal bound. Digests are
+lowercase SHA256. The input is bounded to 1 MiB, 1,000
 orders and 10,000 total fills. Each source/terms/quote/fee reference must exist
 as `SHA256.source` in the private input directory. The loader checks exact bytes,
 owner-only permissions, symlink exclusion, 1 MiB per source and 8 MiB aggregate.
@@ -193,6 +221,11 @@ residual, using the same denominator. Decision half-spread is descriptive and
 already present in the price; it is never charged again. Exact notional/fee
 reconciliation is independent of the caller's Decimal context; descriptive
 ratios/means use an explicit 40-digit context and nearest-rank p95.
+Before the pure measurement function returns, it validates the entire report
+with the canonical JSON encoder used for storage. If a derived product, sum or
+ratio exceeds the same 512-character Decimal bound, measurement rejects the input
+with the fixed reason `etf_cost_calibration_invalid`. Finite bounded inputs alone
+do not guarantee that every derived report value can be encoded within the bound.
 
 Local acknowledgement, first-fill receipt and terminal receipt durations describe
 the same local clock session. They are not exchange execution latency. Paper and
