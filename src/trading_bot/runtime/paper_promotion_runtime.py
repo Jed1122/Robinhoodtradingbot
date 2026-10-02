@@ -112,24 +112,22 @@ def run_paper_promotion_once(
                 clock=clock,
             )
             recorded = await application.run_cycle(composition.request)
-            durable = await observations.list_for_identity(identity)
-            evaluated_at = clock.now()
-            decision = PromotionEvaluator(loaded.config.promotion).evaluate(
-                stage=PromotionStage.PAPER,
-                identity=identity,
-                observations=durable,
-                now=evaluated_at,
-            )
-            attestation = await SqlPromotionEvidenceStore(factory).persist(
-                decision,
-                evaluated_at=evaluated_at,
-                expires_at=(
-                    evaluated_at
-                    + timedelta(
-                        seconds=int(loaded.config.freshness.max_preflight_age_seconds)
-                    )
-                ),
-            )
+            async with application.promotion_observations() as durable:
+                evaluated_at = clock.now()
+                decision = PromotionEvaluator(loaded.config.promotion).evaluate(
+                    stage=PromotionStage.PAPER,
+                    identity=identity,
+                    observations=durable,
+                    now=evaluated_at,
+                )
+                attestation = await SqlPromotionEvidenceStore(factory).persist(
+                    decision,
+                    evaluated_at=evaluated_at,
+                    expires_at=(
+                        evaluated_at
+                        + timedelta(seconds=int(loaded.config.freshness.max_preflight_age_seconds))
+                    ),
+                )
             return {
                 "evidence_hash": recorded.observation.evidence_hash,
                 "evidence_eligible": recorded.observation.eligible,

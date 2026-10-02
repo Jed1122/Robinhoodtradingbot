@@ -140,6 +140,92 @@ async def test_missing_durable_observation_after_completion_is_not_permission_to
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["time", "identity"])
+async def test_missing_completed_history_blocks_a_new_request(tmp_path, change):
+    from datetime import timedelta
+
+    tmp_path.chmod(0o700)
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+    first, service = application(tmp_path, PromotionStore())
+    await first.run_cycle(cycle_request)
+    assert service.execution.calls == 1
+    context = promotion_context()
+    if change == "identity":
+        context = replace(
+            context, identity=replace(context.identity, provider_evidence_hash="e" * 64)
+        )
+    restarted, new_service = application(tmp_path, PromotionStore(), context=context)
+    with pytest.raises(RuntimeError, match="paper_cycle_recovery_required"):
+        await restarted.run_cycle(
+            replace(cycle_request, as_of=cycle_request.as_of + timedelta(seconds=1))
+        )
+    assert new_service.execution.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_old_eligible_cycle_cannot_escape_another_pending_claim(tmp_path):
+    from datetime import timedelta
+
+    tmp_path.chmod(0o700)
+    store = PromotionStore()
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+    first, _ = application(tmp_path, store)
+    assert (await first.run_cycle(cycle_request)).observation.eligible
+    failing = FailingStore()
+    failing.observations[:] = store.observations
+    other, service = application(tmp_path, failing)
+    with pytest.raises(OSError):
+        await other.run_cycle(
+            replace(cycle_request, as_of=cycle_request.as_of + timedelta(seconds=1))
+        )
+    assert service.execution.calls == 1
+    restarted, new_service = application(tmp_path, store)
+    with pytest.raises(RuntimeError, match="paper_cycle_recovery_required"):
+        await restarted.run_cycle(cycle_request)
+    assert new_service.execution.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_promotion_snapshot_holds_owner_until_consumer_finishes(tmp_path):
+    from datetime import timedelta
+
+    tmp_path.chmod(0o700)
+    store = PromotionStore()
+    first, _ = application(tmp_path, store)
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+    await first.run_cycle(cycle_request)
+    other, service = application(tmp_path, store)
+    changed = replace(cycle_request, as_of=cycle_request.as_of + timedelta(seconds=1))
+    async with first.promotion_observations() as observations:
+        assert observations == tuple(store.observations)
+        with pytest.raises(RuntimeError, match="paper_cycle_writer_busy"):
+            await other.run_cycle(changed)
+        assert service.execution.calls == 0
+    assert (await other.run_cycle(changed)).executed
+
+
+@pytest.mark.asyncio
+async def test_promotion_snapshot_denies_incomplete_observation_history(tmp_path):
+    from trading_bot.monitoring.promotion import PromotionStage
+
+    tmp_path.chmod(0o700)
+    store = PromotionStore()
+    app, _ = application(tmp_path, store)
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+    recorded = await app.run_cycle(cycle_request)
+    args = {
+        field.name: getattr(recorded.observation, field.name)
+        for field in fields(recorded.observation)
+        if field.name not in ("eligible", "reason_codes", "evidence_hash")
+    }
+    args.update(cycle_id="e" * 64, stage=PromotionStage.PAPER, outcomes_complete=False)
+    store.observations.append(PromotionObservation.create(**args))
+    with pytest.raises(RuntimeError, match="paper_cycle_recovery_required"):
+        async with app.promotion_observations():
+            pytest.fail("unresolved history produced a promotion snapshot")
+
+
+@pytest.mark.asyncio
 async def test_failure_after_observation_append_recovers_without_execution(tmp_path, monkeypatch):
     tmp_path.chmod(0o700)
     store = PromotionStore()

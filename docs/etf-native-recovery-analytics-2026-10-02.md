@@ -44,7 +44,12 @@ missing observation following completion, the claimed cycle denies with
 across changed requests, source times and identities. A descriptor-held nonwaiting
 writer lock spans asynchronous execution, preparation, append and completion.
 Recorded nonterminal or unreconciled outcomes remain pending; an ineligible
-observation is not release of economic uncertainty. A committed observation
+observation is not release of economic uncertainty. Cached observations cannot
+bypass another pending cycle. All retained completions must be present in the
+current observation snapshot before a new entry or cached-evidence return;
+missing history and identity transitions deny pending reconciliation. Promotion
+evaluation and attestation persistence hold the same owner lock over a freshly
+validated, complete observation snapshot. A committed observation
 matching its prepared hash, claim start, identity and context-fixed flags can
 complete an interrupted journal publication without executing again. Conflicts,
 changed context, corruption, partial bytes, symlinks, hard links, unsafe modes,
@@ -72,9 +77,11 @@ completion/observation conflicts, legacy committed observations, and unsafe path
 The initial central focused selection passed178 cases. Integrated review then
 reproduced changed-request quarantine and unbound pending-observation gaps;
 both were repaired RED→GREEN with owner-wide locking/quarantine and durable
-preparation before append. Post-repair focused verification is recorded below.
-The final focused selection passed197 cases; both recovery modules achieved100%
-statement and branch coverage. Scoped Ruff, Mypy and Bandit passed. The existing
+preparation before append. The same reviewer then reproduced missing completed
+history on a new request and cached eligible evidence while another cycle was
+pending. Five new RED cases established these gaps and the required locked
+promotion snapshot; the repairs deny rather than reset or reconstruct unknown
+economic state. Final focused verification is recorded below. The existing
 critical90% per-module gate now explicitly includes both. Full exact-revision
 regression and independent integrated review are separately recorded below when
 completed; focused green is not their substitute.

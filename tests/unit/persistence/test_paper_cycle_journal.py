@@ -219,6 +219,32 @@ def test_prepared_observation_cannot_release_or_change_a_pending_claim(tmp_path)
         store.begin("e" * 64, "f" * 64, NOW)
 
 
+def test_owner_history_requires_every_completed_hash_and_no_pending_claim(tmp_path):
+    store = journal(tmp_path)
+    store.require_completed_observations(frozenset())
+    claim = store.begin("a" * 64, "b" * 64, NOW)
+    store.prepare_observation(claim, "c" * 64)
+    with pytest.raises(PaperCycleRecoveryRequired):
+        store.require_completed_observations(frozenset({"c" * 64}))
+    store.complete(claim, "c" * 64)
+    with pytest.raises(PaperCycleRecoveryRequired):
+        store.require_completed_observations(frozenset())
+    store.require_completed_observations(frozenset({"c" * 64}))
+
+
+@pytest.mark.parametrize(
+    "hashes",
+    [set(), frozenset({True}), frozenset({"bad"}), frozenset(f"{i:064x}" for i in range(10001))],
+)
+def test_invalid_observation_snapshot_never_releases_owner(tmp_path, hashes):
+    store = journal(tmp_path)
+    with pytest.raises(PaperCycleJournalError):
+        store.require_completed_observations(hashes)
+    assert {path.name for path in (tmp_path / "paper-cycle-journal-v1").iterdir()} == {
+        "writer.lock"
+    }
+
+
 @pytest.mark.parametrize(
     "kind",
     ["unexpected", "prepared_without_claim", "corrupt_context", "corrupt_prepared", "staging"],

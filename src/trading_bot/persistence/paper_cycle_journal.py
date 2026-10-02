@@ -154,7 +154,7 @@ class PaperCycleJournal:
                 owned._active_descriptor = -1
 
     @staticmethod
-    def _pending(directory: int) -> bool:
+    def _pending(directory: int, recorded_hashes: frozenset[str] | None = None) -> bool:
         names = set(os.listdir(directory))
         _check(len(names) <= 30001)
         claims: list[str] = []
@@ -187,8 +187,23 @@ class PaperCycleJournal:
             if type(context) is not str:
                 raise PaperCycleJournalError()
             _, completed_digest = PaperCycleJournal._state(directory, cycle_id, context)
+            if (
+                completed_digest is not None
+                and recorded_hashes is not None
+                and completed_digest not in recorded_hashes
+            ):
+                raise PaperCycleRecoveryRequired()
             pending = pending or completed_digest is None
         return pending
+
+    def require_completed_observations(self, recorded_hashes: frozenset[str]) -> None:
+        """Deny admission and promotion after unknown effects or partial-store loss."""
+        with self._directory() as directory:
+            _check(type(recorded_hashes) is frozenset and len(recorded_hashes) <= 10000)
+            for digest in recorded_hashes:
+                _require_sha256_hex(digest, "paper observation")
+            if self._pending(directory, recorded_hashes):
+                raise PaperCycleRecoveryRequired()
 
     @staticmethod
     def _state(

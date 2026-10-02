@@ -189,14 +189,12 @@ class PaperPromotionApplication:
                 raise PaperCycleJournalError()
             if claim is not None and self._can_complete(existing[0]):
                 journal.complete(claim, existing[0].evidence_hash)
+            self._require_complete_history(journal, durable)
             return RecordedPaperCycle(existing[0], None, False)
 
         if claim is not None:
             raise PaperCycleRecoveryRequired()
-        if any(
-            item.stage is PromotionStage.PAPER and not self._can_complete(item) for item in durable
-        ):
-            raise PaperCycleRecoveryRequired()
+        self._require_complete_history(journal, durable)
 
         if not self._request_identity_matches(request):
             raise PaperCycleJournalError()
@@ -232,6 +230,29 @@ class PaperPromotionApplication:
         if self._can_complete(observation):
             journal.complete(claim, observation.evidence_hash)
         return RecordedPaperCycle(observation, cycle, True)
+
+    @asynccontextmanager
+    async def promotion_observations(self) -> AsyncIterator[tuple[PromotionObservation, ...]]:
+        """Hold the economic owner through a reconciled promotion read and issuance."""
+        with self._journal.owner() as journal:
+            replace(self._context)
+            replace(self._context.identity)
+            durable = await self._observations.list_for_identity(self._context.identity)
+            self._require_complete_history(journal, durable)
+            yield durable
+
+    def _require_complete_history(
+        self, journal: PaperCycleJournal, durable: tuple[PromotionObservation, ...]
+    ) -> None:
+        for item in durable:
+            replace(item)
+        if any(
+            item.stage is PromotionStage.PAPER and not self._can_complete(item) for item in durable
+        ):
+            raise PaperCycleRecoveryRequired()
+        journal.require_completed_observations(
+            frozenset(item.evidence_hash for item in durable if item.stage is PromotionStage.PAPER)
+        )
 
     @staticmethod
     def _can_complete(observation: PromotionObservation) -> bool:
