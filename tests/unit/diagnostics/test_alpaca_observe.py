@@ -227,7 +227,10 @@ def audit(plan, summary):
 
 
 def publish(root, row, suffix):
-    body = canonical_json(row).encode()
+    return publish_bytes(root, canonical_json(row).encode(), suffix)
+
+
+def publish_bytes(root, body, suffix):
     digest = hashlib.sha256(body).hexdigest()
     path = root / (digest + suffix)
     path.write_bytes(body)
@@ -795,8 +798,283 @@ def test_duration_timeout_retains_prefix_as_unqualified(
     monkeypatch.setattr(observe, "_FixedConnect", fake)
     summary = capture(plan, loaded)
     assert summary["termination"] == "duration_limit"
-    assert audit(plan, summary)["status"] == "OBSERVED_UNQUALIFIED"
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    elapsed = result["collection_finished_monotonic_ns"] - result["collection_started_monotonic_ns"]
+    assert elapsed >= plan.duration_seconds * 10**9
+    report = audit(plan, summary)
+    assert report["status"] == "OBSERVED_UNQUALIFIED"
+    assert report["termination"] == report["declared_termination"] == "duration_limit"
+    assert report["duration_limit_elapsed_verified"] is True
     assert len(fake.calls) == 1
+
+
+def test_capture_records_v2_collection_pair_and_bounds_receipts(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+):
+    transport(monkeypatch, encoded(quote()))
+    ticks = iter([10, 20, 30, 40])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    assert result["collection_started_monotonic_ns"] == 20
+    assert result["collection_finished_monotonic_ns"] == 40
+    receipt = json.loads(
+        (
+            plan.output_root / (result["receipt_hashes"][0] + ".observation-receipt.json")
+        ).read_bytes()
+    )
+    assert receipt["received_monotonic_ns"] == 30
+    report = audit(plan, summary)
+    assert report["termination"] == report["declared_termination"] == "frame_limit"
+    assert report["duration_limit_elapsed_verified"] is False
+
+
+@pytest.mark.parametrize("handshake_completed", [False, True])
+def test_failed_capture_timing_distinguishes_handshake_from_collection(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    handshake_completed,
+):
+    if handshake_completed:
+        transport(monkeypatch)
+        ticks = iter([50, 100, 200])
+    else:
+        fake = MockConnect([b"[]"])
+        monkeypatch.setattr(observe, "_FixedConnect", fake)
+        ticks = iter([50])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    assert result["receipt_hashes"] == []
+    assert result["collection_started_monotonic_ns"] == (100 if handshake_completed else None)
+    assert result["collection_finished_monotonic_ns"] == (200 if handshake_completed else None)
+    report = audit(plan, summary)
+    assert report["termination"] == report["declared_termination"] == "capture_failed"
+    assert report["duration_limit_elapsed_verified"] is False
+
+
+@pytest.mark.parametrize(
+    "started,finished",
+    [
+        (None, 300),
+        (100, None),
+        (None, None),
+        (True, 300),
+        (100, False),
+        (-1, 300),
+        (100, -1),
+        (2**63, 2**63),
+        (100, 2**63),
+        (300, 100),
+        (100.0, 300),
+        (100, 300.0),
+    ],
+)
+def test_v2_audit_rejects_invalid_collection_timing_pair(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    started,
+    finished,
+):
+    transport(monkeypatch, encoded(quote()))
+    ticks = iter([50, 100, 200, 300])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    result["collection_started_monotonic_ns"] = started
+    result["collection_finished_monotonic_ns"] = finished
+    body = json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
+    summary["result_hash"] = publish_bytes(plan.output_root, body, ".observation-result.json")
+    with pytest.raises(observe.AlpacaObservationError):
+        audit(plan, summary)
+
+
+@pytest.mark.parametrize("started,finished", [(201, 300), (100, 199)])
+def test_v2_audit_rejects_receipt_outside_collection_interval(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    started,
+    finished,
+):
+    transport(monkeypatch, encoded(quote()))
+    ticks = iter([50, 100, 200, 300])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    result["collection_started_monotonic_ns"] = started
+    result["collection_finished_monotonic_ns"] = finished
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    with pytest.raises(observe.AlpacaObservationError):
+        audit(plan, summary)
+
+
+@pytest.mark.parametrize("case", ["v1_extra_timing", "v2_missing_start", "v2_missing_end"])
+def test_collection_timing_fields_are_strictly_bound_to_result_schema(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    case,
+):
+    transport(monkeypatch, encoded(quote()))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    if case == "v1_extra_timing":
+        result["schema"] = "alpaca-observation-result-v1"
+    else:
+        result.pop(
+            "collection_started_monotonic_ns"
+            if case == "v2_missing_start"
+            else "collection_finished_monotonic_ns"
+        )
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    with pytest.raises(observe.AlpacaObservationError):
+        audit(plan, summary)
+
+
+@pytest.mark.parametrize("elapsed_delta", [-1, 0, 1])
+def test_v2_duration_proof_uses_exact_elapsed_nanosecond_boundary(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    elapsed_delta,
+):
+    plan = replace(plan, max_frames=3, duration_seconds=1)
+    transport(monkeypatch, encoded(quote()))
+    ticks = iter([50, 100, 200, 300])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    assert result["termination"] == "capture_failed"
+    result["termination"] = "duration_limit"
+    result["collection_finished_monotonic_ns"] = 100 + 10**9 + elapsed_delta
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    if elapsed_delta < 0:
+        with pytest.raises(observe.AlpacaObservationError):
+            audit(plan, summary)
+    else:
+        report = audit(plan, summary)
+        assert report["termination"] == report["declared_termination"] == "duration_limit"
+        assert report["duration_limit_elapsed_verified"] is True
+        assert report["counts"] == {"quote": 1, "status": 0, "luld": 0}
+
+
+def test_legacy_duration_stop_retains_counts_without_inventing_elapsed_proof(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+):
+    plan = replace(plan, max_frames=3)
+    transport(monkeypatch, encoded(quote()))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    result["schema"] = "alpaca-observation-result-v1"
+    result.pop("collection_started_monotonic_ns", None)
+    result.pop("collection_finished_monotonic_ns", None)
+    result["termination"] = "duration_limit"
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    report = audit(plan, summary)
+    assert report["declared_termination"] == "duration_limit"
+    assert report["termination"] == "duration_limit_unverified"
+    assert report["duration_limit_elapsed_verified"] is False
+    assert report["counts"] == {"quote": 1, "status": 0, "luld": 0}
+    assert report["reference_bytes_reverified"] is True
+    assert all(
+        report[name] is False
+        for name in (
+            "source_qualified",
+            "execution_enabled",
+            "evidence_promotable",
+        )
+    )
+    next_plan = replace(plan, predecessor_result_hash=summary["result_hash"])
+    transport(monkeypatch, encoded(status()))
+    next_summary = capture(next_plan, loaded)
+    next_report = audit(next_plan, next_summary)
+    assert next_report["predecessor_plan_bytes_reverified"] is True
+    assert next_report["predecessor_frames_reverified"] is False
+    assert next_report["duration_limit_elapsed_verified"] is False
+
+
+def test_late_transport_close_does_not_prove_early_failed_capture_duration(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+):
+    closed_at = []
+
+    class LateCloseConnect(MockConnect):
+        async def __aexit__(self, *args):
+            closed_at.append(observe.time.monotonic_ns())
+            return False
+
+    plan = replace(plan, max_frames=3, duration_seconds=1)
+    fake = LateCloseConnect([CONNECTED, AUTHENTICATED, SUBSCRIBED, encoded(quote())])
+    monkeypatch.setattr(observe, "_FixedConnect", fake)
+    ticks = iter([50, 100, 200, 300, 2 * 10**9])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    assert result["collection_started_monotonic_ns"] == 100
+    assert result["collection_finished_monotonic_ns"] == 300
+    assert closed_at == [2 * 10**9]
+    assert summary["termination"] == "capture_failed"
+    assert audit(plan, summary)["duration_limit_elapsed_verified"] is False
+    result["termination"] = "duration_limit"
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    with pytest.raises(observe.AlpacaObservationError):
+        audit(plan, summary)
+
+
+def test_native_expiry_with_short_integer_elapsed_interval_reports_failure(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+):
+    class BlockingConnection(MockConnection):
+        async def recv(self):
+            if self.frames:
+                return await super().recv()
+            await asyncio.Event().wait()
+
+    plan = replace(plan, max_frames=3, duration_seconds=1)
+    fake = MockConnect([])
+    fake.connection = BlockingConnection([CONNECTED, AUTHENTICATED, SUBSCRIBED, encoded(quote())])
+    monkeypatch.setattr(observe, "_FixedConnect", fake)
+    ticks = iter([50, 100, 200, 100 + 10**9 - 1])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["schema"] == "alpaca-observation-result-v2"
+    assert (
+        result["collection_finished_monotonic_ns"] - result["collection_started_monotonic_ns"]
+        < 10**9
+    )
+    assert summary["termination"] == "capture_failed"
+    report = audit(plan, summary)
+    assert report["termination"] == "capture_failed"
+    assert report["duration_limit_elapsed_verified"] is False
 
 
 def test_failure_after_good_frame_publishes_only_reverifiable_prefix(
@@ -826,7 +1104,7 @@ def test_receipt_clock_regression_is_terminal_without_retaining_bad_frame(
     if case == "utc":
         clock = SequenceClock(NOW, NOW - timedelta(seconds=1), NOW)
     else:
-        values = iter([200, 100])
+        values = iter([200, 210, 100, 220])
         monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(values))
     summary = capture(plan, loaded, clock=clock)
     assert summary["termination"] == "capture_failed"
@@ -1114,7 +1392,7 @@ def test_equal_monotonic_receipts_measure_an_integer_zero_gap(
 ):
     plan = replace(plan, max_frames=frame_count)
     transport(monkeypatch, *([encoded(quote())] * frame_count))
-    ticks = iter([10, *([20] * frame_count)])
+    ticks = iter([10, 15, *([20] * frame_count), 25])
     monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
     summary = capture(plan, loaded)
     assert len(read_result(plan, summary)["receipt_hashes"]) == frame_count
@@ -1132,7 +1410,7 @@ def test_mixed_empty_and_observed_frames_measure_gap_and_report_observations(
 ):
     plan = replace(plan, max_frames=2)
     transport(monkeypatch, b"[]", encoded(quote()))
-    ticks = iter([10, 20, 30])
+    ticks = iter([10, 15, 20, 30, 40])
     monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
     summary = capture(plan, loaded)
     report = audit(plan, summary)
@@ -1149,7 +1427,7 @@ def test_receipts_bind_raw_frames_in_order_and_measure_only_receipt_gap(
 ):
     plan = replace(plan, max_frames=3)
     transport(monkeypatch, encoded(quote(bp=0)), encoded(quote(bp=501)), encoded(quote(bp=502)))
-    ticks = iter([10, 20, 50, 100])
+    ticks = iter([10, 15, 20, 50, 100, 110])
     monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
     summary = capture(plan, loaded)
     result = read_result(plan, summary)
@@ -1184,6 +1462,93 @@ def test_restart_requires_existing_predecessor_before_claim_keys_or_egress(
         capture(plan, loaded)
     assert not credential_reads and not fake.calls
     assert not list(plan.output_root.iterdir())
+
+
+@pytest.mark.parametrize("case", ["missing", "tampered"])
+@pytest.mark.parametrize("stage", ["capture", "audit"])
+def test_restart_revalidates_exact_predecessor_plan_before_capture_or_audit(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    case,
+    stage,
+):
+    transport(monkeypatch, encoded(quote()))
+    first = capture(plan, loaded)
+    next_plan = replace(plan, predecessor_result_hash=first["result_hash"])
+    fake = transport(monkeypatch, encoded(status()))
+    if stage == "audit":
+        second = capture(next_plan, loaded)
+        report = audit(next_plan, second)
+        assert report["predecessor_plan_bytes_reverified"] is True
+        assert report["predecessor_frames_reverified"] is False
+    path = plan.output_root / (plan.plan_hash + ".observation-plan.json")
+    if case == "missing":
+        path.unlink()
+    else:
+        path.write_bytes(path.read_bytes() + b" ")
+    if stage == "capture":
+        with pytest.raises(observe.AlpacaObservationError):
+            capture(next_plan, loaded)
+        assert len(credential_reads) == 1 and not fake.calls
+        assert not (plan.output_root / (next_plan.plan_hash + ".observation.attempt")).exists()
+    else:
+        with pytest.raises(observe.AlpacaObservationError):
+            audit(next_plan, second)
+        assert len(credential_reads) == 2 and len(fake.calls) == 1
+
+
+@pytest.mark.parametrize("schema", ["alpaca-observation-result-v1", "alpaca-observation-result-v2"])
+def test_restart_checks_duration_stop_against_exact_predecessor_frame_limit(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    schema,
+):
+    transport(monkeypatch, encoded(quote()))
+    first = capture(plan, loaded)
+    result = read_result(plan, first)
+    assert len(result["receipt_hashes"]) == plan.max_frames
+    result["schema"] = schema
+    result["termination"] = "duration_limit"
+    if schema == "alpaca-observation-result-v1":
+        result.pop("collection_started_monotonic_ns")
+        result.pop("collection_finished_monotonic_ns")
+    else:
+        result["collection_finished_monotonic_ns"] = (
+            result["collection_started_monotonic_ns"] + plan.duration_seconds * 10**9
+        )
+    predecessor_hash = publish(plan.output_root, result, ".observation-result.json")
+    next_plan = replace(plan, predecessor_result_hash=predecessor_hash)
+    fake = transport(monkeypatch, encoded(status()))
+    with pytest.raises(observe.AlpacaObservationError):
+        capture(next_plan, loaded)
+    assert len(credential_reads) == 1 and not fake.calls
+    assert not (plan.output_root / (next_plan.plan_hash + ".observation.attempt")).exists()
+
+
+def test_restart_rejects_readdressed_noncanonical_predecessor_plan_identity(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+):
+    transport(monkeypatch, encoded(quote()))
+    first = capture(plan, loaded)
+    result = read_result(plan, first)
+    noncanonical_body = observe.encode_observation_plan(plan) + b" "
+    result["plan_hash"] = publish_bytes(
+        plan.output_root, noncanonical_body, ".observation-plan.json"
+    )
+    predecessor_hash = publish(plan.output_root, result, ".observation-result.json")
+    next_plan = replace(plan, predecessor_result_hash=predecessor_hash)
+    fake = transport(monkeypatch, encoded(status()))
+    with pytest.raises(observe.AlpacaObservationError):
+        capture(next_plan, loaded)
+    assert len(credential_reads) == 1 and not fake.calls
+    assert not (plan.output_root / (next_plan.plan_hash + ".observation.attempt")).exists()
 
 
 @pytest.mark.parametrize(
