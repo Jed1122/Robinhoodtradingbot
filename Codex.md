@@ -43,7 +43,8 @@ is unable to trade. The reviewed plan binds the clean capture revision, config, 
 limits and is consumed once. Private raw frames and chained receipts remain outside the checkout
 and Cloud; public output contains only sanitized hashes, counts and verdicts. The offline audit CLI
 requires a clean committed checkout and binds the auditor revision separately from the captured
-revision, without opening credentials. Initial controls remain unknown, deliberate restarts
+revision, without opening credentials. The cost CLI likewise binds a clean calibrator revision
+before hashing its private report. Initial controls remain unknown, deliberate restarts
 record discontinuities, and no broker order, automatic reconnect,
 runtime composition or promotion is enabled. The actual customer input has zero orders and its
 cost report remains `BLOCKED_INPUTS`; no zero fees or calibrated slippage/latency follow.

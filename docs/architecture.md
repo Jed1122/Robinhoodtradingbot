@@ -33,7 +33,9 @@ credentials. Empty frames carry no observations; fewer than two frames leave the
 unknown.
 
 `calibrate-costs` is offline and groups supplied partial fills by terminal order before describing
-charged fees, signed slippage and same-clock receipt durations. Source hashes establish integrity,
+charged fees, signed slippage and same-clock receipt durations. The CLI requires a clean committed
+calibrator revision and binds it into the report before hashing and publication; the pure loader's
+unbound draft identity remains separate. Source hashes establish integrity,
 not customer authenticity or representative calibration. The actual supplied input contains zero
 orders and returns `BLOCKED_INPUTS`; missing fees, slippage, timings, cash yield and operating costs
 remain missing. Canonical cost evidence, accounting, risk limits, paused runtime and paper/shadow

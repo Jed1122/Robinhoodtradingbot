@@ -149,7 +149,9 @@ content-addressed report, prints only its hash/status, and exits 2 because
 canonical calibration and promotion remain unverified. Invalid input exits 1
 with a fixed sanitized reason. Missing observations do not become zero costs.
 The cost report's `report_hash` identifies its canonical contents excluding that
-self field. CLI `report_hash` preserves this identity; `artifact_digest` hashes
+self field. The CLI requires clean committed source before opening input, binds
+`calibrator_code_revision`, and hashes this extended report. The pure loader's
+unbound draft hash is not the bound CLI report identity. `artifact_digest` hashes
 the complete saved file and names `ARTIFACT_DIGEST.observation-report.json`.
 Audit reports have no self-hash field, so their two CLI digests are equal.
 
