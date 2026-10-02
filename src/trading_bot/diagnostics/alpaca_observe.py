@@ -55,6 +55,55 @@ _RESULT_KEYS = {
     "execution_enabled",
     "evidence_promotable",
 }
+_WINDOW_KEYS = {"collection_started_monotonic_ns", "collection_finished_monotonic_ns"}
+
+
+def _result_row(body: bytes) -> dict[str, object]:
+    value = _json(body, max_bytes=MAX_PAGE_BYTES, limits=_LIMITS)
+    _check(type(value) is dict)
+    schema = cast(dict[str, object], value).get("schema")
+    _check(schema in ("alpaca-observation-result-v1", "alpaca-observation-result-v2"))
+    keys = _RESULT_KEYS | _WINDOW_KEYS if schema == "alpaca-observation-result-v2" else _RESULT_KEYS
+    return _mapping(value, keys)
+
+
+def _collection_window(row: dict[str, object]) -> tuple[int, int] | None:
+    if row["schema"] == "alpaca-observation-result-v1":
+        return None
+    start, end = (
+        row[name]
+        for name in ("collection_started_monotonic_ns", "collection_finished_monotonic_ns")
+    )
+    if start is None and end is None:
+        _check(row["termination"] == "capture_failed" and not row["receipt_hashes"])
+        return None
+    _check(type(start) is int and type(end) is int)
+    start_ns, end_ns = cast(int, start), cast(int, end)
+    _check(0 <= start_ns <= end_ns <= 2**63 - 1)
+    return start_ns, end_ns
+
+
+def _terminal_shape(row: dict[str, object], plan: "ObservationPlan", count: int) -> None:
+    termination = row["termination"]
+    _check(
+        termination
+        in ("frame_limit", "duration_limit", "byte_limit_unretained_frame", "capture_failed")
+    )
+    _check(count <= plan.max_frames)
+    _check(termination != "frame_limit" or count == plan.max_frames)
+    _check(
+        termination not in ("duration_limit", "byte_limit_unretained_frame")
+        or count < plan.max_frames
+    )
+    _check(
+        termination != "byte_limit_unretained_frame"
+        or cast(int, row["total_raw_bytes"]) > _MAX_TOTAL_BYTES - MAX_PAGE_BYTES
+    )
+    window = _collection_window(row)
+    if termination == "duration_limit" and row["schema"] == "alpaca-observation-result-v2":
+        _check(window is not None)
+        assert window is not None
+        _check(window[1] - window[0] >= plan.duration_seconds * 10**9)
 
 
 class AlpacaObservationError(ValueError):
@@ -198,18 +247,29 @@ def _subscription(body: bytes) -> None:
             _check(value == [])
 
 
-def _predecessor(descriptor: int, digest: str | None, started_at_ns: int) -> None:
+def _predecessor(
+    descriptor: int, digest: str | None, started_at_ns: int, root: Path, repository_root: Path
+) -> None:
     if digest is None:
         return
     _require_sha256_hex(digest, "observation predecessor")
     body = _read(descriptor, digest + ".observation-result.json", MAX_PAGE_BYTES)
     _check(hashlib.sha256(body).hexdigest() == digest)
-    row = _mapping(_json(body, max_bytes=MAX_PAGE_BYTES, limits=_LIMITS), _RESULT_KEYS)
-    _check(row["schema"] == "alpaca-observation-result-v1")
-    _digest(row["plan_hash"])
+    row = _result_row(body)
+    plan_hash = _digest(row["plan_hash"])
+    plan_body = _read(descriptor, plan_hash + ".observation-plan.json", 16384)
+    _check(hashlib.sha256(plan_body).hexdigest() == plan_hash)
+    plan = decode_observation_plan(plan_body)
+    _check(plan.output_root == root and plan.repository_root == repository_root)
+    _check(row["predecessor_result_hash"] == plan.predecessor_result_hash)
     started, finished = row["started_at_ns"], row["finished_at_ns"]
     _check(type(started) is int and type(finished) is int)
-    _check(0 <= cast(int, started) <= cast(int, finished) <= started_at_ns)
+    _check(
+        plan.prepared_at_ns
+        <= cast(int, started)
+        <= cast(int, finished)
+        <= min(started_at_ns, plan.expires_at_ns)
+    )
     hashes = _array(row["receipt_hashes"])
     _check(len(hashes) <= 10000 and len(set(_digest(h) for h in hashes)) == len(hashes))
     total_bytes = row["total_raw_bytes"]
@@ -222,21 +282,8 @@ def _predecessor(descriptor: int, digest: str | None, started_at_ns: int) -> Non
     counts = _mapping(row["counts"], {"quote", "status", "luld"})
     _check(all(type(n) is int and 0 <= n <= len(hashes) * 1000 for n in counts.values()))
     _check(sum(cast(int, n) for n in counts.values()) <= len(hashes) * 1000)
-    _check(
-        row["termination"]
-        in ("frame_limit", "duration_limit", "byte_limit_unretained_frame", "capture_failed")
-    )
-    # Prior plan/frame bytes are not recursively audited, but every supported
-    # plan has 1 <= max_frames <= 10000, which rules out these terminal shapes.
-    _check(row["termination"] != "frame_limit" or bool(hashes))
-    _check(
-        row["termination"] not in ("duration_limit", "byte_limit_unretained_frame")
-        or len(hashes) < 10000
-    )
-    _check(
-        row["termination"] != "byte_limit_unretained_frame"
-        or cast(int, total_bytes) > _MAX_TOTAL_BYTES - MAX_PAGE_BYTES
-    )
+    # Verify the direct plan's limits without recursively qualifying its frames.
+    _terminal_shape(row, plan, len(hashes))
     if row["predecessor_result_hash"] is not None:
         _digest(row["predecessor_result_hash"])
     _check(row["segment_gap_before_start"] is True)
@@ -275,7 +322,9 @@ async def capture_observations(
             and now_ns + (plan.duration_seconds + 30) * 10**9 <= plan.expires_at_ns
         )
         descriptor = _open_root(plan.output_root, plan.repository_root)
-        _predecessor(descriptor, plan.predecessor_result_hash, now_ns)
+        _predecessor(
+            descriptor, plan.predecessor_result_hash, now_ns, plan.output_root, plan.repository_root
+        )
         claim = os.open(
             plan.plan_hash + ".observation.attempt",
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -301,6 +350,9 @@ async def capture_observations(
         previous_receipt: str | None = None
         previous_utc = now_ns
         previous_mono = time.monotonic_ns()
+        _check(0 <= previous_mono <= 2**63 - 1)
+        collection_started: int | None = None
+        collection_finished: int | None = None
         counts = {"quote": 0, "status": 0, "luld": 0}
         termination = "capture_failed"
         try:
@@ -347,6 +399,9 @@ async def capture_observations(
                     )
                     _subscription(await receive())
                 collection_deadline = asyncio.timeout(plan.duration_seconds)
+                collection_started = time.monotonic_ns()
+                _check(previous_mono <= collection_started <= 2**63 - 1)
+                previous_mono = collection_started
                 try:
                     async with collection_deadline:
                         while len(receipt_hashes) < plan.max_frames:
@@ -355,7 +410,7 @@ async def capture_observations(
                             monotonic_ns = time.monotonic_ns()
                             _check(
                                 previous_utc <= received_ns <= plan.expires_at_ns
-                                and monotonic_ns >= previous_mono
+                                and previous_mono <= monotonic_ns <= 2**63 - 1
                             )
                             if total_bytes + len(body) > _MAX_TOTAL_BYTES:
                                 termination = "byte_limit_unretained_frame"
@@ -392,16 +447,28 @@ async def capture_observations(
                     if not collection_deadline.expired():
                         raise
                     termination = "duration_limit"
+                finally:
+                    # Capture the collection boundary before potentially slow close.
+                    collection_finished = time.monotonic_ns()
+                    _check(previous_mono <= collection_finished <= 2**63 - 1)
+                if (
+                    termination == "duration_limit"
+                    and collection_finished - collection_started < plan.duration_seconds * 10**9
+                ):
+                    # Event-loop timer rounding must not manufacture elapsed proof.
+                    termination = "capture_failed"
         except Exception:
             # Never render provider text, headers, credentials or exception repr.
             termination = "capture_failed"
         finished_at_ns = parse_timestamp_ns(require_utc(clock.now()).isoformat())
         _check(previous_utc <= finished_at_ns <= plan.expires_at_ns)
         result = {
-            "schema": "alpaca-observation-result-v1",
+            "schema": "alpaca-observation-result-v2",
             "plan_hash": plan.plan_hash,
             "started_at_ns": now_ns,
             "finished_at_ns": finished_at_ns,
+            "collection_started_monotonic_ns": collection_started,
+            "collection_finished_monotonic_ns": collection_finished,
             "receipt_hashes": tuple(receipt_hashes),
             "total_raw_bytes": total_bytes,
             "counts": counts,
@@ -414,6 +481,8 @@ async def capture_observations(
             "execution_enabled": False,
             "evidence_promotable": False,
         }
+        _check(collection_finished is None or previous_mono <= collection_finished)
+        _terminal_shape(result, plan, len(receipt_hashes))
         encoded = canonical_json(result).encode()
         digest = hashlib.sha256(encoded).hexdigest()
         _publish(descriptor, digest + ".observation-result.json", encoded)
@@ -442,11 +511,7 @@ def audit_observation_capture(
         descriptor = _open_root(root, repository_root)
         body = _read(descriptor, result_hash + ".observation-result.json", MAX_PAGE_BYTES)
         _check(hashlib.sha256(body).hexdigest() == result_hash)
-        result = _mapping(
-            _json(body, max_bytes=MAX_PAGE_BYTES, limits=_LIMITS),
-            _RESULT_KEYS,
-        )
-        _check(result["schema"] == "alpaca-observation-result-v1")
+        result = _result_row(body)
         plan_hash = _digest(result["plan_hash"])
         plan_body = _read(descriptor, plan_hash + ".observation-plan.json", 16384)
         _check(hashlib.sha256(plan_body).hexdigest() == plan_hash)
@@ -470,11 +535,12 @@ def audit_observation_capture(
         _check(type(started) is int and type(finished) is int)
         start_ns, end_ns = cast(int, started), cast(int, finished)
         _check(plan.prepared_at_ns <= start_ns <= end_ns <= plan.expires_at_ns)
-        _predecessor(descriptor, plan.predecessor_result_hash, start_ns)
+        _predecessor(descriptor, plan.predecessor_result_hash, start_ns, root, repository_root)
         hashes = _array(result["receipt_hashes"])
         _check(
             len(hashes) <= plan.max_frames and len(set(_digest(h) for h in hashes)) == len(hashes)
         )
+        window = _collection_window(result)
         previous: str | None = None
         last_utc, last_mono = start_ns, 0
         total_bytes = 0
@@ -509,6 +575,8 @@ def audit_observation_capture(
             _check(type(received) is int and type(mono) is int)
             received_ns, mono_ns = cast(int, received), cast(int, mono)
             _check(last_utc <= received_ns <= end_ns and last_mono <= mono_ns <= 2**63 - 1)
+            if window is not None:
+                _check(window[0] <= mono_ns <= window[1])
             if index:
                 maximum_gap_ns = max(maximum_gap_ns or 0, mono_ns - last_mono)
             raw_hash = _digest(receipt["body_sha256"])
@@ -542,31 +610,28 @@ def audit_observation_capture(
             and type(result["total_raw_bytes"]) is int
             and result["total_raw_bytes"] == total_bytes
         )
-        _check(
-            result["termination"]
-            in ("frame_limit", "duration_limit", "byte_limit_unretained_frame", "capture_failed")
-        )
         # Transport close can fail after the final frame, preserving capture_failed.
-        _check(result["termination"] != "frame_limit" or len(hashes) == plan.max_frames)
-        _check(
-            result["termination"] not in ("duration_limit", "byte_limit_unretained_frame")
-            or len(hashes) < plan.max_frames
-        )
-        _check(
-            result["termination"] != "byte_limit_unretained_frame"
-            or total_bytes > _MAX_TOTAL_BYTES - MAX_PAGE_BYTES
+        _terminal_shape(result, plan, len(hashes))
+        duration_verified = result["termination"] == "duration_limit" and window is not None
+        termination = (
+            "duration_limit_unverified"
+            if result["termination"] == "duration_limit" and not duration_verified
+            else result["termination"]
         )
         return {
-            "schema": "alpaca-observation-audit-v1",
+            "schema": "alpaca-observation-audit-v2",
             "result_hash": result_hash,
             "status": "OBSERVED_UNQUALIFIED" if any(counts.values()) else "BLOCKED_INPUTS",
             "counts": counts,
             "quote_quality": quality,
             "clock_skew_observation_count": skew_count,
             "maximum_interframe_receipt_gap_ns": maximum_gap_ns,
-            "termination": result["termination"],
+            "declared_termination": result["termination"],
+            "termination": termination,
+            "duration_limit_elapsed_verified": duration_verified,
             "reference_bytes_reverified": True,
             "predecessor_result_bytes_reverified": plan.predecessor_result_hash is not None,
+            "predecessor_plan_bytes_reverified": plan.predecessor_result_hash is not None,
             "predecessor_frames_reverified": False,
             "reasons": (
                 "initial_control_state_unknown",
