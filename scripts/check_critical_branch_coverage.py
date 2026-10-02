@@ -34,6 +34,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         "options_risk.py",
         "etf_history_store.py",
         "etf_strategy_checkpoint.py",
+        "etf_native_checkpoint.py",
         "paper_cycle_journal.py",
     ):
         persistence_module = source_root / "persistence" / filename
@@ -64,6 +65,8 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.extend(simulation_directory.glob("etf_account.py"))
         modules.extend(simulation_directory.glob("etf_fixture_execution.py"))
         modules.extend(simulation_directory.glob("etf_strategy.py"))
+        modules.extend(simulation_directory.glob("etf_native_history.py"))
+        modules.extend(simulation_directory.glob("etf_native_models.py"))
 
     research_directory = source_root / "research"
     if research_directory.is_dir():
