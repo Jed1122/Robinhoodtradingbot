@@ -602,6 +602,146 @@ def test_total_byte_limit_keeps_complete_prefix_and_marks_unretained_frame(
     assert audit(plan, summary)["counts"] == {"quote": 1, "status": 0, "luld": 0}
 
 
+@pytest.mark.parametrize("retained_frames", [1, 2])
+def test_audit_rejects_byte_limit_at_or_below_possible_overflow_threshold(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    retained_frames,
+):
+    page_bytes, total_bytes = 1024, 3072
+    monkeypatch.setattr(observe, "MAX_PAGE_BYTES", page_bytes)
+    monkeypatch.setattr(observe, "_MAX_TOTAL_BYTES", total_bytes)
+    frame = b"[]" + b" " * (page_bytes - 2)
+    plan = replace(plan, max_frames=3)
+    transport(monkeypatch, *([frame] * retained_frames))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert result["total_raw_bytes"] == page_bytes * retained_frames
+    assert result["total_raw_bytes"] <= total_bytes - page_bytes
+    assert audit(plan, summary)["termination"] == "capture_failed"
+    result["termination"] = "byte_limit_unretained_frame"
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    with pytest.raises(observe.AlpacaObservationError):
+        audit(plan, summary)
+
+
+@pytest.mark.parametrize("retained_frames", [1, 2])
+def test_restart_rejects_forged_predecessor_byte_limit_before_new_capture(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    retained_frames,
+):
+    page_bytes, total_bytes = 1024, 3072
+    monkeypatch.setattr(observe, "MAX_PAGE_BYTES", page_bytes)
+    monkeypatch.setattr(observe, "_MAX_TOTAL_BYTES", total_bytes)
+    frame = b"[]" + b" " * (page_bytes - 2)
+    plan = replace(plan, max_frames=3)
+    transport(monkeypatch, *([frame] * retained_frames))
+    first = capture(plan, loaded)
+    result = read_result(plan, first)
+    assert result["total_raw_bytes"] <= total_bytes - page_bytes
+    result["termination"] = "byte_limit_unretained_frame"
+    predecessor_hash = publish(plan.output_root, result, ".observation-result.json")
+    next_plan = replace(plan, predecessor_result_hash=predecessor_hash)
+    fake = transport(monkeypatch, encoded(quote()))
+    with pytest.raises(observe.AlpacaObservationError):
+        capture(next_plan, loaded)
+    assert len(credential_reads) == 1 and not fake.calls
+    assert not (plan.output_root / (next_plan.plan_hash + ".observation.attempt")).exists()
+
+
+def test_byte_limit_preserves_real_overflow_prefix_above_required_threshold(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+):
+    page_bytes, total_bytes = 1024, 3072
+    monkeypatch.setattr(observe, "MAX_PAGE_BYTES", page_bytes)
+    monkeypatch.setattr(observe, "_MAX_TOTAL_BYTES", total_bytes)
+    full_frame = b"[]" + b" " * (page_bytes - 2)
+    unretained_frame = b"[\n]" + b" " * (page_bytes - 3)
+    plan = replace(plan, max_frames=4)
+    fake = transport(monkeypatch, full_frame, full_frame[:-1], b"[]", unretained_frame)
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert summary["termination"] == "byte_limit_unretained_frame"
+    assert len(result["receipt_hashes"]) == 3
+    assert result["total_raw_bytes"] == 2 * page_bytes + 1
+    assert total_bytes - page_bytes < result["total_raw_bytes"] <= total_bytes
+    assert result["total_raw_bytes"] + len(unretained_frame) > total_bytes
+    assert fake.connection.received == 7
+    digest = hashlib.sha256(unretained_frame).hexdigest()
+    assert not (plan.output_root / (digest + ".raw")).exists()
+    report = audit(plan, summary)
+    assert report["termination"] == "byte_limit_unretained_frame"
+    assert report["reference_bytes_reverified"] is True
+
+
+@pytest.mark.parametrize("termination", ["duration_limit", "byte_limit_unretained_frame"])
+def test_audit_rejects_elapsed_or_byte_stop_with_full_retained_frame_count(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    termination,
+):
+    frames = [encoded(quote())]
+    if termination == "byte_limit_unretained_frame":
+        page_bytes, total_bytes = 1024, 3072
+        monkeypatch.setattr(observe, "MAX_PAGE_BYTES", page_bytes)
+        monkeypatch.setattr(observe, "_MAX_TOTAL_BYTES", total_bytes)
+        full_frame = b"[]" + b" " * (page_bytes - 2)
+        frames = [full_frame, full_frame[:-1], b"[]"]
+    plan = replace(plan, max_frames=len(frames))
+    transport(monkeypatch, *frames)
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert len(result["receipt_hashes"]) == plan.max_frames
+    assert audit(plan, summary)["termination"] == "frame_limit"
+    if termination == "byte_limit_unretained_frame":
+        assert result["total_raw_bytes"] > total_bytes - page_bytes
+    result["termination"] = termination
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    with pytest.raises(observe.AlpacaObservationError):
+        audit(plan, summary)
+
+
+@pytest.mark.parametrize("operation", ["recv", "publication"])
+def test_operational_timeout_before_collection_deadline_reports_capture_failure(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    operation,
+):
+    plan = replace(plan, max_frames=3)
+    next_frame = encoded(status())
+    failure = TimeoutError("invented operational timeout")
+    fake = transport(monkeypatch, encoded(quote()), failure if operation == "recv" else next_frame)
+    if operation == "publication":
+        original_publish = observe._publish
+        failing_name = hashlib.sha256(next_frame).hexdigest() + ".raw"
+
+        def fail_raw_publication(descriptor, name, body):
+            if name == failing_name:
+                raise failure
+            original_publish(descriptor, name, body)
+
+        monkeypatch.setattr(observe, "_publish", fail_raw_publication)
+    summary = capture(plan, loaded)
+    assert summary["termination"] == "capture_failed"
+    assert summary["counts"] == {"quote": 1, "status": 0, "luld": 0}
+    assert len(read_result(plan, summary)["receipt_hashes"]) == 1
+    assert len(list(plan.output_root.glob("*.raw"))) == 1
+    assert audit(plan, summary)["termination"] == "capture_failed"
+    assert len(fake.calls) == 1 and len(credential_reads) == 1
+
+
 def test_duration_timeout_retains_prefix_as_unqualified(
     plan,
     loaded,
