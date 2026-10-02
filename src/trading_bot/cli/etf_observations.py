@@ -28,8 +28,8 @@ _REPOSITORY = Path(__file__).resolve().parents[3]
 
 
 def _revision() -> str:
-    # Capture runs only the committed checkout selected by the plan; no guessed
-    # source revision or dirty-source authenticated run.
+    # Capture and offline audit both require a committed checkout; no guessed
+    # source revision or audit identity for dirty source.
     identity = resolve_code_identity(_REPOSITORY, image_digest=None)
     if identity.dirty or identity.git_commit is None:
         raise ValueError("observation_source_uncommitted")
@@ -152,14 +152,21 @@ def audit(
 ) -> None:
     """Revalidate retained frames privately; no source qualification or fills."""
     try:
+        auditor_revision = _revision()
         report = audit_observation_capture(input_root, result_hash, _REPOSITORY)
+        report["auditor_code_revision"] = auditor_revision
         digest = _publish_report(report_dir, report)
     except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
         _denied()
         return
     typer.echo(
         canonical_json(
-            {"status": report["status"], "report_hash": digest, "source_qualified": False}
+            {
+                "status": report["status"],
+                "report_hash": digest,
+                "artifact_digest": digest,
+                "source_qualified": False,
+            }
         )
     )
     raise typer.Exit(2)
@@ -182,7 +189,8 @@ def calibrate_costs(
         canonical_json(
             {
                 "status": report["status"],
-                "report_hash": digest,
+                "report_hash": report["report_hash"],
+                "artifact_digest": digest,
                 "calibration_status": "unverified",
                 "evidence_promotable": False,
             }
