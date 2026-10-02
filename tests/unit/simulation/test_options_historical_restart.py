@@ -213,6 +213,7 @@ def test_checkpoint_rejects_repository_and_public_directories(tmp_path, monkeypa
     repo.mkdir(mode=0o700)
     public = tmp_path / "public"
     public.mkdir(mode=0o755)
+    public.chmod(0o755)
     for root in (repo, public):
         with pytest.raises(ValueError):
             api().save_clock_checkpoint(clock, root=root, repository_root=repo)

@@ -220,8 +220,13 @@ def test_result_and_safety_flags_are_frozen_without_caller_switches():
     with pytest.raises(FrozenInstanceError):
         result.execution_enabled = True
     for name in ("source_qualified", "execution_enabled", "evidence_promotable"):
-        with pytest.raises(ValueError):
+        assert result.__dataclass_fields__[name].init is False
+        with pytest.raises(FrozenInstanceError):
+            setattr(result, name, True)
+        # CPython versions reject init=False replacement through different paths.
+        with pytest.raises((TypeError, ValueError), match=name):
             replace(result, **{name: True})
+        assert getattr(result, name) is False
     with pytest.raises(TypeError):
         module.interpret_alpaca_quote(record(), verified=True)
 

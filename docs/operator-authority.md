@@ -35,6 +35,23 @@ Required conditions:
 - Retain accurate limitations and separate technical, economic, capability, and
   operator-authorization verdicts. A successful merge is not a release approval.
 
+## Execution calibration diagnostics — explicit 2026-10-02 grants
+
+The operator answered "Allow read-only history check" to a bounded diagnostic
+of existing Robinhood equity order history for fill and fee records. Customer
+payloads remain on the trusted Mac. This authorizes account binding and the
+bounded history read, not order review, placement or cancellation.
+
+When the existing selected connection required browser authentication before any
+history response, the operator answered "Allow sign-in and history check" to
+opening the existing OAuth workflow and saving a new connection in a separate
+private directory. The operator completes the browser sign-in. Robinhood's sole
+`internal` OAuth credential remains trading-capable; the diagnostic's local
+read-only allowlist provides the write boundary. Existing credentials, service
+configuration, production mounts and deployment are not replaced by this grant.
+The saved account fingerprint must match the existing intended account before
+history is read. No new market-data provider or paid agreement is authorized.
+
 ## Databento credit-only data acquisition
 
 The operator previously authorized all existing credits for data necessary to
