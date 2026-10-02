@@ -10,10 +10,12 @@ their scope. Canonical cost behavior, risk configuration, paused service, broker
 capabilities and promotion gates are unchanged. Local synthetic verification is
 recorded in the PR; no actual private data or credentials enter Cloud/Git.
 
-The reconnected Mac completed 60-second and 10-second SPY/SIP captures at
+The reconnected Mac captured SPY/SIP under reviewed 60-second and 10-second scopes at
 `e104f4f1be204db71e9e830303c12d3a0fd13878`: 5,959 quotes, including 5,910
 uncrossed and 49 locked, with no status/LULD events observed. Both private receipt
-audits passed; the second segment reverified its direct predecessor result.
+audits passed; the second segment reverified its direct predecessor result and plan.
+The original result-v1 captures declared duration stops without recording the
+collection window; current audits explicitly mark elapsed duration unverified.
 Initial control state remains unknown and the restart remains a discontinuity.
 The [current result](docs/alpaca-execution-observations.md) records descriptive
 spread aggregates and retained artifact hashes without private payloads.

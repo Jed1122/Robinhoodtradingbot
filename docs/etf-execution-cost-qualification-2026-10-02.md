@@ -153,10 +153,12 @@ status/LULD/quote channels now have a separate bounded local observation workflo
 with lossless parsing, private receipt audit and explicit restart discontinuities.
 The offline customer-cost measurement workflow groups partial fills and reports
 charged fees, signed slippage and same-clock timings without installing canonical
-costs. Both are synthetic-tested. Actual 60-second and deliberate 10-second
-Alpaca captures have now completed on the reconnected Mac: 5,959 quotes, including
+costs. Both are synthetic-tested. Actual Alpaca captures under reviewed 60-second
+and deliberate 10-second scopes completed on the reconnected Mac: 5,959 quotes, including
 5,910 uncrossed and 49 locked, with no status/LULD messages. Both private receipt
-audits passed and the restart predecessor result was reverified. Initial controls
+audits passed and the restart predecessor result and plan were reverified.
+The retained result-v1 archives lack a recorded collection window, so current
+audits mark their claimed elapsed duration unverified. Initial controls
 and cross-segment continuity remain unknown. Customer calibration remains blocked:
 the bounded saved-record search found no usable executions/bills. A separately
 authorized fresh browser sign-in matched the existing intended account; its
