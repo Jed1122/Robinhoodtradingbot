@@ -3,6 +3,8 @@
 Whole orders are the sampling unit. Charged fee totals are supplied once per
 terminal order, not charged again for each partial fill. Paper results and public
 fee schedules cannot establish customer treatment. No transport or broker exists.
+Bounded inputs whose derived report values exceed canonical Decimal bounds are
+rejected before returning measurements.
 """
 
 import hashlib
@@ -24,7 +26,7 @@ from trading_bot.market_data.bundle_codec import (
 )
 from trading_bot.market_data.bundle_models import BundleLimits
 from trading_bot.market_data.bundle_store import _open_root, _read
-from trading_bot.market_data.recording import content_hash
+from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_costs import _fee_context
 
 MAX_CALIBRATION_BYTES = 1_048_576
@@ -238,7 +240,7 @@ def _measure(body: bytes) -> dict[str, object]:
         reasons.append("charged_fee_observations_incomplete")
     if incomplete_timing_count:
         reasons.append("acknowledgement_observations_incomplete")
-    return {
+    report: dict[str, object] = {
         "schema": "etf-cost-calibration-report-v1",
         "status": "OBSERVED_UNQUALIFIED" if orders else "BLOCKED_INPUTS",
         "input_sha256": hashlib.sha256(body).hexdigest(),
@@ -273,6 +275,10 @@ def _measure(body: bytes) -> dict[str, object]:
         "execution_enabled": False,
         "live_authorized": False,
     }
+    # Exact products/sums and descriptive ratios can expand beyond input bounds.
+    # Validate the entire unchanged report with the same encoder used by storage.
+    canonical_json(report)
+    return report
 
 
 def measure_etf_cost_observations(body: bytes) -> dict[str, object]:

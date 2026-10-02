@@ -754,3 +754,106 @@ def test_private_loader_does_not_read_nonregular_input_or_source(private_input):
     source.mkdir(mode=0o600)
     with pytest.raises(api().EtfCalibrationError, match=r"^etf_cost_calibration_invalid$"):
         api().load_etf_cost_observations(path, private, repository)
+
+
+@pytest.mark.parametrize(
+    "quantity,price",
+    [
+        ("9" * 512, "9" * 512),
+        ("9" * 512, "103"),
+        ("0." + "0" * 509 + "1", "0." + "0" * 509 + "1"),
+    ],
+    ids=["1024-digit-product", "large-product-with-bounded-ratios", "tiny-product"],
+)
+def test_measure_denies_exact_products_that_cannot_enter_canonical_reports(quantity, price):
+    row = order()
+    row["fills"][0].update(quantity=quantity, price=price)
+    assert_invalid(encoded(wire(row)))
+
+
+def test_measure_denies_aggregate_cash_sum_that_outgrows_canonical_decimal_bounds():
+    first, second = order(1), order(2)
+    for row in (first, second):
+        row["fills"][0].update(quantity="5" + "0" * 511, price="1")
+    # Each 512-character order notional is representable; their exact sum is not.
+    assert_invalid(encoded(wire(first, second)))
+
+
+def test_measure_denies_ratio_expansion_even_when_executed_cash_is_representable():
+    row = order()
+    for quote in (row["decision_quote"], row["arrival_quote"]):
+        quote.update(bid="0." + "0" * 508 + "1", ask="0." + "0" * 508 + "2")
+    row["fills"][0].update(quantity="1", price="1")
+    # Both quote inputs fit 511 characters, but adverse bps expand to 513.
+    assert_invalid(encoded(wire(row)))
+
+
+def test_exact_notional_at_canonical_length_boundary_is_accepted_and_hashable(private_input):
+    row = order()
+    row["fills"][0].update(quantity="9" * 510, price="100")
+    body = encoded(wire(row))
+    report = api().measure_etf_cost_observations(body)
+    expected_cash = "9" * 510 + "00"
+    assert report["executed_notional_usd"] == D(expected_cash)
+    assert len(expected_cash) == 512
+    assert len(content_hash(report)) == 64
+    path, private, repository = private_input
+    path.write_bytes(body)
+    loaded_report = api().load_etf_cost_observations(path, private, repository)
+    assert loaded_report["executed_notional_usd"] == report["executed_notional_usd"]
+    assert loaded_report["report_hash"] == content_hash(
+        {**report, "reference_bytes_reverified": True}
+    )
+
+
+def test_ratio_at_canonical_length_boundary_is_accepted_and_hashable():
+    row = order()
+    for quote in (row["decision_quote"], row["arrival_quote"]):
+        quote.update(bid="0." + "0" * 507 + "1", ask="0." + "0" * 507 + "2")
+    row["fills"][0].update(quantity="1", price="1")
+    report = measure(row)
+    assert report["executed_notional_usd"] == 1
+    assert stat(report, "signed_adverse_slippage_bps_by_side", side="buy")["maximum"] == D(
+        "5" + "0" * 511
+    )
+    assert len(content_hash(report)) == 64
+
+
+def test_canonical_closure_acceptance_and_denial_are_independent_of_caller_decimal_context():
+    valid, invalid = order(1), order(2)
+    valid["fills"][0].update(quantity="9" * 510, price="100")
+    invalid["fills"][0].update(quantity="9" * 512, price="103")
+    expected = measure(valid)
+    with localcontext() as context:
+        context.prec, context.rounding, context.Emin, context.Emax = 1, ROUND_UP, -1, 1
+        for signal in (Inexact, Rounded, Overflow, Underflow):
+            context.traps[signal] = True
+        context.flags[Inexact] = True
+        flags, traps = dict(context.flags), dict(context.traps)
+        assert measure(valid) == expected
+        assert_invalid(encoded(wire(invalid)))
+        assert (context.prec, context.rounding, context.Emin, context.Emax) == (1, ROUND_UP, -1, 1)
+        assert dict(context.flags) == flags and dict(context.traps) == traps
+
+
+def test_measure_denies_fee_mean_rounding_that_expands_past_canonical_bounds():
+    row = order()
+    row["charged_fees"].update(
+        commission="9" * 512, sec="0", taf="0", cat="0", other="0", total="9" * 512
+    )
+    # Exact component reconciliation fits, but the 40-digit mean rounds upward
+    # to a 513-character value. Every reported Decimal must remain encodable.
+    assert_invalid(encoded(wire(row)))
+
+
+def test_private_loader_and_pure_measure_deny_same_unrepresentable_cash_report(private_input):
+    row = order()
+    row["fills"][0].update(quantity="9" * 512, price="103")
+    body = encoded(wire(row))
+    assert_invalid(body)
+    path, private, repository = private_input
+    path.write_bytes(body)
+    with pytest.raises(api().EtfCalibrationError) as caught:
+        api().load_etf_cost_observations(path, private, repository)
+    assert str(caught.value) == "etf_cost_calibration_invalid"
+    assert caught.value.__suppress_context__
