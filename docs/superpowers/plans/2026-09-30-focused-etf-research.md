@@ -468,3 +468,42 @@ the cost record before Task 3 consumes it; Task 5 implements its loader/evaluati
 Task 3 defines event/checkpoint state before Task 4 persists it. The primary
 owns shared risk/execution/persistence integration. No interface authorizes a
 provider operation or changes the historical four-ETF comparison.
+
+## Native software completion increment, 2026-10-02
+
+The additive `etf_native_models`, `etf_native_history`, `etf_native_checkpoint`
+and `etf_full_economics` APIs complete the source-neutral offline composition.
+Legacy fixture contracts and hashes remain unchanged. A native archive adapter
+preserves provider record identities and unresolved execution reasons, rather
+than passing recorded observations through synthetic-only constructors.
+
+- Task 3 software: shared features/momentum, portfolio planning, canonical
+  account admission, fee-inclusive reservations, later-event limit execution,
+  partials, explicit simulated acknowledgement/rejection/uncertainty, cancellation
+  and optional in-flight fills, protective exits, date-aware dividends, and
+  calendar-session settlement. Raw split inputs remain an explicit denial.
+- Task 4 software: descriptor-bound private paused checkpoints reconstruct the
+  complete consumed source/account prefix, reject changed inputs/stale heads and
+  preserve state across killed writers and uncertain publication. This is not
+  deployed runtime recovery or a distributed execution lease.
+- Task 5 software: all six capital/scenario outcomes, exact after-cost accounting,
+  constrained and unauthorized-full-invested references, cash comparators,
+  five purged development folds, completed opportunity counts, fixed dependent
+  uncertainty, and the unchanged canonical research assessment. No candidate is
+  promoted; a canonical threshold probe is explicitly not candidate selection.
+- Task 6 software: standalone native history/economic commands, pure synthetic
+  demonstration, preregistration and private immutable report publication.
+
+Protocol rulings: simulated settlement uses explicit counted distinct sessions;
+cash uses disclosed simple ACT/365; aggregate operating cost is disclosed as
+unitemized and allocated across episodes with an exact final residual. These
+conventions are not empirically qualified. The constrained buy-and-hold reference
+uses canonical entry risk and a protective stop, but does not perform momentum,
+target or holding-period exits. The fully invested reference is unauthorized and
+not a risk-admitted strategy. Missing marks disable marked return statistics;
+terminal cash and fees remain reportable. Rejected/unfilled orders are not trades.
+
+Independent data/cost qualification, genuine study acceptance, final holdout,
+production recovery, broker/runtime capability and genuine paper/shadow clocks
+remain external gates. They must not be checked off from this software increment.
+See `docs/etf-native-economics.md` for commands, limits and input contracts.

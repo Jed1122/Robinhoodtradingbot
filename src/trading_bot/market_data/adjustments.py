@@ -1,7 +1,7 @@
 """Point-in-time split and dividend adjustments without future knowledge."""
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from trading_bot.clock import require_utc
@@ -10,9 +10,19 @@ from trading_bot.market_data.recording import content_hash
 
 
 def adjust_bars(
-    bars: tuple[Bar, ...], actions: tuple[CorporateAction, ...], *, as_of: datetime
+    bars: tuple[Bar, ...],
+    actions: tuple[CorporateAction, ...],
+    *,
+    as_of: datetime,
+    session_dates: tuple[date, ...] | None = None,
 ) -> tuple[Bar, ...]:
     as_of = require_utc(as_of)
+    if session_dates is not None and (
+        type(session_dates) is not tuple
+        or len(session_dates) != len(bars)
+        or any(type(day) is not date for day in session_dates)
+    ):
+        raise ValueError("invalid corporate action session identity")
     # The canonical action carries a date, so effectivity uses the query's UTC date.
     available = tuple(
         action
@@ -20,13 +30,12 @@ def adjust_bars(
         if action.announced_at <= as_of and action.effective_date <= as_of.date()
     )
     adjusted: list[Bar] = []
-    for bar in bars:
+    for index, bar in enumerate(bars):
         price_divisor = Decimal("1")
         cash_adjustment = Decimal("0")
         for action in available:
-            if (
-                action.instrument_id != bar.instrument_id
-                or action.effective_date <= bar.ends_at.date()
+            if action.instrument_id != bar.instrument_id or action.effective_date <= (
+                bar.ends_at.date() if session_dates is None else session_dates[index]
             ):
                 continue
             if action.action_type == "split":

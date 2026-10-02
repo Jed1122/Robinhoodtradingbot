@@ -136,6 +136,23 @@ def test_requires_etf_strategy_coordinator_branches(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "relative_path",
     [
+        "src/trading_bot/simulation/etf_native_history.py",
+        "src/trading_bot/simulation/etf_native_models.py",
+        "src/trading_bot/persistence/etf_native_checkpoint.py",
+    ],
+)
+def test_requires_native_execution_and_recovery_branch_reports(tmp_path, relative_path):
+    root = tmp_path / "project"
+    _source(root, relative_path)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative_path}"
+    ]
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
         "src/trading_bot/domain/options_account.py",
         "src/trading_bot/reconciliation/options.py",
         "src/trading_bot/runtime/options_monitor.py",
