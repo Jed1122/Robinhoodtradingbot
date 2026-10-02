@@ -127,7 +127,7 @@ class EtfLedgerStatistics:
     residual_shares: Decimal
     reserved_cash: Decimal
     settled_cash: Decimal
-    completed_opportunities: int
+    completed_opportunities: int | None
     completed_episode_pnl: tuple[Decimal, ...]
     net_episode_pnl: tuple[Decimal, ...]
     consumed_trial_loss: Decimal
@@ -273,7 +273,14 @@ def _validate_outcome(study: EtfStudy, outcome: EtfReplayOutcome, capital: Decim
             if row.shares and row.bid is None
             else row.cash + row.shares * (row.bid or _ZERO) + row.dividend_receivable
         )
-        _check(row.nav == expected_nav)
+        _check(
+            row.nav == expected_nav
+            or (
+                row.nav is None
+                and row.bid is None
+                and "input_reconciliation_incomplete" in outcome.reasons
+            )
+        )
 
 
 def _integral(costs: EtfCostEvidence, role: str, start: datetime, end: datetime) -> Decimal:
@@ -346,6 +353,7 @@ def _ledger(
     account = outcome.account
     summary = evaluate_etf_account_economics(account, operating_cost=_ZERO)
     reasons = set(outcome.reasons)
+    reconciled = "input_reconciliation_incomplete" not in reasons
     reasons.add("embedded_execution_cost_attribution_unavailable")
     operating_total = operating[-1] if operating else _ZERO
     terminal_after_mark = bool(outcome.daily) and (
@@ -370,6 +378,7 @@ def _ledger(
         episode.net_cash_flow
         for episode in account.trial.episodes
         if episode.complete
+        and reconciled
         and episode.net_cash_flow is not None
         and episode.episode_id in filled_episodes
     )
@@ -384,7 +393,7 @@ def _ledger(
         )
         net_pnl = tuple(value - cost for value, cost in zip(pnl, allocations, strict=True))
     nav = tuple(
-        None if row.nav is None else row.nav - cost
+        None if row.nav is None or not reconciled else row.nav - cost
         for row, cost in zip(outcome.daily, operating, strict=True)
     )
     if terminal_after_mark:
@@ -439,24 +448,27 @@ def _ledger(
         )
     if not account.complete:
         reasons.add("account_outcome_incomplete")
-    final_nav = outcome.daily[-1].nav if outcome.daily and not terminal_after_mark else None
+    final_nav = (
+        outcome.daily[-1].nav if outcome.daily and not terminal_after_mark and reconciled else None
+    )
+    trading_pnl = summary.trading_pnl if reconciled else None
     return EtfLedgerStatistics(
         account.state_hash,
         capital,
         account.cash - capital,
-        summary.trading_pnl,
+        trading_pnl,
         None if final_nav is None else final_nav - capital,
         operating_total,
         None
-        if summary.trading_pnl is None or not operating or terminal_after_mark
-        else summary.trading_pnl - operating_total,
+        if trading_pnl is None or not operating or terminal_after_mark
+        else trading_pnl - operating_total,
         account.fees,
         _received_dividends(outcome),
         account.dividend_receivable,
         account.shares,
         account.reserved_cash,
         account.settled_cash,
-        len(pnl),
+        len(pnl) if reconciled else None,
         pnl,
         net_pnl,
         account.trial.consumed_loss,
@@ -479,7 +491,7 @@ def _full_reference(
         "fractional_terms_unverified",
         "terminal_bid_mark_not_sale",
     )
-    if not outcome.daily:
+    if not outcome.daily or "input_reconciliation_incomplete" in outcome.reasons:
         return EtfFullInvestedReference(
             None,
             None,
@@ -489,7 +501,12 @@ def _full_reference(
             _ZERO,
             _ZERO,
             capital,
-            (*reasons, "observation_window_empty"),
+            (
+                *reasons,
+                "input_reconciliation_incomplete"
+                if "input_reconciliation_incomplete" in outcome.reasons
+                else "observation_window_empty",
+            ),
         )
     first = outcome.daily[0]
     if first.ask is None:
@@ -669,7 +686,10 @@ def _scenario(
         reasons.add("walk_forward_sample_incomplete")
     elif sum(f.total_return_pct > 0 for f in folds) < config.minimum_positive_walk_forward_folds:
         reasons.add("insufficient_positive_walk_forward_folds")
-    if candidate.completed_opportunities < config.minimum_independent_opportunities:
+    if (
+        candidate.completed_opportunities is None
+        or candidate.completed_opportunities < config.minimum_independent_opportunities
+    ):
         reasons.add("independent_opportunities_insufficient")
     positive = tuple(value for value in candidate.net_episode_pnl if value > 0)
     concentration = _ratio(max(positive), sum(positive, _ZERO)) * 100 if positive else None

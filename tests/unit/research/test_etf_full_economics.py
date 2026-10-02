@@ -74,3 +74,14 @@ def test_changed_bar_preimages_are_not_silently_mixed_between_scenarios():
     changed = replace(results[0], bars=(bar(0, Decimal("100")).payload,))
     with pytest.raises(ValueError):
         evaluate_etf_economics(frozen, (changed, *results[1:]), costs)
+
+
+def test_dividend_paid_before_sale_cannot_shorten_episode_settlement_label():
+    from trading_bot.research.etf_full_economics import _episodes
+
+    _, results, _ = package()
+    source = results[0]
+    settlement = max(
+        event.at_ns for event in source.candidate.account_events if event.kind == "settlement"
+    )
+    assert _episodes(source)[0][1] == settlement

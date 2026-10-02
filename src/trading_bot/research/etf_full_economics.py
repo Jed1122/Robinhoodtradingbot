@@ -46,7 +46,7 @@ class EtfPurgedFold:
     purged_observations: int
     test_observations: int
     overlap_and_embargo_sessions: int
-    completed_opportunities: int
+    completed_opportunities: int | None
     total_return_pct: Decimal | None
 
 
@@ -56,7 +56,7 @@ class EtfThresholdAssessment:
     fill_scenario: str
     canonical_probe: ResearchReport
     assessment: ResearchAssessment
-    independent_opportunities: int
+    independent_opportunities: int | None
     reasons: tuple[str, ...]
 
 
@@ -78,32 +78,53 @@ class EtfEconomicReport:
 
 def _episodes(result: EtfHistoryResult) -> tuple[tuple[int, int], ...]:
     """Only completed, actually filled episodes; full obligations bound labels."""
-    spans = []
-    facts = result.candidate.account_events
-    for episode in result.candidate.account.trial.episodes:
-        if not episode.complete:
-            continue
-        orders = {
-            str(o.intent.id)
-            for o in result.candidate.account.orders
-            if o.episode_id == episode.episode_id
-        }
-        fills = tuple(
-            e for e in facts if e.fill is not None and str(e.fill.broker_order_id) in orders
+    if "input_reconciliation_incomplete" in result.candidate.reasons:
+        return ()
+    owner = {str(o.intent.id): o.episode_id for o in result.candidate.account.orders}
+    starts: dict[str, int] = {}
+    ends: dict[str, int] = {}
+    held: dict[str, Decimal] = {}
+    fills: dict[str, str] = {}
+    entitlement: dict[str, tuple[str, ...]] = {}
+    seen: set[str] = set()
+    with localcontext(_context(exact=True)):
+        for event in result.candidate.account_events:
+            if event.event_id in seen:
+                continue
+            seen.add(event.event_id)
+            if event.fill is not None:
+                fill = event.fill
+                if fill.id in fills:
+                    continue
+                episode_id = owner[str(fill.broker_order_id)]
+                fills[str(fill.id)] = episode_id
+                if fill.side is Side.BUY:
+                    starts.setdefault(episode_id, event.at_ns)
+                held[episode_id] = held.get(episode_id, Decimal(0)) + fill.quantity * (
+                    1 if fill.side is Side.BUY else -1
+                )
+                ends[episode_id] = max(ends.get(episode_id, 0), event.at_ns)
+            elif event.kind == "dividend_ex":
+                # Entitlement belongs to shares held at ex-date, not to any
+                # episode whose later settlement happens to overlap that date.
+                entitlement[str(event.action_id)] = tuple(k for k, q in held.items() if q > 0)
+            elif event.kind == "dividend_pay":
+                for episode_id in entitlement.pop(str(event.action_id), ()):
+                    ends[episode_id] = max(ends[episode_id], event.at_ns)
+            elif event.kind == "settlement":
+                for fill_id in event.fill_ids:
+                    episode_id = fills[str(fill_id)]
+                    ends[episode_id] = max(ends[episode_id], event.at_ns)
+            elif event.kind == "order_status" and str(event.order_id) in owner:
+                episode_id = owner[str(event.order_id)]
+                ends[episode_id] = max(ends.get(episode_id, 0), event.at_ns)
+    return tuple(
+        sorted(
+            (starts[e.episode_id], ends[e.episode_id])
+            for e in result.candidate.account.trial.episodes
+            if e.complete and e.episode_id in starts
         )
-        if not any(e.fill is not None and e.fill.side is Side.BUY for e in fills):
-            continue
-        ids = {e.fill.id for e in fills if e.fill is not None}
-        start = min(e.at_ns for e in fills)
-        end = max(e.at_ns for e in fills)
-        # Settlement and later dividend obligations may outlive closing fills.
-        end = max((e.at_ns for e in facts if ids.intersection(e.fill_ids)), default=end)
-        ex = {e.action_id for e in facts if e.kind == "dividend_ex" and start <= e.at_ns <= end}
-        end = max(
-            (e.at_ns for e in facts if e.kind == "dividend_pay" and e.action_id in ex), default=end
-        )
-        spans.append((start, end))
-    return tuple(sorted(spans))
+    )
 
 
 def _folds(
@@ -150,8 +171,11 @@ def _folds(
                 if final is not None and initial is not None and initial > 0
                 else None
             )
-        start_ns, end_ns = rows[left].at_ns, rows[right - 1].at_ns
-        count = sum(start_ns <= start <= end <= end_ns for start, end in spans)
+        # Returns start at the previous mark (or initial capital), not at
+        # the first test day's close. Count the same economic time interval.
+        start_ns = _ns(study.requested_start) - 1 if left == 0 else rows[left - 1].at_ns
+        end_ns = rows[right - 1].at_ns
+        count = sum(start_ns < start <= end <= end_ns for start, end in spans)
         folds.append(
             EtfPurgedFold(
                 result.initial_cash,
@@ -162,7 +186,7 @@ def _folds(
                 train_size - len(split.train),
                 test_size,
                 horizon,
-                count,
+                None if "input_reconciliation_incomplete" in result.candidate.reasons else count,
                 change,
             )
         )
@@ -236,16 +260,21 @@ def evaluate_etf_economics(
         folds = _folds(study, result, summary.candidate.net_nav)
         all_folds.extend(folds)
         spans = _episodes(result)
-        independent = 0
+        independent_count = 0
         last = -1
         for first, end in spans:
             if first > last:
-                independent += 1
+                independent_count += 1
                 last = end
+        independent = (
+            None
+            if "input_reconciliation_incomplete" in result.candidate.reasons
+            else independent_count
+        )
         diagnostics = set(summary.reasons) | set(result.reasons)
         if len(folds) != cfg.walk_forward_folds:
             diagnostics.add("purged_validation_coverage_insufficient")
-        if independent < cfg.minimum_independent_opportunities:
+        if independent is None or independent < cfg.minimum_independent_opportunities:
             diagnostics.add("independent_opportunities_insufficient")
         if study.holdout_previously_examined:
             diagnostics.add("holdout_previously_examined")

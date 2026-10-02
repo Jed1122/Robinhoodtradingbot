@@ -106,6 +106,7 @@ def _outcome(
     current_session: EtfReplayEvent | None = None
     current_eligible = False
     split_seen = False
+    unresolved_actions: set[str] = set()
     distributions: list[CorporateAction] = []
     previous_session_open: int | None = None
     fraction = {"conservative": Decimal(".25"), "base": Decimal(".5"), "optimistic": Decimal("1")}[
@@ -173,10 +174,7 @@ def _outcome(
             quote is not None
             and quote.bid is not None
             and quote.ask is not None
-            and not quote_conflict
-            and not quote.execution_reasons
-            and quote.bid > 0
-            and quote.bid < quote.ask
+            and market_reason(quote) is None
             and 0
             <= at - quote.event_at_ns
             <= cfg.freshness.max_executable_quote_age_seconds * _SECOND
@@ -185,6 +183,8 @@ def _outcome(
         nav = state.cash + state.dividend_receivable if state.shares == 0 else None
         if state.shares > 0 and mark is not None:
             nav = state.cash + state.shares * mark + state.dividend_receivable
+        if unresolved_actions:
+            nav = None
         daily.append(
             EtfDailyAccount(
                 _session_date(current_session.event_at_ns),
@@ -206,6 +206,8 @@ def _outcome(
             reasons.add("session_liquidation_mark_unavailable")
 
     def market_reason(event: EtfReplayEvent) -> str | None:
+        if unresolved_actions:
+            return "input_reconciliation_incomplete"
         if split_seen:
             return "split_accounting_unsupported"
         if event.execution_reasons:
@@ -264,7 +266,7 @@ def _outcome(
             if protective is not None
             else (atr or ZERO) * settings.stop_loss_atr_multiplier
         )
-        if price <= distance:
+        if protective is None and price <= distance:
             decide(event, "stop_nonpositive")
             return
         exit_policy = ExitPolicy(
@@ -558,6 +560,25 @@ def _outcome(
                 reasons.add("split_accounting_unsupported")
                 continue
             if event.kind in ("dividend_ex", "dividend_pay"):
+                if event.kind == "dividend_ex" and event.available_at_ns != event.event_at_ns:
+                    # The v1 account owner derives entitlement from its current
+                    # holdings. Applying a delayed ex-date at receipt would
+                    # credit the wrong owner. Preserve the source observation,
+                    # but do not invent entitlement or a corresponding payment.
+                    check(event.action_id is not None)
+                    if event.action_id is not None:
+                        unresolved_actions.add(event.action_id)
+                    reasons.update(
+                        (
+                            "input_reconciliation_incomplete",
+                            "delayed_distribution_entitlement_unverified",
+                        )
+                    )
+                    decide(event, "delayed_distribution_entitlement_unverified")
+                    continue
+                if event.action_id in unresolved_actions:
+                    decide(event, "input_reconciliation_incomplete")
+                    continue
                 if event.kind == "dividend_ex":
                     distributions.append(
                         CorporateAction(
@@ -580,9 +601,22 @@ def _outcome(
                     append(event.kind, event.available_at_ns, action_id=event.action_id)
                 continue
             if event.kind in ("session", "control"):
+                if event.kind == "session" and (
+                    (
+                        previous_session_open is not None
+                        and event.event_at_ns <= previous_session_open
+                    )
+                    or (clock is not None and event.event_at_ns < clock.event_at_ns)
+                    or (quote is not None and event.event_at_ns <= quote.event_at_ns)
+                ):
+                    decide(event, "native_session_time_regression")
+                    reasons.add("native_session_time_regression")
+                    continue
                 if clock is None or event.event_at_ns > clock.event_at_ns:
                     clock, control_conflict = event, False
-                elif event.event_at_ns == clock.event_at_ns and event.clock != clock.clock:
+                elif event.event_at_ns == clock.event_at_ns and (
+                    event.clock != clock.clock or event.execution_reasons != clock.execution_reasons
+                ):
                     control_conflict = True
                 if event.kind != "session":
                     continue

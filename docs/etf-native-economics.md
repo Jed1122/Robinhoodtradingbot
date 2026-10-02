@@ -154,8 +154,8 @@ live-enable, assumptions-validated, promotion or risk-limit override option.
 
 ## Next steps toward project completion
 
-Integrate and centrally verify the complete source-neutral runner, persistence,
-evaluator and operator commands. Then separately establish continuous usable
+The source-neutral runner, persistence, evaluator and operator commands implement
+the bounded offline software path. Separately establish continuous usable
 development quote/control/action coverage, valid instrument/size semantics,
 cost calibration and sufficient independent economic evidence. Only accepted
 research can lead to the unchanged qualifying paper/shadow observations and
@@ -185,6 +185,24 @@ later facts do not leak into an earlier snapshot. Later terminal facts without a
 corresponding mark preserve actual cash/fees and make the final marked comparisons
 unavailable. Paid dividends, receivables, unsettled fills and trial reservations
 are distinct. No terminal or fold boundary fabricates a sale or settlement.
+
+Liquidation marks use the same market-control, split, quote-quality and epoch
+checks as fills. A closing snapshot is taken immediately before applying the
+closing control, using only a still-fresh, previously admissible quote. Equal-time
+control disagreements include unknown execution semantics and remain latched
+until a strictly newer native control. Older session deliveries cannot advance
+settlement or rebalance cadence. Positive entry-stop geometry does not suppress
+an independently authorized simulated protective sell after a severe price gap.
+
+The v1 account contract cannot reconstruct historical ex-date entitlement from a
+delayed ex-date observation. Such input explicitly blocks further execution and
+economic completeness; neither entitlement nor a subsequent payment is invented.
+Recorded cash and fees remain visible, but profit, marked return, opportunity
+counts and the fully invested comparison are unavailable. On-time distributions
+belong only to shares actually held at ex-date. Episode labels extend through
+their own settlement and first entitled payment, never shrink on payment, and
+never include distributions on shares already sold. Fold opportunity intervals
+match the corresponding return intervals, including first-day intraday activity.
 
 Operating costs are charged over inclusive calendar dates. The current canonical
 cost contract supplies aggregate USD/day, not verified data/model/server line

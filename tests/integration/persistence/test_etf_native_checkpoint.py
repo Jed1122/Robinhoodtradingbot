@@ -147,6 +147,24 @@ def test_stale_expected_head_denies_before_new_publication(paths, package):
         advance(paths, package, expected_head=first.head_hash)
 
 
+@pytest.mark.parametrize("count", [True, "752"])
+def test_checkpoint_source_count_requires_exact_integer_not_coercion(paths, package, count):
+    first = advance(paths, package, through_ordinal=752)
+    path = paths[0] / "etf-native-checkpoints-v1" / "00000001.etf-native-checkpoint.json"
+    row = json.loads(path.read_bytes())
+    row["source_count"] = count
+    path.write_text(json.dumps(row))
+    with pytest.raises(ValueError, match="etf_native_checkpoint_invalid"):
+        advance(paths, package, expected_head=first.head_hash)
+    assert not (path.parent / "00000002.etf-native-checkpoint.json").exists()
+
+
+def test_invalid_source_cursor_is_denied_before_opening_checkpoint_root(paths, package):
+    with pytest.raises(ValueError, match="etf_native_checkpoint_invalid"):
+        advance(paths, package, through_ordinal=-1)
+    assert list(paths[0].iterdir()) == []
+
+
 @pytest.mark.parametrize("stage", ["before_publish", "staged_write", "after_link", "after_publish"])
 def test_killed_writer_releases_lock_and_recovers_atomic_prefix(paths, package, stage):
     import os
