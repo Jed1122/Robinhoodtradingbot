@@ -12,6 +12,7 @@ Overlapping acquisitions retain every observation; no exchange sequence or
 deduplication is invented. Every report is permanently blocked/nonpromotable.
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Literal
@@ -29,7 +30,11 @@ from trading_bot.market_data.etf_calendar import (
     EtfCalendarArchive,
     compare_etf_calendar_bars,
 )
-from trading_bot.market_data.etf_native_archive import EtfNativeBarsArchive, EtfNativeQuotesArchive
+from trading_bot.market_data.etf_native_archive import (
+    EtfNativeBarsArchive,
+    EtfNativeQuotePagesArchive,
+    EtfNativeQuotesArchive,
+)
 from trading_bot.market_data.etf_source import _ceil_time, _ns
 from trading_bot.market_data.recording import content_hash
 
@@ -49,6 +54,8 @@ _REASONS = (
     "native_quotes_not_executable",
     "holdout_not_evaluated",
 )
+
+type _QuoteArchive = EtfNativeQuotesArchive | EtfNativeQuotePagesArchive
 
 
 class EtfExecutionCoverageError(ValueError):
@@ -87,7 +94,7 @@ class EtfExecutionCoverageReport:
         return content_hash({"schema": "etf-execution-request-coverage-v1", "report": self})
 
 
-def _native_identity(archive: EtfNativeBarsArchive | EtfNativeQuotesArchive) -> None:
+def _native_identity(archive: EtfNativeBarsArchive | _QuoteArchive) -> None:
     _require_sha256_hex(archive.manifest_hash, "manifest")
     _check(type(archive.receipt_hashes) is tuple and 0 < len(archive.receipt_hashes) <= MAX_PAGES)
     _check(len(set(archive.receipt_hashes)) == len(archive.receipt_hashes))
@@ -105,7 +112,7 @@ def _native_identity(archive: EtfNativeBarsArchive | EtfNativeQuotesArchive) -> 
 
 
 def _quote_intervals(
-    quotes: tuple[EtfNativeQuotesArchive, ...],
+    quotes: tuple[_QuoteArchive, ...],
 ) -> tuple[tuple[tuple[int, int], ...], bool]:
     """Merge exact request bounds, including adjacent intervals; retain overlap fact."""
     merged: list[tuple[int, int]] = []
@@ -119,9 +126,23 @@ def _quote_intervals(
     return tuple(merged), overlapping
 
 
+def _quote_rows(archive: _QuoteArchive) -> Iterator[AlpacaQuoteRecord]:
+    if isinstance(archive, EtfNativeQuotePagesArchive):
+        for page in archive.pages:
+            yield from page
+    else:
+        yield from archive.quotes
+
+
+def _quote_count(archive: _QuoteArchive) -> int:
+    if isinstance(archive, EtfNativeQuotePagesArchive):
+        return archive.record_count
+    return len(archive.quotes)
+
+
 def audit_etf_execution_coverage(
     bars: EtfNativeBarsArchive,
-    quotes: tuple[EtfNativeQuotesArchive, ...],
+    quotes: tuple[_QuoteArchive, ...],
     calendar: EtfCalendarArchive,
 ) -> EtfExecutionCoverageReport:
     """Report transport request spans/observations without granting any readiness."""
@@ -151,18 +172,24 @@ def audit_etf_execution_coverage(
         coverage = compare_etf_calendar_bars(bars, calendar)
         quote_hashes = []
         for archive in quotes:
-            _check(type(archive) is EtfNativeQuotesArchive)
+            _check(type(archive) in (EtfNativeQuotesArchive, EtfNativeQuotePagesArchive))
             _native_identity(archive)
             _check(
-                archive.source_kind == "alpaca-sip-latest-vintage-quotes-v1"
-                and archive.request.kind == "quotes"
+                archive.request.kind == "quotes"
                 and archive.request.end_ns - archive.request.start_ns <= 86400 * 10**9
                 and archive.execution_enabled is False
-                and type(archive.quotes) is tuple
-                and 0 < len(archive.quotes) <= 10000
             )
+            if type(archive) is EtfNativeQuotePagesArchive:
+                replace(archive)
+                _check(archive.source_kind == "alpaca-sip-latest-vintage-quote-pages-v1")
+            else:
+                _check(
+                    archive.source_kind == "alpaca-sip-latest-vintage-quotes-v1"
+                    and type(archive.quotes) is tuple
+                    and 0 < len(archive.quotes) <= 10000
+                )
             previous = -1
-            for row in archive.quotes:
+            for row in _quote_rows(archive):
                 _check(type(row) is AlpacaQuoteRecord)
                 replace(row)
                 _check(
@@ -186,7 +213,7 @@ def audit_etf_execution_coverage(
         )
         quoted = set()
         for archive in quotes:
-            for row in archive.quotes:
+            for row in _quote_rows(archive):
                 day = _ceil_time(row.timestamp_ns).astimezone(_NEW_YORK).date()
                 bounds = development.get(day)
                 if bounds is not None and bounds[0] <= row.timestamp_ns < bounds[1]:
@@ -215,7 +242,7 @@ def audit_etf_execution_coverage(
             len(quoted),
             len(development) - len(missing),
             missing,
-            sum(len(archive.quotes) for archive in quotes),
+            sum(_quote_count(archive) for archive in quotes),
             tuple(reasons),
         )
     except (ValueError, TypeError, ArithmeticError, AttributeError):

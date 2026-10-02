@@ -3,16 +3,29 @@
 import hashlib
 import json
 
+import pytest
 from typer.testing import CliRunner
 
 from tests.unit.research.test_etf_execution_coverage import inputs, ns, quotes
 from trading_bot.cli import etf_research
+from trading_bot.market_data.etf_native_archive import EtfNativeQuotePagesArchive
 
 
-def test_coverage_command_records_missing_sessions_without_simulating_orders(tmp_path, monkeypatch):
+@pytest.mark.parametrize("page_bounded", [False, True])
+def test_coverage_command_records_missing_sessions_without_simulating_orders(
+    tmp_path, monkeypatch, page_bounded
+):
     bars, calendar = inputs()
     opened = ns(calendar.sessions[-1].opens_at)
     probe = quotes("probe", opened, opened + 10**9)
+    if page_bounded:
+        probe = EtfNativeQuotePagesArchive(
+            probe.manifest_hash,
+            probe.request,
+            probe.receipt_hashes,
+            (probe.quotes,),
+            probe.captured_at,
+        )
     root = tmp_path / "private"
     root.mkdir(mode=0o700)
     calendar_file = root / "calendar.json"
@@ -36,7 +49,8 @@ def test_coverage_command_records_missing_sessions_without_simulating_orders(tmp
     # The separately tested receipt reader owns transport/raw hash validation;
     # this command test exercises calendar I/O, real coverage and publication.
     monkeypatch.setattr(etf_research, "read_etf_native_bars", lambda *a, **k: bars)
-    monkeypatch.setattr(etf_research, "read_etf_native_quotes", lambda *a, **k: probe)
+    reader_name = "read_etf_native_quote_pages" if page_bounded else "read_etf_native_quotes"
+    monkeypatch.setattr(etf_research, reader_name, lambda *a, **k: probe, raising=False)
     result = CliRunner().invoke(
         etf_research.app,
         [
@@ -55,7 +69,7 @@ def test_coverage_command_records_missing_sessions_without_simulating_orders(tmp
             hashlib.sha256(body).hexdigest(),
             "--report-dir",
             str(reports),
-        ],
+        ] + (["--page-bounded-quotes"] if page_bounded else []),
     )
     assert result.exit_code == 2, result.output
     row = json.loads(result.output)
@@ -67,6 +81,7 @@ def test_coverage_command_records_missing_sessions_without_simulating_orders(tmp
     saved = json.loads((reports / (row["report_hash"] + ".etf-report.json")).read_bytes())
     assert saved["missing_requested_sessions"] == ["2019-03-08"]
     assert saved["holdout_evaluated"] is False and saved["total_quote_observations"] == 1
+    assert saved["quote_archive_hashes"] == [probe.archive_hash]
     assert "bars" not in saved and "quotes" not in saved
 
 
