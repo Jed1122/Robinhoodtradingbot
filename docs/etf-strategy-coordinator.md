@@ -94,6 +94,14 @@ paper-cycle or seven-distinct-date shadow requirements.
 
 ## Remaining work
 
+October 2 continuation: durable private synthetic process restart is now available
+through `strategy-checkpoint-run`, including killed-writer recovery and exact
+prefix reconstruction. The new `execution-coverage-run` quantified zero covered
+development sessions in the retained quote package. See
+[the current restart/coverage handoff](etf-durable-research-2026-10-02.md).
+This supersedes only the earlier in-process restart limitation; native/service
+recovery and actual data/economic/paper/shadow requirements remain open.
+
 Complete the native source adapter and quote/control/action/terms qualification;
 then run candidate after-cost development, uncertainty and holdout evaluation.
 Finish durable coordinator persistence/restart and trusted paper/shadow runtime
