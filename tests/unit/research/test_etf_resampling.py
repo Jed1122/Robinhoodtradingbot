@@ -1,10 +1,164 @@
 """Hand-derived statistics from synthetic values, never economic acceptance."""
 
+import importlib
 import random
 from dataclasses import FrozenInstanceError
 from decimal import ROUND_DOWN, Decimal, Inexact, Rounded, localcontext
 
 import pytest
+
+
+def risk_api():
+    module = importlib.import_module("trading_bot.research.etf_resampling")
+    function = getattr(module, "dependent_mean_risks", None)
+    if not callable(function):
+        pytest.fail("dependent mean risk statistics are missing")
+    return function
+
+
+@pytest.mark.parametrize(
+    ("value", "losses", "nonpositive", "loss_probability", "nonpositive_probability"),
+    [
+        (Decimal(".125"), 0, 0, Decimal("0"), Decimal("0")),
+        (Decimal("-.125"), 1000, 1000, Decimal("1"), Decimal("1")),
+        (Decimal("0"), 0, 1000, Decimal("0"), Decimal("1")),
+        (Decimal("-0"), 0, 1000, Decimal("0"), Decimal("1")),
+    ],
+)
+def test_constant_risk_counts_distinguish_losses_from_zero_outcomes(
+    value, losses, nonpositive, loss_probability, nonpositive_probability
+):
+    from trading_bot.research.etf_resampling import EtfBlockInterval
+
+    risks = risk_api()((value,) * 100, seed=7)
+
+    assert type(risks) is tuple
+    for item in risks:
+        assert type(item.interval) is EtfBlockInterval
+        assert type(item.loss_samples) is int and type(item.nonpositive_samples) is int
+        assert type(item.loss_probability) is Decimal
+        assert type(item.nonpositive_probability) is Decimal
+    assert [
+        (
+            item.interval,
+            item.loss_samples,
+            item.nonpositive_samples,
+            item.loss_probability,
+            item.nonpositive_probability,
+        )
+        for item in risks
+    ] == [
+        (
+            EtfBlockInterval(length, 1000, 100, value, value),
+            losses,
+            nonpositive,
+            loss_probability,
+            nonpositive_probability,
+        )
+        for length in (20, 100)
+    ]
+
+
+def test_mixed_risk_counts_use_the_same_nondivisible_draws_as_legacy_intervals():
+    from trading_bot.market_data.recording import content_hash
+    from trading_bot.research.etf_resampling import dependent_mean_intervals
+
+    # Twenty-value blocks sum to -1 or +1; the one-value tail is -1 or 0.
+    # Random(0+20)'s first 12 (block,tail) starts are:
+    # (0,1),(0,1),(0,0),(1,1),(0,0),(0,1),(1,1),(1,0),
+    # (0,1),(1,1),(1,0),(1,1). Totals are exactly:
+    # -1,-1,-2,1,-2,-1,1,0,-1,1,0,1: six losses and two zeros.
+    values = (Decimal("-1"),) + (Decimal("0"),) * 19 + (Decimal("1"),)
+    (risk,) = risk_api()(values, seed=0, block_lengths=(20,), draws=12)
+
+    assert (risk.loss_samples, risk.nonpositive_samples) == (6, 8)
+    assert risk.loss_probability == Decimal(".5")
+    assert risk.nonpositive_probability == Decimal(".6666666666666666666666666667")
+    assert (risk.interval.lower, risk.interval.upper) == (
+        Decimal("-.09523809523809523809523809524"),
+        Decimal(".04761904761904761904761904762"),
+    )
+    legacy = dependent_mean_intervals(values, seed=0, block_lengths=(20,), draws=12)
+    assert legacy == (risk.interval,)
+    assert content_hash(legacy) == (
+        "b375938c3ce0b10855e4db6b0797360107bc253d2ba623f87028daeb58b793b2"
+    )
+
+
+@pytest.mark.parametrize(
+    ("small", "losses", "nonpositive"),
+    [
+        (Decimal("1e-500"), 0, 0),
+        (Decimal("-1e-500"), 1, 1),
+        (Decimal("0"), 0, 1),
+    ],
+)
+def test_risk_sign_counts_preserve_small_exact_total_between_large_offsets(
+    small, losses, nonpositive
+):
+    large = Decimal("1e500")
+    (risk,) = risk_api()(
+        (large, small, large.copy_negate()) + (Decimal("0"),) * 17,
+        seed=9,
+        block_lengths=(20,),
+        draws=1,
+    )
+
+    assert (risk.loss_samples, risk.nonpositive_samples) == (losses, nonpositive)
+    assert risk.loss_probability == Decimal(losses)
+    assert risk.nonpositive_probability == Decimal(nonpositive)
+
+
+def test_risk_probabilities_and_intervals_ignore_hostile_decimal_context():
+    values = (Decimal("-1"),) + (Decimal("0"),) * 19 + (Decimal("1"),)
+    with localcontext() as context:
+        context.prec = 3
+        context.rounding = ROUND_DOWN
+        context.Emin = -3
+        context.Emax = 3
+        context.traps[Inexact] = True
+        context.traps[Rounded] = True
+        before = (str(context), context.flags.copy())
+        (risk,) = risk_api()(values, seed=0, block_lengths=(20,), draws=12)
+        assert (str(context), context.flags.copy()) == before
+
+    assert (risk.loss_samples, risk.nonpositive_samples) == (6, 8)
+    assert risk.loss_probability == Decimal(".5")
+    assert risk.nonpositive_probability == Decimal(".6666666666666666666666666667")
+
+
+def test_risk_records_are_frozen_and_counts_do_not_replace_observation_count():
+    (risk,) = risk_api()((Decimal("-1"),) * 20, seed=0, block_lengths=(20,), draws=10000)
+
+    assert (risk.loss_samples, risk.nonpositive_samples) == (10000, 10000)
+    assert (risk.interval.samples, risk.interval.observations) == (10000, 20)
+    with pytest.raises(FrozenInstanceError):
+        risk.loss_samples = 0
+    with pytest.raises(FrozenInstanceError):
+        risk.interval.observations = 10000
+
+
+def test_risk_input_and_seed_upper_bounds_are_inclusive():
+    (risk,) = risk_api()(
+        (Decimal("-1.25"),) * 10000, seed=2**63 - 1, block_lengths=(20,), draws=1
+    )
+
+    assert (risk.interval.samples, risk.interval.observations) == (1, 10000)
+    assert (risk.interval.lower, risk.interval.upper) == (Decimal("-1.25"), Decimal("-1.25"))
+    assert (risk.loss_samples, risk.nonpositive_samples) == (1, 1)
+    assert (risk.loss_probability, risk.nonpositive_probability) == (Decimal("1"), Decimal("1"))
+
+
+def test_risk_draws_are_deterministic_independent_of_block_order_and_global_rng():
+    values = tuple(Decimal(i - 50) for i in range(100))
+    state = random.getstate()
+    first = risk_api()(values, seed=7, draws=41)
+
+    assert random.getstate() == state
+    assert first == risk_api()(values, seed=7, draws=41)
+    assert first[::-1] == risk_api()(values, seed=7, block_lengths=(100, 20), draws=41)
+    assert first[:1] == risk_api()(values, seed=7, block_lengths=(20,), draws=41)
+    assert first[1:] == risk_api()(values, seed=7, block_lengths=(100,), draws=41)
 
 
 @pytest.mark.parametrize("value", [Decimal("0.125"), Decimal("-0.125"), Decimal("0")])
@@ -90,6 +244,7 @@ def test_summation_preserves_small_cash_flow_between_offsetting_large_values():
     assert interval.lower == interval.upper == Decimal("5e-502")
 
 
+@pytest.mark.parametrize("api_name", ["dependent_mean_intervals", "dependent_mean_risks"])
 @pytest.mark.parametrize(
     "bad_values",
     [
@@ -133,13 +288,15 @@ def test_summation_preserves_small_cash_flow_between_offsetting_large_values():
         "tiny-zero",
     ],
 )
-def test_invalid_values_fail_with_fixed_sanitized_error(bad_values):
+def test_invalid_values_fail_with_fixed_sanitized_error(bad_values, api_name):
     from trading_bot.research.etf_resampling import dependent_mean_intervals
 
+    function = dependent_mean_intervals if api_name == "dependent_mean_intervals" else risk_api()
     with pytest.raises(ValueError, match=r"^etf_resampling_invalid$"):
-        dependent_mean_intervals(bad_values, seed=7, block_lengths=(20,), draws=1)
+        function(bad_values, seed=7, block_lengths=(20,), draws=1)
 
 
+@pytest.mark.parametrize("api_name", ["dependent_mean_intervals", "dependent_mean_risks"])
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -191,20 +348,23 @@ def test_invalid_values_fail_with_fixed_sanitized_error(bad_values):
         "duplicate-100",
     ],
 )
-def test_invalid_resampling_controls_fail_with_fixed_sanitized_error(overrides):
+def test_invalid_resampling_controls_fail_with_fixed_sanitized_error(overrides, api_name):
     from trading_bot.research.etf_resampling import dependent_mean_intervals
 
     args = dict(seed=7, draws=1, block_lengths=(20,))
     args.update(overrides)
+    function = dependent_mean_intervals if api_name == "dependent_mean_intervals" else risk_api()
     with pytest.raises(ValueError, match=r"^etf_resampling_invalid$"):
-        dependent_mean_intervals((Decimal("1"),) * 100, **args)
+        function((Decimal("1"),) * 100, **args)
 
 
-def test_short_sample_rejects_default_hundred_session_block():
+@pytest.mark.parametrize("api_name", ["dependent_mean_intervals", "dependent_mean_risks"])
+def test_short_sample_rejects_default_hundred_session_block(api_name):
     from trading_bot.research.etf_resampling import dependent_mean_intervals
 
+    function = dependent_mean_intervals if api_name == "dependent_mean_intervals" else risk_api()
     with pytest.raises(ValueError, match=r"^etf_resampling_invalid$"):
-        dependent_mean_intervals((Decimal("1"),) * 99, seed=7)
+        function((Decimal("1"),) * 99, seed=7)
 
 
 def test_caller_decimal_precision_rounding_traps_and_flags_are_unchanged():
