@@ -16,8 +16,8 @@ local key, fixed SIP endpoint and SPY subscriptions. Authentication and exact
 subscription acknowledgement succeeded. The reviewed collection scopes were
 60 seconds for the initial plan and 10 seconds for the deliberate restart.
 Both retained `alpaca-observation-result-v1` records declared `duration_limit`
-but contain no collection start/end monotonic pair. An `audit-v2` re-audit will
-retain the observation counts and report `declared_termination="duration_limit"`,
+but contain no collection start/end monotonic pair. Both `audit-v2` re-audits
+retained the observation counts and report `declared_termination="duration_limit"`,
 `termination="duration_limit_unverified"` and
 `duration_limit_elapsed_verified=false`. Actual elapsed collection time remains
 unverified for these two captures.
@@ -29,16 +29,15 @@ unverified for these two captures.
 | Total | 5,959 | 5,910 | 49 | 0/0 | 0/0 |
 
 Each audit rehashed raw frames and plans, reparsed all observations and verified
-receipt links. The restart reverified its direct predecessor result bytes; the
+receipt links. The restart reverified its direct predecessor result and plan bytes; the
 first segment's frames were audited separately. Initial control state remains
 unknown and the restart interval remains a discontinuity. No status/LULD messages
 were observed; that does not establish market eligibility. Locked quotes are
 retained and are excluded from the descriptive uncrossed-spread inventory.
 Both CLI audits were repeated from clean auditor revision
-`cf2a5a02d94051cda8a5576a48de6db3c765bf7b`, which is recorded in the reports.
-The listed audit artifacts predate `audit-v2` and its elapsed-time distinction.
+`172a2d9289ffe8f729a127088743909591464556`, which is recorded in the reports.
 The empty customer assessment was repeated from clean calibrator revision
-`7480984b7aa3df9c0dc2151e57c532e74308e11c`. Its report identity includes that
+`172a2d9289ffe8f729a127088743909591464556`. Its report identity includes that
 revision, and the linked retained history/result source bytes were rehashed.
 
 An additional private diagnostic reverified 1,917 raw frames (804,214 bytes).
@@ -54,14 +53,14 @@ Private result and audit identities, with no raw prices or customer identifiers:
 | Artifact | SHA256 |
 |---|---|
 | Initial terminal result | `d2c573239b49884774a82356d2fbbd39a3c12448a651c047477026ee8ec77ac8` |
-| Initial revision-bound audit artifact | `84c965560e645920cf8bcdb1e1ce0affeca3405722e221256d10c10c0d19eba0` |
+| Initial revision-bound audit artifact | `5989ba29a927a88582ad0e65cbcbc0a8f76d1ad0e15aeb43ee6b208752ddb802` |
 | Restart terminal result | `0801135ba4740422576a2e723cffeafa8585e91d71578a0d45cab6b2236bd6de` |
-| Restart revision-bound audit artifact | `e6aab4a30d1794ed443983365664ca26da7489e9d95d7cb7fdb8783fa6c3674e` |
+| Restart revision-bound audit artifact | `27ba4cf8b65bda0de1ded4fe9f4b66105dadd3065e79d829f7b09e1b303d4e26` |
 | Descriptive spread diagnostic | `a0618058894b81ca4794cdbb50a0e4e2916772b02eaaaacdc510bc06d259d72a` |
 | Unfiltered bounded broker-history result | `eede4ecd91901ceec95d44d09d51a6013b4a544e9db6b3136e1364f6dd3cdc26` |
-| Revision-bound empty customer-input calibration report identity | `7c681140d31a7a2ee1a7197ad48f6e475a1adc608c771a106138f8b059cfa0dc` |
-| Complete calibration file artifact | `7be07ffcf7912322da78db97d688fad8877e5e7904cdf319c1f1e1cff2730815` |
-| Private revision-bound history/calibration file link | `75c23012c109e336977877d0b0e631a1d794bfa9e8c8587abb67215c2cedf2b1` |
+| Revision-bound empty customer-input calibration report identity | `6b12d28ea2661e30921e487cfa49a1cbad6d11cefb798b88b124369c54eb8fed` |
+| Complete calibration file artifact | `1e44a959684b93ef3152d52695c94bc6589de3c3036116504c3554a58d742060` |
+| Private revision-bound history/calibration file link | `7e3848ae4a08a8db7637ffb25b65d97318aa4bd689ff136f6727568dd983e4c9` |
 
 Raw frames and reports remain under the operator's private
 `~/.local/share/robinhood-trading-bot/alpaca-observations-20261002` directory,
