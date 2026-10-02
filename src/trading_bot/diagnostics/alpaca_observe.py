@@ -260,7 +260,11 @@ def _predecessor(
     plan_body = _read(descriptor, plan_hash + ".observation-plan.json", 16384)
     _check(hashlib.sha256(plan_body).hexdigest() == plan_hash)
     plan = decode_observation_plan(plan_body)
-    _check(plan.output_root == root and plan.repository_root == repository_root)
+    _check(
+        plan.plan_hash == plan_hash
+        and plan.output_root == root
+        and plan.repository_root == repository_root
+    )
     _check(row["predecessor_result_hash"] == plan.predecessor_result_hash)
     started, finished = row["started_at_ns"], row["finished_at_ns"]
     _check(type(started) is int and type(finished) is int)
