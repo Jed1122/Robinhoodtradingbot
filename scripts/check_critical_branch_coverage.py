@@ -49,6 +49,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         Path("reconciliation/options.py"),
         Path("runtime/options_monitor.py"),
         Path("runtime/paper_promotion.py"),
+        Path("runtime/paper_promotion_runtime.py"),
     ):
         options_module = source_root / relative_path
         if options_module.is_file():

@@ -98,6 +98,23 @@ def test_requires_scoped_capability_verification_branches(tmp_path: Path) -> Non
     ]
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "src/trading_bot/persistence/paper_cycle_journal.py",
+        "src/trading_bot/runtime/paper_promotion.py",
+        "src/trading_bot/runtime/paper_promotion_runtime.py",
+    ],
+)
+def test_requires_every_paper_owner_and_promotion_branch_report(tmp_path, relative_path):
+    root = tmp_path / "project"
+    _source(root, relative_path)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative_path}",
+    ]
+
+
 def test_requires_durable_recorded_options_runtime_branches(tmp_path: Path) -> None:
     root = tmp_path / "project"
     _source(root, "src/trading_bot/runtime/options_recorded_session.py")

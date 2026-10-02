@@ -39,6 +39,49 @@ def test_paper_runtime_reports_all_missing_trusted_composition_inputs(tmp_path: 
     assert not (tmp_path / "locks").exists()
 
 
+def test_unsafe_paper_configuration_denies_before_any_state(tmp_path):
+    from types import SimpleNamespace
+
+    from trading_bot.domain import ExecutionMode
+
+    loaded = SimpleNamespace(
+        config=SimpleNamespace(mode=ExecutionMode.PAPER, live_trading_enabled=True)
+    )
+    with pytest.raises(PaperPromotionNotReady) as raised:
+        run_paper_promotion_once(
+            loaded=loaded,
+            repository_root=Path(__file__).parents[3],
+            ledger=tmp_path / "ledger.db",
+            lock_directory=tmp_path / "locks",
+        )
+    assert raised.value.blockers == ("unsafe_paper_configuration",)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_configuration_identity_denies_before_any_state(tmp_path):
+    from types import SimpleNamespace
+
+    from tests.integration.runtime.test_paper import promotion_context
+
+    root = Path(__file__).parents[3]
+    loaded = load_config(
+        root / "configs/base.yaml",
+        root / "configs/paper.yaml",
+        root / "configs/safety-envelope.yaml",
+        {},
+    )
+    with pytest.raises(PaperPromotionNotReady) as raised:
+        run_paper_promotion_once(
+            loaded=loaded,
+            repository_root=root,
+            ledger=tmp_path / "ledger.db",
+            lock_directory=tmp_path / "locks",
+            composition=SimpleNamespace(context=promotion_context()),
+        )
+    assert raised.value.blockers == ("configuration_identity_mismatch",)
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_runtime_evaluates_and_persists_only_inside_owner_snapshot(tmp_path, monkeypatch) -> None:
     from contextlib import asynccontextmanager
     from dataclasses import replace
