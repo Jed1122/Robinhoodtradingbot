@@ -101,8 +101,8 @@ def _terminal_shape(row: dict[str, object], plan: "ObservationPlan", count: int)
     )
     window = _collection_window(row)
     if termination == "duration_limit" and row["schema"] == "alpaca-observation-result-v2":
-        _check(window is not None)
-        assert window is not None
+        if window is None:
+            raise AlpacaObservationError()
         _check(window[1] - window[0] >= plan.duration_seconds * 10**9)
 
 
