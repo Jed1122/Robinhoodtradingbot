@@ -29,7 +29,7 @@ unknown and the restart interval remains a discontinuity. No status/LULD message
 were observed; that does not establish market eligibility. Locked quotes are
 retained and are excluded from the descriptive uncrossed-spread inventory.
 Both CLI audits were repeated from clean auditor revision
-`06cc8bee261c5e8ecd5c39b56eb009d538344cf8`, which is recorded in the reports.
+`cf2a5a02d94051cda8a5576a48de6db3c765bf7b`, which is recorded in the reports.
 
 An additional private diagnostic reverified 1,917 raw frames (804,214 bytes).
 Across the 5,910 uncrossed quote-update events, mean full quoted spread was
@@ -44,9 +44,9 @@ Private result and audit identities, with no raw prices or customer identifiers:
 | Artifact | SHA256 |
 |---|---|
 | Initial terminal result | `d2c573239b49884774a82356d2fbbd39a3c12448a651c047477026ee8ec77ac8` |
-| Initial revision-bound audit artifact | `470203e83630c9a94b908eb2e2972d052cefa6006f2b3cb4b0047132daadfff1` |
+| Initial revision-bound audit artifact | `84c965560e645920cf8bcdb1e1ce0affeca3405722e221256d10c10c0d19eba0` |
 | Restart terminal result | `0801135ba4740422576a2e723cffeafa8585e91d71578a0d45cab6b2236bd6de` |
-| Restart revision-bound audit artifact | `a24ae3ce3235e177ae4740cf8524c8f30cda72f297b5415008944eb83374b41b` |
+| Restart revision-bound audit artifact | `e6aab4a30d1794ed443983365664ca26da7489e9d95d7cb7fdb8783fa6c3674e` |
 | Descriptive spread diagnostic | `a0618058894b81ca4794cdbb50a0e4e2916772b02eaaaacdc510bc06d259d72a` |
 | Unfiltered bounded broker-history result | `eede4ecd91901ceec95d44d09d51a6013b4a544e9db6b3136e1364f6dd3cdc26` |
 | Empty customer-input calibration report identity | `11ac2f8af6e5eb5b1ea6ca34df8330af1cfba8cda02442752bf24ab6414f476b` |
