@@ -437,7 +437,7 @@ def audit_observation_capture(
         counts = {"quote": 0, "status": 0, "luld": 0}
         quality = {"inactive": 0, "locked": 0, "crossed": 0, "two_sided_uncrossed": 0}
         skew_count = 0
-        maximum_gap_ns = 0
+        maximum_gap_ns: int | None = None
         for index, value in enumerate(hashes):
             digest = _digest(value)
             encoded = _read(descriptor, digest + ".observation-receipt.json", MAX_PAGE_BYTES)
@@ -466,7 +466,7 @@ def audit_observation_capture(
             received_ns, mono_ns = cast(int, received), cast(int, mono)
             _check(last_utc <= received_ns <= end_ns and last_mono <= mono_ns <= 2**63 - 1)
             if index:
-                maximum_gap_ns = max(maximum_gap_ns, mono_ns - last_mono)
+                maximum_gap_ns = max(maximum_gap_ns or 0, mono_ns - last_mono)
             raw_hash = _digest(receipt["body_sha256"])
             raw = _read(descriptor, raw_hash + ".raw", MAX_PAGE_BYTES)
             total_bytes += len(raw)
@@ -503,7 +503,7 @@ def audit_observation_capture(
         return {
             "schema": "alpaca-observation-audit-v1",
             "result_hash": result_hash,
-            "status": "OBSERVED_UNQUALIFIED" if hashes else "BLOCKED_INPUTS",
+            "status": "OBSERVED_UNQUALIFIED" if any(counts.values()) else "BLOCKED_INPUTS",
             "counts": counts,
             "quote_quality": quality,
             "clock_skew_observation_count": skew_count,

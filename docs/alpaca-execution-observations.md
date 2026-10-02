@@ -106,6 +106,10 @@ message does not establish an eligible market. Alpaca provides no demonstrated
 gap-free exchange sequence here. Interframe receipt gaps and provider-clock skew
 are reported, not interpreted as broker latency or missing-exchange-record proof.
 A limit-ended capture does not establish complete market coverage.
+Retained empty frames carry no observations: an all-empty segment remains
+`BLOCKED_INPUTS`. With fewer than two retained frames, the maximum interframe gap
+is null because no interval was measured; a measured zero is reserved for an
+actual pair of frames with equal local monotonic receipt times.
 
 For a deliberate restart, prepare a new plan with
 `--predecessor-result-hash SHA256`. The preceding terminal result must be retained
