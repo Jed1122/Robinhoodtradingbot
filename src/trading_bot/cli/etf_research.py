@@ -30,7 +30,11 @@ from trading_bot.market_data.etf_issuer_distributions import (
     EtfIssuerDistributionArchive,
     parse_spy_issuer_distributions,
 )
-from trading_bot.market_data.etf_native_archive import read_etf_native_bars, read_etf_native_quotes
+from trading_bot.market_data.etf_native_archive import (
+    read_etf_native_bars,
+    read_etf_native_quote_pages,
+    read_etf_native_quotes,
+)
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.persistence.etf_strategy_checkpoint import advance_etf_strategy_checkpoint
 from trading_bot.research.etf_economics import evaluate_etf_account_economics
@@ -503,6 +507,7 @@ def execution_coverage_run(
     calendar_file: Annotated[Path, typer.Option()],
     calendar_hash: Annotated[str, typer.Option()],
     report_dir: Annotated[Path, typer.Option()],
+    page_bounded_quotes: Annotated[bool, typer.Option()] = False,
 ) -> None:
     """Inventory saved development quote requests; missing semantics stay blocked."""
     descriptor = -1
@@ -511,7 +516,11 @@ def execution_coverage_run(
             raise ValueError("etf_execution_coverage_invalid")
         bars = read_etf_native_bars(capture_dir, manifest_hash, repository_root=_REPOSITORY)
         quotes = tuple(
-            read_etf_native_quotes(root, digest, repository_root=_REPOSITORY)
+            (
+                read_etf_native_quote_pages(root, digest, repository_root=_REPOSITORY)
+                if page_bounded_quotes
+                else read_etf_native_quotes(root, digest, repository_root=_REPOSITORY)
+            )
             for root, digest in zip(quote_capture_dir, quote_manifest_hash, strict=True)
         )
         calendar_descriptor = _open_root(calendar_file.parent, _REPOSITORY)

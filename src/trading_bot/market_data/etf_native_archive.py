@@ -16,6 +16,7 @@ from trading_bot.diagnostics.alpaca_capture import decode_capture_manifest
 from trading_bot.domain.decimal_utils import _require_sha256_hex
 from trading_bot.market_data.alpaca_native import (
     MAX_PAGE_BYTES,
+    MAX_PAGES,
     AlpacaBarRecord,
     AlpacaQuoteRecord,
     AlpacaStockRequest,
@@ -80,7 +81,7 @@ class EtfNativeBarsArchive:
 def read_etf_native_bars(
     root: Path, manifest_hash: str, *, repository_root: Path
 ) -> EtfNativeBarsArchive:
-    request, receipts, records, captured_at = _read_etf_native(
+    request, receipts, records, _, captured_at = _read_etf_native(
         root, manifest_hash, repository_root=repository_root, kind="bars"
     )
     bars = tuple(row for row in records if type(row) is AlpacaBarRecord)
@@ -125,12 +126,92 @@ def read_etf_native_quotes(
     root: Path, manifest_hash: str, *, repository_root: Path
 ) -> EtfNativeQuotesArchive:
     """Retain native quote evidence without size conversion, filtering or execution."""
-    request, receipts, records, captured_at = _read_etf_native(
+    request, receipts, records, _, captured_at = _read_etf_native(
         root, manifest_hash, repository_root=repository_root, kind="quotes"
     )
     quotes = tuple(row for row in records if type(row) is AlpacaQuoteRecord)
     _check(len(quotes) == len(records))
     return EtfNativeQuotesArchive(manifest_hash, request, receipts, quotes, captured_at)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class EtfNativeQuotePagesArchive:
+    """Full bounded capture intake, not a streaming store or executable dataset."""
+
+    manifest_hash: str
+    request: AlpacaStockRequest
+    receipt_hashes: tuple[str, ...]
+    pages: tuple[tuple[AlpacaQuoteRecord, ...], ...]
+    captured_at: datetime
+    source_kind: Literal["alpaca-sip-latest-vintage-quote-pages-v1"] = field(
+        default="alpaca-sip-latest-vintage-quote-pages-v1", init=False
+    )
+    limitations: tuple[str, ...] = field(
+        default=(
+            "retrieval_is_not_historical_availability",
+            "transport_completeness_is_not_quote_coverage",
+            "response_order_is_not_exchange_sequence",
+            "condition_interpretation_unverified",
+            "size_conversion_unverified",
+            "session_control_and_action_coverage_unqualified",
+            "fractional_terms_unverified",
+            "source_rights_unverified",
+            "native_quotes_not_executable",
+        ),
+        init=False,
+    )
+    source_qualified: Literal[False] = field(default=False, init=False)
+    evidence_promotable: Literal[False] = field(default=False, init=False)
+    execution_enabled: Literal[False] = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        _require_sha256_hex(self.manifest_hash, "manifest")
+        _check(type(self.request) is AlpacaStockRequest)
+        self.request.__post_init__()
+        _check(self.request.kind == "quotes" and self.request.limit <= 1000)
+        require_utc(self.captured_at)
+        _check(type(self.pages) is tuple and 0 < len(self.pages) <= MAX_PAGES)
+        _check(type(self.receipt_hashes) is tuple and len(self.receipt_hashes) == len(self.pages))
+        _check(len(set(self.receipt_hashes)) == len(self.receipt_hashes))
+        for receipt in self.receipt_hashes:
+            _require_sha256_hex(receipt, "receipt")
+        previous = None
+        for page_index, page in enumerate(self.pages):
+            _check(type(page) is tuple and len(page) <= self.request.limit)
+            for row_index, row in enumerate(page):
+                _check(type(row) is AlpacaQuoteRecord)
+                row.__post_init__()
+                _check((row.page_index, row.row_index) == (page_index, row_index))
+                _check(self.request.start_ns <= row.timestamp_ns < self.request.end_ns)
+                _check(previous is None or previous <= row.timestamp_ns)
+                previous = row.timestamp_ns
+        _check(self.record_count > 0)
+
+    @property
+    def record_count(self) -> int:
+        return sum(len(page) for page in self.pages)
+
+    @property
+    def archive_hash(self) -> str:
+        return content_hash({"schema": "etf-native-quote-pages-archive-v1", "archive": self})
+
+
+def read_etf_native_quote_pages(
+    root: Path, manifest_hash: str, *, repository_root: Path
+) -> EtfNativeQuotePagesArchive:
+    """Validate every receipt before returning all pages of a bounded capture.
+
+    The separate legacy small reader retains its 10,000-row ceiling and identities.
+    This intake supports the existing capture ceiling: 128 pages of at most 1,000
+    rows and at most 1 MiB raw bytes each. It materializes the bounded archive; it
+    is not a continuous collector, a partitioned bulk store or a throughput promise.
+    """
+    request, receipts, _, pages, captured_at = _read_etf_native(
+        root, manifest_hash, repository_root=repository_root, kind="quotes", page_bounded=True
+    )
+    quotes = tuple(tuple(row for row in page if type(row) is AlpacaQuoteRecord) for page in pages)
+    _check(all(len(source) == len(result) for source, result in zip(pages, quotes, strict=True)))
+    return EtfNativeQuotePagesArchive(manifest_hash, request, receipts, quotes, captured_at)
 
 
 def _read_etf_native(
@@ -139,7 +220,14 @@ def _read_etf_native(
     *,
     repository_root: Path,
     kind: Literal["bars", "quotes"],
-) -> tuple[AlpacaStockRequest, tuple[str, ...], tuple[NativeRecord, ...], datetime]:
+    page_bounded: bool = False,
+) -> tuple[
+    AlpacaStockRequest,
+    tuple[str, ...],
+    tuple[NativeRecord, ...],
+    tuple[tuple[NativeRecord, ...], ...],
+    datetime,
+]:
     """Shared private-FD and exact receipt chain validation for either native kind."""
     descriptor = -1
     try:
@@ -237,8 +325,10 @@ def _read_etf_native(
             and assessed.record_count == _integer(result["record_count"])
         )
         records = tuple(row for page in pages for row in page.records)
-        _check(len(records) == assessed.record_count and 0 < len(records) <= 10000)
-        return manifest.request, receipts, records, last_time
+        _check(not page_bounded or kind == "quotes")
+        ceiling = manifest.max_pages * manifest.request.limit if page_bounded else 10000
+        _check(len(records) == assessed.record_count and 0 < len(records) <= ceiling)
+        return manifest.request, receipts, records, tuple(page.records for page in pages), last_time
     except (ValueError, TypeError, ArithmeticError, OSError, AttributeError):
         raise EtfNativeArchiveError() from None
     finally:

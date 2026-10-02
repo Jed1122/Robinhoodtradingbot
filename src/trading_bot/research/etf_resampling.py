@@ -1,4 +1,4 @@
-"""Pure dependent-outcome interval statistics; never promotion evidence."""
+"""Pure dependent-outcome descriptive statistics; never promotion evidence."""
 
 from dataclasses import dataclass
 from decimal import (
@@ -67,14 +67,23 @@ class EtfBlockInterval:
     upper: Decimal
 
 
-def dependent_mean_intervals(
+@dataclass(frozen=True, slots=True)
+class EtfBlockRisk:
+    interval: EtfBlockInterval
+    loss_samples: int
+    nonpositive_samples: int
+    loss_probability: Decimal
+    nonpositive_probability: Decimal
+
+
+def dependent_mean_risks(
     values: tuple[Decimal, ...],
     *,
     seed: int,
     block_lengths: tuple[int, ...] = (20, 100),
     draws: int = 1000,
-) -> tuple[EtfBlockInterval, ...]:
-    """Resample moving, noncircular 20/100-session blocks into mean intervals.
+) -> tuple[EtfBlockRisk, ...]:
+    """Resample moving, noncircular 20/100-session blocks into mean risks.
 
     The immutable chronological input must contain at most 10,000 exact bounded
     Decimal observations. The preregistered block tuple is nonempty and unique;
@@ -93,10 +102,15 @@ def dependent_mean_intervals(
     ceil(39*(draws-1)/40), with no interpolation. These are descriptive bootstrap
     intervals, not an effective-sample-size, independence or economic-acceptance
     claim. observations counts original values, while samples counts draws.
+
+    Loss (<0) and nonpositive (<=0) counts use each exact resampled total,
+    before mean rounding. Their probabilities are counts divided by draws,
+    in [0,1], rounded once in the same fixed 28-digit context. These are
+    descriptive bootstrap frequencies, not market-risk or acceptance evidence.
     """
     try:
         _validate(values, seed, block_lengths, draws)
-        intervals = []
+        risks = []
         observations = len(values)
         denominator = Decimal(observations)
         mean_context = _MEAN_CONTEXT.copy()
@@ -112,24 +126,54 @@ def dependent_mean_intervals(
                 sums = tuple(prefix[start + length] - prefix[start] for start in range(starts))
                 tails = tuple(prefix[start + remainder] - prefix[start] for start in range(starts))
                 means = []
+                loss_samples = nonpositive_samples = 0
                 for _ in range(draws):
                     total = sum(
                         (sums[rng.randrange(starts)] for _ in range(full_blocks)), Decimal("0")
                     )
                     if remainder:
                         total += tails[rng.randrange(starts)]
+                    loss_samples += total < 0
+                    nonpositive_samples += total <= 0
                     means.append(mean_context.divide(total, denominator))
                 # Round percentile ranks outward without interpolating financial values.
                 means.sort()
-                intervals.append(
-                    EtfBlockInterval(
-                        length,
-                        draws,
-                        observations,
-                        means[(draws - 1) // 40],
-                        means[(39 * (draws - 1) + 39) // 40],
+                risks.append(
+                    EtfBlockRisk(
+                        EtfBlockInterval(
+                            length,
+                            draws,
+                            observations,
+                            means[(draws - 1) // 40],
+                            means[(39 * (draws - 1) + 39) // 40],
+                        ),
+                        loss_samples,
+                        nonpositive_samples,
+                        mean_context.divide(Decimal(loss_samples), Decimal(draws)),
+                        mean_context.divide(Decimal(nonpositive_samples), Decimal(draws)),
                     )
                 )
-        return tuple(intervals)
+        return tuple(risks)
     except (ValueError, TypeError, ArithmeticError):
         raise ValueError("etf_resampling_invalid") from None
+
+
+def dependent_mean_intervals(
+    values: tuple[Decimal, ...],
+    *,
+    seed: int,
+    block_lengths: tuple[int, ...] = (20, 100),
+    draws: int = 1000,
+) -> tuple[EtfBlockInterval, ...]:
+    """Return the value-compatible legacy intervals from the same block draws.
+
+    The interval record, input bounds, seeded draws and fixed-context endpoints
+    are unchanged. Descriptive loss frequencies are available separately through
+    ``dependent_mean_risks``; neither API supplies economic acceptance evidence.
+    """
+    return tuple(
+        risk.interval
+        for risk in dependent_mean_risks(
+            values, seed=seed, block_lengths=block_lengths, draws=draws
+        )
+    )
