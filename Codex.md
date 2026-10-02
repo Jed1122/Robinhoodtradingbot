@@ -24,17 +24,32 @@ probe and promotion-decision evidence. An SDK-session allowlist and a separate t
 contain no review, cancel, or place operation, and no provider write adapter exists. This incapability
 is enforced locally, not by OAuth: the sole official `internal` scope yields a bearer credential
 that must be treated as trading-capable. A stolen token or compromised host could trade in the
-Agentic account. Connected runs require a canonical root-owned, read-only release attestation that
-binds the immutable image ID, resolved configuration hash, Compose hash, and release key. The deploy
+Agentic account. These Robinhood connected runs require a canonical root-owned, read-only release
+attestation that binds the immutable image ID, resolved configuration hash, Compose hash, and release key. The deploy
 helper creates it only after the default paused service passes image, configuration, health,
 readiness-denial, and live-disabled checks. The default process remains the paused
 loopback-published monitoring service and has no host volumes or credential access.
 Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 
-The operator CLI implements offline commands, the health-only paused service, explicit OAuth
-bootstrap for the locally write-incapable client, and a one-shot connected shadow probe, not a live
-trading application. Nonempty
+The main operator CLI implements offline commands, the health-only paused service, explicit OAuth
+bootstrap for the locally write-incapable Robinhood client, and a one-shot connected shadow probe.
+A separate explicitly invoked `trading_bot.cli.etf_observations` module implements bounded local
+Alpaca SPY/SIP WebSocket capture, offline receipt audits and descriptive private cost reports.
+Its transport is fixed to `wss://stream.data.alpaca.markets/v2/sip` and SPY quote/status/LULD
+subscriptions. It uses only an explicitly selected owner-private Alpaca paper-key file containing
+`key_id` and `secret_key`; the market-data-only authority does not establish that the key itself
+is unable to trade. The reviewed plan binds the clean capture revision, config, private paths and
+limits and is consumed once. Private raw frames and chained receipts remain outside the checkout
+and Cloud; public output contains only sanitized hashes, counts and verdicts. The offline audit CLI
+requires a clean committed checkout and binds the auditor revision separately from the captured
+revision, without opening credentials. Initial controls remain unknown, deliberate restarts
+record discontinuities, and no broker order, automatic reconnect,
+runtime composition or promotion is enabled. The actual customer input has zero orders and its
+cost report remains `BLOCKED_INPUTS`; no zero fees or calibrated slippage/latency follow.
+See [the standalone workflow contract](docs/alpaca-execution-observations.md).
+
+No CLI provides a live trading application. Nonempty
 equity position and order mappings, provider review/place/cancel adapters, complete strategy cycles,
 and qualifying elapsed shadow evidence are not implemented. Do not represent planned modules,
 modes, commands, cloud resources, elapsed evidence, review, or execution as completed.
@@ -55,7 +70,10 @@ modes, commands, cloud resources, elapsed evidence, review, or execution as comp
   explicitly injected. Never substitute caller-supplied context time for the evaluation
   clock or reuse an exposure projection across intents.
 - Never put credential material, authorization headers, signatures, private keys,
-  account identifiers, or provider payloads in logs, fixtures, errors, reports, or Git.
+  or account identifiers in logs, fixtures, errors, reports, task prompts, Cloud, or Git.
+  Retain provider payloads only within an explicitly authorized owner-private evidence scope
+  outside checkouts and Cloud;
+  never include them in logs, fixtures, errors, public reports, task prompts, or Git.
 - Redact structured event data before JSON serialization and fail closed on unknown
   objects or redaction errors.
 - Install logging limits only from the canonical validated config graph. Sanitize stdlib

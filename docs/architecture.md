@@ -5,6 +5,42 @@ outside the service host, and placement factories behind authorization and promo
 
 ## Implemented boundary
 
+### Standalone Alpaca observations and offline cost reports
+
+The main operator CLI and connected Compose profiles retain their reviewed Robinhood read
+composition. Separately, `trading_bot.cli.etf_observations` provides an explicit local workflow
+for bounded Alpaca SPY/SIP observations, offline receipt audits and private descriptive cost
+measurements. Alpaca supplies market data; Robinhood remains the execution broker.
+
+`prepare` opens no credentials or network. Its reviewed plan binds a clean committed capture
+revision, backtest configuration with live trading disabled, explicitly selected private paths,
+duration/frame limits and an optional predecessor result. `capture` consumes the plan once and
+uses only `wss://stream.data.alpaca.markets/v2/sip`, subscribing to SPY quotes, statuses and LULD.
+The existing selected Alpaca paper-key file contains exactly `key_id` and `secret_key`; its
+market-data-only authorization does not imply an intrinsically write-incapable credential.
+TLS verification, disabled proxy/redirect/compression, bounded frames/bytes and a disabled
+transport logger preserve the capture boundary. There is no broker endpoint, automatic reconnect,
+daemon wiring or order capability in this workflow.
+
+Accepted raw frames and chained receipts are retained in existing owner-private directories
+outside the checkout and Cloud. Receipts bind exact bytes, frame/row identities, local UTC and
+monotonic times; they do not establish executable eligibility or broker latency. Every segment
+starts with unknown controls. A deliberate restart revalidates its predecessor result and records
+a discontinuity; it cannot backfill historical halt/LULD or transport continuity. `audit` runs
+offline from a clean committed checkout, binds the auditor revision separately from the capture
+revision, reparses retained bytes and writes an unqualified aggregate report without opening
+credentials. Empty frames carry no observations; fewer than two frames leave the interframe gap
+unknown.
+
+`calibrate-costs` is offline and groups supplied partial fills by terminal order before describing
+charged fees, signed slippage and same-clock receipt durations. Source hashes establish integrity,
+not customer authenticity or representative calibration. The actual supplied input contains zero
+orders and returns `BLOCKED_INPUTS`; missing fees, slippage, timings, cash yield and operating costs
+remain missing. Canonical cost evidence, accounting, risk limits, paused runtime and paper/shadow
+or live promotion gates are unchanged. Results are nonpromotable and never enable execution.
+The [workflow contract](alpaca-execution-observations.md) records limits, private input rules and
+the actual bounded observation results.
+
 ### Offline replay integration seams
 
 `IntentPlanner` accepts an optional intent-ID factory while retaining UUID generation for
@@ -264,8 +300,10 @@ Implemented code is limited to canonical domain primitives and immutable cross-l
 safety attestations, strict configuration and hashing, capability evidence and sanitized
 schema capture, least-privilege broker protocols, code identity, clocks, and structured
 logging with pre-serialization redaction. It also contains an equity-only Robinhood Trading MCP
-read adapter and one-shot connected-shadow probe. The connection owns a private encrypted OAuth
-store. A connected run first verifies a canonical root-owned, non-writable release artifact binding
+read adapter and one-shot connected-shadow probe, plus the separate standalone Alpaca observation
+workflow described above. The Robinhood connection owns a private encrypted OAuth
+store. A Robinhood connected run first verifies a canonical root-owned, non-writable release
+artifact binding
 its immutable image ID, resolved configuration hash, Compose hash, and release key. The deployment
 helper creates that artifact only after the paused candidate passes exact-image, configuration,
 health, readiness-denial, and live-disabled checks; the default service never mounts it. The OAuth
@@ -347,8 +385,10 @@ boundary, not a provider adapter, runner, live-authorization service, or proof o
 Authenticated, value-free equity read shapes have been captured and are enforced by strict DTOs.
 Nonempty position and order collections remain unsupported until their authenticated shapes are
 observed and reviewed. Prediction live execution is unsupported. No live order has been placed.
-The CLI provides offline commands, a health-only paused service, explicit OAuth bootstrap for the
-locally write-incapable client, and a one-shot connected shadow probe, not a live trading application. The repository
+The main CLI provides offline commands, a health-only paused service, explicit OAuth bootstrap for the
+locally write-incapable Robinhood client, and a one-shot connected shadow probe. The separate
+Alpaca observation CLI captures bounded market data and audits private evidence as described above.
+Neither provides a live trading application. The repository
 makes no profitability claim.
 
 ## Dependency direction
@@ -467,7 +507,8 @@ or a non-submitting order review.
 
 ## Absent runtime layers
 
-Provider-connected equity market reads are implemented for the reviewed MCP surface. Complete
+Provider-connected equity market reads are implemented for the reviewed Robinhood MCP surface,
+alongside the explicitly invoked standalone Alpaca observation workflow. Complete
 strategy scheduling, authenticated nonempty position/order mappings, remaining action and
 authorization gates, connected review/placement/cancellation, and a live application runtime
 remain planned.
