@@ -361,8 +361,8 @@ def test_observations_and_flags_are_immutable_and_do_not_repr_payloads():
         assert item.__dataclass_fields__[flag].init is False
         with pytest.raises(FrozenInstanceError):
             setattr(item, flag, True)
-        # CPython 3.14 delegates replace() to the constructor, raising TypeError;
-        # earlier versions explicitly reject init=False fields with ValueError.
+        # Some CPython releases delegate replace() to the constructor (TypeError);
+        # others explicitly reject init=False fields (ValueError).
         with pytest.raises((TypeError, ValueError), match=flag):
             replace(item, **{flag: True})
         assert getattr(item, flag) is False

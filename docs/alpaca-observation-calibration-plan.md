@@ -37,5 +37,10 @@ remain unchanged. No result enables execution or research promotion.
 Verification: parser/collector/calibration adversarial tests, CLI private-I/O
 checks, Ruff, Mypy, full local regression/branch coverage, locked-dependency and
 security checks; inspect exact-head hosted checks without blocking ongoing work.
-The local private-data host is offline in this Cloud task. Actual observations
-and customer calibration are not claimed complete without the required records.
+The reconnected Mac completed two real forward segments and their private raw-byte
+audits. Customer calibration remains blocked: the bounded local record search
+found no usable execution/billing evidence. After separately authorized browser
+sign-in, both current-year and unfiltered bounded history reads returned zero
+orders and no next page for the existing intended account. The private offline
+cost assessment completed with `BLOCKED_INPUTS`; customer calibration is not
+claimed complete without actual execution and operating-cost records.

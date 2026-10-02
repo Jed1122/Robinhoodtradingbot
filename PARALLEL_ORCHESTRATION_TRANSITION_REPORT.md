@@ -10,12 +10,24 @@ their scope. Canonical cost behavior, risk configuration, paused service, broker
 capabilities and promotion gates are unchanged. Local synthetic verification is
 recorded in the PR; no actual private data or credentials enter Cloud/Git.
 
-The critical path remains actual source/control observations and dated customer
+The reconnected Mac completed 60-second and 10-second SPY/SIP captures at
+`e104f4f1be204db71e9e830303c12d3a0fd13878`: 5,959 quotes, including 5,910
+uncrossed and 49 locked, with no status/LULD events observed. Both private receipt
+audits passed; the second segment reverified its direct predecessor result.
+Initial control state remains unknown and the restart remains a discontinuity.
+The [current result](docs/alpaca-execution-observations.md) records descriptive
+spread aggregates and retained artifact hashes without private payloads.
+
+The critical path remains complete source/control evidence and dated customer
 execution/cost evidence, then genuine after-cost validation and qualifying
-paper/shadow operation. The local private-data host is offline and both Alpaca
-connector checks timed out. Historical development quotes still cover 0/1,262
-required sessions. Stream restarts retain discontinuities and unknown initial
-state; forward data does not repair historical controls. Customer calibration,
+paper/shadow operation. Historical development quotes still cover 0/1,262
+required sessions; forward data does not repair historical controls. The bounded
+saved-record search found no usable execution/billing inputs. After separately
+authorized browser sign-in, bounded Robinhood history checks returned zero
+orders and no next page for the existing intended account, both for 2026 and
+without a date filter. The offline customer-cost assessment completed with
+`BLOCKED_INPUTS`, without inventing fills, zero fee rates or local timings.
+Customer calibration,
 economic acceptance, runtime qualification and live operation remain **NO-GO**.
 
 ## Current checkpoint — 2026-09-30 UTC
