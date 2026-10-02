@@ -181,3 +181,20 @@ hosted-matrix polling a dependency of the next development task. This changes
 development scheduling, not risk controls, truthfulness, required merge checks or
 branch protections. It does not authorize bypassing a failed/missing check,
 automatic research promotion, deployment or live trading.
+
+## Alpaca-only ETF market data — 2026-10-02
+
+The operator explicitly selected Alpaca as the sole market-data channel for the
+ETF bot and said no additional data channels are needed. Continue the approved
+native Alpaca build and read-only data work without pursuing another ETF provider,
+subscription or Databento purchase. Earlier provider investigations remain a
+historical record, not the active acquisition path. This instruction concerns
+market-data sources; it does not silently change the execution broker.
+
+Use documented Alpaca historical bars/quotes and, where separately implemented
+and verified, its forward status/LULD/quote observations. Do not invent missing
+historical controls, condition eligibility, customer costs or calibration. Keep
+latest-vintage exploratory research separate from qualified execution/economic
+evidence. A single-source choice does not waive safety, risk, reconciliation,
+paper/shadow observation or live-authorization gates. No further provider purchase,
+broker order, account change, deployment or live activation is authorized here.

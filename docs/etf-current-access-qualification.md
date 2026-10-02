@@ -40,6 +40,12 @@ sizes, exchanges, tape and conditions, but no sequence/gap, historical halt/LULD
 events or quote-correction chronology. Zero prices mean an inactive side; conditions
 are side-specific. Size units change from round lots to shares on November 3, 2025.
 Raw archived sizes are not silently normalized or treated as universal share counts.
+October 2 review of the historical REST OpenAPI explicitly confirms that older
+historical rows use round lots; remaining uncertainty concerns the applicable
+multiplier, transition timezone and executable capacity, not an assumed universal
+share encoding. The [execution/cost assessment](etf-execution-cost-qualification-2026-10-02.md)
+records the reverified receipts, zero development quote coverage and independent
+cost-reference/customer-cost distinction. It does not qualify the full study.
 See [Alpaca historical quotes](https://docs.alpaca.markets/us/reference/stockquotes-1),
 [condition metadata](https://docs.alpaca.markets/us/reference/stockmetaconditions-1) and
 [size-unit change](https://docs.alpaca.markets/us/v1.1/changelog/marketdata-bid-and-ask-size-display-change).

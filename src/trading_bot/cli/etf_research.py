@@ -8,6 +8,7 @@ import fcntl
 import hashlib
 import os
 import stat
+from collections import Counter
 from dataclasses import asdict, replace
 from datetime import date
 from decimal import Decimal
@@ -18,6 +19,10 @@ import typer
 
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.domain.decimal_utils import parse_decimal, require_bounded_decimal
+from trading_bot.market_data.alpaca_rest_reference import (
+    REFERENCE_SHA256,
+    assess_alpaca_rest_quote,
+)
 from trading_bot.market_data.bundle_store import (
     _open_root,
     _private,
@@ -39,6 +44,7 @@ from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.persistence.etf_strategy_checkpoint import advance_etf_strategy_checkpoint
 from trading_bot.research.etf_economics import evaluate_etf_account_economics
 from trading_bot.research.etf_execution_coverage import audit_etf_execution_coverage
+from trading_bot.research.etf_fee_reference import fee_reference_catalog, fee_reference_catalog_hash
 from trading_bot.research.etf_latest_vintage import (
     EtfLatestVintageRequest,
     latest_vintage_source_plan_hash,
@@ -508,8 +514,9 @@ def execution_coverage_run(
     calendar_hash: Annotated[str, typer.Option()],
     report_dir: Annotated[Path, typer.Option()],
     page_bounded_quotes: Annotated[bool, typer.Option()] = False,
+    qualify_inputs: Annotated[bool, typer.Option()] = False,
 ) -> None:
-    """Inventory saved development quote requests; missing semantics stay blocked."""
+    """Audit retained inputs; optional v2 adds scoped schema/cost-reference checks."""
     descriptor = -1
     try:
         if not 0 < len(quote_capture_dir) == len(quote_manifest_hash) <= 128:
@@ -539,6 +546,70 @@ def execution_coverage_run(
             "economic_verdict": "ECONOMIC_NO_GO",
             "live_authorized": False,
         }
+        if qualify_inputs:
+            # The readers above reverify raw bytes and receipts. This does not
+            # turn calendar projections or requested spans into executable proof.
+            assessments = (
+                assess_alpaca_rest_quote(row)
+                for archive in quotes
+                for page in (archive.pages if hasattr(archive, "pages") else (archive.quotes,))
+                for row in page
+            )
+            units: Counter[str] = Counter()
+            qualities: Counter[str] = Counter()
+            condition_scopes = 0
+            for assessment in assessments:
+                units[assessment.documented_size_unit or "transition_unresolved"] += 1
+                qualities[assessment.quality] += 1
+                condition_scopes += int(assessment.condition_scope_documented)
+            report.update(
+                {
+                    "schema": "etf-execution-input-qualification-report-v2",
+                    "retained_native_receipts_validated": True,
+                    "receipt_validation_scope": {
+                        "native_archives": "reader_raw_bytes_and_receipt_chain",
+                        "coverage_inventory": "non_io_request_span_inventory",
+                        "calendar": "retained_body_hash_only",
+                    },
+                    "reasons": tuple(
+                        reason
+                        for reason in coverage.reasons
+                        if reason != "archive_receipts_not_reverified_by_diagnostic"
+                    ),
+                    "quote_schema_assessment": {
+                        "scope": "documented_rest_fields_only",
+                        "reference_sha256": REFERENCE_SHA256,
+                        "documented_round_lot_rows": units["round_lots"],
+                        "documented_share_rows": units["shares"],
+                        "transition_unresolved_rows": units["transition_unresolved"],
+                        "condition_scope_documented_rows": condition_scopes,
+                        "quality_counts": dict(sorted(qualities.items())),
+                        "share_capacity_qualified": False,
+                    },
+                    "fee_reference": {
+                        "scope": "statutory_reference_only",
+                        "catalog_hash": fee_reference_catalog_hash(),
+                        "epochs": len(fee_reference_catalog()),
+                        "starts_on": "2016-01-01",
+                        "ends_before": "2026-01-01",
+                        "sec_date_basis": "charge_date",
+                        "finra_date_basis": "trade_date",
+                        "customer_rounding_inferred": False,
+                    },
+                    "execution_data_qualified": False,
+                    "customer_costs_qualified": False,
+                    "missing_qualification_roles": (
+                        "complete_development_execution_quote_coverage",
+                        "historical_halt_luld_continuity",
+                        "tape_era_condition_eligibility_and_round_lot_capacity",
+                        "corporate_action_identity_continuity",
+                        "account_channel_fractional_execution_terms",
+                        "dated_customer_sec_taf_cat_commission_and_partial_fill_grouping",
+                        "empirical_fractional_slippage_latency",
+                        "cash_yield_and_operating_cost_evidence",
+                    ),
+                }
+            )
         digest = _publish_report_fd(descriptor, report)
     except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
         _invalid()
