@@ -776,6 +776,52 @@ def test_audit_revalidates_readdressed_result_semantics(
         audit(plan, summary)
 
 
+@pytest.mark.parametrize("retained_frames", [0, 1, 2])
+def test_frame_limit_requires_full_receipt_count_after_result_readdressing(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    retained_frames,
+):
+    plan = replace(plan, max_frames=3)
+    transport(monkeypatch, *([encoded(quote())] * retained_frames))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert len(result["receipt_hashes"]) == retained_frames
+    assert audit(plan, summary)["termination"] == "capture_failed"
+    original_hash = summary["result_hash"]
+    result["termination"] = "frame_limit"
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    assert summary["result_hash"] != original_hash
+    with pytest.raises(observe.AlpacaObservationError):
+        audit(plan, summary)
+
+
+def test_transport_exit_failure_can_report_failed_capture_at_full_frame_count(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+):
+    class ExitFailureConnect(MockConnect):
+        async def __aexit__(self, *args):
+            raise RuntimeError("invented close failure")
+
+    plan = replace(plan, max_frames=2)
+    fake = ExitFailureConnect(
+        [CONNECTED, AUTHENTICATED, SUBSCRIBED, encoded(quote()), encoded(status())]
+    )
+    monkeypatch.setattr(observe, "_FixedConnect", fake)
+    summary = capture(plan, loaded)
+    assert len(read_result(plan, summary)["receipt_hashes"]) == plan.max_frames
+    assert summary["termination"] == "capture_failed"
+    report = audit(plan, summary)
+    assert report["termination"] == "capture_failed"
+    assert report["counts"] == {"quote": 1, "status": 1, "luld": 0}
+    assert report["status"] == "OBSERVED_UNQUALIFIED"
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

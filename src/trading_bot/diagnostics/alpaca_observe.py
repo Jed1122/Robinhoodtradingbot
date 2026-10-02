@@ -504,6 +504,8 @@ def audit_observation_capture(
             result["termination"]
             in ("frame_limit", "duration_limit", "byte_limit_unretained_frame", "capture_failed")
         )
+        # Transport close can fail after the final frame, preserving capture_failed.
+        _check(result["termination"] != "frame_limit" or len(hashes) == plan.max_frames)
         return {
             "schema": "alpaca-observation-audit-v1",
             "result_hash": result_hash,
