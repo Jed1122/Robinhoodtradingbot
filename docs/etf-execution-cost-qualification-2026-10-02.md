@@ -149,9 +149,14 @@ to buy another source. No additional ETF provider purchase will be pursued.
 
 Next: continue native Alpaca capture/validation and latest-vintage exploratory
 research. Qualify only the evidence actually supplied. Alpaca's forward
-status/LULD/quote channels can support future observations once their capture and
-runtime recovery are implemented and verified; they cannot retroactively fill
-historical controls. Historical fills and genuine after-cost acceptance remain
+status/LULD/quote channels now have a separate bounded local observation workflow
+with lossless parsing, private receipt audit and explicit restart discontinuities.
+The offline customer-cost measurement workflow groups partial fills and reports
+charged fees, signed slippage and same-clock timings without installing canonical
+costs. Both are synthetic-tested; actual capture/customer calibration is blocked
+by unavailable local private inputs and timed-out Alpaca connector access.
+See [workflow and limitations](alpaca-execution-observations.md). They cannot
+retroactively fill historical controls. Historical fills and genuine after-cost acceptance remain
 blocked where inputs or customer-cost calibration are missing. Broker/runtime
 and 100 eligible paper cycles/seven shadow dates remain separate later gates.
 The qualification task must not be described as passed or complete.

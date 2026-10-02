@@ -1,5 +1,23 @@
 # Parallel Orchestration Transition Report
 
+## Alpaca observation/calibration checkpoint — 2026-10-02
+
+The focused ETF path uses Alpaca as its sole market-data source and retains
+Robinhood as execution broker. A bounded standalone local quote/status/LULD
+observation workflow and private offline customer-cost measurement workflow are
+implemented; [the current contract](docs/alpaca-execution-observations.md) records
+their scope. Canonical cost behavior, risk configuration, paused service, broker
+capabilities and promotion gates are unchanged. Local synthetic verification is
+recorded in the PR; no actual private data or credentials enter Cloud/Git.
+
+The critical path remains actual source/control observations and dated customer
+execution/cost evidence, then genuine after-cost validation and qualifying
+paper/shadow operation. The local private-data host is offline and both Alpaca
+connector checks timed out. Historical development quotes still cover 0/1,262
+required sessions. Stream restarts retain discontinuities and unknown initial
+state; forward data does not repair historical controls. Customer calibration,
+economic acceptance, runtime qualification and live operation remain **NO-GO**.
+
 ## Current checkpoint — 2026-09-30 UTC
 
 This checkpoint supersedes conflicting current-status and authority statements in the
