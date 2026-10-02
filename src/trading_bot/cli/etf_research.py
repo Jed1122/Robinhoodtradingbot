@@ -566,6 +566,16 @@ def execution_coverage_run(
                 {
                     "schema": "etf-execution-input-qualification-report-v2",
                     "retained_native_receipts_validated": True,
+                    "receipt_validation_scope": {
+                        "native_archives": "reader_raw_bytes_and_receipt_chain",
+                        "coverage_inventory": "non_io_request_span_inventory",
+                        "calendar": "retained_body_hash_only",
+                    },
+                    "reasons": tuple(
+                        reason
+                        for reason in coverage.reasons
+                        if reason != "archive_receipts_not_reverified_by_diagnostic"
+                    ),
                     "quote_schema_assessment": {
                         "scope": "documented_rest_fields_only",
                         "reference_sha256": REFERENCE_SHA256,

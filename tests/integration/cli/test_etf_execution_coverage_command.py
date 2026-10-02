@@ -89,6 +89,12 @@ def test_coverage_command_records_missing_sessions_without_simulating_orders(
     if qualify_inputs:
         assert saved["schema"] == "etf-execution-input-qualification-report-v2"
         assert saved["retained_native_receipts_validated"] is True
+        assert saved["receipt_validation_scope"] == {
+            "native_archives": "reader_raw_bytes_and_receipt_chain",
+            "coverage_inventory": "non_io_request_span_inventory",
+            "calendar": "retained_body_hash_only",
+        }
+        assert "archive_receipts_not_reverified_by_diagnostic" not in saved["reasons"]
         assert saved["quote_schema_assessment"]["documented_round_lot_rows"] == 1
         assert saved["quote_schema_assessment"]["condition_scope_documented_rows"] == 1
         assert saved["quote_schema_assessment"]["quality_counts"] == {"two_sided_uncrossed": 1}
@@ -102,6 +108,8 @@ def test_coverage_command_records_missing_sessions_without_simulating_orders(
     else:
         assert saved["schema"] == "etf-execution-request-coverage-report-v1"
         assert "fee_reference" not in saved and "retained_native_receipts_validated" not in saved
+        assert "receipt_validation_scope" not in saved
+        assert "archive_receipts_not_reverified_by_diagnostic" in saved["reasons"]
 
 
 def test_mismatched_capture_pairs_deny_before_loading_or_writing(tmp_path):

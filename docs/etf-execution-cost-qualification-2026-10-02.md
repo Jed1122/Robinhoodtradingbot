@@ -108,9 +108,11 @@ verification scope, a statutory reference-catalog identity and explicit missing
 qualification roles. It writes only a private content-addressed report and exits
 2 for blocked inputs. Without `--qualify-inputs`, the v1 report/hash behavior is
 unchanged. It opens no credentials and makes no provider/broker/network call.
+The v2 scope explicitly distinguishes reader-verified native receipts from the
+non-I/O coverage inventory and hash-checked, unqualified calendar projection.
 
 Private report SHA256 for the inspected package:
-`ef5b73a8c40efbba883fa0598c435da7aaabec16b21b92699b0df822514f8ad2`.
+`d836da7a9ae58c8a18a4a3a1633496ac7160bcf58a64e3d0a425ca68752f1a2b`.
 No raw market data, customer information or credential source is included here.
 
 ## Remaining evidence and acquisition decision
@@ -139,8 +141,17 @@ study in principle. This is a possible evidence source, not verified account
 access, a cost estimate, an approved purchase or a recommendation to subscribe.
 [Daily TAQ v4.3](https://www.nyse.com/publicdocs/nyse/data/Daily_TAQ_Client_Spec_v4.3.pdf).
 
-Next: establish a complete supported execution/control package and empirical
-customer-cost evidence, then run the frozen after-cost study. Broker/runtime and
-100 eligible paper cycles/seven shadow dates remain separate later gates. No
-approved current-access path has yet supplied the missing historical controls;
-the qualification task must not be described as passed or complete.
+### Active path: Alpaca only
+
+The operator subsequently selected Alpaca as the ETF bot's only market-data
+channel. The provider checks above record completed investigations, not a request
+to buy another source. No additional ETF provider purchase will be pursued.
+
+Next: continue native Alpaca capture/validation and latest-vintage exploratory
+research. Qualify only the evidence actually supplied. Alpaca's forward
+status/LULD/quote channels can support future observations once their capture and
+runtime recovery are implemented and verified; they cannot retroactively fill
+historical controls. Historical fills and genuine after-cost acceptance remain
+blocked where inputs or customer-cost calibration are missing. Broker/runtime
+and 100 eligible paper cycles/seven shadow dates remain separate later gates.
+The qualification task must not be described as passed or complete.

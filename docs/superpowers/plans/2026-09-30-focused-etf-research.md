@@ -525,3 +525,13 @@ does not make an incomplete data package useful or authorize new agreements.
 Tasks 2 and 5 evidence acceptance remain incomplete; see
 `docs/etf-execution-cost-qualification-2026-10-02.md` for reproduced facts and
 the next dependency, not a claim of successful economic validation.
+
+## Alpaca-only continuation — 2026-10-02
+
+The operator selected Alpaca as the only ETF market-data channel. Stop additional
+ETF provider acquisition work. Continue the native Alpaca/offline path without
+changing the execution broker, frozen strategy, risk, reconciliation or live
+blocks. The reviewed REST quote schema and retained receipt checks establish
+descriptive facts only. Missing historical controls and empirical customer-cost
+evidence remain independent blockers; future Alpaca observations must not be
+backdated. Latest-vintage exploratory outputs remain non-promotable.
