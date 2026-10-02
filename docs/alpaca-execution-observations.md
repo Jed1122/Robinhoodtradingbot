@@ -30,6 +30,9 @@ were observed; that does not establish market eligibility. Locked quotes are
 retained and are excluded from the descriptive uncrossed-spread inventory.
 Both CLI audits were repeated from clean auditor revision
 `cf2a5a02d94051cda8a5576a48de6db3c765bf7b`, which is recorded in the reports.
+The empty customer assessment was repeated from clean calibrator revision
+`7480984b7aa3df9c0dc2151e57c532e74308e11c`. Its report identity includes that
+revision, and the linked retained history/result source bytes were rehashed.
 
 An additional private diagnostic reverified 1,917 raw frames (804,214 bytes).
 Across the 5,910 uncrossed quote-update events, mean full quoted spread was
@@ -49,9 +52,9 @@ Private result and audit identities, with no raw prices or customer identifiers:
 | Restart revision-bound audit artifact | `e6aab4a30d1794ed443983365664ca26da7489e9d95d7cb7fdb8783fa6c3674e` |
 | Descriptive spread diagnostic | `a0618058894b81ca4794cdbb50a0e4e2916772b02eaaaacdc510bc06d259d72a` |
 | Unfiltered bounded broker-history result | `eede4ecd91901ceec95d44d09d51a6013b4a544e9db6b3136e1364f6dd3cdc26` |
-| Empty customer-input calibration report identity | `11ac2f8af6e5eb5b1ea6ca34df8330af1cfba8cda02442752bf24ab6414f476b` |
-| Complete calibration file artifact | `280b1096079209953914c7e61b8ac227c3d426b41fdf93beebde01cc649aea4e` |
-| Private history/calibration file link | `4f503894af9723e3a64b9514c6288f951b47eeedd7ac4ecc7f533674e8093cf5` |
+| Revision-bound empty customer-input calibration report identity | `7c681140d31a7a2ee1a7197ad48f6e475a1adc608c771a106138f8b059cfa0dc` |
+| Complete calibration file artifact | `7be07ffcf7912322da78db97d688fad8877e5e7904cdf319c1f1e1cff2730815` |
+| Private revision-bound history/calibration file link | `75c23012c109e336977877d0b0e631a1d794bfa9e8c8587abb67215c2cedf2b1` |
 
 Raw frames and reports remain under the operator's private
 `~/.local/share/robinhood-trading-bot/alpaca-observations-20261002` directory,
