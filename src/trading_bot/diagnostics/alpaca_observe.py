@@ -540,6 +540,10 @@ def audit_observation_capture(
         # Transport close can fail after the final frame, preserving capture_failed.
         _check(result["termination"] != "frame_limit" or len(hashes) == plan.max_frames)
         _check(
+            result["termination"] not in ("duration_limit", "byte_limit_unretained_frame")
+            or len(hashes) < plan.max_frames
+        )
+        _check(
             result["termination"] != "byte_limit_unretained_frame"
             or total_bytes > _MAX_TOTAL_BYTES - MAX_PAGE_BYTES
         )
