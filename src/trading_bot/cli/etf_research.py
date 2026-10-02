@@ -30,9 +30,11 @@ from trading_bot.market_data.etf_issuer_distributions import (
     EtfIssuerDistributionArchive,
     parse_spy_issuer_distributions,
 )
-from trading_bot.market_data.etf_native_archive import read_etf_native_bars
+from trading_bot.market_data.etf_native_archive import read_etf_native_bars, read_etf_native_quotes
 from trading_bot.market_data.recording import canonical_json, content_hash
+from trading_bot.persistence.etf_strategy_checkpoint import advance_etf_strategy_checkpoint
 from trading_bot.research.etf_economics import evaluate_etf_account_economics
+from trading_bot.research.etf_execution_coverage import audit_etf_execution_coverage
 from trading_bot.research.etf_latest_vintage import (
     EtfLatestVintageRequest,
     latest_vintage_source_plan_hash,
@@ -246,6 +248,49 @@ def quote_fixture_run(
         raise typer.Exit(2)
 
 
+@app.command("strategy-checkpoint-run")
+def strategy_checkpoint_run(
+    output_dir: Annotated[Path, typer.Option()],
+    capital: Annotated[str, typer.Option()] = "500",
+    scenario: Annotated[str, typer.Option()] = "completed_stop",
+    through_ordinal: Annotated[int | None, typer.Option()] = None,
+    operating_cost: Annotated[str, typer.Option()] = "0",
+    config_dir: Annotated[Path, typer.Option()] = Path("configs"),
+) -> None:
+    """Persist synthetic coordinator state and restore it in a later process."""
+    try:
+        study = _study(
+            _load(config_dir), source_plan_hash=content_hash("ETF synthetic strategy fixture v1")
+        )
+        request = synthetic_etf_strategy_request(study, parse_decimal(capital), scenario)
+        cost = parse_decimal(operating_cost)
+        require_bounded_decimal(cost, "operating cost", nonnegative=True)
+        checkpoint = advance_etf_strategy_checkpoint(
+            output_dir, request, repository_root=_REPOSITORY, through_ordinal=through_ordinal
+        )
+        result = checkpoint.result
+        report = {
+            **_report(result.account, cost),
+            "source_kind": "synthetic-strategy-quotes-v1",
+            "source_prefix_hash": result.source_prefix_hash,
+            "cost_hash": result.cost_hash,
+            "frozen_policies": result.policies,
+            "decisions": result.decisions,
+            "source_count": result.source_count,
+            "paused": result.paused,
+            "checkpoint_sequence": checkpoint.sequence,
+            "request_hash": checkpoint.request_hash,
+            "head_hash": checkpoint.head_hash,
+            "restart_scope": "durable-private-synthetic-coordinator-prefix",
+        }
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _invalid()
+        return
+    typer.echo(canonical_json(report))
+    if not result.account.complete:
+        raise typer.Exit(2)
+
+
 def _checkpoint_run(root: Path, request: EtfAccountRequest, through: int) -> EtfAccountResult:
     """Descriptor-bound immutable snapshots using the existing private publisher.
 
@@ -447,6 +492,68 @@ def _read_reference_inputs(
             issuer_body, issuer_hash, start_date=date(2016, 1, 1), end_date=date(2025, 12, 31)
         ),
     )
+
+
+@app.command("execution-coverage-run")
+def execution_coverage_run(
+    capture_dir: Annotated[Path, typer.Option()],
+    manifest_hash: Annotated[str, typer.Option()],
+    quote_capture_dir: Annotated[list[Path], typer.Option()],
+    quote_manifest_hash: Annotated[list[str], typer.Option()],
+    calendar_file: Annotated[Path, typer.Option()],
+    calendar_hash: Annotated[str, typer.Option()],
+    report_dir: Annotated[Path, typer.Option()],
+) -> None:
+    """Inventory saved development quote requests; missing semantics stay blocked."""
+    descriptor = -1
+    try:
+        if not 0 < len(quote_capture_dir) == len(quote_manifest_hash) <= 128:
+            raise ValueError("etf_execution_coverage_invalid")
+        bars = read_etf_native_bars(capture_dir, manifest_hash, repository_root=_REPOSITORY)
+        quotes = tuple(
+            read_etf_native_quotes(root, digest, repository_root=_REPOSITORY)
+            for root, digest in zip(quote_capture_dir, quote_manifest_hash, strict=True)
+        )
+        calendar_descriptor = _open_root(calendar_file.parent, _REPOSITORY)
+        try:
+            calendar_body = _read(calendar_descriptor, calendar_file.name, 1048576)
+        finally:
+            os.close(calendar_descriptor)
+        calendar = parse_etf_calendar(calendar_body, calendar_hash)
+        descriptor = _open_root(report_dir, _REPOSITORY)
+        coverage = audit_etf_execution_coverage(bars, quotes, calendar)
+        report = {
+            "schema": "etf-execution-request-coverage-report-v1",
+            **asdict(coverage),
+            "coverage_hash": coverage.report_hash,
+            "holdout_evaluated": False,
+            "economic_verdict": "ECONOMIC_NO_GO",
+            "live_authorized": False,
+        }
+        digest = _publish_report_fd(descriptor, report)
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _invalid()
+        return
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    typer.echo(
+        canonical_json(
+            {
+                "report_hash": digest,
+                "status": coverage.status,
+                "development_sessions_after750": coverage.development_sessions_after750,
+                "quoted_session_count": coverage.quoted_session_count,
+                "fully_requested_session_count": coverage.fully_requested_session_count,
+                "total_quote_observations": coverage.total_quote_observations,
+                "economic_verdict": "ECONOMIC_NO_GO",
+                "holdout_evaluated": False,
+                "execution_enabled": False,
+                "evidence_promotable": False,
+            }
+        )
+    )
+    raise typer.Exit(2)
 
 
 @app.command("benchmark-screen-run")

@@ -28,7 +28,13 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
     if capability_verification.is_file():
         modules.append(capability_verification)
 
-    for filename in ("lease.py", "options_trial.py", "options_risk.py", "etf_history_store.py"):
+    for filename in (
+        "lease.py",
+        "options_trial.py",
+        "options_risk.py",
+        "etf_history_store.py",
+        "etf_strategy_checkpoint.py",
+    ):
         persistence_module = source_root / "persistence" / filename
         if persistence_module.is_file():
             modules.append(persistence_module)

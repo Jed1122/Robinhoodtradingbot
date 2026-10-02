@@ -336,6 +336,17 @@ this central regression; unrelated dirty work remains excluded from commits.
 
 ### Task 4: Make replay restart-safe and verify monitoring failure behavior
 
+**2026-10-02 bounded checkpoint:** The existing synthetic strategy/account coordinator
+now persists descriptor-bound immutable prefixes with local writer exclusion and
+exact replay verification. SIGKILL and independent-process CLI tests cover staging,
+publication, partial cancellation and completed cash/loss reconstruction. This
+extends the earlier account-only checkpoint; it does not complete qualified-source
+Task 4, production recovery, distributed fencing or service restart. Restore replays
+each retained prefix, so coarse short fixture runs remain the operating envelope
+until representative performance bounds are tested. See
+`docs/etf-durable-research-2026-10-02.md` for the measured historical quote gaps and
+separate economic/paper/shadow disposition. The task checkboxes below remain open.
+
 **Files:** Create `src/trading_bot/persistence/etf_history_store.py`, an additive
 Alembic revision after the current head, and
 `tests/integration/persistence/test_etf_history_store.py`;
