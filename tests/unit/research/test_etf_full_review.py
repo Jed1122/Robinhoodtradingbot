@@ -70,6 +70,38 @@ def test_repeated_later_dividend_payment_does_not_extend_cleared_obligation():
     )
 
 
+def test_later_idempotent_settlement_does_not_extend_episode_or_change_account():
+    _, results, _ = package()
+    facts = episode_events()
+    repeated_settlement = replace(
+        facts[-1],
+        event_id=content_hash("later-idempotent-settlement"),
+        ordinal=8,
+        at_ns=_ns(NOW + timedelta(seconds=12)),
+    )
+    source = results[0]
+    original = source.candidate.account
+    candidate = outcome(source.initial_cash, events=(*facts, repeated_settlement))
+    actual = candidate.account
+    # Receipt metadata changes, but every reconciled financial obligation is identical.
+    assert actual.complete
+    assert (actual.cash, actual.settled_cash, actual.fees, actual.reserved_cash) == (
+        original.cash,
+        original.settled_cash,
+        original.fees,
+        original.reserved_cash,
+    )
+    assert actual.position == original.position
+    assert actual.orders == original.orders
+    assert actual.trial == original.trial
+    assert actual.unsettled == original.unsettled
+    assert actual.receivables == original.receivables
+    # Exactly one opportunity still ends at its first final settlement, +7 seconds.
+    assert _episodes(replace(source, candidate=candidate)) == (
+        (_ns(NOW + timedelta(seconds=1)), _ns(NOW + timedelta(seconds=7))),
+    )
+
+
 def test_first_session_intraday_episode_counts_once_in_first_purged_fold():
     frozen, results, costs = package(days=tuple(range(250)))
     warmup = tuple(bar(index, D("100")).payload for index in range(750))

@@ -9,7 +9,7 @@ Five contiguous development slices are descriptive, not purged validation folds.
 """
 
 import re
-from dataclasses import dataclass, field, fields, is_dataclass, replace
+from dataclasses import astuple, dataclass, field, is_dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_FLOOR, Context, Decimal, localcontext
 from typing import Literal
@@ -108,8 +108,7 @@ def _bounded_output(value: object) -> None:
         for item in value:
             _bounded_output(item)
     elif is_dataclass(value) and not isinstance(value, type):
-        for descriptor in fields(value):
-            _bounded_output(getattr(value, descriptor.name))
+        _bounded_output(astuple(value))
 
 
 @dataclass(frozen=True, slots=True)

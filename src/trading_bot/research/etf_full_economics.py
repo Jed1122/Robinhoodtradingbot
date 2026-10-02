@@ -85,6 +85,7 @@ def _episodes(result: EtfHistoryResult) -> tuple[tuple[int, int], ...]:
     ends: dict[str, int] = {}
     held: dict[str, Decimal] = {}
     fills: dict[str, str] = {}
+    settled: set[str] = set()
     entitlement: dict[str, tuple[str, ...]] = {}
     seen: set[str] = set()
     with localcontext(_context(exact=True)):
@@ -113,6 +114,9 @@ def _episodes(result: EtfHistoryResult) -> tuple[tuple[int, int], ...]:
                     ends[episode_id] = max(ends[episode_id], event.at_ns)
             elif event.kind == "settlement":
                 for fill_id in event.fill_ids:
+                    if fill_id in settled:
+                        continue
+                    settled.add(str(fill_id))
                     episode_id = fills[str(fill_id)]
                     ends[episode_id] = max(ends[episode_id], event.at_ns)
             elif event.kind == "order_status" and str(event.order_id) in owner:
