@@ -8,17 +8,24 @@ import os
 import stat
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
 from trading_bot.app import DecisionCycleRequest
 from trading_bot.clock import Clock
 from trading_bot.domain import AccountId
+from trading_bot.market_data.bundle_store import _open_root, _private
+from trading_bot.market_data.recording import content_hash
 from trading_bot.monitoring.promotion import (
     PromotionIdentity,
     PromotionObservation,
     PromotionStage,
+)
+from trading_bot.persistence.paper_cycle_journal import (
+    PaperCycleJournal,
+    PaperCycleJournalError,
+    PaperCycleRecoveryRequired,
 )
 from trading_bot.runtime.paper import PaperApplication, PaperCycleEvidence
 
@@ -40,12 +47,13 @@ class PaperCycleMutex:
 
     def __init__(self, directory: str | Path) -> None:
         self._directory = Path(directory)
-        metadata = self._directory.stat()
-        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.geteuid():
-            raise PermissionError("paper lock directory must be service-owned")
-        if metadata.st_mode & 0o077:
-            raise PermissionError("paper lock directory must use mode 0700 or stricter")
+        descriptor = _open_root(self._directory, Path(__file__).resolve().parents[3])
+        os.close(descriptor)
         self._local_claims: dict[str, asyncio.Lock] = {}
+
+    @property
+    def directory(self) -> Path:
+        return self._directory
 
     @asynccontextmanager
     async def acquire(self, cycle_id: str) -> AsyncIterator[None]:
@@ -55,22 +63,31 @@ class PaperCycleMutex:
             raise ValueError("paper cycle id must be lowercase SHA-256 hex")
         local_claim = self._local_claims.setdefault(cycle_id, asyncio.Lock())
         async with local_claim:
-            path = self._directory / f"paper-{cycle_id}.lock"
-            descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            directory = _open_root(self._directory, Path(__file__).resolve().parents[3])
+            descriptor = -1
             try:
-                os.fchmod(descriptor, 0o600)
+                descriptor = os.open(
+                    f"paper-{cycle_id}.lock",
+                    os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    0o600,
+                    dir_fd=directory,
+                )
+                _private(descriptor, directory=False)
+                metadata = os.fstat(descriptor)
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size:
+                    raise PermissionError("paper lock file must be private and unshared")
                 try:
                     fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
-                    raise PaperCycleAlreadyInProgress(
-                        "paper cycle is already running"
-                    ) from None
+                    raise PaperCycleAlreadyInProgress("paper cycle is already running") from None
                 try:
                     yield
                 finally:
                     fcntl.flock(descriptor, fcntl.LOCK_UN)
             finally:
-                os.close(descriptor)
+                if descriptor >= 0:
+                    os.close(descriptor)
+                os.close(directory)
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,10 +154,16 @@ class PaperPromotionApplication:
         self._observations = observations
         self._mutex = mutex
         self._clock = clock
+        self._journal = PaperCycleJournal(
+            mutex.directory, repository_root=Path(__file__).resolve().parents[3]
+        )
 
     async def run_cycle(self, request: DecisionCycleRequest) -> RecordedPaperCycle:
         cycle_id = self._paper.cycle_id(request)
         async with self._mutex.acquire(cycle_id):
+            replace(self._context)
+            context_hash = content_hash(("paper-cycle-context-v1", self._context))
+            claim, completion_hash = self._journal.inspect(cycle_id, context_hash)
             durable = await self._observations.list_for_identity(self._context.identity)
             existing = tuple(
                 item
@@ -150,9 +173,18 @@ class PaperPromotionApplication:
             if len(existing) > 1:
                 raise RuntimeError("paper cycle has conflicting durable observations")
             if existing:
+                replace(existing[0])
+                if completion_hash not in (None, existing[0].evidence_hash):
+                    raise PaperCycleJournalError()
+                if claim is not None:
+                    self._journal.complete(claim, existing[0].evidence_hash)
                 return RecordedPaperCycle(existing[0], None, False)
 
+            if claim is not None:
+                raise PaperCycleRecoveryRequired()
+
             started_at = self._clock.now()
+            claim = self._journal.begin(cycle_id, context_hash, started_at)
             cycle = await self._paper.run_cycle(request)
             completed_at = self._clock.now()
             if cycle.cycle_id != cycle_id:
@@ -161,12 +193,9 @@ class PaperPromotionApplication:
             account_identity_matches = (
                 request.portfolio.account_id == self._context.expected_account_id
                 and request.intent_context.account_id == self._context.expected_account_id
-                and request.intent_context.portfolio.account_id
-                == self._context.expected_account_id
+                and request.intent_context.portfolio.account_id == self._context.expected_account_id
             )
-            config_identity_matches = (
-                request.strategy_context_config_hash == identity.config_hash
-            )
+            config_identity_matches = request.strategy_context_config_hash == identity.config_hash
             outcomes_complete = PaperApplication._outcomes_complete(cycle.result)
             observation = PromotionObservation.create(
                 stage=PromotionStage.PAPER,
@@ -187,6 +216,7 @@ class PaperPromotionApplication:
                 order_state_known=outcomes_complete,
             )
             await self._observations.append(observation)
+            self._journal.complete(claim, observation.evidence_hash)
             return RecordedPaperCycle(observation, cycle, True)
 
 
