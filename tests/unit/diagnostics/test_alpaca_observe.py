@@ -984,6 +984,50 @@ def test_restart_requires_existing_predecessor_before_claim_keys_or_egress(
     assert not list(plan.output_root.iterdir())
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing_field",
+        "extra_field",
+        "negative_count",
+        "invalid_receipt",
+        "unknown_termination",
+        "reversed_time",
+        "invalid_bytes",
+        "verified_controls",
+    ],
+)
+def test_readdressed_predecessor_requires_bounded_terminal_metadata(
+    plan, loaded, credential_reads, monkeypatch, case
+):
+    transport(monkeypatch, encoded(quote()))
+    first = capture(plan, loaded)
+    row = read_result(plan, first)
+    if case == "missing_field":
+        row.pop("receipt_hashes")
+    elif case == "extra_field":
+        row["invented_extra"] = True
+    elif case == "negative_count":
+        row["counts"]["quote"] = -1
+    elif case == "invalid_receipt":
+        row["receipt_hashes"] = ["not-a-hash"]
+    elif case == "unknown_termination":
+        row["termination"] = "invented_success"
+    elif case == "reversed_time":
+        row["started_at_ns"] = row["finished_at_ns"] + 1
+    elif case == "invalid_bytes":
+        row["total_raw_bytes"] = 0
+    else:
+        row["initial_control_state_verified"] = True
+    digest = publish(plan.output_root, row, ".observation-result.json")
+    next_plan = replace(plan, predecessor_result_hash=digest)
+    fake = transport(monkeypatch, encoded(status()))
+    with pytest.raises(observe.AlpacaObservationError):
+        capture(next_plan, loaded)
+    assert len(credential_reads) == 1 and not fake.calls
+    assert not (plan.output_root / (next_plan.plan_hash + ".observation.attempt")).exists()
+
+
 @pytest.mark.parametrize("case", ["missing", "tampered"])
 def test_restart_is_explicit_gap_and_audit_reverifies_direct_predecessor(
     plan,

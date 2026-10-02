@@ -38,6 +38,23 @@ _URL = "wss://stream.data.alpaca.markets/v2/sip"
 _REPOSITORY = Path(__file__).resolve().parents[3]
 _MAX_TOTAL_BYTES = 32 * 1024 * 1024
 _LIMITS = BundleLimits(1_048_576, 1_048_576, 33_554_432, 10000, 32)
+_RESULT_KEYS = {
+    "schema",
+    "plan_hash",
+    "started_at_ns",
+    "finished_at_ns",
+    "receipt_hashes",
+    "total_raw_bytes",
+    "counts",
+    "termination",
+    "predecessor_result_hash",
+    "segment_gap_before_start",
+    "initial_control_state_verified",
+    "transport_continuity_verified",
+    "source_qualified",
+    "execution_enabled",
+    "evidence_promotable",
+}
 
 
 class AlpacaObservationError(ValueError):
@@ -187,14 +204,39 @@ def _predecessor(descriptor: int, digest: str | None, started_at_ns: int) -> Non
     _require_sha256_hex(digest, "observation predecessor")
     body = _read(descriptor, digest + ".observation-result.json", MAX_PAGE_BYTES)
     _check(hashlib.sha256(body).hexdigest() == digest)
-    value = _json(body, max_bytes=MAX_PAGE_BYTES, limits=_LIMITS)
-    _check(type(value) is dict)
-    row = cast(dict[str, object], value)
-    _check(row.get("schema") == "alpaca-observation-result-v1")
-    finished = row.get("finished_at_ns")
-    _check(type(finished) is int and 0 <= finished <= started_at_ns)
-    for name in ("source_qualified", "execution_enabled", "evidence_promotable"):
-        _check(row.get(name) is False)
+    row = _mapping(_json(body, max_bytes=MAX_PAGE_BYTES, limits=_LIMITS), _RESULT_KEYS)
+    _check(row["schema"] == "alpaca-observation-result-v1")
+    _digest(row["plan_hash"])
+    started, finished = row["started_at_ns"], row["finished_at_ns"]
+    _check(type(started) is int and type(finished) is int)
+    _check(0 <= cast(int, started) <= cast(int, finished) <= started_at_ns)
+    hashes = _array(row["receipt_hashes"])
+    _check(len(hashes) <= 10000 and len(set(_digest(h) for h in hashes)) == len(hashes))
+    total_bytes = row["total_raw_bytes"]
+    _check(type(total_bytes) is int)
+    _check(
+        2 * len(hashes)
+        <= cast(int, total_bytes)
+        <= min(_MAX_TOTAL_BYTES, len(hashes) * MAX_PAGE_BYTES)
+    )
+    counts = _mapping(row["counts"], {"quote", "status", "luld"})
+    _check(all(type(n) is int and 0 <= n <= len(hashes) * 1000 for n in counts.values()))
+    _check(sum(cast(int, n) for n in counts.values()) <= len(hashes) * 1000)
+    _check(
+        row["termination"]
+        in ("frame_limit", "duration_limit", "byte_limit_unretained_frame", "capture_failed")
+    )
+    if row["predecessor_result_hash"] is not None:
+        _digest(row["predecessor_result_hash"])
+    _check(row["segment_gap_before_start"] is True)
+    for name in (
+        "source_qualified",
+        "execution_enabled",
+        "evidence_promotable",
+        "initial_control_state_verified",
+        "transport_continuity_verified",
+    ):
+        _check(row[name] is False)
 
 
 async def capture_observations(
@@ -388,23 +430,7 @@ def audit_observation_capture(
         _check(hashlib.sha256(body).hexdigest() == result_hash)
         result = _mapping(
             _json(body, max_bytes=MAX_PAGE_BYTES, limits=_LIMITS),
-            {
-                "schema",
-                "plan_hash",
-                "started_at_ns",
-                "finished_at_ns",
-                "receipt_hashes",
-                "total_raw_bytes",
-                "counts",
-                "termination",
-                "predecessor_result_hash",
-                "segment_gap_before_start",
-                "initial_control_state_verified",
-                "transport_continuity_verified",
-                "source_qualified",
-                "execution_enabled",
-                "evidence_promotable",
-            },
+            _RESULT_KEYS,
         )
         _check(result["schema"] == "alpaca-observation-result-v1")
         plan_hash = _digest(result["plan_hash"])

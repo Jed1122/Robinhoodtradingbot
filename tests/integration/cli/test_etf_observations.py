@@ -67,7 +67,7 @@ def _empty_observation_archive(root, repository):
             "receipt_hashes": [],
             "total_raw_bytes": 0,
             "counts": {"quote": 0, "status": 0, "luld": 0},
-            "termination": "frame_limit",
+            "termination": "capture_failed",
             "predecessor_result_hash": None,
             "segment_gap_before_start": True,
             "initial_control_state_verified": False,

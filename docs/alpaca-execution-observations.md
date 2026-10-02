@@ -78,7 +78,9 @@ available. The existing offline `etf_research` CLI remains separate.
    scope once. The digest binds the reviewed scope, not new operator authority.
 3. `audit --input-root CAPTURE_DIR --result-hash SHA256 --report-dir REPORT_DIR`
    revalidates retained bytes and receipt links and writes a private aggregate
-   report. Exit 2 explicitly means unqualified observations.
+   report. It requires a clean committed checkout and records
+   `auditor_code_revision` separately from the capture plan's revision. Exit 2
+   explicitly means unqualified observations.
 
 Transport is fixed to `wss://stream.data.alpaca.markets/v2/sip` and subscriptions
 are fixed to SPY quotes/statuses/LULD. It has TLS verification, no environment
@@ -110,6 +112,9 @@ Retained empty frames carry no observations: an all-empty segment remains
 `BLOCKED_INPUTS`. With fewer than two retained frames, the maximum interframe gap
 is null because no interval was measured; a measured zero is reserved for an
 actual pair of frames with equal local monotonic receipt times.
+An audited `frame_limit` termination requires the full planned receipt count.
+A transport failure while closing can still produce `capture_failed` after the
+last planned frame; retained frames do not turn that failure into success.
 
 For a deliberate restart, prepare a new plan with
 `--predecessor-result-hash SHA256`. The preceding terminal result must be retained
@@ -133,6 +138,10 @@ behavior, condition eligibility and source qualification remain unverified.
 content-addressed report, prints only its hash/status, and exits 2 because
 canonical calibration and promotion remain unverified. Invalid input exits 1
 with a fixed sanitized reason. Missing observations do not become zero costs.
+The cost report's `report_hash` identifies its canonical contents excluding that
+self field. CLI `report_hash` preserves this identity; `artifact_digest` hashes
+the complete saved file and names `ARTIFACT_DIGEST.observation-report.json`.
+Audit reports have no self-hash field, so their two CLI digests are equal.
 
 The JSON object has exactly `schema="etf-cost-observations-v1"`,
 `provenance` (`synthetic`, `paper` or declared `customer`),
