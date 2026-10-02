@@ -358,9 +358,15 @@ def test_observations_and_flags_are_immutable_and_do_not_repr_payloads():
     with pytest.raises(FrozenInstanceError):
         item.received_at_ns = 0
     for flag in ("execution_enabled", "source_qualified", "evidence_promotable"):
-        with pytest.raises(ValueError):
+        assert item.__dataclass_fields__[flag].init is False
+        with pytest.raises(FrozenInstanceError):
+            setattr(item, flag, True)
+        # CPython 3.14 delegates replace() to the constructor, raising TypeError;
+        # earlier versions explicitly reject init=False fields with ValueError.
+        with pytest.raises((TypeError, ValueError), match=flag):
             replace(item, **{flag: True})
-        with pytest.raises(TypeError):
+        assert getattr(item, flag) is False
+        with pytest.raises(TypeError, match=flag):
             AlpacaStreamObservation(
                 "status", 0, 0, STAMP_NS, RECEIVED_NS, "a" * 64, None, "B", **{flag: True}
             )
