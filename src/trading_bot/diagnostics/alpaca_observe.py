@@ -226,6 +226,10 @@ def _predecessor(descriptor: int, digest: str | None, started_at_ns: int) -> Non
         row["termination"]
         in ("frame_limit", "duration_limit", "byte_limit_unretained_frame", "capture_failed")
     )
+    _check(
+        row["termination"] != "byte_limit_unretained_frame"
+        or cast(int, total_bytes) > _MAX_TOTAL_BYTES - MAX_PAGE_BYTES
+    )
     if row["predecessor_result_hash"] is not None:
         _digest(row["predecessor_result_hash"])
     _check(row["segment_gap_before_start"] is True)
@@ -335,8 +339,9 @@ async def capture_observations(
                         '{"action":"subscribe","quotes":["SPY"],"statuses":["SPY"],"lulds":["SPY"]}'
                     )
                     _subscription(await receive())
+                collection_deadline = asyncio.timeout(plan.duration_seconds)
                 try:
-                    async with asyncio.timeout(plan.duration_seconds):
+                    async with collection_deadline:
                         while len(receipt_hashes) < plan.max_frames:
                             body = await receive()
                             received_ns = parse_timestamp_ns(require_utc(clock.now()).isoformat())
@@ -377,6 +382,8 @@ async def capture_observations(
                         else:
                             termination = "frame_limit"
                 except TimeoutError:
+                    if not collection_deadline.expired():
+                        raise
                     termination = "duration_limit"
         except Exception:
             # Never render provider text, headers, credentials or exception repr.
@@ -532,6 +539,10 @@ def audit_observation_capture(
         )
         # Transport close can fail after the final frame, preserving capture_failed.
         _check(result["termination"] != "frame_limit" or len(hashes) == plan.max_frames)
+        _check(
+            result["termination"] != "byte_limit_unretained_frame"
+            or total_bytes > _MAX_TOTAL_BYTES - MAX_PAGE_BYTES
+        )
         return {
             "schema": "alpaca-observation-audit-v1",
             "result_hash": result_hash,
