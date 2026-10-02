@@ -28,6 +28,8 @@ first segment's frames were audited separately. Initial control state remains
 unknown and the restart interval remains a discontinuity. No status/LULD messages
 were observed; that does not establish market eligibility. Locked quotes are
 retained and are excluded from the descriptive uncrossed-spread inventory.
+Both CLI audits were repeated from clean auditor revision
+`06cc8bee261c5e8ecd5c39b56eb009d538344cf8`, which is recorded in the reports.
 
 An additional private diagnostic reverified 1,917 raw frames (804,214 bytes).
 Across the 5,910 uncrossed quote-update events, mean full quoted spread was
@@ -42,13 +44,14 @@ Private result and audit identities, with no raw prices or customer identifiers:
 | Artifact | SHA256 |
 |---|---|
 | Initial terminal result | `d2c573239b49884774a82356d2fbbd39a3c12448a651c047477026ee8ec77ac8` |
-| Initial audit | `96d7c80838b97e878bb46537700e47c2cbfe9d4fb464e64d8ed142b17997e037` |
+| Initial revision-bound audit artifact | `470203e83630c9a94b908eb2e2972d052cefa6006f2b3cb4b0047132daadfff1` |
 | Restart terminal result | `0801135ba4740422576a2e723cffeafa8585e91d71578a0d45cab6b2236bd6de` |
-| Restart audit | `51f2902ca4ea0c8f253dfc3a6ef405059efbaee0813cced9f3fe1a5f2ab91f98` |
+| Restart revision-bound audit artifact | `a24ae3ce3235e177ae4740cf8524c8f30cda72f297b5415008944eb83374b41b` |
 | Descriptive spread diagnostic | `a0618058894b81ca4794cdbb50a0e4e2916772b02eaaaacdc510bc06d259d72a` |
 | Unfiltered bounded broker-history result | `eede4ecd91901ceec95d44d09d51a6013b4a544e9db6b3136e1364f6dd3cdc26` |
-| Empty customer-input calibration result | `280b1096079209953914c7e61b8ac227c3d426b41fdf93beebde01cc649aea4e` |
-| Private history/calibration link | `4f503894af9723e3a64b9514c6288f951b47eeedd7ac4ecc7f533674e8093cf5` |
+| Empty customer-input calibration report identity | `11ac2f8af6e5eb5b1ea6ca34df8330af1cfba8cda02442752bf24ab6414f476b` |
+| Complete calibration file artifact | `280b1096079209953914c7e61b8ac227c3d426b41fdf93beebde01cc649aea4e` |
+| Private history/calibration file link | `4f503894af9723e3a64b9514c6288f951b47eeedd7ac4ecc7f533674e8093cf5` |
 
 Raw frames and reports remain under the operator's private
 `~/.local/share/robinhood-trading-bot/alpaca-observations-20261002` directory,
@@ -122,6 +125,8 @@ and its exact bytes revalidated. Its frames are not recursively reverified by th
 new segment's audit; audit each segment separately. The interval between segments
 remains a discontinuity. A failed or uncertain attempt cannot replay its consumed
 `.observation.attempt` marker. Never remove markers to force a retry.
+Predecessor bytes must have the exact terminal-result schema with bounded hashes,
+times, counts, sizes and unqualified flags; a partial result-shaped object is denied.
 
 The current public stream docs were inaccessible from Cloud (HTTP 403). Field
 syntax was checked against the official [Alpaca Python mappings](https://github.com/alpacahq/alpaca-py/blob/master/alpaca/data/mappings.py)
