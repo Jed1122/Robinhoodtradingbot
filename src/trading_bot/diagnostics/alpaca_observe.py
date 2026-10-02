@@ -268,9 +268,13 @@ async def capture_observations(
                 async def receive() -> bytes:
                     frame = await connection.recv()
                     body = frame.encode() if type(frame) is str else cast(bytes, frame)
+                    _check(type(body) is bytes and 0 < len(body) <= MAX_PAGE_BYTES)
                     # The existing screen requires an object; wrap the exact frame
-                    # only for duplicate-key and credential-echo screening.
-                    _screen_response(b'{"frame":' + body + b"}", credential)
+                    # only for duplicate-key and credential-echo screening. Its
+                    # allowance includes the envelope; the raw limit above does not.
+                    _screen_response(
+                        b'{"frame":' + body + b"}", credential, max_bytes=MAX_PAGE_BYTES + 10
+                    )
                     return body
 
                 async with asyncio.timeout(10):

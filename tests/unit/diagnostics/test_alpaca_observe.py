@@ -160,6 +160,42 @@ def encoded(*rows):
     return json.dumps(rows, separators=(",", ":")).encode()
 
 
+@pytest.mark.parametrize("extra_bytes", [-10, -9, 0, 1])
+def test_raw_frame_limit_excludes_the_screening_envelope(
+    plan, loaded, credential_reads, monkeypatch, extra_bytes
+):
+    row = encoded(quote())
+    body = row + b" " * (MAX_PAGE_BYTES + extra_bytes - len(row))
+    transport(monkeypatch, body)
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    if extra_bytes <= 0:
+        assert summary["termination"] == "frame_limit"
+        assert result["total_raw_bytes"] == len(body)
+        assert summary["counts"] == {"quote": 1, "status": 0, "luld": 0}
+        assert audit(plan, summary)["reference_bytes_reverified"] is True
+    else:
+        assert summary["termination"] == "capture_failed"
+        assert result["total_raw_bytes"] == 0
+        assert not list(plan.output_root.glob("*.raw"))
+
+
+@pytest.mark.parametrize("invalid", ["secret", "duplicate"])
+def test_full_size_frame_still_screens_secrets_and_duplicate_keys(
+    plan, loaded, credential_reads, monkeypatch, invalid
+):
+    if invalid == "secret":
+        row = encoded(status(sm=SECRET)).replace(SECRET.encode(), b"\\u0069" + SECRET[1:].encode())
+    else:
+        row = encoded(quote()).replace(b'"T":"q"', b'"T":"q","T":"q"')
+    body = row + b" " * (MAX_PAGE_BYTES - len(row))
+    transport(monkeypatch, body)
+    summary = capture(plan, loaded)
+    assert summary["termination"] == "capture_failed"
+    assert read_result(plan, summary)["total_raw_bytes"] == 0
+    assert not list(plan.output_root.glob("*.raw"))
+
+
 def transport(monkeypatch, *frames):
     fake = MockConnect([CONNECTED, AUTHENTICATED, SUBSCRIBED, *frames])
     monkeypatch.setattr(observe, "_FixedConnect", fake)

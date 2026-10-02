@@ -448,8 +448,10 @@ def _quiet_http_logging() -> Iterator[None]:
             logger.disabled = disabled
 
 
-def _screen_response(body: bytes, credential: ProbeCredential) -> None:
-    values = _json_object(body, max_bytes=MAX_RESPONSE_BYTES, code="probe_response_invalid")
+def _screen_response(
+    body: bytes, credential: ProbeCredential, *, max_bytes: int = MAX_RESPONSE_BYTES
+) -> None:
+    values = _json_object(body, max_bytes=max_bytes, code="probe_response_invalid")
     forbidden = (credential.key_id, credential.secret_key, "APCA-API-KEY-ID", "APCA-API-SECRET-KEY")
     _check(not any(s.encode() in body for s in forbidden), "probe_secret_echo")
     pending: list[object] = [values]
