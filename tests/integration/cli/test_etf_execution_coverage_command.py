@@ -12,8 +12,9 @@ from trading_bot.market_data.etf_native_archive import EtfNativeQuotePagesArchiv
 
 
 @pytest.mark.parametrize("page_bounded", [False, True])
+@pytest.mark.parametrize("qualify_inputs", [False, True])
 def test_coverage_command_records_missing_sessions_without_simulating_orders(
-    tmp_path, monkeypatch, page_bounded
+    tmp_path, monkeypatch, page_bounded, qualify_inputs
 ):
     bars, calendar = inputs()
     opened = ns(calendar.sessions[-1].opens_at)
@@ -69,7 +70,9 @@ def test_coverage_command_records_missing_sessions_without_simulating_orders(
             hashlib.sha256(body).hexdigest(),
             "--report-dir",
             str(reports),
-        ] + (["--page-bounded-quotes"] if page_bounded else []),
+        ]
+        + (["--page-bounded-quotes"] if page_bounded else [])
+        + (["--qualify-inputs"] if qualify_inputs else []),
     )
     assert result.exit_code == 2, result.output
     row = json.loads(result.output)
@@ -83,6 +86,22 @@ def test_coverage_command_records_missing_sessions_without_simulating_orders(
     assert saved["holdout_evaluated"] is False and saved["total_quote_observations"] == 1
     assert saved["quote_archive_hashes"] == [probe.archive_hash]
     assert "bars" not in saved and "quotes" not in saved
+    if qualify_inputs:
+        assert saved["schema"] == "etf-execution-input-qualification-report-v2"
+        assert saved["retained_native_receipts_validated"] is True
+        assert saved["quote_schema_assessment"]["documented_round_lot_rows"] == 1
+        assert saved["quote_schema_assessment"]["condition_scope_documented_rows"] == 1
+        assert saved["quote_schema_assessment"]["quality_counts"] == {"two_sided_uncrossed": 1}
+        assert saved["fee_reference"]["scope"] == "statutory_reference_only"
+        assert saved["fee_reference"]["epochs"] == 15
+        assert saved["customer_costs_qualified"] is False
+        assert saved["execution_data_qualified"] is False
+        assert "historical_halt_luld_continuity" in saved["missing_qualification_roles"]
+        assert "empirical_fractional_slippage_latency" in saved["missing_qualification_roles"]
+        assert "100.1" not in json.dumps(saved["quote_schema_assessment"])
+    else:
+        assert saved["schema"] == "etf-execution-request-coverage-report-v1"
+        assert "fee_reference" not in saved and "retained_native_receipts_validated" not in saved
 
 
 def test_mismatched_capture_pairs_deny_before_loading_or_writing(tmp_path):

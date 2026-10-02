@@ -507,3 +507,21 @@ Independent data/cost qualification, genuine study acceptance, final holdout,
 production recovery, broker/runtime capability and genuine paper/shadow clocks
 remain external gates. They must not be checked off from this software increment.
 See `docs/etf-native-economics.md` for commands, limits and input contracts.
+
+## Task 2/5 reference qualification checkpoint, 2026-10-02
+
+Native receipt/raw-byte integrity and calendar/bar date alignment were freshly
+reverified. The opt-in `execution-coverage-run --qualify-inputs` v2 assessment
+reports those exact scopes, documented REST quote units/side syntax/quality, and
+the separate SEC/FINRA statutory reference catalog. Legacy records and default
+v1 report identities remain unchanged. Customer fee calibration is not inferred
+from statutory rates or a current published broker schedule.
+
+The present package has zero quoted development sessions out of 1,262. Historical
+controls/LULD and continuity, capacity/fractional terms, action identity and
+customer cost/calibration remain open. Massive's probe denied historical quote
+entitlement; no upgrade or data purchase occurred. Current credit availability
+does not make an incomplete data package useful or authorize new agreements.
+Tasks 2 and 5 evidence acceptance remain incomplete; see
+`docs/etf-execution-cost-qualification-2026-10-02.md` for reproduced facts and
+the next dependency, not a claim of successful economic validation.
