@@ -236,8 +236,10 @@ endpoint and selected account, not other accounts or exports that were not found
 No candidate returns or holdout strategy outcomes were evaluated.
 
 The unfiltered history response and private result were rehashed before producing
-an empty customer-observation input. The offline calibration loader and CLI both
-returned the same `BLOCKED_INPUTS` report hash; the CLI exited 2 as designed.
+an empty customer-observation input. Both assessments remained `BLOCKED_INPUTS`.
+The standalone CLI bound the clean calibrator revision, published the distinct
+report and artifact identities above, and exited with the intentional unqualified
+code 2. Its identity differs from the pure loader's unbound draft.
 There are zero order/fill samples, no measured charged fees, and no slippage or
 order-latency estimate. Empty fee distributions remain missing, not a zero fee
 rate. A separate private link binds the input, history result and calibration
