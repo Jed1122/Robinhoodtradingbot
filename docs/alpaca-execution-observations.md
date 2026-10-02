@@ -116,8 +116,13 @@ Retained empty frames carry no observations: an all-empty segment remains
 is null because no interval was measured; a measured zero is reserved for an
 actual pair of frames with equal local monotonic receipt times.
 An audited `frame_limit` termination requires the full planned receipt count.
+A duration or byte-limit stop requires remaining planned frame capacity. A
+32 MiB byte-limit stop requires more than 31 MiB retained, since any unretained
+frame is at most 1 MiB. Declared observation counts must be integers, not booleans.
 A transport failure while closing can still produce `capture_failed` after the
 last planned frame; retained frames do not turn that failure into success.
+An operational receive or storage timeout remains `capture_failed`; only expiry
+of the actual collection timeout context yields `duration_limit`.
 
 For a deliberate restart, prepare a new plan with
 `--predecessor-result-hash SHA256`. The preceding terminal result must be retained
