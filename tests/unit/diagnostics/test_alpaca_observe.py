@@ -775,6 +775,88 @@ def test_audit_revalidates_readdressed_receipt_chain(
         audit(plan, summary)
 
 
+@pytest.mark.parametrize("frame_count", [1, 3])
+def test_empty_frames_remain_blocked_without_observations(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    frame_count,
+):
+    plan = replace(plan, max_frames=frame_count)
+    transport(monkeypatch, *([b"[]"] * frame_count))
+    summary = capture(plan, loaded)
+    result = read_result(plan, summary)
+    assert len(result["receipt_hashes"]) == frame_count
+    assert result["total_raw_bytes"] == 2 * frame_count
+    report = audit(plan, summary)
+    assert report["counts"] == {"quote": 0, "status": 0, "luld": 0}
+    assert report["status"] == "BLOCKED_INPUTS"
+    assert report["reference_bytes_reverified"] is True
+    assert all(
+        report[name] is False
+        for name in (
+            "source_qualified",
+            "execution_enabled",
+            "evidence_promotable",
+        )
+    )
+
+
+@pytest.mark.parametrize("frame_count", [0, 1])
+def test_missing_interframe_measurement_is_none_with_fewer_than_two_frames(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    frame_count,
+):
+    frames = [encoded(quote(), status(), luld())] if frame_count else []
+    transport(monkeypatch, *frames)
+    summary = capture(plan, loaded)
+    assert len(read_result(plan, summary)["receipt_hashes"]) == frame_count
+    report = audit(plan, summary)
+    assert report["counts"] == dict.fromkeys(("quote", "status", "luld"), frame_count)
+    assert report["maximum_interframe_receipt_gap_ns"] is None
+
+
+@pytest.mark.parametrize("frame_count", [2, 3])
+def test_equal_monotonic_receipts_measure_an_integer_zero_gap(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    frame_count,
+):
+    plan = replace(plan, max_frames=frame_count)
+    transport(monkeypatch, *([encoded(quote())] * frame_count))
+    ticks = iter([10, *([20] * frame_count)])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    assert len(read_result(plan, summary)["receipt_hashes"]) == frame_count
+    report = audit(plan, summary)
+    assert report["status"] == "OBSERVED_UNQUALIFIED"
+    gap = report["maximum_interframe_receipt_gap_ns"]
+    assert type(gap) is int and gap == 0
+
+
+def test_mixed_empty_and_observed_frames_measure_gap_and_report_observations(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+):
+    plan = replace(plan, max_frames=2)
+    transport(monkeypatch, b"[]", encoded(quote()))
+    ticks = iter([10, 20, 30])
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    summary = capture(plan, loaded)
+    report = audit(plan, summary)
+    assert report["counts"] == {"quote": 1, "status": 0, "luld": 0}
+    assert report["status"] == "OBSERVED_UNQUALIFIED"
+    assert report["maximum_interframe_receipt_gap_ns"] == 10
+
+
 def test_receipts_bind_raw_frames_in_order_and_measure_only_receipt_gap(
     plan,
     loaded,
