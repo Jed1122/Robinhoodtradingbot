@@ -20,7 +20,7 @@ from trading_bot.diagnostics.alpaca_observe import (
 )
 from trading_bot.diagnostics.alpaca_probe_io import _publish_private_file, _read_private_file
 from trading_bot.market_data.bundle_store import _open_root, _publish
-from trading_bot.market_data.recording import canonical_json
+from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_cost_calibration import load_etf_cost_observations
 
 app = typer.Typer(no_args_is_help=True)
@@ -28,8 +28,8 @@ _REPOSITORY = Path(__file__).resolve().parents[3]
 
 
 def _revision() -> str:
-    # Capture and offline audit both require a committed checkout; no guessed
-    # source revision or audit identity for dirty source.
+    # Capture, audit, and cost reports require a committed checkout; no guessed
+    # source revision or report identity for dirty source.
     identity = resolve_code_identity(_REPOSITORY, image_digest=None)
     if identity.dirty or identity.git_commit is None:
         raise ValueError("observation_source_uncommitted")
@@ -180,7 +180,11 @@ def calibrate_costs(
 ) -> None:
     """Measure supplied whole-order records offline; missing costs stay missing."""
     try:
+        calibrator_revision = _revision()
         report = load_etf_cost_observations(input_file, input_root, _REPOSITORY)
+        report.pop("report_hash")
+        report["calibrator_code_revision"] = calibrator_revision
+        report["report_hash"] = content_hash(report)
         digest = _publish_report(report_dir, report)
     except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
         _denied()

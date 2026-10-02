@@ -84,7 +84,10 @@ def _empty_observation_archive(root, repository):
     return digest
 
 
-def test_calibration_missing_orders_writes_blocked_private_report(tmp_path):
+def test_calibration_missing_orders_writes_revision_bound_blocked_private_report(
+    tmp_path, auditor_repository
+):
+    repository, revision = auditor_repository
     inputs = tmp_path / "inputs"
     inputs.mkdir(mode=0o700)
     reports = tmp_path / "reports"
@@ -127,14 +130,21 @@ def test_calibration_missing_orders_writes_blocked_private_report(tmp_path):
     unhashed_report = {key: value for key, value in report.items() if key != "report_hash"}
     expected_report_hash = hashlib.sha256(canonical_json(unhashed_report).encode()).hexdigest()
     assert expected_report_hash == report["report_hash"]
+    assert report["calibrator_code_revision"] == revision
+    unbound_report = {
+        key: value for key, value in unhashed_report.items() if key != "calibrator_code_revision"
+    }
+    draft_report_hash = hashlib.sha256(canonical_json(unbound_report).encode()).hexdigest()
+    assert draft_report_hash != report["report_hash"]
     assert report["charged_order_fee_usd"]["total"] is None
     assert report["execution_enabled"] is False
     assert report["economic_verdict"] == "ECONOMIC_NO_GO"
     assert path.stat().st_mode & 0o777 == 0o600
     assert str(inputs) not in result.output
+    assert str(repository) not in result.output
 
 
-def test_untrusted_input_is_sanitized_and_does_not_publish(tmp_path):
+def test_untrusted_input_is_sanitized_and_does_not_publish(tmp_path, auditor_repository):
     inputs = tmp_path / "inputs"
     inputs.mkdir(mode=0o700)
     reports = tmp_path / "reports"
@@ -161,6 +171,45 @@ def test_untrusted_input_is_sanitized_and_does_not_publish(tmp_path):
     }
     assert "synthetic-secret" not in result.output
     assert list(reports.iterdir()) == []
+
+
+@pytest.mark.parametrize("dirty_kind", ["tracked", "relevant_untracked"])
+def test_calibration_dirty_source_denies_before_loading_inputs(
+    tmp_path, monkeypatch, auditor_repository, dirty_kind
+):
+    repository, _ = auditor_repository
+    if dirty_kind == "tracked":
+        (repository / "src/auditor.py").write_text("# Dirty manufactured source.\n")
+    else:
+        (repository / "src/untracked.py").write_text("# Untracked manufactured source.\n")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("dirty calibrator tried to load execution inputs")
+
+    monkeypatch.setattr(etf_observations, "load_etf_cost_observations", forbidden)
+    inputs = tmp_path / "inputs"
+    inputs.mkdir(mode=0o700)
+    reports = tmp_path / "reports"
+    reports.mkdir(mode=0o700)
+    result = CliRunner().invoke(
+        etf_observations.app,
+        [
+            "calibrate-costs",
+            "--input-file",
+            str(inputs / "absent.json"),
+            "--input-root",
+            str(inputs),
+            "--report-dir",
+            str(reports),
+        ],
+    )
+    assert result.exit_code == 1
+    assert json.loads(result.output) == {
+        "status": "denied",
+        "reason": "etf_observation_input_invalid",
+    }
+    assert list(reports.iterdir()) == []
+    assert str(repository) not in result.output
 
 
 def test_audit_missing_archive_denies_without_authentication(tmp_path, monkeypatch):
