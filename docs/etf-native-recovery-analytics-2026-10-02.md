@@ -24,20 +24,28 @@ fractions. It subtracts matched constrained/cash benchmark returns once, using
 exact arithmetic independent of the caller's Decimal context. Both comparisons
 retain20/100-session chronological moving blocks,1000 draws, shared seed and
 the existing95% endpoints; the less favorable lower endpoint is explicit.
-This helper neither executes trades nor constructs benchmarks, allocates costs,
+Inputs are positive-NAV return fractions strictly above -100%; total-loss or
+negative-NAV operating series require a separate reviewed transport. This helper
+neither executes trades nor constructs benchmarks, allocates costs,
 counts independent opportunities or accepts research. Its verdict is always
 `ECONOMIC_NO_GO`; positive statistics cannot create promotion observations.
 
 `PaperPromotionApplication` now reserves the deterministic cycle durably before
 calling the existing paper owner. The private, descriptor-bound journal is
 `paper-cycle-journal-v1` inside its existing private lock directory. A claim
-binds cycle, exact trusted context and start time; completion binds the immutable
-observation hash. No account identifiers or credentials are stored in this journal.
+binds cycle, exact trusted context and start time; an immutable prepared hash
+binds the computed observation before its ledger append; completion binds that
+same observation. No account identifiers or credentials are stored in this journal.
 The source-neutral paper composition remains unavailable from the public CLI.
 
 After interrupted execution, uncertain write, failed observation append, or a
 missing observation following completion, the claimed cycle denies with
-`paper_cycle_recovery_required`. An already committed, matching observation can
+`paper_cycle_recovery_required`. Unresolved effects quarantine the whole owner
+across changed requests, source times and identities. A descriptor-held nonwaiting
+writer lock spans asynchronous execution, preparation, append and completion.
+Recorded nonterminal or unreconciled outcomes remain pending; an ineligible
+observation is not release of economic uncertainty. A committed observation
+matching its prepared hash, claim start, identity and context-fixed flags can
 complete an interrupted journal publication without executing again. Conflicts,
 changed context, corruption, partial bytes, symlinks, hard links, unsafe modes,
 nonempty lock files and overlapping writers deny. There is no timeout reclaim,
@@ -61,8 +69,12 @@ Recovery tests reproduced fresh-process reexecution after failed observation
 append before implementation. They now cover exact restart refusal, simulated
 effect-to-observation SIGKILL, durability failures, exclusive-claim races,
 completion/observation conflicts, legacy committed observations, and unsafe paths.
-The central focused selection passed178 cases; both journal and changed paper
-promotion modules measured100% branch coverage in this selection. The existing
+The initial central focused selection passed178 cases. Integrated review then
+reproduced changed-request quarantine and unbound pending-observation gaps;
+both were repaired RED→GREEN with owner-wide locking/quarantine and durable
+preparation before append. Post-repair focused verification is recorded below.
+The final focused selection passed197 cases; both recovery modules achieved100%
+statement and branch coverage. Scoped Ruff, Mypy and Bandit passed. The existing
 critical90% per-module gate now explicitly includes both. Full exact-revision
 regression and independent integrated review are separately recorded below when
 completed; focused green is not their substitute.

@@ -59,6 +59,73 @@ async def test_observation_failure_blocks_fresh_same_cycle_before_execution(tmp_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["as_of", "portfolio", "identity"])
+async def test_unknown_effects_quarantine_changed_cycle_requests(tmp_path, change):
+    from datetime import timedelta
+    from decimal import Decimal
+
+    tmp_path.chmod(0o700)
+    first, _ = application(tmp_path, FailingStore())
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+    with pytest.raises(OSError):
+        await first.run_cycle(cycle_request)
+    context = promotion_context()
+    if change == "as_of":
+        changed = replace(cycle_request, as_of=cycle_request.as_of + timedelta(seconds=1))
+    elif change == "portfolio":
+        changed = replace(
+            cycle_request, portfolio=replace(cycle_request.portfolio, cash=Decimal(99))
+        )
+    else:
+        changed = replace(cycle_request, as_of=cycle_request.as_of + timedelta(seconds=1))
+        context = replace(
+            context, identity=replace(context.identity, provider_evidence_hash="e" * 64)
+        )
+    restarted, service = application(tmp_path, PromotionStore(), context=context)
+    with pytest.raises(RuntimeError, match="paper_cycle_recovery_required"):
+        await restarted.run_cycle(changed)
+    assert service.execution.calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("incomplete", ["outcome", "reconciliation"])
+async def test_recorded_but_unresolved_outcome_keeps_owner_quarantined(tmp_path, incomplete):
+    from datetime import timedelta
+
+    from trading_bot.domain import OrderState
+
+    tmp_path.chmod(0o700)
+    store = PromotionStore()
+    context = promotion_context()
+    if incomplete == "reconciliation":
+        context = replace(context, reconciliation_clean=False)
+    app, _ = application(tmp_path, store, context=context)
+    if incomplete == "outcome":
+        original = app._paper.run_cycle
+
+        async def pending(cycle_request):
+            cycle = await original(cycle_request)
+            result = replace(
+                cycle.result,
+                order_outcomes=tuple(
+                    replace(outcome, state=OrderState.SUBMITTED)
+                    for outcome in cycle.result.order_outcomes
+                ),
+            )
+            return replace(cycle, result=result, research_cycle_eligible=False)
+
+        app._paper.run_cycle = pending
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+    recorded = await app.run_cycle(cycle_request)
+    assert not recorded.observation.eligible
+    restarted, service = application(tmp_path, store)
+    changed = replace(cycle_request, as_of=cycle_request.as_of + timedelta(seconds=1))
+    with pytest.raises(RuntimeError, match="paper_cycle_recovery_required"):
+        await restarted.run_cycle(changed)
+    assert service.execution.calls == 0
+
+
+@pytest.mark.asyncio
 async def test_missing_durable_observation_after_completion_is_not_permission_to_repeat(tmp_path):
     tmp_path.chmod(0o700)
     store = PromotionStore()
@@ -83,7 +150,7 @@ async def test_failure_after_observation_append_recovers_without_execution(tmp_p
         raise RuntimeError("injected completion publication failure")
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(first._journal, "complete", fail_completion)
+        scoped.setattr(type(first._journal), "complete", fail_completion)
         with pytest.raises(RuntimeError, match="injected completion"):
             await first.run_cycle(cycle_request)
     assert service.execution.calls == 1 and len(store.observations) == 1
@@ -91,6 +158,114 @@ async def test_failure_after_observation_append_recovers_without_execution(tmp_p
     recovered = await restarted.run_cycle(cycle_request)
     assert recovered.observation == store.observations[0] and not recovered.executed
     assert new_service.execution.calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed_field", ["fixture_data", "data_hash"])
+async def test_pending_observation_cannot_be_replaced_by_another_self_valid_body(
+    tmp_path, monkeypatch, changed_field
+):
+    tmp_path.chmod(0o700)
+    store = PromotionStore()
+    context = replace(promotion_context(), fixture_data=True)
+    app, _ = application(tmp_path, store, context=context)
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+
+    def fail_completion(*args):
+        raise RuntimeError("injected completion failure")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(type(app._journal), "complete", fail_completion)
+        with pytest.raises(RuntimeError):
+            await app.run_cycle(cycle_request)
+    observation = store.observations[0]
+    args = {
+        field.name: getattr(observation, field.name)
+        for field in fields(observation)
+        if field.name not in ("eligible", "reason_codes", "evidence_hash")
+    }
+    args[changed_field] = False if changed_field == "fixture_data" else "e" * 64
+    store.observations[0] = PromotionObservation.create(**args)
+    restarted, service = application(tmp_path, store, context=context)
+    with pytest.raises(RuntimeError, match="paper_cycle_journal_invalid"):
+        await restarted.run_cycle(cycle_request)
+    assert service.execution.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_prepared_hash_failure_never_appends_an_observation_or_retries(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    tmp_path.chmod(0o700)
+    store = PromotionStore()
+    app, service = application(tmp_path, store)
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+
+    def fail(*args):
+        raise RuntimeError("injected prepared hash persistence failure")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(type(app._journal), "prepare_observation", fail)
+        with pytest.raises(RuntimeError, match="injected prepared"):
+            await app.run_cycle(cycle_request)
+    assert service.execution.calls == 1 and store.observations == []
+    restarted, new_service = application(tmp_path, store)
+    with pytest.raises(RuntimeError, match="paper_cycle_recovery_required"):
+        await restarted.run_cycle(
+            replace(cycle_request, as_of=cycle_request.as_of + timedelta(seconds=1))
+        )
+    assert new_service.execution.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_writer_lock_spans_async_execution_and_blocks_different_requests(tmp_path):
+    import asyncio
+    from datetime import timedelta
+
+    tmp_path.chmod(0o700)
+    store = PromotionStore()
+    first, service = application(tmp_path, store)
+    original = service.run_cycle
+    entered, released = asyncio.Event(), asyncio.Event()
+
+    async def wait(cycle_request):
+        entered.set()
+        await released.wait()
+        return await original(cycle_request)
+
+    service.run_cycle = wait
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+    task = asyncio.create_task(first.run_cycle(cycle_request))
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        other, other_service = application(tmp_path, store)
+        changed = replace(cycle_request, as_of=cycle_request.as_of + timedelta(seconds=1))
+        with pytest.raises(RuntimeError, match="paper_cycle_writer_busy"):
+            await other.run_cycle(changed)
+        assert other_service.execution.calls == 0
+    finally:
+        released.set()
+        await asyncio.wait_for(task, 5)
+    assert (await other.run_cycle(changed)).executed
+    assert other_service.execution.calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["account", "configuration"])
+async def test_unknown_request_identity_denies_before_simulated_effects(tmp_path, field):
+    tmp_path.chmod(0o700)
+    app, service = application(tmp_path, PromotionStore())
+    cycle_request = replace(request(), universe=(InstrumentId("TEST"),))
+    if field == "account":
+        cycle_request = replace(
+            cycle_request, portfolio=replace(cycle_request.portfolio, account_id="unknown-account")
+        )
+    else:
+        cycle_request = replace(cycle_request, strategy_context_config_hash="e" * 64)
+    with pytest.raises(RuntimeError, match="paper_cycle_journal_invalid"):
+        await app.run_cycle(cycle_request)
+    assert service.execution.calls == 0
+    assert not list((tmp_path / "paper-cycle-journal-v1").glob("*.claim.json"))
 
 
 @pytest.mark.asyncio
@@ -264,7 +439,9 @@ async def test_legacy_observation_still_blocks_without_creating_new_claim(tmp_pa
     app, service = application(tmp_path, store)
     result = await app.run_cycle(cycle_request)
     assert not result.executed and service.execution.calls == 0
-    assert list((tmp_path / "paper-cycle-journal-v1").iterdir()) == []
+    assert {path.name for path in (tmp_path / "paper-cycle-journal-v1").iterdir()} == {
+        "writer.lock"
+    }
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,9 @@ execute again. Local immutable files complement, not replace, the observation
 ledger. Both must be retained together by any future operational composition.
 """
 
+import fcntl
 import os
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -29,6 +31,10 @@ from trading_bot.market_data.recording import canonical_json, content_hash
 _NAMESPACE = "paper-cycle-journal-v1"
 _MAX_BYTES = 4096
 _LIMITS = BundleLimits(_MAX_BYTES, _MAX_BYTES, _MAX_BYTES, 32, 8)
+_CLAIM_NAME = re.compile(r"([0-9a-f]{64})\.claim\.json")
+_COMPLETE_NAME = re.compile(r"([0-9a-f]{64})\.complete\.json")
+_PREPARED_NAME = re.compile(r"([0-9a-f]{64})\.prepared\.json")
+_TEMP_NAME = re.compile(r"\.tmp-[0-9a-f]{32}")
 
 
 class PaperCycleJournalError(RuntimeError):
@@ -39,6 +45,11 @@ class PaperCycleJournalError(RuntimeError):
 class PaperCycleRecoveryRequired(RuntimeError):
     def __init__(self) -> None:
         super().__init__("paper_cycle_recovery_required")
+
+
+class PaperCycleWriterBusy(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("paper_cycle_writer_busy")
 
 
 def _check(ok: bool) -> None:
@@ -89,20 +100,95 @@ class PaperCycleJournal:
     def __init__(self, root: Path, *, repository_root: Path) -> None:
         self._root = root
         self._repository = repository_root
+        self._active_descriptor: int | None = None
 
     @contextmanager
-    def _directory(self) -> Iterator[int]:
-        parent = child = -1
+    def _directory(self, *, normalize_body: bool = True) -> Iterator[int]:
+        parent = child = lock = -1
+        yielded = False
         try:
+            if self._active_descriptor is not None:
+                _check(self._active_descriptor >= 0)
+                yielded = True
+                yield self._active_descriptor
+                return
             parent = _open_root(self._root, self._repository)
             child = _subdirectory(parent, _NAMESPACE, create=True)
+            lock = os.open(
+                "writer.lock",
+                os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                0o600,
+                dir_fd=child,
+            )
+            _private(lock, directory=False)
+            metadata = os.fstat(lock)
+            _check(metadata.st_nlink == 1 and metadata.st_size == 0)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise PaperCycleWriterBusy() from None
+            yielded = True
             yield child
         except (ValueError, TypeError, OSError, AttributeError, RecursionError):
+            if yielded and not normalize_body:
+                raise
             raise PaperCycleJournalError() from None
         finally:
-            for descriptor in (child, parent):
+            for descriptor in (lock, child, parent):
                 if descriptor >= 0:
                     os.close(descriptor)
+
+    @contextmanager
+    def owner(self) -> Iterator["PaperCycleJournal"]:
+        """Hold one directory/owner lease across execution and durable observation.
+
+        This is nonwaiting local exclusion, not a distributed or expiring lease.
+        The yielded descriptor-bound handle is invalid after context exit.
+        """
+        with self._directory(normalize_body=False) as directory:
+            owned = PaperCycleJournal(self._root, repository_root=self._repository)
+            owned._active_descriptor = directory
+            try:
+                yield owned
+            finally:
+                owned._active_descriptor = -1
+
+    @staticmethod
+    def _pending(directory: int) -> bool:
+        names = set(os.listdir(directory))
+        _check(len(names) <= 30001)
+        claims: list[str] = []
+        completions: set[str] = set()
+        prepared: set[str] = set()
+        for name in names - {"writer.lock"}:
+            claim = _CLAIM_NAME.fullmatch(name)
+            completed = _COMPLETE_NAME.fullmatch(name)
+            preparation = _PREPARED_NAME.fullmatch(name)
+            if claim is not None:
+                claims.append(claim[1])
+            elif completed is not None:
+                completions.add(completed[1])
+            elif preparation is not None:
+                prepared.add(preparation[1])
+            elif _TEMP_NAME.fullmatch(name):
+                _read_record(directory, name)  # Never adopt interrupted staging bytes.
+            else:
+                raise PaperCycleJournalError()
+        _check(completions <= prepared <= set(claims))
+        pending = False
+        for cycle_id in claims:
+            body = _read_record(directory, cycle_id + ".claim.json")
+            row = _mapping(
+                _json(body, max_bytes=_MAX_BYTES, limits=_LIMITS),
+                {"schema", "claim", "execution_enabled", "evidence_promotable"},
+            )
+            fields = _mapping(row["claim"], {"cycle_id", "context_hash", "started_at"})
+            context = fields["context_hash"]
+            if type(context) is not str:
+                raise PaperCycleJournalError()
+            _, completed_digest = PaperCycleJournal._state(directory, cycle_id, context)
+            pending = pending or completed_digest is None
+        return pending
 
     @staticmethod
     def _state(
@@ -118,8 +204,12 @@ class PaperCycleJournal:
             completed_body = _read_record(directory, cycle_id + ".complete.json")
         except FileNotFoundError:
             completed_body = None
+        try:
+            prepared_body = _read_record(directory, cycle_id + ".prepared.json")
+        except FileNotFoundError:
+            prepared_body = None
         if claim_body is None:
-            _check(completed_body is None)
+            _check(completed_body is None and prepared_body is None)
             return None, None
         row = _mapping(
             _json(claim_body, max_bytes=_MAX_BYTES, limits=_LIMITS),
@@ -128,6 +218,7 @@ class PaperCycleJournal:
         fields = _mapping(row["claim"], {"cycle_id", "context_hash", "started_at"})
         claim = PaperCycleClaim(cycle_id, context_hash, _time(fields["started_at"]))
         _check(claim_body == _encoded_claim(claim))
+        expected = _prepared_digest(claim, prepared_body)
         if completed_body is None:
             return claim, None
         completed = _mapping(
@@ -138,7 +229,7 @@ class PaperCycleJournal:
         if type(digest) is not str:
             raise PaperCycleJournalError()
         _require_sha256_hex(digest, "paper observation")
-        _check(completed_body == _encoded_completion(claim, digest))
+        _check(expected == digest and completed_body == _encoded_completion(claim, digest))
         return claim, digest
 
     def inspect(
@@ -155,6 +246,8 @@ class PaperCycleJournal:
             claim = PaperCycleClaim(cycle_id, context_hash, started_at)
             existing, _ = self._state(directory, cycle_id, context_hash)
             if existing is not None:
+                raise PaperCycleRecoveryRequired()
+            if self._pending(directory):
                 raise PaperCycleRecoveryRequired()
             # O_EXCL claims before writing; incomplete bytes are an unknown
             # reservation, never an unclaimed cycle. No effect precedes fsync.
@@ -188,11 +281,39 @@ class PaperCycleJournal:
             _require_sha256_hex(observation_hash, "paper observation")
             stored, prior_hash = self._state(directory, claim.cycle_id, claim.context_hash)
             _check(stored == claim and prior_hash in (None, observation_hash))
+            prepared = _read_record(directory, claim.cycle_id + ".prepared.json")
+            _check(_prepared_digest(claim, prepared) == observation_hash)
             _publish(
                 directory,
                 claim.cycle_id + ".complete.json",
                 _encoded_completion(claim, observation_hash),
             )
+
+    def prepare_observation(self, claim: PaperCycleClaim, observation_hash: str) -> None:
+        """Bind computed evidence before ledger append; never release a reservation."""
+        with self._directory() as directory:
+            _check(type(claim) is PaperCycleClaim)
+            replace(claim)
+            _require_sha256_hex(observation_hash, "paper observation")
+            stored, completed = self._state(directory, claim.cycle_id, claim.context_hash)
+            _check(stored == claim and completed in (None, observation_hash))
+            _publish(
+                directory,
+                claim.cycle_id + ".prepared.json",
+                _encoded_prepared(claim, observation_hash),
+            )
+
+    def expected_observation(self, claim: PaperCycleClaim) -> str | None:
+        with self._directory() as directory:
+            _check(type(claim) is PaperCycleClaim)
+            replace(claim)
+            stored, _ = self._state(directory, claim.cycle_id, claim.context_hash)
+            _check(stored == claim)
+            try:
+                body = _read_record(directory, claim.cycle_id + ".prepared.json")
+            except FileNotFoundError:
+                body = None
+            return _prepared_digest(claim, body)
 
 
 def _encoded_completion(claim: PaperCycleClaim, observation_hash: str) -> bytes:
@@ -203,3 +324,28 @@ def _encoded_completion(claim: PaperCycleClaim, observation_hash: str) -> bytes:
             "observation_hash": observation_hash,
         }
     ).encode()
+
+
+def _encoded_prepared(claim: PaperCycleClaim, observation_hash: str) -> bytes:
+    return canonical_json(
+        {
+            "schema": "paper-cycle-prepared-v1",
+            "claim_hash": claim.claim_hash,
+            "observation_hash": observation_hash,
+        }
+    ).encode()
+
+
+def _prepared_digest(claim: PaperCycleClaim, body: bytes | None) -> str | None:
+    if body is None:
+        return None
+    row = _mapping(
+        _json(body, max_bytes=_MAX_BYTES, limits=_LIMITS),
+        {"schema", "claim_hash", "observation_hash"},
+    )
+    digest = row["observation_hash"]
+    if type(digest) is not str:
+        raise PaperCycleJournalError()
+    _require_sha256_hex(digest, "paper observation")
+    _check(body == _encoded_prepared(claim, digest))
+    return digest

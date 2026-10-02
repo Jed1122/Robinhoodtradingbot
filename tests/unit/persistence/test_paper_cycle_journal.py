@@ -29,6 +29,7 @@ def test_pending_and_completed_claims_reconstruct_with_exact_hashes(tmp_path):
     assert first.inspect(claim.cycle_id, claim.context_hash) == (claim, None)
     with pytest.raises(PaperCycleRecoveryRequired):
         first.begin(claim.cycle_id, claim.context_hash, NOW)
+    first.prepare_observation(claim, "c" * 64)
     first.complete(claim, "c" * 64)
     first.complete(claim, "c" * 64)
     fresh = journal(tmp_path)
@@ -51,7 +52,9 @@ def test_invalid_claims_fail_before_persistence(tmp_path, field, value):
     args[field] = value
     with pytest.raises((ValueError, PaperCycleJournalError)):
         store.begin(**args)
-    assert list((tmp_path / "paper-cycle-journal-v1").iterdir()) == []
+    assert {path.name for path in (tmp_path / "paper-cycle-journal-v1").iterdir()} == {
+        "writer.lock"
+    }
 
 
 @pytest.mark.parametrize(
@@ -171,6 +174,7 @@ def test_completion_digest_wrong_type_is_corruption_not_observation_authority(tm
 
     store = journal(tmp_path)
     claim = store.begin("a" * 64, "b" * 64, NOW)
+    store.prepare_observation(claim, "c" * 64)
     store.complete(claim, "c" * 64)
     path = tmp_path / "paper-cycle-journal-v1" / ("a" * 64 + ".complete.json")
     body = json.loads(path.read_text())
@@ -178,3 +182,79 @@ def test_completion_digest_wrong_type_is_corruption_not_observation_authority(tm
     path.write_text(json.dumps(body))
     with pytest.raises(PaperCycleJournalError):
         store.inspect("a" * 64, "b" * 64)
+
+
+def test_owner_exclusion_and_handle_lifetime_are_fail_closed(tmp_path):
+    from trading_bot.persistence.paper_cycle_journal import PaperCycleWriterBusy
+
+    first, other = journal(tmp_path), journal(tmp_path)
+    with first.owner() as owner:
+        assert owner.inspect("a" * 64, "b" * 64) == (None, None)
+        with pytest.raises(PaperCycleWriterBusy):
+            other.begin("d" * 64, "e" * 64, NOW)
+    with pytest.raises(PaperCycleJournalError):
+        owner.inspect("a" * 64, "b" * 64)
+
+
+def test_completed_old_context_does_not_block_a_distinct_safe_cycle(tmp_path):
+    store = journal(tmp_path)
+    old = store.begin("a" * 64, "b" * 64, NOW)
+    store.prepare_observation(old, "c" * 64)
+    store.complete(old, "c" * 64)
+    new = store.begin("d" * 64, "e" * 64, NOW)
+    assert new.context_hash == "e" * 64
+    assert store.inspect(old.cycle_id, old.context_hash) == (old, "c" * 64)
+
+
+def test_prepared_observation_cannot_release_or_change_a_pending_claim(tmp_path):
+    store = journal(tmp_path)
+    claim = store.begin("a" * 64, "b" * 64, NOW)
+    assert store.expected_observation(claim) is None
+    store.prepare_observation(claim, "c" * 64)
+    store.prepare_observation(claim, "c" * 64)
+    assert store.expected_observation(claim) == "c" * 64
+    with pytest.raises(PaperCycleJournalError):
+        store.prepare_observation(claim, "d" * 64)
+    with pytest.raises(PaperCycleRecoveryRequired):
+        store.begin("e" * 64, "f" * 64, NOW)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["unexpected", "prepared_without_claim", "corrupt_context", "corrupt_prepared", "staging"],
+)
+def test_owner_scan_validates_every_retained_claim_not_only_requested_key(tmp_path, kind):
+    import json
+
+    store = journal(tmp_path)
+    old = store.begin("a" * 64, "b" * 64, NOW)
+    store.prepare_observation(old, "c" * 64)
+    store.complete(old, "c" * 64)
+    directory = tmp_path / "paper-cycle-journal-v1"
+    if kind == "unexpected":
+        path = directory / "unexpected.txt"
+        path.write_text("untrusted")
+        path.chmod(0o600)
+    elif kind == "prepared_without_claim":
+        path = directory / ("d" * 64 + ".prepared.json")
+        path.write_text("{}")
+        path.chmod(0o600)
+    elif kind == "corrupt_context":
+        path = directory / ("a" * 64 + ".claim.json")
+        row = json.loads(path.read_text())
+        row["claim"]["context_hash"] = True
+        path.write_text(json.dumps(row))
+    elif kind == "corrupt_prepared":
+        path = directory / ("a" * 64 + ".prepared.json")
+        row = json.loads(path.read_text())
+        row["observation_hash"] = True
+        path.write_text(json.dumps(row))
+    else:
+        path = directory / (".tmp-" + "d" * 32)
+        path.write_text("uncommitted staging")
+        path.chmod(0o600)
+    if kind == "staging":
+        assert store.begin("e" * 64, "f" * 64, NOW).cycle_id == "e" * 64
+    else:
+        with pytest.raises(PaperCycleJournalError):
+            store.begin("e" * 64, "f" * 64, NOW)
