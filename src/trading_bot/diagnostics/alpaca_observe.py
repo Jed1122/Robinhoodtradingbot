@@ -535,8 +535,10 @@ def audit_observation_capture(
                     )
                     quality[bucket] += 1
             previous, last_utc, last_mono = digest, received_ns, mono_ns
+        declared_counts = _mapping(result["counts"], {"quote", "status", "luld"})
+        _check(all(type(value) is int and value >= 0 for value in declared_counts.values()))
         _check(
-            result["counts"] == counts
+            declared_counts == counts
             and type(result["total_raw_bytes"]) is int
             and result["total_raw_bytes"] == total_bytes
         )
