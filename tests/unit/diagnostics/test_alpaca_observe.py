@@ -654,6 +654,41 @@ def test_restart_rejects_forged_predecessor_byte_limit_before_new_capture(
     assert not (plan.output_root / (next_plan.plan_hash + ".observation.attempt")).exists()
 
 
+@pytest.mark.parametrize(
+    "termination,receipt_count",
+    [
+        ("frame_limit", 0),
+        ("duration_limit", 10000),
+        ("byte_limit_unretained_frame", 10000),
+    ],
+)
+def test_restart_rejects_predecessor_stop_counts_impossible_for_any_plan(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    termination,
+    receipt_count,
+):
+    transport(monkeypatch, encoded(quote()))
+    first = capture(plan, loaded)
+    assert audit(plan, first)["termination"] == "frame_limit"
+    result = read_result(plan, first)
+    result["termination"] = termination
+    result["receipt_hashes"] = [f"{index:064x}" for index in range(receipt_count)]
+    result["total_raw_bytes"] = observe._MAX_TOTAL_BYTES if receipt_count else 0
+    result["counts"] = {"quote": 0, "status": 0, "luld": 0}
+    predecessor_hash = publish(plan.output_root, result, ".observation-result.json")
+    path = plan.output_root / (predecessor_hash + ".observation-result.json")
+    assert path.stat().st_size <= observe.MAX_PAGE_BYTES
+    next_plan = replace(plan, predecessor_result_hash=predecessor_hash)
+    fake = transport(monkeypatch, encoded(status()))
+    with pytest.raises(observe.AlpacaObservationError):
+        capture(next_plan, loaded)
+    assert len(credential_reads) == 1 and not fake.calls
+    assert not (plan.output_root / (next_plan.plan_hash + ".observation.attempt")).exists()
+
+
 def test_byte_limit_preserves_real_overflow_prefix_above_required_threshold(
     plan,
     loaded,
@@ -911,6 +946,33 @@ def test_audit_revalidates_readdressed_result_semantics(
     summary = capture(plan, loaded)
     result = read_result(plan, summary)
     result[field] = value
+    summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
+    with pytest.raises(observe.AlpacaObservationError):
+        audit(plan, summary)
+
+
+@pytest.mark.parametrize(
+    "body,declared_count",
+    [
+        (b"[]", False),
+        (encoded(quote()), True),
+    ],
+    ids=["false-is-not-zero", "true-is-not-one"],
+)
+def test_audit_rejects_boolean_counts_equal_to_reparsed_integer_counts(
+    plan,
+    loaded,
+    credential_reads,
+    monkeypatch,
+    body,
+    declared_count,
+):
+    transport(monkeypatch, body)
+    summary = capture(plan, loaded)
+    original_count = audit(plan, summary)["counts"]["quote"]
+    assert type(original_count) is int and original_count == int(declared_count)
+    result = read_result(plan, summary)
+    result["counts"]["quote"] = declared_count
     summary["result_hash"] = publish(plan.output_root, result, ".observation-result.json")
     with pytest.raises(observe.AlpacaObservationError):
         audit(plan, summary)
