@@ -226,6 +226,13 @@ def _predecessor(descriptor: int, digest: str | None, started_at_ns: int) -> Non
         row["termination"]
         in ("frame_limit", "duration_limit", "byte_limit_unretained_frame", "capture_failed")
     )
+    # Prior plan/frame bytes are not recursively audited, but every supported
+    # plan has 1 <= max_frames <= 10000, which rules out these terminal shapes.
+    _check(row["termination"] != "frame_limit" or bool(hashes))
+    _check(
+        row["termination"] not in ("duration_limit", "byte_limit_unretained_frame")
+        or len(hashes) < 10000
+    )
     _check(
         row["termination"] != "byte_limit_unretained_frame"
         or cast(int, total_bytes) > _MAX_TOTAL_BYTES - MAX_PAGE_BYTES
