@@ -179,17 +179,17 @@ def audit(
 def stream_prefix(
     input_root: Annotated[Path, typer.Option()],
     result_hash: Annotated[str, typer.Option()],
-    received_at_ns: Annotated[int, typer.Option()],
-    received_monotonic_ns: Annotated[int, typer.Option()],
+    received_at_ns: Annotated[str, typer.Option()],
+    received_monotonic_ns: Annotated[str, typer.Option()],
     report_dir: Annotated[Path, typer.Option()],
 ) -> None:
     """Report a private dual-receipt-clock prefix; never infer market eligibility."""
     try:
         auditor_revision = _revision()
+        utc_ns = _receipt_cutoff(received_at_ns)
+        mono_ns = _receipt_cutoff(received_monotonic_ns)
         capture = read_observation_capture(input_root, result_hash, _REPOSITORY)
-        frames = capture.visible_frames(
-            received_at_ns=received_at_ns, received_monotonic_ns=received_monotonic_ns
-        )
+        frames = capture.visible_frames(received_at_ns=utc_ns, received_monotonic_ns=mono_ns)
         counts = {"quote": 0, "status": 0, "luld": 0}
         observation_hashes = []
         for frame in frames:
@@ -204,8 +204,8 @@ def stream_prefix(
             "plan_hash": capture.plan_hash,
             "captured_code_revision": capture.code_revision,
             "captured_config_hash": capture.config_hash,
-            "received_at_ns": received_at_ns,
-            "received_monotonic_ns": received_monotonic_ns,
+            "received_at_ns": utc_ns,
+            "received_monotonic_ns": mono_ns,
             "frame_count": len(frames),
             "receipt_hashes": tuple(frame.receipt_sha256 for frame in frames),
             "observation_hashes": tuple(observation_hashes),
@@ -235,6 +235,18 @@ def stream_prefix(
         )
     )
     raise typer.Exit(2)
+
+
+def _receipt_cutoff(value: str) -> int:
+    # Parse inside the guarded command, not Typer's value-echoing coercion.
+    if not (
+        type(value) is str and 1 <= len(value) <= 19 and all(char in "0123456789" for char in value)
+    ):
+        raise ValueError("observation_clock_invalid")
+    result = int(value)
+    if result > 2**63 - 1:
+        raise ValueError("observation_clock_invalid")
+    return result
 
 
 @app.command("calibrate-costs")

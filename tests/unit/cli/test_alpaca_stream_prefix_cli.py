@@ -210,3 +210,16 @@ def test_dirty_prefix_revision_gate_precedes_capture_read(archive, monkeypatch):
     result = invoke(archive)
     assert result.exit_code == 1
     assert json.loads(result.stdout)["reason"] == "etf_observation_input_invalid"
+
+
+@pytest.mark.parametrize("invalid", ["SYNTHETIC_PRIVATE_MARKER", "1e3", "\u0661", "9" * 100])
+@pytest.mark.parametrize("clock", ["utc", "mono"])
+def test_malformed_clock_argument_is_sanitized_before_private_read(archive, invalid, clock):
+    result = invoke(archive, **{clock: invalid})
+    assert result.exit_code == 1
+    assert json.loads(result.stdout) == {
+        "status": "denied",
+        "reason": "etf_observation_input_invalid",
+    }
+    assert invalid not in result.output
+    assert not list(archive[3].iterdir())
