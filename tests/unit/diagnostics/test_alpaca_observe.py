@@ -6,6 +6,7 @@ import json
 import ssl
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,193 @@ CONNECTED = b'[{"T":"success","msg":"connected"}]'
 AUTHENTICATED = b'[{"T":"success","msg":"authenticated"}]'
 SUBSCRIBED = b'[{"T":"subscription","quotes":["SPY"],"statuses":["SPY"],"lulds":["SPY"]}]'
 ORIGINAL_CONNECT = observe._FixedConnect
+
+
+def read_capture(plan, summary):
+    return observe.read_observation_capture(
+        plan.output_root, summary["result_hash"], observe._REPOSITORY
+    )
+
+
+def test_typed_reader_preserves_payloads_and_receipt_clocks_offline(
+    plan, loaded, credential_reads, monkeypatch
+):
+    ticks = iter((10, 20, 30, 40))
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    body = encoded(quote(), status(), luld())
+    transport(monkeypatch, body)
+    summary = capture(plan, loaded)
+    expected_audit = audit(plan, summary)
+    before = {p.name: p.read_bytes() for p in plan.output_root.iterdir()}
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("offline reader invoked credentials or transport")
+
+    monkeypatch.setattr(observe, "read_probe_credential", forbidden)
+    monkeypatch.setattr(observe, "_FixedConnect", forbidden)
+    result = read_capture(plan, summary)
+    assert result.result_hash == summary["result_hash"]
+    assert result.plan_hash == plan.plan_hash
+    assert result.code_revision == "a" * 40
+    assert result.config_hash == loaded.config_hash
+    assert result.collection_window == (20, 40)
+    assert result.termination == "frame_limit"
+    frame = result.frames[0]
+    assert frame.frame_index == 0
+    assert frame.receipt_sha256 == read_result(plan, summary)["receipt_hashes"][0]
+    assert frame.body_sha256 == hashlib.sha256(body).hexdigest()
+    assert frame.received_at_ns == 1790863200000000000
+    assert frame.received_monotonic_ns == 30
+    q, s, band = frame.observations
+    assert [o.kind for o in frame.observations] == ["quote", "status", "luld"]
+    assert [o.row_index for o in frame.observations] == [0, 1, 2]
+    assert q.timestamp_ns == 1790863199123456789
+    assert q.quote.bid == Decimal("500") and q.quote.ask == Decimal("501")
+    assert (s.status_code, s.status_message, s.reason_code, s.reason_message) == (
+        "H",
+        "Invented halt",
+        "T1",
+        "Invented reason",
+    )
+    assert (band.upper_band, band.lower_band, band.indicator) == (
+        Decimal("510"),
+        Decimal("490"),
+        "B",
+    )
+    assert not result.source_qualified and not result.execution_enabled
+    assert not result.evidence_promotable
+    assert "Invented" not in repr(result) + repr(frame)
+    assert audit(plan, summary) == expected_audit
+    assert {p.name: p.read_bytes() for p in plan.output_root.iterdir()} == before
+
+
+def test_reader_visibility_requires_both_receipt_clocks_not_provider_time(
+    plan, loaded, credential_reads, monkeypatch
+):
+    plan = replace(plan, max_frames=3)
+    ticks = iter((10, 20, 30, 50, 70, 80))
+    monkeypatch.setattr(observe.time, "monotonic_ns", lambda: next(ticks))
+    transport(monkeypatch, encoded(quote()), b"[]", encoded(quote(t="2026-10-01T13:00:00Z")))
+    summary = capture(
+        plan,
+        loaded,
+        clock=SequenceClock(
+            NOW,
+            NOW,
+            NOW + timedelta(seconds=1),
+            NOW + timedelta(seconds=2),
+            NOW + timedelta(seconds=3),
+        ),
+    )
+    result = read_capture(plan, summary)
+    assert [f.received_monotonic_ns for f in result.frames] == [30, 50, 70]
+    assert result.frames[1].observations == ()
+    assert result.frames[2].observations[0].timestamp_ns == 1790859600000000000
+    assert (
+        result.visible_frames(received_at_ns=1790863201000000000, received_monotonic_ns=80)
+        == result.frames[:2]
+    )
+    assert (
+        result.visible_frames(received_at_ns=1790863203000000000, received_monotonic_ns=49)
+        == result.frames[:1]
+    )
+    assert result.visible_frames(received_at_ns=0, received_monotonic_ns=80) == ()
+
+
+@pytest.mark.parametrize("invalid", [True, -1, 2**63, "30", None])
+@pytest.mark.parametrize("clock", ["received_at_ns", "received_monotonic_ns"])
+def test_reader_prefix_rejects_invalid_cutoffs(
+    plan, loaded, credential_reads, monkeypatch, invalid, clock
+):
+    transport(monkeypatch, encoded(quote()))
+    result = read_capture(plan, capture(plan, loaded))
+    cutoffs = {"received_at_ns": 2**63 - 1, "received_monotonic_ns": 2**63 - 1}
+    cutoffs[clock] = invalid
+    with pytest.raises(ValueError, match=r"^alpaca_observation_capture_invalid$"):
+        result.visible_frames(**cutoffs)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("source_qualified", True),
+        ("execution_enabled", True),
+        ("evidence_promotable", True),
+        ("frames", []),
+        ("collection_window", (True, 100)),
+        ("started_at_ns", -1),
+    ],
+)
+def test_reader_prefix_revalidates_forged_capture(
+    plan, loaded, credential_reads, monkeypatch, field, value
+):
+    transport(monkeypatch, encoded(quote()))
+    result = read_capture(plan, capture(plan, loaded))
+    object.__setattr__(result, field, value)
+    with pytest.raises(ValueError, match=r"^alpaca_observation_capture_invalid$"):
+        result.visible_frames(received_at_ns=2**63 - 1, received_monotonic_ns=2**63 - 1)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("frame_index", 1),
+        ("received_at_ns", 0),
+        ("received_monotonic_ns", True),
+        ("body_sha256", "b" * 64),
+        ("receipt_sha256", "bad"),
+    ],
+)
+def test_reader_prefix_revalidates_nested_frame_identity(
+    plan, loaded, credential_reads, monkeypatch, field, value
+):
+    transport(monkeypatch, encoded(quote()))
+    result = read_capture(plan, capture(plan, loaded))
+    object.__setattr__(result.frames[0], field, value)
+    with pytest.raises(ValueError, match=r"^alpaca_observation_capture_invalid$"):
+        result.visible_frames(received_at_ns=2**63 - 1, received_monotonic_ns=2**63 - 1)
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [".raw", ".observation-plan.json", ".observation-receipt.json", ".observation-result.json"],
+)
+def test_reader_rejects_tampered_archive(plan, loaded, credential_reads, monkeypatch, suffix):
+    transport(monkeypatch, encoded(quote()))
+    summary = capture(plan, loaded)
+    path = next(plan.output_root.glob("*" + suffix))
+    path.write_bytes(path.read_bytes() + b" ")
+    with pytest.raises(observe.AlpacaObservationError):
+        read_capture(plan, summary)
+
+
+def test_reader_typed_limit_does_not_change_aggregate_audit(
+    plan, loaded, credential_reads, monkeypatch
+):
+    from trading_bot.market_data import alpaca_observation_capture as values
+
+    transport(monkeypatch, encoded(quote(), status(), luld()))
+    summary = capture(plan, loaded)
+    monkeypatch.setattr(values, "MAX_CAPTURE_OBSERVATIONS", 2)
+    with pytest.raises(observe.AlpacaObservationError):
+        read_capture(plan, summary)
+    assert audit(plan, summary)["counts"] == {"quote": 1, "status": 1, "luld": 1}
+
+
+def test_reader_legacy_empty_capture_has_no_clock_or_observations(
+    plan, loaded, credential_reads, monkeypatch
+):
+    transport(monkeypatch, b"[]")
+    summary = capture(plan, loaded)
+    row = read_result(plan, summary)
+    row["schema"] = "alpaca-observation-result-v1"
+    row.pop("collection_started_monotonic_ns")
+    row.pop("collection_finished_monotonic_ns")
+    digest = publish(plan.output_root, row, ".observation-result.json")
+    result = read_capture(plan, {"result_hash": digest})
+    assert result.collection_window is None
+    assert result.frames[0].observations == ()
+    assert audit(plan, {"result_hash": digest})["status"] == "BLOCKED_INPUTS"
 
 
 @dataclass(frozen=True)
