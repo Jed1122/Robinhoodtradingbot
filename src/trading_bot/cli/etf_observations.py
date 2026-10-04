@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import typer
 
@@ -19,9 +19,11 @@ from trading_bot.diagnostics.alpaca_observe import (
     prepare_observation_capture,
 )
 from trading_bot.diagnostics.alpaca_probe_io import _publish_private_file, _read_private_file
-from trading_bot.market_data.bundle_store import _open_root, _publish
+from trading_bot.diagnostics.etf_execution_receipts import read_execution_receipts
+from trading_bot.market_data.bundle_store import _open_root, _publish, _read
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_cost_calibration import load_etf_cost_observations
+from trading_bot.research.etf_execution_receipts import MAX_BODY_BYTES, source_digest
 
 app = typer.Typer(no_args_is_help=True)
 _REPOSITORY = Path(__file__).resolve().parents[3]
@@ -197,6 +199,73 @@ def calibrate_costs(
                 "artifact_digest": digest,
                 "calibration_status": "unverified",
                 "evidence_promotable": False,
+            }
+        )
+    )
+    raise typer.Exit(2)
+
+
+@app.command("link-costs")
+def link_costs(
+    input_root: Annotated[Path, typer.Option()],
+    manifest_hash: Annotated[str, typer.Option()],
+    report_dir: Annotated[Path, typer.Option()],
+) -> None:
+    """Link a private receipt checkpoint offline; never authenticates or trades."""
+    source_descriptor = destination_descriptor = -1
+    try:
+        revision = _revision()
+        linked = read_execution_receipts(input_root, manifest_hash, _REPOSITORY)
+        body = canonical_json(linked["cost_input"]).encode()
+        input_hash = source_digest(body)
+        source_descriptor = _open_root(input_root, _REPOSITORY)
+        destination_descriptor = _open_root(report_dir, _REPOSITORY)
+        for reference in cast(list[str], linked["reference_hashes"]):
+            original = _read(source_descriptor, reference + ".source", MAX_BODY_BYTES)
+            if source_digest(original) != reference:
+                raise ValueError("receipt_source_changed")
+            _publish(destination_descriptor, reference + ".source", original)
+        input_name = input_hash + ".cost-input.json"
+        _publish(destination_descriptor, input_name, body)
+        report = load_etf_cost_observations(report_dir / input_name, report_dir, _REPOSITORY)
+        report.pop("report_hash")
+        report["calibrator_code_revision"] = revision
+        report["receipt_checkpoint_hash"] = linked["checkpoint_hash"]
+        report["clock_session_hash"] = linked["clock_session_hash"]
+        report["receipt_reference_hashes"] = linked["reference_hashes"]
+        for name in (
+            "completed_order_count",
+            "incomplete_order_count",
+            "unfilled_order_count",
+            "unfilled_outcomes",
+            "quote_receipt_bytes_linked",
+            "clock_session_attested",
+            "customer_authenticated",
+            "calibration_verified",
+        ):
+            report[name] = linked[name]
+        report["report_hash"] = content_hash(report)
+        digest = _publish_report(report_dir, report)
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _denied()
+        return
+    finally:
+        for descriptor in (source_descriptor, destination_descriptor):
+            if descriptor >= 0:
+                os.close(descriptor)
+    typer.echo(
+        canonical_json(
+            {
+                "status": report["status"],
+                "report_hash": report["report_hash"],
+                "artifact_digest": digest,
+                "input_sha256": input_hash,
+                "completed_order_count": report["completed_order_count"],
+                "incomplete_order_count": report["incomplete_order_count"],
+                "unfilled_order_count": report["unfilled_order_count"],
+                "calibration_status": "unverified",
+                "evidence_promotable": False,
+                "execution_enabled": False,
             }
         )
     )

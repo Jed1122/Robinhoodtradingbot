@@ -36,6 +36,11 @@ The main operator CLI implements offline commands, the health-only paused servic
 bootstrap for the locally write-incapable Robinhood client, and a one-shot connected shadow probe.
 A separate explicitly invoked `trading_bot.cli.etf_observations` module implements bounded local
 Alpaca SPY/SIP WebSocket capture, offline receipt audits and descriptive private cost reports.
+Its transport-free execution receipt sink retains immutable private clock-session
+checkpoints. The offline `link-costs` command rehashes them, derives quotes from
+retained Alpaca frames and preserves incomplete/unfilled outcomes separately from
+terminal filled samples. It is not wired to an authenticated execution runtime;
+customer provenance and internally consistent clocks remain unattested declarations.
 Its transport is fixed to `wss://stream.data.alpaca.markets/v2/sip` and SPY quote/status/LULD
 subscriptions. It uses only an explicitly selected owner-private Alpaca paper-key file containing
 `key_id` and `secret_key`; the market-data-only authority does not establish that the key itself
