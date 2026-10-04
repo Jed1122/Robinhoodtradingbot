@@ -172,6 +172,57 @@ behavior, condition eligibility and source qualification remain unverified.
 
 ## Private cost input
 
+### Durable receipt linkage (offline)
+
+The transport-free `EtfExecutionReceiptRecorder` records execution-owner
+observations using its own injected UTC and monotonic clocks. It retains immutable
+hash-chained receipts and checkpoint manifests in an owner-only directory outside
+the checkout. Storage failure or clock regression latches recording failure;
+restart requires a fresh session, not an appended or reconstructed clock history.
+It cannot authenticate, submit an order or manufacture a broker observation.
+No authenticated runtime is wired to this recorder.
+
+From a clean committed checkout, run:
+
+```sh
+PYTHONPATH=src .venv/bin/python -m trading_bot.cli.etf_observations link-costs \
+  --input-root PRIVATE_RECEIPT_DIR --manifest-hash CHECKPOINT_SHA256 \
+  --report-dir PRIVATE_REPORT_DIR
+```
+
+Use absolute paths to existing current-user-owned mode-0700 directories. The
+command opens no credentials or network. It rehashes the checkpoint, session,
+receipts and retained source bytes, reparses exact Alpaca frames, derives the
+decision quote from an already-received observation, and chooses the first
+eligible subsequently received arrival quote. Both clock domains must satisfy
+the explicitly supplied age bound. This is descriptive linkage, not trading
+eligibility or an executable-quote risk-policy substitute.
+
+Identical fill redelivery keeps the original receipt; conflicting duplicates,
+future/stale quote references and invalid lifecycle transitions are denied.
+Pending and partially filled orders without a terminal event remain incomplete.
+Terminal unfilled outcomes retain any explicit charges outside filled samples;
+partial fills followed by cancellation are terminal order samples, not proof
+that the economic position is closed. Missing fees remain null.
+
+Referenced originals are copied without modification as `SHA256.source`, with
+hashes rechecked immediately before private publication. Normalized input is
+saved as `SHA256.cost-input.json`; the existing cost loader revalidates it and
+its references before a revision-bound descriptive report is published.
+Incomplete/unfilled counters and checkpoint identity remain separate from the
+unchanged five-field cost-input schema. Reports are deterministic, mode 0600
+and content-addressed. Public output contains hashes, aggregate counts and
+unqualified verdicts only. Invalid input exits 1 with a sanitized reason;
+successful descriptive publication intentionally exits 2.
+
+`quote_receipt_bytes_linked=true` establishes internal linkage only.
+`customer_authenticated=false`, `clock_session_attested=false` and
+`calibration_verified=false` remain explicit. Caller-declared customer provenance
+does not authenticate broker quantities, prices, charges or applicable terms.
+Customer calibration, economic qualification, paper/shadow progression and
+live authorization remain unchanged. All new validation uses synthetic fixtures;
+it supplies no genuine customer fills or missing historical timings.
+
 `calibrate-costs --input-file INPUT_FILE --input-root INPUT_DIR
 --report-dir REPORT_DIR` opens no key, broker or network. It writes a private
 content-addressed report, prints only its hash/status, and exits 2 because
