@@ -172,6 +172,42 @@ behavior, condition eligibility and source qualification remain unverified.
 
 ## Private cost input
 
+### Verified retained reader and causal prefixes (offline)
+
+`read_observation_capture` revalidates the same bytes, receipt chain, terminal
+shape and clocks as the aggregate audit, then returns immutable typed frames.
+It never opens the credential path stored in the plan. Frame boundaries, empty
+frames, raw status/LULD fields and receipt ordinals are preserved. Typed retention
+has a 10,000-observation cap in addition to the existing frame/raw-byte limits;
+overflow denies the whole read. The aggregate audit retains its previous bounds
+and `audit-v2` wire format.
+
+`capture.visible_frames(received_at_ns=UTC_NS, received_monotonic_ns=MONO_NS)`
+requires both receipt clocks to be at or before the supplied cutoffs. It never
+sorts, deduplicates or selects by provider event time. Both cutoffs belong to this
+single capture; monotonic clocks must not be combined across predecessor segments.
+
+From a clean committed checkout, the equivalent private report command is:
+
+```sh
+PYTHONPATH=src .venv/bin/python -m trading_bot.cli.etf_observations stream-prefix \
+  --input-root PRIVATE_CAPTURE_DIR --result-hash RESULT_SHA256 \
+  --received-at-ns UTC_NS --received-monotonic-ns MONO_NS \
+  --report-dir PRIVATE_REPORT_DIR
+```
+
+The report contains capture/query identities and ordered receipt/observation
+hashes, not raw records. It is content-addressed, current-user-owned and mode
+0600 in an existing 0700 directory outside the checkout. Exit 2 means a valid
+but unqualified result; empty observations remain `BLOCKED_INPUTS`. Public output
+contains only report hashes, counts and false capability flags.
+
+This completes retained-record consumption, not execution-data qualification.
+Initial controls, gap continuity, historical coverage, actual customer fills,
+final fees, causal order clocks, accepted economics and qualifying paper/shadow
+runtime operation remain separate prerequisites. No new provider, broker calls,
+credential operations, deployment, activation or risk changes are involved.
+
 ### Durable receipt linkage (offline)
 
 The transport-free `EtfExecutionReceiptRecorder` records execution-owner

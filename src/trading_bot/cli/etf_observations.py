@@ -17,6 +17,7 @@ from trading_bot.diagnostics.alpaca_observe import (
     decode_observation_plan,
     encode_observation_plan,
     prepare_observation_capture,
+    read_observation_capture,
 )
 from trading_bot.diagnostics.alpaca_probe_io import _publish_private_file, _read_private_file
 from trading_bot.diagnostics.etf_execution_receipts import read_execution_receipts
@@ -168,6 +169,68 @@ def audit(
                 "report_hash": digest,
                 "artifact_digest": digest,
                 "source_qualified": False,
+            }
+        )
+    )
+    raise typer.Exit(2)
+
+
+@app.command("stream-prefix")
+def stream_prefix(
+    input_root: Annotated[Path, typer.Option()],
+    result_hash: Annotated[str, typer.Option()],
+    received_at_ns: Annotated[int, typer.Option()],
+    received_monotonic_ns: Annotated[int, typer.Option()],
+    report_dir: Annotated[Path, typer.Option()],
+) -> None:
+    """Report a private dual-receipt-clock prefix; never infer market eligibility."""
+    try:
+        auditor_revision = _revision()
+        capture = read_observation_capture(input_root, result_hash, _REPOSITORY)
+        frames = capture.visible_frames(
+            received_at_ns=received_at_ns, received_monotonic_ns=received_monotonic_ns
+        )
+        counts = {"quote": 0, "status": 0, "luld": 0}
+        observation_hashes = []
+        for frame in frames:
+            for observation in frame.observations:
+                counts[observation.kind] += 1
+                observation_hashes.append(observation.observation_hash)
+        status = "OBSERVED_UNQUALIFIED" if any(counts.values()) else "BLOCKED_INPUTS"
+        report: dict[str, object] = {
+            "schema": "alpaca-observation-prefix-report-v1",
+            "auditor_code_revision": auditor_revision,
+            "result_hash": capture.result_hash,
+            "plan_hash": capture.plan_hash,
+            "captured_code_revision": capture.code_revision,
+            "captured_config_hash": capture.config_hash,
+            "received_at_ns": received_at_ns,
+            "received_monotonic_ns": received_monotonic_ns,
+            "frame_count": len(frames),
+            "receipt_hashes": tuple(frame.receipt_sha256 for frame in frames),
+            "observation_hashes": tuple(observation_hashes),
+            "counts": counts,
+            "status": status,
+            "source_qualified": False,
+            "evidence_promotable": False,
+            "execution_enabled": False,
+            "live_enabled": False,
+        }
+        digest = _publish_report(report_dir, report)
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError, AttributeError):
+        _denied()
+        return
+    typer.echo(
+        canonical_json(
+            {
+                "status": status,
+                "report_hash": digest,
+                "artifact_digest": digest,
+                "counts": counts,
+                "source_qualified": False,
+                "evidence_promotable": False,
+                "execution_enabled": False,
+                "live_enabled": False,
             }
         )
     )
