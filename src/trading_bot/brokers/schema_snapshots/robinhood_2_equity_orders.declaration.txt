@@ -1,0 +1,97 @@
+Fetch equity orders for an account — list mode (newest first; open and closed, including fills, cancellations, rejections) or single-order mode by passing order_id. When the user asks broadly for "orders" or "my orders" without naming an asset class or order type, call get_equity_orders, get_option_orders, get_crypto_orders, and get_advanced_orders in parallel so OCO groups are not omitted.
+
+Filtering tips:
+- Prefer narrow queries: combine state, symbol, and/or created_at_gte for specific questions (e.g. "my filled AAPL orders this week") — the per-page cap is fixed.
+- created_at_gte: interpret relative times in the user's timezone, convert to UTC before sending.
+- symbol forces a symbol→instrument lookup; omit it if you don't need it.
+
+exec tool declaration:
+```ts
+declare const tools: { mcp__robinhood_2__get_equity_orders(args: {
+  // Brokerage account number. Must come from the user or be clearly implied — never default from get_accounts.
+  account_number: string;
+  // Lower bound (inclusive). ISO 8601 UTC or YYYY-MM-DD; naive values are interpreted as UTC.
+  created_at_gte?: string;
+  // Pagination cursor. Omit for the first page; for the next page, pass the prior response's next value back verbatim.
+  cursor?: string;
+  // Filter to a single order by UUID. The response shape is unchanged (orders[] with at most one entry); empty when the order does not belong to account_number.
+  order_id?: string;
+  // Filter to one source: 'user', 'agentic' (MCP), 'recurring', 'drip', etc.
+  placed_agent?: string;
+  // Filter by single state: new, queued, confirmed, unconfirmed, partially_filled, filled, cancelled, rejected, failed, voided.
+  state?: string;
+  // Filter to one symbol (triggers a symbol→instrument lookup before the orders call).
+  symbol?: string;
+}): Promise<CallToolResult<{
+  // Tool-specific result payload; see the inner properties for fields.
+  data: {
+  // Opaque cursor for the next page — NOT a URL. When non-empty more pages exist: call this tool again with cursor set to this value verbatim, leaving the other arguments unchanged. Empty on the last page.
+  next?: string;
+  // Equity orders on this page, newest first. Empty when the cursor has no rows.
+  orders: null | Array<null | {
+  // Weighted average fill price across executions. Null until the first fill.
+  average_price: null | string;
+  // When the order was created.
+  created_at: string;
+  // Shares filled so far. Less than quantity while partially filled; equal once filled.
+  cumulative_quantity: string;
+  // Notional amount for dollar-based market orders; null for share-quantity orders.
+  dollar_based_amount: null | {
+  // Quoted-decimal amount, e.g. '100.00'.
+  amount: string;
+  // ISO currency code; always 'USD' for equity orders today.
+  currency_code: string;
+};
+  // Per-fill detail; reference only for per-lot questions.
+  executions: null | Array<{
+  // Per-execution fees (regulatory + clearing) in USD.
+  fees: string;
+  // Execution UUID.
+  id: string;
+  // Fill price per share.
+  price: string;
+  // Shares filled in this execution.
+  quantity: string;
+  // When the fill occurred.
+  timestamp: string;
+}>;
+  // Cumulative fees (regulatory + clearing) in USD.
+  fees: string;
+  // Order UUID; needed by cancel_equity_order.
+  id: string;
+  // Instrument UUID; resolve to symbol via the instruments endpoint if needed.
+  instrument_id: string;
+  // Time of the most recent fill, cancel, or reject. Null on a brand-new unfilled order.
+  last_transaction_at: null | string;
+  // 'regular_hours', 'extended_hours', or 'all_day_hours'.
+  market_hours: string;
+  // Source that placed the order: 'user' (app), 'agentic' (MCP), 'recurring', 'drip', 'brokeback' (system), or other internal values.
+  placed_agent: string;
+  // Limit price for limit/stop_limit orders; null for market orders.
+  price: null | string;
+  // Originally-requested share quantity. Null for dollar-based orders before the first fill.
+  quantity: null | string;
+  // Idempotency key the order is stored under, unique per account. Usually the ref_id passed to place_equity_order; an order placed through a trade approval carries that approval's id instead. Omitted when the order has none.
+  ref_id?: string;
+  // Free-text reason when state is 'rejected'.
+  reject_reason?: string;
+  // 'buy' or 'sell'.
+  side: string;
+  // Lifecycle state: new, queued, unconfirmed, partially_filled, filled, cancelled, rejected, failed, voided, pending_cancelled, partially_filled_rest_cancelled, and (for short-sale orders) locating, locate_failed.
+  state: string;
+  // Stop trigger price for stop_market/stop_limit orders; null otherwise.
+  stop_price: null | string;
+  // Ticker symbol.
+  symbol: string;
+  // 'gfd' (good for day) or 'gtc' (good till cancelled).
+  time_in_force: string;
+  // 'immediate' (market/limit) or 'stop' (stop_market/stop_limit).
+  trigger: string;
+  // Upstream type: 'market' or 'limit'. Combine with trigger to recover the user-facing market/limit/stop_market/stop_limit.
+  type: string;
+}>;
+};
+  // For dollar-based orders (dollar_based_amount populated, quantity sometimes null) describe in dollars until cumulative_quantity is meaningful. Mention placed_agent when it is not 'user'. Recover the user-facing order type from type+trigger or from price/stop_price. Present symbol, side, type, state, quantity (or dollar_based_amount), cumulative_quantity when partially filled, price for limit orders, average_price once filled, last_transaction_at (or created_at), and id when cancellation may follow; suppress other fields unless asked. When next is non-empty more pages exist — it is an opaque cursor, not a URL, so call this tool again with cursor set to that value verbatim and the same filters; keep paging until next is empty whenever the user asks for their full history.
+  guide: string;
+}>>; };
+```
