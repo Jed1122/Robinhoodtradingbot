@@ -151,8 +151,8 @@ class _Quote:
 
     def wire(self) -> dict[str, object]:
         q = self.observation.quote
-        _check(q is not None)
-        assert q is not None
+        if q is None:
+            raise EtfReceiptError()
         seconds, remainder = divmod(self.observation.timestamp_ns, 1_000_000_000)
         observed = datetime.fromtimestamp(seconds, tz=UTC).replace(microsecond=remainder // 1000)
         return {
@@ -259,8 +259,8 @@ def _link(
         if kind == "decision":
             _check(order_hash not in orders and len(orders) < 1000)
             selected_quote = quotes.get(_string(payload["observation_hash"]))
-            _check(selected_quote is not None and selected_quote.usable(utc, mono, age))
-            assert selected_quote is not None
+            if selected_quote is None or not selected_quote.usable(utc, mono, age):
+                raise EtfReceiptError()
             orders[order_hash] = _Order(payload, selected_quote)
             continue
         _check(order_hash in orders)
@@ -319,7 +319,8 @@ def _link(
                 }
             )
             continue
-        assert order.submitted is not None and order.arrival is not None
+        if order.submitted is None or order.arrival is None:
+            raise EtfReceiptError()
         terminal_payload = cast(dict[str, object], order.terminal["payload"])
         submitted_payload = cast(dict[str, object], order.submitted["payload"])
         fee = terminal_payload["charged_fees"]
