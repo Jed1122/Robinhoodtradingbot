@@ -78,6 +78,50 @@ normalized input and descriptive report, including incomplete-order counts.
 It opens no credentials/network and never selects a trade or changes an order.
 No recording path is wired to authenticated broker transport under this scope.
 
+## Frozen wire and boundary details
+
+Session fields are exactly: schema (`etf-execution-clock-session-v1`), nonce
+(64 lowercase hex characters), provenance, code_revision (40 lowercase hex),
+started_at (six-digit UTC), started_monotonic_ns, maximum_quote_age_ns,
+evidence_promotable (false). Its byte SHA256 is the clock session identity.
+Receipt fields are exactly: schema (`etf-execution-receipt-v1`), session_hash,
+sequence, previous_hash (null only for first), kind, received_at (six-digit UTC),
+received_monotonic_ns, payload. Checkpoint fields are exactly: schema
+(`etf-execution-receipt-checkpoint-v1`), session_hash, receipt_hashes,
+source_hashes, evidence_promotable (false). All referenced files are SHA256.source.
+
+Payload field sets:
+
+- alpaca_frame: frame_index, body_sha256.
+- decision: order_hash, side, terms_hash, observation_hash.
+- submitted / acknowledged: order_hash, source_hash.
+- fill: order_hash, fill_hash, quantity, price, source_hash.
+- terminal: order_hash, source_hash, state, charged_fees.
+
+Terminal state is filled, cancelled, rejected or failed. Filled without fills and
+rejected/failed with fills are denied. Partial fills followed by cancellation
+form a terminal order sample, not a claim that its economic position is closed.
+Unfilled charges remain explicitly recorded outside filled samples.
+
+Decision quote age is checked at selection and submission. Arrival quote age
+is checked at its receipt and the first fill receipt, not subsequent partial
+deliveries. Check both provider-UTC age and local receipt-monotonic age against
+the supplied bound, inclusive; exclude provider times later than frame receipt.
+All comparisons use full nanoseconds before legacy microsecond formatting.
+Arrival selection uses receipt ordinal then frame row index, never favorable
+prices or reordered provider timestamps. This is observational linkage, not a
+replacement market-control or executable-quote risk policy.
+
+Duplicate fills compare the complete immutable fill payload excluding the new
+delivery clocks. Exact repeats keep the earliest receipt, including repeats
+after terminal; conflicts across fields/orders and new fills after terminal are
+denied. Acknowledgement after first fill is denied, not silently removed.
+
+The linker returns a separate envelope with `cost_input` containing only the
+legacy five fields; counts and false readiness flags stay outside it. Receipt
+bodies have an aggregate 8 MiB limit in addition to source totals. Neither
+session identity nor local hash verification establishes customer attestation.
+
 ## Acceptance
 
 Tests prove exact quote derivation, independent partial-fill/fee expectations,
