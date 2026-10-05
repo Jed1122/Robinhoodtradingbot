@@ -1,5 +1,19 @@
 # Robinhood Multi-Asset Trading System Implementation Plan
 
+## Current ETF continuation (2026-10-05)
+
+The fixed SPY/cash ETF pilot is the current research priority under the operator's
+later instructions; the options implementation and historical plan remain intact.
+Alpaca is the selected market-data channel, Robinhood the execution target.
+Incremental offline history replay and durable owned execution facts are merged;
+the [independent economic owner plan](superpowers/plans/2026-10-05-etf-joint-economic-owner.md)
+adds joint cash/allocation/settlement/trial reconstruction. Its
+[boundary report](etf-joint-economic-owner.md) distinguishes local fixture verification
+from authenticated sources, accepted economics, protected broker composition,
+qualifying paper/shadow operation and deployed recovery. Exact release/merge status
+is reported by the feature PR; no unmerged work is represented as released here.
+All readiness and live blocks remain, with no profitability claim.
+
 ## Current governing migration (2026-09-18)
 
 The [options-only master specification](options-only-build-spec.md) and approved

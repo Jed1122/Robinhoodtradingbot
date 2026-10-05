@@ -1,6 +1,7 @@
 """Real fictional SQLite joint-state tests; zero broker/provider calls."""
 
 import asyncio
+import hashlib
 import sqlite3
 import subprocess
 import sys
@@ -28,15 +29,21 @@ from tests.integration.persistence.test_unit_of_work import (
     NOW,
     _make_broker_order,
     _make_intent,
+    _make_submission,
     _make_uow,
 )
 from trading_bot.accounting import (
     Bind,
+    Complete,
     EconomicError,
     EconomicEvent,
     Execution,
+    FinalFees,
+    Funding,
     Opening,
+    Release,
     Reserve,
+    Settlement,
 )
 from trading_bot.domain import AccountId, ConfigHash, DataHash
 from trading_bot.persistence import async_session_factory, create_engine
@@ -332,5 +339,377 @@ async def test_registered_secret_is_denied_before_encoder(owned_engine, monkeypa
     async with _make_uow(owned_engine) as uow:
         with pytest.raises(EconomicError):
             await owner(uow).append(replace(setup_events()[0], source_hash=DataHash("b" * 64)))
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="real SIGKILL control requires POSIX")
+@pytest.mark.parametrize("phase", ["owned", "economic", "committed"])
+async def test_real_sigkill_recovers_only_complete_joint_state(owned_engine, database_url, phase):
+    import signal
+
+    await seed_economics(owned_engine)
+    child = await asyncio.to_thread(
+        subprocess.run,
+        [
+            sys.executable,
+            "-m",
+            "tests.integration.persistence._owned_economic_crash_worker",
+            database_url,
+            phase,
+        ],
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert child.returncode == -signal.SIGKILL, child.stderr.decode()
+    independent = create_engine(database_url)
+    try:
+        async with _make_uow(independent) as uow:
+            s = await owner(uow).get(AccountId("account-1"))
+            committed = phase == "committed"
+            assert s.book_cash == Decimal("497.49" if committed else "500")
+            assert s.settled_cash == Decimal("500")
+            assert s.position.quantity == Decimal("0.25" if committed else "0")
+            assert s.trial.reserved_risk == Decimal("13.225")
+            assert await owner(uow).append(execution_event()) is (not committed)
+            await uow.commit()
+        async with _make_uow(independent) as uow:
+            s = await owner(uow).get(AccountId("account-1"))
+            assert s.book_cash == Decimal("497.49") and len(s.obligations) == 1
+    finally:
+        await independent.dispose()
+
+
+async def test_final_fees_and_signed_settlement_survive_independent_restart(
+    owned_engine, database_url
+):
+    from trading_bot.domain import OrderEvent, OrderId
+
+    await seed_economics(owned_engine)
+    async with _make_uow(owned_engine) as uow:
+        await owner(uow).append(execution_event())
+        for index, kind in [(4, OrderEvent.REQUEST_CANCEL), (5, OrderEvent.CANCEL_CONFIRMED)]:
+            at = NOW + timedelta(seconds=index)
+            control = replace(owned_fact(index=index, kind=kind), occurred_at=at)
+            await owner(uow).append(e(Execution(control), index))
+        await owner(uow).append(e(FinalFees(OrderId("order-1"), Decimal("0.04")), 6))
+        await uow.commit()
+    independent = create_engine(database_url)
+    try:
+        async with _make_uow(independent) as uow:
+            s = await owner(uow).get(AccountId("account-1"))
+            assert s.book_cash == Decimal("497.46")
+            assert s.settled_cash == Decimal("500")
+            assert not s.orders[0].released and len(s.obligations) == 2
+            assert sorted(o.amount for o in s.obligations) == [Decimal("-2.51"), Decimal("-0.03")]
+            for index, obligation in enumerate(s.obligations, 7):
+                await owner(uow).append(e(Settlement(obligation.id, obligation.amount), index))
+            await owner(uow).append(e(Release(OrderId("order-1")), 9))
+            await uow.commit()
+        async with _make_uow(independent) as uow:
+            s = await owner(uow).get(AccountId("account-1"))
+            assert s.available_cash == s.book_cash == s.settled_cash == Decimal("497.46")
+            assert s.position.quantity == Decimal("0.25") and not s.obligations
+            assert s.orders[0].released and s.trial.reserved_risk == Decimal("13.225")
+    finally:
+        await independent.dispose()
+
+
+async def test_exact_economic_capacity_retains_complete_history_then_denies(owned_engine):
+    from sqlalchemy import insert
+
+    from trading_bot.accounting import encode_economic_event
+    from trading_bot.persistence.models import OwnedEconomicEventRow
+    from trading_bot.persistence.owned_economic_journal import _hash
+
+    rows = []
+    head = "0" * 64
+    for index in range(10_000):
+        event = setup_events()[0] if index == 0 else e(Funding(Decimal("0")), index)
+        row = OwnedEconomicEventRow(
+            id=event.id,
+            account_id=event.account_id,
+            sequence=index,
+            payload_json=encode_economic_event(event),
+            config_hash=event.config_hash,
+            code_hash="b" * 64,
+            previous_hash=head,
+            event_hash="0" * 64,
+        )
+        head = row.event_hash = _hash(row)
+        rows.append({column.name: getattr(row, column.name) for column in row.__table__.columns})
+    async with async_session_factory(owned_engine)() as session:
+        await session.execute(insert(OwnedEconomicEventRow), rows)
+        await session.commit()
+    async with _make_uow(owned_engine) as uow:
+        s = await owner(uow).get(AccountId("account-1"))
+        assert s.event_count == 10_000 and s.book_cash == Decimal("500")
+        assert not await owner(uow).append(e(Funding(Decimal("0")), 9999))
+        with pytest.raises(EconomicError):
+            await owner(uow).append(e(Funding(Decimal("1")), 10_000))
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()
+    async with _make_uow(owned_engine) as restarted:
+        assert (await owner(restarted).get(AccountId("account-1"))).event_count == 10_000
+
+
+async def seed_additional_order(engine, intent, index):
+    from trading_bot.domain import (
+        BrokerOrderId,
+        OrderId,
+        ReviewId,
+        SubmissionAttemptId,
+        SubmissionOutcome,
+    )
+
+    submission = _make_submission(intent)
+    submission = replace(
+        submission,
+        review_id=ReviewId(f"review-{index}"),
+        submission_attempt_id=SubmissionAttemptId(f"attempt-{index}"),
+        deduplication_key=hashlib.sha256(str(intent.id).encode()).hexdigest(),
+        review=replace(
+            submission.review,
+            estimated_notional=intent.quantity * intent.limit_price,
+            broker_review_id=f"paper-review-{index}",
+        ),
+    )
+    order = replace(
+        _make_broker_order(intent),
+        id=OrderId(f"order-{index}"),
+        broker_order_id=BrokerOrderId(f"broker-order-{index}"),
+    )
+    async with _make_uow(engine) as uow:
+        await uow.orders.add(intent)
+        await uow.orders.add_review(submission.review_id, submission.review)
+        assert await uow.submission_attempts.reserve(submission, "paper", NOW)
+        await uow.orders.add_broker_order(order, submission, "paper")
+        await uow.submission_attempts.complete(
+            submission.submission_attempt_id, SubmissionOutcome.ACCEPTED, NOW, order
+        )
+        await uow.commit()
+    return order
+
+
+async def finish_fictional_order(uow, order, start, price):
+    from trading_bot.domain import Fill, FillId, OrderEvent, Side
+    from trading_bot.domain.owned_order_lifecycle import OwnedOrderEvent
+
+    at = NOW + timedelta(seconds=start)
+    fill = Fill(
+        FillId(f"fill-complete-{start}"),
+        order.broker_order_id,
+        order.account_id,
+        order.instrument_id,
+        order.side,
+        order.requested_quantity,
+        Decimal(price),
+        Decimal("0.01"),
+        at,
+        DataHash(HASH_C),
+    )
+    fact = OwnedOrderEvent(
+        f"owned-complete-{start}",
+        order.id,
+        OrderEvent.FILL,
+        at,
+        DataHash(HASH_C),
+        fill,
+        f"native-complete-{start}",
+        0,
+    )
+    for event in (
+        e(Execution(fact), start),
+        e(FinalFees(order.id, Decimal("0.01")), start + 1),
+        e(
+            Settlement(
+                fill.id,
+                (-1 if order.side is Side.BUY else 1) * fill.quantity * fill.price - fill.fee,
+            ),
+            start + 2,
+        ),
+        e(Release(order.id), start + 3),
+    ):
+        await owner(uow).append(event)
+
+
+async def test_completed_loss_then_profit_and_funding_do_not_replenish_after_restart(
+    owned_engine, database_url
+):
+    from trading_bot.domain import OrderPurpose, Side
+
+    await seed_economics(owned_engine)
+    sell = replace(
+        _make_intent(intent_id="intent-2"),
+        side=Side.SELL,
+        purpose=OrderPurpose.STRATEGY_EXIT,
+        limit_price=Decimal("9"),
+    )
+    exit_order = await seed_additional_order(owned_engine, sell, 2)
+    buy = _make_intent(intent_id="intent-3")
+    buy_order = await seed_additional_order(owned_engine, buy, 3)
+    profit_sell = replace(
+        _make_intent(intent_id="intent-4"),
+        side=Side.SELL,
+        purpose=OrderPurpose.STRATEGY_EXIT,
+        limit_price=Decimal("11"),
+    )
+    profit_order = await seed_additional_order(owned_engine, profit_sell, 4)
+    async with _make_uow(owned_engine) as uow:
+        await finish_fictional_order(uow, _make_broker_order(_make_intent()), 3, "10")
+        for event in (
+            e(Reserve(sell, "episode-1", Decimal("0.1"), Decimal("13.225")), 7),
+            e(Bind(exit_order), 8),
+        ):
+            await owner(uow).append(event)
+        await finish_fictional_order(uow, exit_order, 9, "9")
+        await owner(uow).append(e(Complete("episode-1"), 13))
+        await uow.commit()
+    async with _make_uow(owned_engine) as uow:
+        for event in (
+            e(Reserve(buy, "episode-2", Decimal("0.1"), Decimal("13.225")), 14),
+            e(Bind(buy_order), 15),
+        ):
+            await owner(uow).append(event)
+        await finish_fictional_order(uow, buy_order, 16, "10")
+        for event in (
+            e(Reserve(profit_sell, "episode-2", Decimal("0.1"), Decimal("13.225")), 20),
+            e(Bind(profit_order), 21),
+        ):
+            await owner(uow).append(event)
+        await finish_fictional_order(uow, profit_order, 22, "11")
+        await owner(uow).append(e(Complete("episode-2"), 26))
+        await owner(uow).append(e(Funding(Decimal("100")), 27))
+        await uow.commit()
+    independent = create_engine(database_url)
+    try:
+        async with _make_uow(independent) as restarted:
+            s = await owner(restarted).get(AccountId("account-1"))
+            assert s.available_cash == s.settled_cash == s.book_cash == Decimal("599.96")
+            assert s.position.quantity == 0 and s.trial.reserved_risk == 0
+            assert s.trial.consumed_loss == Decimal("1.27")
+            assert s.trial.remaining(Decimal("50")) == Decimal("48.73")
+            assert not s.source_qualified and not s.cost_qualified
+            assert not s.execution_enabled and not s.evidence_promotable
+    finally:
+        await independent.dispose()
+
+
+@pytest.mark.parametrize(
+    "field,value", [("strategy_version", "changed"), ("data_hash", DataHash("d" * 64))]
+)
+async def test_valid_same_id_intent_substitution_is_denied(owned_engine, field, value):
+    opening, reservation, _ = setup_events()
+    bad = replace(
+        reservation,
+        payload=replace(
+            reservation.payload, intent=replace(reservation.payload.intent, **{field: value})
+        ),
+    )
+    async with _make_uow(owned_engine) as uow:
+        await owner(uow).append(opening)
+        with pytest.raises(EconomicError):
+            await owner(uow).append(bad)
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()
+    async with _make_uow(owned_engine) as uow:
+        assert await owner(uow).get(AccountId("account-1")) is None
+
+
+@pytest.mark.parametrize("changed", ["broker_id", "client_id", "advanced"])
+async def test_unowned_or_already_advanced_binding_does_not_adopt(owned_engine, changed):
+    from trading_bot.domain import BrokerOrderId
+
+    opening, reservation, binding = setup_events()
+    if changed == "advanced":
+        async with _make_uow(owned_engine) as uow:
+            await uow.orders.record_event(execution_event().payload.event)
+            await uow.commit()
+        bad = binding
+    else:
+        updates = (
+            {"broker_order_id": BrokerOrderId("foreign-broker")}
+            if changed == "broker_id"
+            else {"client_order_id": "foreign-client"}
+        )
+        bad = replace(binding, payload=Bind(replace(binding.payload.order, **updates)))
+    async with _make_uow(owned_engine) as uow:
+        for event in (opening, reservation):
+            await owner(uow).append(event)
+        with pytest.raises(EconomicError):
+            await owner(uow).append(bad)
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()
+
+
+async def test_same_owned_fact_with_different_economic_envelope_cannot_debit_twice(owned_engine):
+    await seed_economics(owned_engine)
+    async with _make_uow(owned_engine) as uow:
+        await owner(uow).append(execution_event())
+        await uow.commit()
+    async with _make_uow(owned_engine) as uow:
+        with pytest.raises(EconomicError):
+            await owner(uow).append(replace(execution_event(), id="another-economic-envelope"))
+    async with _make_uow(owned_engine) as uow:
+        assert (await owner(uow).get(AccountId("account-1"))).book_cash == Decimal("497.49")
+
+
+async def test_invalid_append_type_denies_and_latches_transaction(owned_engine):
+    async with _make_uow(owned_engine) as uow:
+        with pytest.raises(EconomicError):
+            await owner(uow).append(object())
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()
+
+
+async def test_cancelled_recovery_cannot_be_caught_then_committed(owned_engine, monkeypatch):
+    from trading_bot.persistence.owned_economic_journal import SqlEconomicRepository
+
+    async def cancelled(self, account):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(SqlEconomicRepository, "_recover", cancelled)
+    async with _make_uow(owned_engine) as uow:
+        with pytest.raises(asyncio.CancelledError):
+            await owner(uow).get(AccountId("account-1"))
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()
+
+
+async def test_execution_writer_false_is_not_adopted_as_economic_effect(owned_engine, monkeypatch):
+    import trading_bot.persistence.owned_economic_journal as module
+
+    await seed_economics(owned_engine)
+
+    async def already_present(*args):
+        return False
+
+    with monkeypatch.context() as patch:
+        patch.setattr(module, "record_owned_event", already_present)
+        async with _make_uow(owned_engine) as uow:
+            with pytest.raises(EconomicError):
+                await owner(uow).append(execution_event())
+            with pytest.raises(UnitOfWorkStateError):
+                await uow.commit()
+    async with _make_uow(owned_engine) as uow:
+        assert (await owner(uow).get(AccountId("account-1"))).book_cash == Decimal("500")
+
+
+async def test_changed_original_acceptance_hash_denies_economic_recovery(
+    owned_engine, database_path
+):
+    await seed_economics(owned_engine)
+    with closing(sqlite3.connect(database_path)) as connection:
+        # Fixture-only hostile database owner: normal update is already denied.
+        connection.execute("DROP TRIGGER trg_submission_attempts_contract_update")
+        connection.execute(
+            "UPDATE submission_attempts SET sanitized_response_hash=? WHERE id='attempt-1'",
+            ("d" * 64,),
+        )
+        connection.commit()
+    async with _make_uow(owned_engine) as uow:
+        with pytest.raises(EconomicError):
+            await owner(uow).get(AccountId("account-1"))
         with pytest.raises(UnitOfWorkStateError):
             await uow.commit()

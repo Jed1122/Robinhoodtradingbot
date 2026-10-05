@@ -126,6 +126,24 @@ def test_owned_lifecycle_cannot_escape_the_critical_branch_gate(tmp_path, relati
 @pytest.mark.parametrize(
     "relative_path",
     [
+        "src/trading_bot/accounting/owned_economic_models.py",
+        "src/trading_bot/accounting/owned_economic_codec.py",
+        "src/trading_bot/accounting/owned_economic_projection.py",
+        "src/trading_bot/persistence/owned_economic_journal.py",
+    ],
+)
+def test_joint_economics_cannot_escape_the_critical_branch_gate(tmp_path, relative_path):
+    root = tmp_path / "project"
+    _source(root, relative_path)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative_path}"
+    ]
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
         "src/trading_bot/persistence/paper_cycle_journal.py",
         "src/trading_bot/runtime/paper_promotion.py",
         "src/trading_bot/runtime/paper_promotion_runtime.py",
