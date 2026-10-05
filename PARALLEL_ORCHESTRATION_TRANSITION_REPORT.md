@@ -1,5 +1,29 @@
 # Parallel Orchestration Transition Report
 
+## Historical research amendment and native acquisition — 2026-10-05
+
+The operator now explicitly waives historical halt/LULD and gap-coverage proof for
+the Alpaca-only exploratory study. The [amended specification](docs/superpowers/specs/2026-09-30-focused-etf-research-design.md)
+and [authority](docs/operator-authority.md) supersede conflicting historical research
+requirements below. No forward/paper/live safety, risk, cost or promotion gate is
+waived; older diagnostic evidence is not rewritten or unlocked.
+
+At committed source `454c6515cce6df883188313f3bffac94a9039b17`, a frozen five-minute
+first-eligible-development SPY/SIP request retained 62,346 real quotes over 63 pages.
+Raw hashes, receipt chains and private ownership/modes reverified. The combined
+coverage audit now reports one quoted development session, zero full requested
+sessions, and 63,420 total observations; no holdout was evaluated. Ninety-six
+native capture/archive fixture tests passed. This is useful real acquisition,
+not completed historical execution coverage or qualified data/economics.
+
+Private invoice/receipt reconciliation supports one attributable operating
+payment; it does not supply genuine executions, final per-order fees, slippage or
+causal order clocks. Customer calibration remains `BLOCKED_INPUTS`. Next engineering
+is separately versioned bounded exploratory source/replay intake under the waiver,
+not another provider or a fabricated verified flag. Original records stay outside
+Git/Cloud/delegated tasks. The earlier same-date checkpoint below precedes this
+amendment/acquisition and is retained as an audit snapshot.
+
 ## Fresh execution-readiness reassessment — 2026-10-05
 
 The [current reassessment](docs/etf-execution-readiness-2026-10-05.md) supersedes

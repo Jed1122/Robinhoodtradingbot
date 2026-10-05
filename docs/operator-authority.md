@@ -215,3 +215,26 @@ latest-vintage exploratory research separate from qualified execution/economic
 evidence. A single-source choice does not waive safety, risk, reconciliation,
 paper/shadow observation or live-authorization gates. No further provider purchase,
 broker order, account change, deployment or live activation is authorized here.
+
+## Historical control-coverage research waiver — 2026-10-05
+
+The operator explicitly authorized continuing the Alpaca-only bot build without
+historical halt/LULD and gap coverage. Do not keep those historical evidence roles
+as prerequisites for the exploratory latest-vintage ETF study or ask again for
+that authority. This supersedes the historical-control/gap prerequisites in the
+focused ETF research specification, not the observation facts in older reports.
+
+Record unavailable historical control state and gaps as unobserved. Do not invent
+OPEN/status/LULD messages, exchange sequence continuity, complete market coverage,
+or fills inside missing intervals. Validity, freshness, causality, price/size
+interpretation, cash conservation, risk limits and honest execution-cost reporting
+remain required. Missing inputs cannot be represented as zero-valued evidence.
+
+Any executable exploratory composition needs its own versioned study/admission
+identity and explicit limitations; it must not unlock a sealed qualified-source
+factory, change a diagnostic schema's permanent flags or rewrite older evidence.
+Results under this waiver remain non-promotable and cannot establish accepted
+live economics. Forward/paper/live stale-data, halt/LULD, account-state,
+reconciliation and kill-switch controls remain unchanged. No new provider,
+purchase, real-money order, production-credential use, risk increase, deployment
+or live activation is authorized by this research waiver.

@@ -5,6 +5,14 @@ verification, not completed research, trusted paper operation, deployment of the
 forward owner, or permission to trade. Alpaca remains the market-data source;
 Robinhood remains the execution broker. Risk limits and live blocks are unchanged.
 
+The later October 5 operator amendment removes historical halt/LULD and gap
+coverage as prerequisites for **exploratory** Alpaca-only research. It does not
+establish those facts or remove forward operational controls. See the
+[recorded authority](operator-authority.md#historical-control-coverage-research-waiver--2026-10-05)
+and [amended study](superpowers/specs/2026-09-30-focused-etf-research-design.md).
+Older role-specific reports remain unchanged; a separately versioned exploratory
+admission is still needed rather than changing their permanent diagnostic flags.
+
 ## Verified software identity
 
 [PR #17](https://github.com/Jed1122/Robinhoodtradingbot/pull/17) is merged at
@@ -57,10 +65,11 @@ and **zero** with in-session quote observations from this capture.
 Request spans are not proof of market completeness or executable observations.
 Holdout outcomes were not evaluated.
 
-Unresolved roles remain complete execution quote coverage, historical halt/LULD
-continuity, condition/round-lot capacity semantics, corporate-action continuity,
+Unresolved nonwaived roles remain execution quote inputs, condition/round-lot
+capacity semantics, corporate-action continuity,
 account/channel fractional terms, dated customer costs, empirical order timing,
-cash yield, and operating-cost provenance. Alpaca documents status/LULD messages
+cash yield, and complete operating-cost provenance. Historical halt/LULD and gap
+proof is waived only for exploratory research. Alpaca documents status/LULD messages
 in its [real-time stream](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data);
 that documentation and forward captures do not establish historical backfill.
 The [historical quote endpoint](https://docs.alpaca.markets/us/reference/stockquotesingle-1)
@@ -70,6 +79,31 @@ The current CLI still admits at most 128 quote archive pairs and materializes
 them; native event/economic intake also has independent record ceilings. A
 versioned, bounded partitioned intake is needed for whole-study execution inputs.
 Raising one ceiling alone is not an end-to-end completion or qualification fix.
+
+### Subsequent native development capture
+
+At clean committed source `454c6515cce6df883188313f3bffac94a9039b17`, the coordinator
+froze a SPY/SIP/USD ascending, `asof=-` quote request for the first five minutes of
+the first eligible development session: `[2018-12-26T14:30Z,14:35Z)`. Calendar bounds
+were checked before acquisition; no strategy or holdout outcomes selected the scope.
+Manifest SHA-256 is
+`b9f764fc1f1ac1ef6ed65d5cd7c4934abab88a44ebe9f3741c92948dba04b609`.
+The existing one-shot owner reached a terminal cursor: **62,346 observations across
+63 pages**, retaining 7,057,317 original raw bytes. The committed page-bounded reader
+independently reverified the manifest, receipt chain and raw hashes; all files are
+current-user-owned mode 0600 inside a mode 0700 directory outside Git.
+No credential value or raw price payload is recorded here.
+
+The combined calendar/request-coverage audit now counts 63,420 observations and
+**one** quoted development session, still **zero** full requested sessions out of
+1,262. Report identity is
+`9fca235ffa7094547da10d582b12b23fb40286367b7ef92b8078a430c5d4e421`.
+This supersedes the initial zero-quoted-session inventory above. Transport
+completion proves only this five-minute request, not all ticks, executable sizes,
+full-session monitoring, whole-study history or qualified economic inputs.
+Its flags remain source-unqualified, execution-disabled and non-promotable.
+The existing diagnostic audit still applies its original role contract; the
+operator amendment is not implemented by relabeling that result.
 
 ## Customer costs and economics
 
@@ -86,6 +120,16 @@ Missing fees, slippage and original causal submission/quote/fill clocks remain
 missing, not zero. Historical broker UTC timestamps cannot reconstruct an
 unrecorded local monotonic clock session. Forward Alpaca quote receipts alone
 cannot establish Robinhood order latency or customer execution costs.
+
+Subsequent private document reconciliation matched the retained Alpaca invoice and
+paid receipt by their invoice identity: they represent one payment, not two
+operating charges. The original CSV hash and Decimal cash-flow total still match
+its saved reconciliation; it contains funding but no trade or charged-fee samples.
+A retained monthly statement explicitly reports zero interest for its period,
+but that observation is not an attainable cash-yield rate or historical fee
+calibration. Account identifiers, raw monetary records and original documents
+remain private. Genuine fills, final order charges and causal quote/order clocks
+are still absent; no empty broker-history query or calibration trade was repeated.
 
 The full six-run evaluator is implemented but genuine after-cost acceptance
 cannot be established from this package. No unqualified cost schedule was
@@ -130,10 +174,16 @@ Fresh Ruff and Mypy passed; Mypy checked 327 source files. Documentation diff
 checks passed. No new full suite, coverage, dependency audit or hosted CI run was
 performed for this documentation-only reassessment.
 
+For the subsequent acquisition, the unchanged native capture/archive fixture
+suites passed **96 tests**. New receipts were reverified with the committed reader,
+and the combined coverage command correctly returned exit 2. These checks are
+not a new full release validation or proof of execution-cost qualification.
+
 Next work remains:
 
-1. Implement separately versioned bounded partitioned execution intake; obtain
-   and verify all required historical roles rather than quote-only snapshots.
+1. Implement separately versioned bounded partitioned exploratory execution intake
+   under the recorded historical-control/gap waiver; retain its limitations and
+   obtain the remaining price/action/size inputs without inventing market state.
 2. Supply attributable genuine executions, reconciled final charges, original
    same-session order/quote receipts, and supported cash/operating-cost evidence.
    Do not poll empty history or place calibration trades to manufacture evidence.
