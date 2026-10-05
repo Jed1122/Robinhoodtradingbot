@@ -511,7 +511,13 @@ def parse_equity_orders_page(
                     lower = value + "T00:00:00Z" if len(value) == 10 else value
                     _check(order.created_at_ns >= _stamp(lower, 2**63 - 1))
                 else:
-                    _check(getattr(order, "id" if key == "order_id" else key) == value)
+                    observed = {
+                        "order_id": order.id,
+                        "placed_agent": order.placed_agent,
+                        "state": order.state,
+                        "symbol": order.symbol,
+                    }
+                    _check(observed[key] == value)
         return EquityOrdersPage(
             body,
             hashlib.sha256(body).hexdigest(),
