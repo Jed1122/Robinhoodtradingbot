@@ -512,3 +512,15 @@ def test_partial_fill_identity_cannot_apply_twice(change):
         next_fill = replace(next_fill, occurrence_ordinal=9)
     with pytest.raises(a.EconomicError):
         a.project_economics((*partial(a), event(a, a.Execution(next_fill), 4)))
+
+
+def test_bounded_fee_event_identity_keeps_its_obligation_settleable():
+    a = api()
+    fee_event = replace(event(a, a.FinalFees(OrderId("order-1"), Decimal("0.04")), 6), id="f" * 255)
+    events = (*canceled(a), fee_event)
+    state = a.project_economics(events)
+    for index, obligation in enumerate(state.obligations, start=7):
+        events = (*events, event(a, a.Settlement(obligation.id, obligation.amount), index))
+    state = a.project_economics((*events, event(a, a.Release(OrderId("order-1")), 9)))
+    assert state.settled_cash == Decimal("495.96")
+    assert state.available_cash == Decimal("495.96")

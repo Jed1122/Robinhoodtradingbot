@@ -1,5 +1,6 @@
 """Exact versioned local-fact codec, not a provider/source admission parser."""
 
+import hashlib
 import json
 from dataclasses import fields, is_dataclass
 from datetime import datetime
@@ -77,6 +78,18 @@ def _decimal(raw: Any) -> Decimal:
     if type(raw) is not str:
         deny()
     return Decimal(raw)
+
+
+def fee_obligation_id(event: EconomicEvent) -> str:
+    if type(event) is not EconomicEvent or type(event.payload) is not FinalFees:
+        deny()
+    event.__post_init__()
+    preimage = json.dumps(
+        [VERSION, "final-fee-obligation", event.id, event.payload.order_id],
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("ascii")
+    return hashlib.sha256(preimage).hexdigest()
 
 
 def _intent(raw: dict[str, Any]) -> OrderIntent:

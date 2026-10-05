@@ -3,7 +3,7 @@
 from dataclasses import replace
 from decimal import Context, Decimal, DecimalException, Inexact, localcontext
 
-from trading_bot.accounting.owned_economic_codec import encode_economic_event
+from trading_bot.accounting.owned_economic_codec import encode_economic_event, fee_obligation_id
 from trading_bot.accounting.owned_economic_models import (
     MAX_EVENTS,
     Allocation,
@@ -24,9 +24,6 @@ from trading_bot.accounting.owned_economic_models import (
 from trading_bot.domain import AssetClass, OrderState, Position, Side
 from trading_bot.domain.owned_order_lifecycle import advance_owned_order
 from trading_bot.risk.options_economics import TrialEpisode, TrialLossState
-from trading_bot.simulation.events import EventCursor
-from trading_bot.simulation.lifecycle_accounting import apply_lifecycle_fill
-from trading_bot.simulation.lifecycle_models import LifecycleSnapshot
 
 _ZERO = Decimal(0)
 _TERMINAL = {OrderState.FILLED, OrderState.CANCELED, OrderState.EXPIRED, OrderState.REJECTED}
@@ -71,6 +68,12 @@ def project_economics(events: tuple[EconomicEvent, ...]) -> EconomicState:
 
 
 def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
+    # Existing arithmetic imports execution's service bootstrap. Defer that import
+    # until module initialization is complete, without duplicating its accounting.
+    from trading_bot.simulation.events import EventCursor
+    from trading_bot.simulation.lifecycle_accounting import apply_lifecycle_fill
+    from trading_bot.simulation.lifecycle_models import LifecycleSnapshot
+
     first = events[0]
     encode_economic_event(first)
     if type(first.payload) is not Opening:
@@ -228,7 +231,7 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
                 deny()
             delta = p.total - a.recorded_fees
             if delta != 0:
-                obligation_id = f"fees:{e.id}"
+                obligation_id = fee_obligation_id(e)
                 if obligation_id in obligations_seen:
                     deny()
                 obligations[obligation_id] = Obligation(obligation_id, p.order_id, -delta)

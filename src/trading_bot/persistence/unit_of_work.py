@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, AsyncSessionTransaction, async_
 
 from trading_bot.domain.identifiers import CodeHash, ConfigHash
 from trading_bot.persistence.base import PersistenceDataError, _require_validated_session_factory
+from trading_bot.persistence.owned_economic_journal import EconomicRepository, SqlEconomicRepository
 from trading_bot.persistence.repositories import (
     AuditRepository,
     AuthorizationRepository,
@@ -63,6 +64,9 @@ class UnitOfWork(Protocol):
     @property
     def evidence(self) -> EvidenceRepository: ...
 
+    @property
+    def economics(self) -> EconomicRepository: ...
+
     async def __aenter__(self) -> Self: ...
 
     async def __aexit__(
@@ -97,6 +101,7 @@ class SqlAlchemyUnitOfWork:
         self._entered = False
         self._completed = False
         self._exited = False
+        self._failed = False
         self._orders: OrderRepository | None = None
         self._submission_attempts: SubmissionAttemptRepository | None = None
         self._fills: FillRepository | None = None
@@ -105,17 +110,22 @@ class SqlAlchemyUnitOfWork:
         self._authorizations: AuthorizationRepository | None = None
         self._reconciliation: ReconciliationRepository | None = None
         self._evidence: EvidenceRepository | None = None
+        self._economics: EconomicRepository | None = None
 
     def _ensure_transaction_active(self) -> None:
         transaction = self._transaction
         if (
             not self._entered
+            or self._failed
             or self._completed
             or self._exited
             or transaction is None
             or not transaction.is_active
         ):
             raise UnitOfWorkStateError("unit of work has no active transaction")
+
+    def _mark_failed(self) -> None:
+        self._failed = True
 
     def _repository(self, repository: RepositoryT | None) -> RepositoryT:
         self._ensure_transaction_active()
@@ -160,6 +170,10 @@ class SqlAlchemyUnitOfWork:
     @property
     def evidence(self) -> EvidenceRepository:
         return self._repository(self._evidence)
+
+    @property
+    def economics(self) -> EconomicRepository:
+        return self._repository(self._economics)
 
     async def __aenter__(self) -> Self:
         if self._entered or self._exited:
@@ -221,6 +235,13 @@ class SqlAlchemyUnitOfWork:
             self._evidence = cast(
                 EvidenceRepository,
                 _SqlEvidenceRepository(session, ensure_active=self._ensure_transaction_active),
+            )
+            self._economics = SqlEconomicRepository(
+                session,
+                code_hash=self._code_hash,
+                ensure_active=self._ensure_transaction_active,
+                ensure_config=self._ensure_config_hash,
+                mark_failed=self._mark_failed,
             )
         except BaseException:
             transaction = self._transaction
