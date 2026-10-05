@@ -45,6 +45,12 @@
 - Crypto adapters have only fixture and mock-HTTP verification in this repository. Seven equity
   reads have authenticated, value-free shape evidence, but nonempty order and position row shapes
   have not been observed and are rejected.
+- The separate Robinhood-2 supplied-page history parser accepts declaration-shaped nonempty
+  orders/executions only as private, unauthenticated observations. It preserves missing-vs-zero
+  fees, deduplicates native execution IDs, and rejects conflicting pagination/snapshots. Matching
+  regulatory/clearing totals are internal consistency, not final charges or complete history.
+  It does not unlock the authenticated adapter, supply strategy ownership/order receipt timing,
+  or construct cost-calibration samples. See [the parser handoff](equity-history-parser-2026-10-04.md).
 - Shadow smoke evidence is explicitly non-promotable. The authenticated connected preflight is
   also deliberately non-promotable. Its exact-build research-binding path is disabled by both the
   shipped base configuration and immutable safety envelope. The diagnostic records
