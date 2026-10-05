@@ -192,6 +192,7 @@ class SqlAlchemyUnitOfWork:
                 code_hash=self._code_hash,
                 ensure_active=self._ensure_transaction_active,
                 ensure_config_hash=self._ensure_config_hash,
+                mark_failed=self._mark_failed,
             )
             self._submission_attempts = cast(
                 SubmissionAttemptRepository,

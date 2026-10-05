@@ -38,6 +38,7 @@ OPTIONS_TRIAL_TRIGGER_COUNT = 4
 OPTIONS_RISK_TRIGGER_COUNT = 4
 ETF_REPLAY_TRIGGER_COUNT = 4
 OWNED_LIFECYCLE_TRIGGER_COUNT = 8
+OWNED_ECONOMIC_TRIGGER_COUNT = 4
 
 ROW_IDS = {table_name: f"{table_name}-1" for table_name in PROTECTED_TABLES}
 
@@ -495,7 +496,8 @@ def test_downgrade_and_reupgrade_remove_and_restore_guards(
         + OPTIONS_TRIAL_TRIGGER_COUNT
         + OPTIONS_RISK_TRIGGER_COUNT
         + ETF_REPLAY_TRIGGER_COUNT
-        + OWNED_LIFECYCLE_TRIGGER_COUNT,
+        + OWNED_LIFECYCLE_TRIGGER_COUNT
+        + OWNED_ECONOMIC_TRIGGER_COUNT,
     )
 
 
@@ -547,7 +549,8 @@ def test_failed_trigger_upgrade_is_atomic_and_retryable(
         + OPTIONS_TRIAL_TRIGGER_COUNT
         + OPTIONS_RISK_TRIGGER_COUNT
         + ETF_REPLAY_TRIGGER_COUNT
-        + OWNED_LIFECYCLE_TRIGGER_COUNT,
+        + OWNED_LIFECYCLE_TRIGGER_COUNT
+        + OWNED_ECONOMIC_TRIGGER_COUNT,
     )
 
 
@@ -583,7 +586,7 @@ def test_failed_trigger_downgrade_is_atomic_and_retryable(
         trigger_count = connection.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'"
         ).fetchone()
-    assert revision == ("0009_owned_order_lifecycle",)
+    assert revision == ("0010_owned_economics",)
     assert trigger_count == (
         len(PROTECTED_TABLES) * 4
         + 2
@@ -592,7 +595,8 @@ def test_failed_trigger_downgrade_is_atomic_and_retryable(
         + OPTIONS_TRIAL_TRIGGER_COUNT
         + OPTIONS_RISK_TRIGGER_COUNT
         + ETF_REPLAY_TRIGGER_COUNT
-        + OWNED_LIFECYCLE_TRIGGER_COUNT,
+        + OWNED_LIFECYCLE_TRIGGER_COUNT
+        + OWNED_ECONOMIC_TRIGGER_COUNT,
     )
 
     command.downgrade(alembic_config, "0001_core_ledger")

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any, Protocol, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +65,7 @@ from trading_bot.persistence.models import (
     OrderIntentRow,
     OrderRow,
     OrderTransitionRow,
+    OwnedEconomicEventRow,
     RiskEvaluationRow,
     SubmissionAttemptRow,
 )
@@ -357,12 +358,14 @@ class _SqlOrderRepository:
         code_hash: CodeHash,
         ensure_active: ActiveGuard,
         ensure_config_hash: ConfigGuard,
+        mark_failed: Callable[[], None],
     ) -> None:
         _validate_code_hash(code_hash)
         self._session = session
         self._code_hash = code_hash
         self._ensure_active = ensure_active
         self._ensure_config_hash = ensure_config_hash
+        self._mark_failed = mark_failed
         self._pending: dict[OrderIntentId, OrderIntent] = {}
 
     async def add(self, intent: OrderIntent) -> None:
@@ -418,8 +421,31 @@ class _SqlOrderRepository:
             raise PersistenceDataError("order intent must be durable before dependent evidence")
         return intent
 
+    async def _deny_bound_write(
+        self, order_id: OrderId | None, intent_id: OrderIntentId | None = None
+    ) -> None:
+        bound = await self._session.scalar(
+            select(OwnedEconomicEventRow.id)
+            .where(
+                OwnedEconomicEventRow.order_id.is_not(None),
+                or_(
+                    OwnedEconomicEventRow.order_id == order_id,
+                    OwnedEconomicEventRow.intent_id == intent_id,
+                ),
+            )
+            .limit(1)
+        )
+        if bound is not None:
+            self._mark_failed()
+            try:
+                await self._session.rollback()
+            finally:
+                raise PersistenceDataError("bound order requires joint economic publication")
+
     async def record_event(self, event: OwnedOrderEvent) -> bool:
         self._ensure_active()
+        if type(event) is OwnedOrderEvent:
+            await self._deny_bound_write(event.order_id)
         return await record_owned_event(self._session, event, self._ensure_config_hash)
 
     async def get_broker_order(self, order_id: OrderId) -> BrokerOrder | None:
@@ -510,6 +536,7 @@ class _SqlOrderRepository:
 
         intent = await self._require_intent(intent_id)
         self._ensure_config_hash(intent.config_hash)
+        await self._deny_bound_write(order_id, intent_id)
         self._session.add(
             OrderTransitionRow(
                 id=transition_id,

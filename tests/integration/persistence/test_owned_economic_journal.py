@@ -145,16 +145,68 @@ async def test_caught_invalid_append_cannot_commit_prior_execution_staging(owned
         assert (await owner(restarted).get(AccountId("account-1"))).book_cash == Decimal("500")
 
 
-async def test_unpaired_owned_fact_is_not_adopted_on_read_or_retry(owned_engine):
+@pytest.mark.parametrize("prior_joint", [False, True])
+@pytest.mark.parametrize("write_path", ["owned", "transition", "null_transition"])
+async def test_bound_legacy_write_cannot_commit_even_after_joint_append(
+    owned_engine, prior_joint, write_path
+):
+    from trading_bot.domain import (
+        CorrelationId,
+        OrderEvent,
+        OrderState,
+        OrderTransitionId,
+    )
+    from trading_bot.persistence.base import PersistenceDataError
+
     await seed_economics(owned_engine)
-    async with _make_uow(owned_engine) as unpaired:
-        await unpaired.orders.record_event(execution_event().payload.event)
-        await unpaired.commit()
+    async with _make_uow(owned_engine) as uow:
+        if prior_joint:
+            await owner(uow).append(execution_event())
+        with pytest.raises(PersistenceDataError, match="joint economic publication"):
+            if write_path == "owned":
+                fact = execution_event().payload.event
+                if prior_joint:
+                    fact = replace(
+                        owned_fact(index=4, kind=OrderEvent.REQUEST_CANCEL),
+                        occurred_at=NOW + timedelta(seconds=4),
+                    )
+                await uow.orders.record_event(fact)
+            else:
+                i, b = _make_intent(), _make_broker_order(_make_intent())
+                await uow.orders.add_transition(
+                    OrderTransitionId("unpaired-transition"),
+                    i.id,
+                    None if write_path == "null_transition" else b.id,
+                    OrderState.PARTIALLY_FILLED if prior_joint else OrderState.SUBMITTED,
+                    OrderEvent.REQUEST_CANCEL,
+                    OrderState.CANCEL_PENDING,
+                    "fixture",
+                    "unpaired",
+                    NOW + timedelta(seconds=4),
+                    CorrelationId("fixture-correl"),
+                )
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()
+    async with _make_uow(owned_engine) as restarted:
+        s = await owner(restarted).get(AccountId("account-1"))
+        assert s.book_cash == Decimal("500") and s.position.quantity == 0
+        assert not s.obligations and s.event_count == 3
+
+
+async def test_hostile_removed_counterpart_is_not_adopted_on_read_or_retry(
+    owned_engine, database_path
+):
+    await seed_economics(owned_engine)
+    async with _make_uow(owned_engine) as uow:
+        await owner(uow).append(execution_event())
+        await uow.commit()
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("DROP TRIGGER trg_owned_economic_delete")
+        connection.execute("DELETE FROM owned_economic_events WHERE sequence=3")
+        connection.commit()
     async with _make_uow(owned_engine) as restarted:
         with pytest.raises(EconomicError):
             await owner(restarted).get(AccountId("account-1"))
-        with pytest.raises(UnitOfWorkStateError):
-            await restarted.commit()
     async with _make_uow(owned_engine) as restarted:
         with pytest.raises(EconomicError):
             await owner(restarted).append(execution_event())

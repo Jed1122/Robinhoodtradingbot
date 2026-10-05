@@ -49,6 +49,14 @@ orphaned, corrupt, advanced-before-bind or mismatched links deny; nothing is ado
 or automatically retried. Other accepted but unbound legacy orders are outside
 this projection, so it is not account-wide completeness evidence.
 
+Once bound, public legacy `orders.record_event` and `orders.add_transition` cannot
+publish an independent effect. Their bound-order/intent guard rolls back and
+latches the UOW failed before staging, including after a valid joint append in
+that transaction. Unbound legacy orders keep their existing independent API.
+The economic writer calls the internal checked lifecycle primitive only after
+validating the prospective joint projection; this is not a live authorization
+interface or protection from direct hostile database ownership.
+
 The offline fixture anchors are accepted before economic reservation. They test
 historical local reconstruction, not pre-send reservation chronology. A future
 protected writer must reserve before transmission and establish authenticated

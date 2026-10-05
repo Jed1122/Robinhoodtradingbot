@@ -1,5 +1,55 @@
 # Parallel Orchestration Transition Report
 
+## Independent joint equity economic candidate — 2026-10-05
+
+This leading checkpoint supersedes conflicting current software/blocker wording
+below for the fixed ETF workstream. Earlier sections retain their dated evidence,
+not current certification. Alpaca remains the sole data channel and Robinhood
+the execution target. No provider/broker/customer/credential calls, production
+migration, deployment, activation, trade, spending or risk change occurred.
+
+The execution-fact milestone is verified merged in
+[PR #20](https://github.com/Jed1122/Robinhoodtradingbot/pull/20) at
+`004390f0380d6fdb167271d0a847a3c0c43817e5`, tree
+`03624cd46d0090e230cc04e711a4ffa8bba657da`, equal to its tested candidate.
+That exact revision passed full8792/native20, combined91.39%, unchanged80/90%
+gates and all14 push/PR CI jobs. Those results do not certify newer economics.
+
+[PR #21](https://github.com/Jed1122/Robinhoodtradingbot/pull/21) adds the
+[independent joint economic owner](docs/etf-joint-economic-owner.md) under its
+[specification](docs/superpowers/specs/2026-10-05-etf-joint-economic-owner-design.md)
+and [plan](docs/superpowers/plans/2026-10-05-etf-joint-economic-owner.md), based
+on that merge. Pure versioned flat-start local facts reconstruct cash, shares,
+allocations, signed obligations, final fees and non-replenishing trial history.
+Additive0010 pairs economic/execution facts in the existing UnitOfWork and fails
+closed on damaged or missing counterparts. Public legacy writes to bound orders
+now deny before staging and latch/rollback; unbound legacy records remain usable.
+Terminal cancellation never releases obligations or establishes fee finality.
+
+Strongest-model independent review at candidate
+`08d01b7fed3f288c02353d60c3d6478b2b6a8143` ran381 scoped tests and found one
+Important unpaired-legacy-write defect, no Critical/Minor. Its six regression
+cases were watched failing before the guard fix. Three broad-suite expectation
+failures exposed the new migration's four additional guards/head; those tests
+were updated without weakening protections. New-candidate full/native, static,
+90% critical/80% overall, security/dependency and exact-head CI must all pass.
+Exact final candidate/tree, evidence hashes, review disposition and release/merge
+status are recorded in PR #21. This checkpoint does not assert their completion.
+
+Software disposition: joint local economic primitive **implemented / release
+verification in PR #21**. Independent genesis/finality, account-wide completeness,
+pre-send reservation, fresh risk/fencing/authority and trusted runtime composition
+remain **blocked/unverified**. Permanently false source/cost/execution/promotion
+flags prevent typed assertions or local green tests becoming eligibility.
+
+The critical path is now authenticated nonempty provider mapping and independently
+admitted genesis/finality; protected pre-send reservation, exact preview/one-use
+confirmation, fresh final risk and leadership; genuine matched fill/fee/Alpaca
+quote-order clocks; complete historical inputs and accepted after-cost results;
+trusted eligible paper/shadow composition and standalone deployed recovery.
+Local SIGKILL/independent-engine tests and diagnostic cycles do not satisfy those
+external/runtime gates. No profitability or launch guarantee is made.
+
 ## Durable owned equity lifecycle candidate — 2026-10-05
 
 This checkpoint supersedes conflicting current software, blocker and dependency
