@@ -23,7 +23,11 @@ Current order state is reconstructed, not independently overwritten.
 An OwnedOrderEvent carries a bounded event identity, local order identity, exact
 OrderEvent, UTC observation time, source hash, and optional complete Fill plus
 native execution key and occurrence ordinal. Fill events require all fill fields;
-control events require none. Only post-submission lifecycle events are admitted.
+reconcile-partial/filled events may also supply a complete newly discovered fill;
+other control events require none. Control-only reconciliation remains readable
+but cannot invent execution. Persistence screens registered-secret identifiers
+before serialization/staging and again during recovery. The pure codec remains
+credential-free. Only post-submission lifecycle events are admitted.
 No nanosecond provider time is silently narrowed to domain microseconds.
 
 The initial supported ownership anchor is an exact, locally submitted equity order
@@ -61,6 +65,10 @@ Local execution reads do not copy broker account/position snapshots, infer cash,
 settlement, buying power or ownership, nor declare reconciliation clean. A later
 trusted economic owner must supply independently reconstructed account/positions
 and align the broker/local reconciliation window.
+The account/time fill reader has a separate 10,000-fill read bound: complete
+filtered results or an error, never truncation. It is not a paginated history API
+or wired production reconciler. Trusted pagination/window composition for larger
+intervals remains outside this primitive.
 
 ## Acceptance and limitations
 

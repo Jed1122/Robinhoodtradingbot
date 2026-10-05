@@ -42,6 +42,7 @@ from trading_bot.domain.owned_order_lifecycle import (
     decode_owned_event,
     encode_owned_event,
 )
+from trading_bot.logging import contains_registered_secret
 from trading_bot.persistence.base import PersistenceDataError
 from trading_bot.persistence.evidence import (
     canonical_broker_order_response_sha256,
@@ -60,6 +61,8 @@ from trading_bot.persistence.models import (
 )
 from trading_bot.risk.pretrade import canonical_review_payload_sha256
 
+MAX_ACCOUNT_FILL_READS = 10_000
+
 
 class OwnedOrderJournalError(PersistenceDataError):
     def __init__(self) -> None:
@@ -71,8 +74,32 @@ def _deny() -> NoReturn:
 
 
 def _identity(value: str) -> None:
-    if type(value) is not str or not value.strip() or len(value) > 255:
+    if (
+        type(value) is not str
+        or not value.strip()
+        or len(value) > 255
+        or contains_registered_secret(value)
+    ):
         _deny()
+
+
+def _safe_event(event: OwnedOrderEvent) -> None:
+    if type(event) is not OwnedOrderEvent:
+        _deny()
+    event.__post_init__()
+    for value in (event.id, event.order_id, event.data_hash):
+        _identity(value)
+    if event.external_execution_key is not None:
+        _identity(event.external_execution_key)
+    if event.fill is not None:
+        for value in (
+            event.fill.id,
+            event.fill.broker_order_id,
+            event.fill.account_id,
+            event.fill.instrument_id,
+            event.fill.data_hash,
+        ):
+            _identity(value)
 
 
 def _hash(values: list[object]) -> str:
@@ -243,6 +270,7 @@ async def _recover(
     consumed_transitions: set[str] = set()
     for ordinal, journal in enumerate(journals):
         event = decode_owned_event(journal.payload_json)
+        _safe_event(event)
         if (
             journal.sequence != ordinal
             or journal.id != event.id
@@ -363,6 +391,7 @@ async def record_owned_event(
     session: AsyncSession, event: OwnedOrderEvent, ensure_config: Callable[[ConfigHash], None]
 ) -> bool:
     try:
+        _safe_event(event)
         payload = encode_owned_event(event)
         row = await session.get(OrderRow, event.order_id)
         if row is None:
@@ -451,7 +480,7 @@ async def record_owned_event(
 
 
 class SqlFillReader:
-    """Read exact existing fill facts; never adopts history or infers absent fees."""
+    """Complete bounded reads; never truncates, adopts history or infers absent fees."""
 
     def __init__(self, session: AsyncSession, *, ensure_active: Callable[[], None]) -> None:
         self._session = session
@@ -476,10 +505,10 @@ class SqlFillReader:
                     select(FillRow)
                     .where(FillRow.account_id == account_id, FillRow.occurred_at >= since)
                     .order_by(FillRow.occurred_at, FillRow.id)
-                    .limit(MAX_EVENTS + 1)
+                    .limit(MAX_ACCOUNT_FILL_READS + 1)
                 )
             )
-            if len(rows) > MAX_EVENTS:
+            if len(rows) > MAX_ACCOUNT_FILL_READS:
                 _deny()
             return tuple(_fill(row) for row in rows)
         except (ValueError, TypeError, AttributeError, SQLAlchemyError):

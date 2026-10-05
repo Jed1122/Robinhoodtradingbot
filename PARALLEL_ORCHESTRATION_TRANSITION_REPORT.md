@@ -14,7 +14,7 @@ persistence/recovery integration and release decision. The credential-free
 [saved specification](docs/superpowers/specs/2026-10-05-etf-durable-equity-lifecycle-design.md)
 and [implementation plan](docs/superpowers/plans/2026-10-05-etf-durable-equity-lifecycle.md)
 are implemented in a candidate building on reviewed/published head
-`5b746c53b68a937e73b994f82beea2bef3c93a4c`, based on
+`67c90ae6d608ba01d72885b28a0a9a5c1515e498`, based on
 `16048648d7fe8b29010e00505793abb678148a05`, in
 [PR #20](https://github.com/Jed1122/Robinhoodtradingbot/pull/20). The specification
 is coordinator-written, not a newly operator-reviewed artifact. Publication is
@@ -40,17 +40,27 @@ acceptance and unowned/external history remain denied; they cannot create local
 ownership or justify a submission retry. Every actual fill requires an explicit
 fee: unknown fees never become zero. Typed facts and declaration fixtures do not
 attest authenticated provenance, final charges or causal broker/quote clocks.
+Explicit newly discovered fills can accompany partial/full reconciliation from
+unknown state; target quantities still require exact recorded executions.
+Registered-secret identifiers deny before persistence encoding/staging. Account
+fill reads return complete results up to their separate 10,000-fill limit or deny,
+never truncate; production pagination/window composition remains unimplemented.
 Exact repeated delivery is idempotent, conflicts deny, pending cancellation
 survives raced partial fills and terminal states cannot reopen. Recovery verifies
 the bound intent/review, original acceptance and all journal/transition/fill links.
 Local SQLite isolation and bounded replay are not a live leadership fence or
 independently verified deployed-host recovery.
 
-The coordinator reports **423 targeted tests passing** after the recovery
+The coordinator reports **539 targeted tests passing** after the recovery
 corrections. Two independent candidate-review findings were fixed at the recorded
 head. The later GitHub findings are corrected with watched failing regressions:
 filled orders cannot reconcile to rejected, zero-fill anchors cannot retain an
-average fill price, and this authoritative handoff is refreshed. Final integrated
+average fill price, registered identifiers cannot leak through the new path,
+discovered reconciliation fills are durable, and this handoff is refreshed.
+The previously undocumented account-wide read ceiling is now independently
+named, documented and tested at 10,000/10,001 across multiple legacy orders.
+It remains complete-or-error, not a claim of pagination or reconciliation wiring.
+Final integrated
 review, full regression/coverage and exact-head CI for the eventual corrected
 candidate are **not certified** by this checkpoint. Earlier full-suite/CI results
 cannot certify later corrections. Merge remains pending those exact-final-head

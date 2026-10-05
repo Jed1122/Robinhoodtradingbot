@@ -230,6 +230,53 @@ def test_reconciliation_cannot_invent_filled_quantity() -> None:
     assert restored.filled_quantity == Decimal("0")
 
 
+@pytest.mark.parametrize(
+    "existing,additional,kind,expected",
+    [
+        ("0", "0.25", OrderEvent.RECONCILE_PARTIAL, "0.25"),
+        ("0", "1.25", OrderEvent.RECONCILE_FILLED, "1.25"),
+        ("0.25", "0.25", OrderEvent.RECONCILE_PARTIAL, "0.5"),
+        ("0.25", "1", OrderEvent.RECONCILE_FILLED, "1.25"),
+    ],
+)
+def test_reconciliation_can_add_exact_discovered_fill(existing, additional, kind, expected):
+    module = api()
+    original = order(
+        state=OrderState.UNKNOWN_REQUIRES_RECONCILIATION,
+        filled_quantity=Decimal(existing),
+    )
+    discovery = fact(
+        kind,
+        fill=fill(quantity=Decimal(additional)),
+        external_execution_key="discovered-native",
+        occurrence_ordinal=0,
+    )
+    assert module.decode_owned_event(module.encode_owned_event(discovery)) == discovery
+    result = module.advance_owned_order(original, discovery)
+    assert result.filled_quantity == Decimal(expected)
+    assert result.state is (
+        OrderState.FILLED if kind is OrderEvent.RECONCILE_FILLED else OrderState.PARTIALLY_FILLED
+    )
+    assert original.filled_quantity == Decimal(existing)
+
+
+@pytest.mark.parametrize(
+    "quantity,kind",
+    [("0.25", OrderEvent.RECONCILE_FILLED), ("1.25", OrderEvent.RECONCILE_PARTIAL)],
+)
+def test_discovered_reconciliation_fill_must_match_target_quantity(quantity, kind):
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        api().advance_owned_order(
+            order(state=OrderState.UNKNOWN_REQUIRES_RECONCILIATION),
+            fact(
+                kind,
+                fill=fill(quantity=Decimal(quantity)),
+                external_execution_key="discovered-native",
+                occurrence_ordinal=0,
+            ),
+        )
+
+
 def test_exact_quantity_arithmetic_is_independent_of_ambient_context() -> None:
     module = api()
     with localcontext() as context:

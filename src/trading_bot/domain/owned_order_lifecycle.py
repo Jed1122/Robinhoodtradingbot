@@ -29,6 +29,7 @@ VERSION = "owned-equity-lifecycle-v1"
 MAX_EVENTS = 10_000
 MAX_PAYLOAD_BYTES = 16_384
 _FILL_EVENTS = frozenset({OrderEvent.PARTIAL_FILL, OrderEvent.FILL})
+_RECONCILIATION_FILL_EVENTS = frozenset({OrderEvent.RECONCILE_PARTIAL, OrderEvent.RECONCILE_FILLED})
 _CONTROL_EVENTS = frozenset(
     {
         OrderEvent.REQUEST_CANCEL,
@@ -87,7 +88,9 @@ class OwnedOrderEvent:
                 _deny()
             if type(self.event) is not OrderEvent:
                 _deny()
-            if self.event in _FILL_EVENTS:
+            if self.event in _FILL_EVENTS or (
+                self.event in _RECONCILIATION_FILL_EVENTS and self.fill is not None
+            ):
                 if type(self.fill) is not Fill:
                     _deny()
                 replace(self.fill)
@@ -243,7 +246,7 @@ def advance_owned_order(order: BrokerOrder, event: OwnedOrderEvent) -> BrokerOrd
                 require_bounded_decimal(filled, "filled", nonnegative=True)
                 require_bounded_decimal(remaining, "remaining", nonnegative=True)
             complete = filled == order.requested_quantity
-            if (event.event is OrderEvent.FILL) != complete:
+            if (event.event in {OrderEvent.FILL, OrderEvent.RECONCILE_FILLED}) != complete:
                 _deny()
         if (
             (next_state in {OrderState.SUBMITTED, OrderState.REJECTED} and filled != 0)

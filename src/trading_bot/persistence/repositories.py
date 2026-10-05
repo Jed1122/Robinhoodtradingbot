@@ -158,7 +158,12 @@ class SubmissionAttemptRepository(Protocol):
 
 
 class FillRepository(Protocol):
-    """Exact read interface; writes belong to the owned lifecycle transaction."""
+    """Exact reads; writes belong to the owned lifecycle transaction.
+
+    Account/time reads return the complete filtered result up to 10,000 fills or
+    raise PersistenceDataError, never a truncated tuple. This bounded primitive
+    has no pagination contract and is not a composed reconciliation-window reader.
+    """
 
     async def get(self, fill_id: FillId) -> Fill | None: ...
 

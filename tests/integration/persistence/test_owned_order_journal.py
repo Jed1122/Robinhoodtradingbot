@@ -16,6 +16,8 @@ from alembic.config import Config
 from sqlalchemy import func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+import trading_bot.logging as logging_module
+import trading_bot.persistence.owned_order_journal as journal_module
 from tests.integration.persistence.test_unit_of_work import (
     HASH_C,
     NOW,
@@ -40,6 +42,7 @@ from trading_bot.domain.owned_order_lifecycle import (
     advance_owned_order,
     encode_owned_event,
 )
+from trading_bot.logging import SecretRegistry
 from trading_bot.persistence import async_session_factory, create_engine
 from trading_bot.persistence.evidence import canonical_broker_order_response_sha256
 from trading_bot.persistence.models import FillRow, OrderRow, OrderTransitionRow, OwnedOrderEventRow
@@ -293,6 +296,63 @@ async def test_zero_fill_anchor_with_average_price_denies_recovery_and_append(ow
     assert await counts(owned_engine) == (0, 0)
 
 
+@pytest.mark.parametrize("field", ["event_id", "fill_id", "native_key", "order_id"])
+async def test_registered_identifier_is_denied_before_encoding_or_staging(
+    owned_engine, monkeypatch, field
+):
+    monkeypatch.setattr(logging_module, "_REGISTRY_STATE", logging_module._RegistryState())
+    sentinel = "fictional-registered-lifecycle-value"
+    SecretRegistry().register(sentinel)
+    original = event()
+    if field == "event_id":
+        bad = replace(original, id=sentinel)
+    elif field == "fill_id":
+        bad = replace(original, fill=replace(original.fill, id=FillId(sentinel)))
+    elif field == "native_key":
+        bad = replace(original, external_execution_key=sentinel)
+    else:
+        bad = replace(original, order_id=OrderId(sentinel))
+    encoded = []
+    actual_encode = journal_module.encode_owned_event
+
+    def track_encode(value):
+        encoded.append(value.id)
+        return actual_encode(value)
+
+    monkeypatch.setattr(journal_module, "encode_owned_event", track_encode)
+    with pytest.raises(ValueError, match="owned_order_journal_invalid") as denied:
+        async with _make_uow(owned_engine) as uow:
+            await owner(uow).record_event(bad)
+    assert sentinel not in str(denied.value)
+    assert encoded == []
+    assert await counts(owned_engine) == (0, 0)
+
+
+async def test_unknown_order_discovered_executions_are_durable_and_idempotent(owned_engine):
+    partial = replace(event(index=1), event=OrderEvent.RECONCILE_PARTIAL, occurrence_ordinal=0)
+    complete = replace(
+        event(index=3, quantity="1", kind=OrderEvent.FILL),
+        event=OrderEvent.RECONCILE_FILLED,
+        occurrence_ordinal=1,
+    )
+    async with _make_uow(owned_engine) as uow:
+        assert await owner(uow).record_event(event(kind=OrderEvent.RECONCILIATION_DRIFT))
+        assert await owner(uow).record_event(partial)
+        assert not await owner(uow).record_event(partial)
+        assert await owner(uow).record_event(event(index=2, kind=OrderEvent.RECONCILIATION_DRIFT))
+        assert await owner(uow).record_event(complete)
+        await uow.commit()
+    async with _make_uow(owned_engine) as restarted:
+        actual = await owner(restarted).get_broker_order(OrderId("order-1"))
+        assert actual.filled_quantity == Decimal("1.25")
+        assert actual.state is OrderState.FILLED
+        assert not await owner(restarted).record_event(complete)
+        assert await restarted.fills.get(FillId("fill-1")) == partial.fill
+        assert await restarted.fills.get(FillId("fill-3")) == complete.fill
+        await restarted.commit()
+    assert await counts(owned_engine) == (2, 4)
+
+
 async def test_missing_order_and_fill_reads_remain_absent(owned_engine: AsyncEngine):
     async with _make_uow(owned_engine) as uow:
         assert await owner(uow).get_broker_order(OrderId("missing")) is None
@@ -498,6 +558,74 @@ async def test_read_identifiers_and_times_are_strict(owned_engine, method):
                 await uow.fills.get(FillId(""))
             else:
                 await uow.fills.list_for_account(AccountId("account-1"), NOW.replace(tzinfo=None))
+
+
+async def test_account_read_is_complete_at_bound_and_denies_larger_multiorder_interval(
+    owned_engine,
+):
+    """Characterize existing complete-or-error reads; these legacy facts are not owned."""
+    orders = [
+        dict(
+            id=f"legacy-order-{index}",
+            intent_id=None,
+            review_id=None,
+            submission_attempt_id=None,
+            provider="paper",
+            broker_order_id=f"legacy-broker-{index}",
+            client_order_id=None,
+            account_id="account-1",
+            instrument_id="instrument-1",
+            side="buy",
+            purpose="entry",
+            order_type="limit",
+            time_in_force="day",
+            requested_quantity=Decimal("1.25"),
+            filled_quantity=Decimal("0"),
+            limit_price=Decimal("10"),
+            stop_price=None,
+            average_fill_price=None,
+            state="submitted",
+            created_at=NOW,
+            updated_at=NOW,
+            data_hash=HASH_C,
+        )
+        for index in range(2)
+    ]
+
+    def legacy_fill(index):
+        order_index = index % 2
+        return dict(
+            id=f"legacy-fill-{index:05d}",
+            order_id=f"legacy-order-{order_index}",
+            provider="paper",
+            external_execution_key=f"legacy-native-{index}",
+            broker_order_id=f"legacy-broker-{order_index}",
+            account_id="account-1",
+            instrument_id="instrument-1",
+            side="buy",
+            quantity=Decimal("0.0001"),
+            price=Decimal("10"),
+            fee=Decimal("0"),
+            occurred_at=NOW,
+            occurrence_ordinal=index // 2,
+            data_hash=HASH_C,
+        )
+
+    async with async_session_factory(owned_engine).begin() as session:
+        await session.execute(insert(OrderRow), orders)
+        await session.execute(insert(FillRow), [legacy_fill(index) for index in range(10000)])
+    async with _make_uow(owned_engine) as uow:
+        fills = await uow.fills.list_for_account(AccountId("account-1"), NOW)
+        assert len(fills) == 10000
+        assert fills[0].id == "legacy-fill-00000"
+        assert fills[-1].id == "legacy-fill-09999"
+        assert {fill.broker_order_id for fill in fills} == {"legacy-broker-0", "legacy-broker-1"}
+    async with async_session_factory(owned_engine).begin() as session:
+        await session.execute(insert(FillRow), legacy_fill(10000))
+    with pytest.raises(ValueError, match="owned_order_journal_invalid"):
+        async with _make_uow(owned_engine) as uow:
+            await uow.fills.list_for_account(AccountId("account-1"), NOW)
+    assert await counts(owned_engine) == (10001, 0)
 
 
 async def test_concurrent_append_cannot_publish_two_effects(owned_engine):

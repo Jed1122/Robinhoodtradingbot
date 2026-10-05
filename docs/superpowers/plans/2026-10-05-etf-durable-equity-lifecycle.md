@@ -17,6 +17,8 @@
 - Initial owned equity anchor has complete intent/review/submission provenance and zero fills.
 - Missing fees do not become zero; immutable exact domain Fill is required for a fill event.
 - At most 10,000 events per order; at most 16 KiB per canonical payload.
+- Account/time fill reads have a separate 10,000-fill complete-or-error bound;
+  no truncation, pagination promise or production reconciliation composition.
 - Keep 80% overall and 90% critical branch gates unchanged; all current exact-head merge checks are required.
 
 ## Review Focus

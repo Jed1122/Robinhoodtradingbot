@@ -33,11 +33,22 @@ actor and reason. Unrelated, duplicate or future-dated acceptance records deny.
 A zero-fill anchor must have no average fill price. An order with any recorded
 fill cannot reconcile to submitted or rejected; a failed reconciliation preserves
 the prior unknown state and actual fill history instead of masking execution.
+`RECONCILE_PARTIAL` and `RECONCILE_FILLED` may carry an explicit newly discovered
+fill with its native key and contiguous ordinal. The full cumulative quantity
+must match the target state. Existing control-only reconciliation records remain
+readable, but cannot invent missing execution. Registered secret material in
+event/fill/native identifiers is denied before encoding or staging, and screened
+again on owned recovery; the pure codec has no credential-registry dependency.
 
 `fills.get` and `fills.list_for_account(account_id, since)` read exact persisted
 domain records. They do not attest ownership, authenticity or completeness of
 legacy fills. The explicit time filter must eventually align with the broker
 reconciliation window; no concrete account/position reconstruction is supplied.
+Each account/time read returns the complete filtered result up to an independent
+10,000-fill bound, or raises a sanitized error; it never returns a truncated
+history. A busy interval requires future trusted window/pagination composition,
+not treating the bounded prefix as complete. No production reconciler is wired
+to this reader in this slice.
 
 Migration `0009_owned_order_lifecycle` adds the journal and immutable-fill guards,
 without rewriting historical records. UPDATE, DELETE, REPLACE and negative-rowid
