@@ -87,6 +87,9 @@ The directory-entry bound includes one recognized retained crash alias for every
 published owner/claim/joint over the entire supported lifetime. The finite spare
 allowance for unlinked staging remains resource-bounded. No alias is adopted or
 removed, and external/unexplained links and unresolved claims still deny.
+Publication reserves capacity before creating the owner marker or a new claim,
+including the transient retained hardlink window. Insufficient capacity denies
+without changing the previously recoverable economic prefix.
 
 ## Qualification and verification
 

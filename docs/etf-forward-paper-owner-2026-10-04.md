@@ -22,6 +22,8 @@ The bounded directory accommodates these aliases throughout its supported lifeti
 Tape construction validates the full canonical joint envelope, including replayed
 account state, against the same unchanged 8 MiB limit used by persistence. An
 oversized tape is denied before any owner files or claims are published.
+Directory capacity is reserved before marker/claim publication, including a
+retained crash alias, so a successful checkpoint cannot exceed its restore bound.
 
 APIs are `replay_forward_paper`, `advance_forward_paper` and `recover_forward_paper`.
 There is no CLI, daemon, broker adapter, signal factory or promotion writer in this

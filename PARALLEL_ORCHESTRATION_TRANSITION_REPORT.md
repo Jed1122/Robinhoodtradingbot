@@ -22,6 +22,7 @@ the full fictional tape and economic state, verifies every retained prefix on
 restart, preserves trial reservations/losses and risk latches, and never advances
 during recovery. The complete 8 MiB admission budget and journal entry bound
 include reconstructed state and recognized retained publication-crash aliases.
+Capacity is reserved before marker/claim publication, including the crash window.
 Missing state, stale heads, unresolved claims and unexplained links still deny.
 This branch is not represented as merged: integration requires current exact-head
 checks and resolution of substantive review findings. Earlier review/test evidence

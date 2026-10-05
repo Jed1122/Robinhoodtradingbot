@@ -462,6 +462,112 @@ def test_unlinked_staging_entries_remain_resource_bounded(private, monkeypatch):
         recover(private, tape(), stored.head_hash)
 
 
+@pytest.mark.parametrize("staging_count", [42, 43, 44])
+def test_near_capacity_append_denies_before_claim_and_preserves_previous_head(
+    private, monkeypatch, staging_count
+):
+    monkeypatch.setattr(api(), "MAX_CYCLES", 8)
+    request = tape()
+    first = advance(private, replace(request, cycles=request.cycles[:1]))
+    directory = private / NAMESPACE
+    for index in range(staging_count):
+        staging = directory / f".tmp-{index:032x}"
+        staging.write_bytes(b"unlinked interrupted staging")
+        staging.chmod(0o600)
+    original = {path.name: path.read_bytes() for path in directory.iterdir()}
+    assert recover(private, request, first.head_hash) == first
+    with pytest.raises(ValueError, match="forward_paper_store_invalid"):
+        advance(private, replace(request, cycles=request.cycles[:2]), first.head_hash)
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == original
+    assert recover(private, request, first.head_hash) == first
+
+
+@pytest.mark.parametrize("staging_count", [46, 47])
+def test_near_capacity_genesis_denies_before_owner_publication(
+    private, monkeypatch, staging_count
+):
+    monkeypatch.setattr(api(), "MAX_CYCLES", 8)
+    directory = private / NAMESPACE
+    directory.mkdir(mode=0o700)
+    for index in range(staging_count):
+        staging = directory / f".tmp-{index:032x}"
+        staging.write_bytes(b"unlinked interrupted staging")
+        staging.chmod(0o600)
+    with pytest.raises(ValueError, match="forward_paper_store_invalid"):
+        recover(private, tape(), GENESIS)
+    assert not (directory / "owner.json").exists()
+    assert not list(directory.glob("*.claim.json"))
+    assert len(list(directory.glob(".tmp-*"))) == staging_count
+
+
+@pytest.mark.parametrize("target", ["owner.json", "00000002.joint.json"])
+@pytest.mark.parametrize("synchronized", [False, True])
+def test_near_capacity_publication_crash_remains_recoverable(
+    private, monkeypatch, target, synchronized
+):
+    monkeypatch.setattr(api(), "MAX_CYCLES", 8)
+    request = tape()
+    if target == "owner.json":
+        directory = private / NAMESPACE
+        directory.mkdir(mode=0o700)
+        first_head = GENESIS
+        staging_count = 45  # + lock + marker + retained alias = 48
+    else:
+        first = advance(private, replace(request, cycles=request.cycles[:1]))
+        directory = private / NAMESPACE
+        first_head = first.head_hash
+        staging_count = 41  # + four existing files + claim/joint/alias = 48
+    for index in range(staging_count):
+        staging = directory / f".tmp-{index:032x}"
+        staging.write_bytes(b"unlinked interrupted staging")
+        staging.chmod(0o600)
+    code = """
+import os, signal, sys
+from dataclasses import replace
+from pathlib import Path
+from tests.unit.runtime.test_etf_forward_paper import tape
+import trading_bot.persistence.etf_forward_paper as owner
+owner.MAX_CYCLES = 8
+original = os.link
+def killed(source, destination, **kwargs):
+    original(source, destination, **kwargs)
+    if destination == sys.argv[2]:
+        if sys.argv[3] == 'True':
+            os.fsync(kwargs['dst_dir_fd'])
+        os.kill(os.getpid(), signal.SIGKILL)
+os.link = killed
+request = tape()
+if sys.argv[2] == 'owner.json':
+    owner.recover_forward_paper(
+        Path(sys.argv[1]), request, repository_root=Path.cwd(), expected_head=sys.argv[4]
+    )
+else:
+    owner.advance_forward_paper(
+        Path(sys.argv[1]), replace(request, cycles=request.cycles[:2]),
+        repository_root=Path.cwd(), expected_head=sys.argv[4]
+    )
+"""
+    process = subprocess.run(
+        [sys.executable, "-c", code, str(private), target, str(synchronized), first_head],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert process.returncode == -9 and len(list(directory.iterdir())) == 48
+    if target == "owner.json":
+        restored = recover(private, request, GENESIS)
+        assert restored.sequence == 0 and restored.state.account.cash == Decimal("500")
+    else:
+        head = hashlib.sha256((directory / target).read_bytes()).hexdigest()
+        restored = recover(private, request, head)
+        assert restored.sequence == 2 and restored.state.account.cash == Decimal("489.99")
+        assert restored.state.account.trial.reserved_risk == Decimal("10.02")
+    assert restored.state.paused and not restored.state.qualifying_paper
+    assert len(list(directory.iterdir())) == 48
+
+
 def test_boolean_cycle_count_in_joint_json_denies(private):
     request = tape()
     stored = advance(private, request)

@@ -128,6 +128,8 @@ def _restore(directory: int, tape: ForwardPaperTape) -> tuple[ForwardPaperCheckp
     except FileNotFoundError:
         # No remaining journal can be silently attached to a new owner.
         _check(all(_TEMP.fullmatch(n) for n in names - {"writer.lock"}))
+        # Marker publication may retain both its final name and staging alias.
+        _check(len(names) + 2 <= 4 * MAX_CYCLES + 16)
         _publish(directory, "owner.json", marker)
     else:
         _check(retained_marker == marker)
@@ -229,6 +231,8 @@ def _operate(
         body = _joint(sequence, current.head_hash, tape, proposed)
         # All fallible reconstruction completes before the pre-effect claim.
         # Only this atomic local diagnostic commit is an effect; no callbacks.
+        # Reserve claim + joint + the joint's retained link/unlink crash alias.
+        _check(len(os.listdir(directory)) + 3 <= 4 * MAX_CYCLES + 16)
         _publish(
             directory, f"{sequence:08d}.claim.json", _claim(sequence, current.head_hash, proposed)
         )
