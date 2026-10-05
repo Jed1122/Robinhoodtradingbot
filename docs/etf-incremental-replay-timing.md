@@ -19,6 +19,11 @@ detailed decisions and exact aggregate decision counts. The account-fact bound
 still applies; crossing it denies the run, not a complete/truncated economic
 report. Source failures return no completed result. `source_exhausted` means only
 normal exhaustion of this iterator, never complete historical coverage.
+Retained nonquote baseline events are capped at 150,000 and the distinct source
+reason vocabulary at 1,024. All accepted reasons retain exact counts; overflow
+rejects the run rather than collapsing reasons or publishing a partial success.
+Each trading date permits one session event, including across chunks and restart
+reconstruction, so a duplicate date cannot accelerate settlement or cadence.
 
 Use `through_count=N` for a v2 checkpoint. Passing that result as `checkpoint`
 reconstructs and verifies the complete prefix once before continuing the same

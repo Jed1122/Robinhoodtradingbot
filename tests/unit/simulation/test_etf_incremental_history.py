@@ -2,6 +2,7 @@
 
 import importlib
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal, getcontext
 
 import pytest
@@ -132,3 +133,77 @@ def test_invalid_bounded_configuration_denies(kwargs):
     context = request()
     with pytest.raises(ValueError):
         run(context, context.dataset.events, **kwargs)
+
+
+@pytest.mark.parametrize("chunk_size", [1, 10000])
+@pytest.mark.parametrize("resume", [False, True])
+def test_duplicate_session_date_cannot_accelerate_settlement(chunk_size, resume):
+    context = request()
+    events = list(context.dataset.events)
+    opening = next(event for event in events if event.kind == "session")
+    assert opening.clock is not None
+    events[-1] = replace(
+        events[-1],
+        event_at_ns=opening.event_at_ns + 1_000_000_000,
+        available_at_ns=opening.event_at_ns + 1_000_000_000,
+        clock=replace(opening.clock, observed_at=opening.clock.observed_at + timedelta(seconds=1)),
+    )
+    with pytest.raises(ValueError):
+        replace(context.dataset, events=tuple(events))
+    checkpoint = None
+    if resume:
+        checkpoint = run(context, events, through_count=len(events) - 1, chunk_size=chunk_size)
+        assert checkpoint.candidate.account.unsettled
+        assert not checkpoint.candidate.account.complete
+    with pytest.raises(ValueError, match=r"^etf_incremental_history_invalid$"):
+        run(context, events, checkpoint=checkpoint, chunk_size=chunk_size)
+
+
+@pytest.mark.parametrize("resume", [False, True])
+def test_source_reason_cardinality_overflow_returns_no_result(monkeypatch, resume):
+    module = importlib.import_module("trading_bot.simulation.etf_incremental_history")
+    monkeypatch.setattr(module, "MAX_SOURCE_REASONS", 8, raising=False)
+    context = request(close=False, reasons=("blocked-0",))
+    template = context.dataset.events[-1]
+    events = list(context.dataset.events[:-1])
+    events.extend(
+        replace(
+            template,
+            ordinal=template.ordinal + index,
+            event_at_ns=template.event_at_ns + index,
+            available_at_ns=template.available_at_ns + index,
+            execution_reasons=(f"blocked-{index}",),
+        )
+        for index in range(9)
+    )
+    prefix = run(context, events, through_count=len(events) - 1, chunk_size=1)
+    assert dict(prefix.candidate_decision_counts)["blocked-0"] == 2
+    assert len(dict(prefix.candidate_decision_counts)) <= 10
+    with pytest.raises(ValueError, match=r"^etf_incremental_history_invalid$"):
+        run(context, events, checkpoint=prefix if resume else None, chunk_size=1)
+
+
+@pytest.mark.parametrize("kind", ["bar", "dividend_ex"])
+@pytest.mark.parametrize("resume", [False, True])
+def test_nonquote_baseline_overflow_returns_no_result(monkeypatch, kind, resume):
+    module = importlib.import_module("trading_bot.simulation.etf_incremental_history")
+    monkeypatch.setattr(module, "MAX_BASELINE_EVENTS", 3, raising=False)
+    context = request(close=False)
+    template = context.dataset.events[0]
+    values = {"kind": kind}
+    if kind == "dividend_ex":
+        values.update(bar=None, cash_per_share=Decimal(".1"))
+    events = tuple(
+        replace(
+            template,
+            ordinal=index,
+            event_at_ns=template.event_at_ns + (index if kind == "dividend_ex" else 0),
+            available_at_ns=template.available_at_ns + index + (1 if kind == "dividend_ex" else 0),
+            **values,
+            **({"action_id": content_hash(index)} if kind == "dividend_ex" else {}),
+        )
+        for index in range(4)
+    )
+    prefix = run(context, events, through_count=3, chunk_size=1)
+    with pytest.raises(ValueError, match=r"^etf_incremental_history_invalid$"):
+        run(context, events, checkpoint=prefix if resume else None, chunk_size=1)

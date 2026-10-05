@@ -8,11 +8,13 @@ import hashlib
 from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
+from datetime import date
 from typing import Literal
 
 from trading_bot.domain.decimal_utils import _require_sha256_hex
 from trading_bot.market_data.etf_source import _ns
 from trading_bot.market_data.recording import canonical_json, content_hash
+from trading_bot.simulation.etf_history import _session_date
 from trading_bot.simulation.etf_native_history import _outcome_steps
 from trading_bot.simulation.etf_native_models import (
     EtfHistoryRequest,
@@ -23,6 +25,9 @@ from trading_bot.simulation.etf_native_models import (
 MAX_SOURCE_EVENTS = 100_000_000
 MAX_CHUNK_EVENTS = 10_000
 MAX_DECISIONS = 10_000
+# Quote volume may grow; retained baseline facts and source reason vocabulary may not.
+MAX_BASELINE_EVENTS = 150_000
+MAX_SOURCE_REASONS = 1_024
 
 
 def _check(condition: bool) -> None:
@@ -119,6 +124,9 @@ def run_incremental_etf_history(
         chunk: list[EtfReplayEvent] = []
         verified_checkpoint = checkpoint is None
         holdout = False
+        session_dates: set[date] = set()
+        source_reasons: set[str] = set()
+        baseline_count = 0
 
         def flush() -> None:
             if chunk:
@@ -162,6 +170,17 @@ def run_incremental_etf_history(
                 holdout = True
                 break
             _check(count < MAX_SOURCE_EVENTS)
+            if event.kind != "quote":
+                _check(baseline_count < MAX_BASELINE_EVENTS)
+                baseline_count += 1
+            if event.kind == "session":
+                session_date = _session_date(event.event_at_ns)
+                _check(session_date not in session_dates)
+                session_dates.add(session_date)
+            for reason in event.execution_reasons:
+                if reason not in source_reasons:
+                    _check(len(source_reasons) < MAX_SOURCE_REASONS)
+                    source_reasons.add(reason)
             if count:
                 digest.update(b",")
             digest.update(canonical_json(event).encode())

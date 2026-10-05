@@ -831,3 +831,79 @@ async def test_live_modes_remain_blocked_without_later_authorization_layer(
 
     assert review.calls == 0
     assert place.calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("known_quote", [False, True])
+async def test_real_cost_observer_composes_with_durable_service(
+    execution_database: tuple[AsyncEngine, async_sessionmaker[AsyncSession]],
+    tmp_path: Path,
+    known_quote: bool,
+) -> None:
+    import json
+
+    from tests.unit.diagnostics.test_etf_execution_receipts import Clocks, directories, recorder
+    from trading_bot.diagnostics.etf_execution_receipts import read_execution_receipts
+    from trading_bot.execution.etf_cost_observer import EtfCostObserver
+
+    class ReceiptClocks(Clocks):
+        def utc(self):
+            self.tick += 1
+            return NOW + timedelta(microseconds=self.tick)
+
+    _engine, factory = execution_database
+    async with factory.begin() as session:
+        instrument = await session.get(InstrumentRow, "paper-instrument")
+        assert instrument is not None
+        instrument.id, instrument.symbol = "SPY", "SPY"
+    intent = replace(make_intent(), instrument_id=InstrumentId("SPY"))
+    root, repository = directories(tmp_path)
+    sink = recorder(root, repository, ReceiptClocks())
+    try:
+        observation = sink.record_alpaca_frame(
+            json.dumps(
+                [
+                    {
+                        "T": "q",
+                        "S": "SPY",
+                        "t": NOW.isoformat(),
+                        "z": "B",
+                        "bp": 10,
+                        "ap": 10.01,
+                        "bs": 10,
+                        "as": 10,
+                        "bx": "P",
+                        "ax": "P",
+                        "c": ["R"],
+                    }
+                ]
+            ).encode()
+        )[0]
+        observer = EtfCostObserver(
+            sink, decision_quote_hash=observation.observation_hash if known_quote else "f" * 64
+        )
+        review = FakeReview(make_review(intent))
+        place = FakePlace(factory, make_broker_order(intent, state=OrderState.SUBMITTED))
+        pretrade = FakePretrade()
+        service = make_service(
+            factory, pretrade=pretrade, review=review, place=place, observer=observer
+        )
+        result = await service.execute(intent)
+        assert review.calls == int(known_quote)
+        assert place.calls == int(known_quote)
+        if not known_quote:
+            assert result.reason_code == "decision_observation_failed"
+            assert result.state is OrderState.RISK_APPROVED
+            return
+        assert result.state is OrderState.SUBMITTED and place.observed_pending
+        assert pretrade.final_calls == 2
+        linked = read_execution_receipts(root, sink.checkpoint(), repository)
+        assert linked["incomplete_order_count"] == 1
+        assert linked["completed_order_count"] == 0
+        assert not linked["customer_authenticated"] and not linked["clock_session_attested"]
+        assert not linked["execution_enabled"]
+        async with factory() as session:
+            attempt = await session.scalar(select(SubmissionAttemptRow))
+        assert attempt is not None and attempt.outcome_class == "accepted"
+    finally:
+        sink.close()
