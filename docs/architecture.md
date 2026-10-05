@@ -5,6 +5,17 @@ outside the service host, and placement factories behind authorization and promo
 
 ## Implemented boundary
 
+### Independent local equity economics
+
+`accounting/owned_economic_*` defines versioned immutable local facts and a pure
+cash/share/allocation/settlement/trial projection. `uow.economics` journals them
+atomically with exact owned execution facts in the existing UnitOfWork; a caught
+joint failure prevents commit. Migration0010 is additive and was exercised only
+on fixture ledgers. Missing or unpaired history denies instead of being adopted.
+Source/cost/execution/promotion properties remain permanently false; this is not
+account-wide source completeness, pre-send reservation, broker wiring or deployed
+recovery proof. See [the joint economic boundary](etf-joint-economic-owner.md).
+
 ### Durable local owned equity order facts
 
 `domain/owned_order_lifecycle.py` adds a pure versioned post-submission fact contract

@@ -42,6 +42,24 @@ responses remain unsupported. Execution facts alone do not reconstruct economic
 reservations/account state or unlock any provider adapter. See
 `docs/etf-durable-equity-lifecycle.md`; no actual cost sample or live capability follows.
 
+The separate additive economic owner now reconstructs flat-start local cash,
+shares, allocations, signed settlement obligations, explicit final fees and
+non-replenishing trial losses. `uow.economics` pairs its versioned facts with the
+checked owned execution primitive in the same transaction; caught failure or
+cancellation latches the UOW and rolls back. Public independent owned/generic
+transition writes to bound orders deny before staging. Unbound legacy records
+remain independent, and original accepted hashes are preserved. Migration0010
+is additive and tested only against fictional ledgers. Complete bounded recovery
+derives settlement references from actual obligations, not inferred fee entries.
+See `docs/etf-joint-economic-owner.md` for exact limits and finality rules.
+
+This local primitive is not authenticated genesis/finality, account-wide source
+completeness, pre-send reservation, fresh risk/fencing, broker transport or trusted
+paper/shadow/runtime composition. Source/cost/execution/promotion properties stay
+permanently false. No real customer cost sample, accepted economics, deployed
+recovery or live capability is established. Exact candidate/review/verification
+and release status are recorded in PR21, not inferred from historical checkpoints.
+
 The main operator CLI implements offline commands, the health-only paused service, explicit OAuth
 bootstrap for the locally write-incapable Robinhood client, and a one-shot connected shadow probe.
 A separate explicitly invoked `trading_bot.cli.etf_observations` module implements bounded local
