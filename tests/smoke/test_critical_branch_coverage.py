@@ -110,6 +110,22 @@ def test_requires_incremental_historical_owner_branch_report(tmp_path):
 @pytest.mark.parametrize(
     "relative_path",
     [
+        "src/trading_bot/domain/owned_order_lifecycle.py",
+        "src/trading_bot/persistence/owned_order_journal.py",
+    ],
+)
+def test_owned_lifecycle_cannot_escape_the_critical_branch_gate(tmp_path, relative_path):
+    root = tmp_path / "project"
+    _source(root, relative_path)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative_path}"
+    ]
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
         "src/trading_bot/persistence/paper_cycle_journal.py",
         "src/trading_bot/runtime/paper_promotion.py",
         "src/trading_bot/runtime/paper_promotion_runtime.py",

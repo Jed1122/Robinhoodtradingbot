@@ -32,6 +32,16 @@ loopback-published monitoring service and has no host volumes or credential acce
 Prediction live execution is unsupported.
 No live order has been placed. This code makes no profitability claim.
 
+The additive owned equity lifecycle journal now records explicit local post-submission
+facts atomically with transitions and optional complete fills, behind the existing
+UnitOfWork. It preserves original order responses, verifies provider-scoped fill
+deduplication and reconstructs current order state after restart. Its pure contract
+lives in domain to keep persistence free of execution-bootstrap imports. It accepts
+only complete local submitted/zero-fill anchors; external/ambiguous/initially filled
+responses remain unsupported. Execution facts alone do not reconstruct economic
+reservations/account state or unlock any provider adapter. See
+`docs/etf-durable-equity-lifecycle.md`; no actual cost sample or live capability follows.
+
 The main operator CLI implements offline commands, the health-only paused service, explicit OAuth
 bootstrap for the locally write-incapable Robinhood client, and a one-shot connected shadow probe.
 A separate explicitly invoked `trading_bot.cli.etf_observations` module implements bounded local

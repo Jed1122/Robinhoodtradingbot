@@ -2,6 +2,7 @@
 
 import importlib
 import importlib.util
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, localcontext
@@ -223,3 +224,60 @@ def test_exact_quantity_arithmetic_is_independent_of_ambient_context() -> None:
     tiny = fill(quantity=Decimal("0.1"))
     with pytest.raises(ValueError, match="owned_order_event_invalid"):
         module.advance_owned_order(huge, fact(fill=tiny))
+
+
+def test_deep_json_is_sanitized_before_it_can_escape_the_boundary() -> None:
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        api().decode_owned_event("[" * 7500 + "0" + "]" * 7500)
+
+
+@pytest.mark.parametrize("bad", [None, "partial_fill", object()])
+def test_event_type_and_control_payloads_are_exact(bad: object) -> None:
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        fact(event=bad)
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        fact(OrderEvent.REQUEST_CANCEL, fill=fill())
+
+
+def test_codecs_deny_noncanonical_and_oversized_values() -> None:
+    module = api()
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        module.encode_owned_event(object())
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        module.advance_owned_order(object(), fact())
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        module.decode_owned_event("x" * 16385)
+    data = json.loads(module.encode_owned_event(fact()))
+    for changes in ({"fill": []}, {"version": "unknown"}, {"extra": True}):
+        with pytest.raises(ValueError, match="owned_order_event_invalid"):
+            module.decode_owned_event(
+                json.dumps(data | changes, sort_keys=True, separators=(",", ":"))
+            )
+    huge_fill = fill(
+        id=FillId("😀" * 255),
+        account_id=AccountId("😀" * 255),
+        broker_order_id=BrokerOrderId("😀" * 255),
+        instrument_id=InstrumentId("😀" * 255),
+    )
+    huge = fact(
+        id="😀" * 255,
+        order_id=OrderId("😀" * 255),
+        external_execution_key="😀" * 255,
+        fill=huge_fill,
+    )
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        module.encode_owned_event(huge)
+
+
+def test_reconcile_partial_and_canceled_cannot_clear_recorded_fills() -> None:
+    module = api()
+    partial = module.advance_owned_order(order(), fact())
+    unknown = module.advance_owned_order(partial, fact(OrderEvent.RECONCILIATION_DRIFT))
+    restored = module.advance_owned_order(unknown, fact(OrderEvent.RECONCILE_PARTIAL))
+    assert restored.filled_quantity == Decimal("0.25")
+    assert restored.state is OrderState.PARTIALLY_FILLED
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        module.advance_owned_order(unknown, fact(OrderEvent.RECONCILE_SUBMITTED))
+    canceled = module.advance_owned_order(unknown, fact(OrderEvent.RECONCILE_CANCELED))
+    assert canceled.state is OrderState.CANCELED
+    assert canceled.filled_quantity == Decimal("0.25")
