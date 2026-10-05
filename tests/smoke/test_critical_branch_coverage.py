@@ -98,6 +98,15 @@ def test_requires_scoped_capability_verification_branches(tmp_path: Path) -> Non
     ]
 
 
+def test_requires_incremental_historical_owner_branch_report(tmp_path):
+    root = tmp_path / "project"
+    _source(root, "src/trading_bot/simulation/etf_incremental_history.py")
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        "missing branch coverage for src/trading_bot/simulation/etf_incremental_history.py"
+    ]
+
+
 @pytest.mark.parametrize(
     "relative_path",
     [

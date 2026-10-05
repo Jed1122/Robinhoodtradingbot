@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import cast
 
 from trading_bot.market_data.alpaca_native import parse_timestamp_ns
-from trading_bot.market_data.alpaca_observations import parse_alpaca_observation_frame
+from trading_bot.market_data.alpaca_observations import (
+    AlpacaStreamObservation,
+    parse_alpaca_observation_frame,
+)
 from trading_bot.market_data.bundle_codec import _array, _digest, _mapping, _string
 from trading_bot.market_data.bundle_store import _open_root, _publish, _read
 from trading_bot.market_data.recording import canonical_json
@@ -138,7 +141,11 @@ class EtfExecutionReceiptRecorder:
                 )
             body = canonical_json(
                 {
-                    "schema": "etf-execution-receipt-v1",
+                    "schema": (
+                        "etf-execution-receipt-v2"
+                        if kind == "final_fees"
+                        else "etf-execution-receipt-v1"
+                    ),
                     "session_hash": self._session_hash,
                     "sequence": len(self._receipts),
                     "previous_hash": self._receipts[-1] if self._receipts else None,
@@ -155,6 +162,24 @@ class EtfExecutionReceiptRecorder:
             self._receipt_bytes += len(body)
             self._frames += kind == "alpaca_frame"
             return digest
+        except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+            self._failed = True
+            raise EtfReceiptError() from None
+
+    def record_alpaca_frame(self, body: bytes) -> tuple[AlpacaStreamObservation, ...]:
+        """Return quote identities using this sink's actual recorded receipt clock.
+
+        No caller-supplied receipt timestamp is accepted. This observation point
+        includes prior source-retention work; it is not socket/exchange latency.
+        """
+        try:
+            self._available()
+            frame_index = self._frames
+            digest = self.retain_source(body)
+            self.record("alpaca_frame", {"frame_index": frame_index, "body_sha256": digest})
+            return parse_alpaca_observation_frame(
+                body, frame_index=frame_index, received_at_ns=self._last_utc
+            )
         except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
             self._failed = True
             raise EtfReceiptError() from None

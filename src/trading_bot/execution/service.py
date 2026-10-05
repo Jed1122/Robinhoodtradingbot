@@ -58,6 +58,18 @@ class PretradeEvaluator(Protocol):
     def evaluate_final(self, context: FinalPretradeContext) -> RiskEvaluation: ...
 
 
+class ExecutionObserver(Protocol):
+    """Owner-local receipt seam, never a broker or authorization capability."""
+
+    async def decision(self, intent: OrderIntent) -> None: ...
+
+    async def submitting(self, submission: PersistedReviewedOrder) -> None: ...
+
+    async def responded(
+        self, submission: PersistedReviewedOrder, response: BrokerOrder
+    ) -> None: ...
+
+
 UnitOfWorkFactory = Callable[[], UnitOfWork]
 
 
@@ -118,6 +130,7 @@ class ExecutionService:
         "_context_loader",
         "_exclusion",
         "_mode",
+        "_observer",
         "_place",
         "_pretrade",
         "_provider",
@@ -137,6 +150,7 @@ class ExecutionService:
         mode: ExecutionMode,
         provider: str,
         clock: Clock,
+        observer: ExecutionObserver | None = None,
     ) -> None:
         if type(review) is not OrderReviewService:
             raise DomainValidationError("review must be an OrderReviewService")
@@ -159,6 +173,7 @@ class ExecutionService:
         self._mode = mode
         self._provider = provider
         self._clock = clock
+        self._observer = observer
 
     def _now(self) -> datetime:
         return require_utc(self._clock.now())
@@ -442,6 +457,12 @@ class ExecutionService:
                 correlation_id,
             )
 
+        if self._observer is not None:
+            try:
+                await self._observer.decision(intent)
+            except Exception:
+                return self._result(intent, state, "decision_observation_failed", correlation_id)
+
         state = await self._persist_transition(
             intent,
             transition_name="transition-review-requested",
@@ -530,6 +551,49 @@ class ExecutionService:
                 correlation_id,
                 attempted_at,
             )
+            if self._observer is not None:
+                try:
+                    await self._observer.submitting(submission)
+                except Exception:
+                    # The committed attempt remains unresolved. Observation
+                    # failure never releases it or permits another transport.
+                    return self._result(
+                        intent,
+                        OrderState.SUBMISSION_PENDING,
+                        "submission_observation_failed",
+                        correlation_id,
+                        review_id=review_id,
+                        attempt_id=submission.submission_attempt_id,
+                    )
+                # Receipt auditing can consume time. Reload all final evidence,
+                # evaluate the same 24 checks and commit that evaluation before
+                # any transport. A denial leaves the original attempt held.
+                transport_context = await self._context_loader.load_final(intent, review)
+                transport_evaluation = self._validate_evaluation(
+                    self._pretrade.evaluate_final(transport_context),
+                    intent,
+                    expected_check_count=24,
+                )
+                async with self._uow_factory() as uow:
+                    await uow.orders.add_risk_evaluation(
+                        _derived_id(intent, "risk-transport"), "final", transport_evaluation
+                    )
+                    await uow.commit()
+                transport_at = self._now()
+                if (
+                    not transport_evaluation.allowed
+                    or transport_at < transport_evaluation.evaluated_at
+                    or transport_at >= intent.expires_at
+                    or transport_at >= review.expires_at
+                ):
+                    return self._result(
+                        intent,
+                        OrderState.SUBMISSION_PENDING,
+                        "transport_risk_denied",
+                        correlation_id,
+                        review_id=review_id,
+                        attempt_id=submission.submission_attempt_id,
+                    )
             try:
                 response = await self._place.place_order(submission)
             except Exception:
@@ -591,6 +655,16 @@ class ExecutionService:
                 event = OrderEvent.BROKER_AMBIGUOUS
                 reason_code = "broker_state_ambiguous"
 
+            observation_failed = False
+            if self._observer is not None and outcome is not SubmissionOutcome.AMBIGUOUS:
+                try:
+                    # Observe a matched response before database latency, using
+                    # the observer's own UTC/monotonic session. A failed sink
+                    # cannot erase the response or schedule a second call.
+                    await self._observer.responded(submission, response)
+                except Exception:
+                    observation_failed = True
+
             state = await self._persist_broker_outcome(
                 intent,
                 submission,
@@ -604,7 +678,13 @@ class ExecutionService:
             return self._result(
                 intent,
                 state,
-                reason_code,
+                (
+                    "accepted_receipt_failed"
+                    if outcome is SubmissionOutcome.ACCEPTED
+                    else "rejected_receipt_failed"
+                )
+                if observation_failed
+                else reason_code,
                 correlation_id,
                 review_id=review_id,
                 attempt_id=submission.submission_attempt_id,
@@ -614,6 +694,7 @@ class ExecutionService:
 
 __all__ = [
     "DuplicateSubmissionAttempt",
+    "ExecutionObserver",
     "ExecutionResult",
     "ExecutionService",
     "PretradeContextLoader",
