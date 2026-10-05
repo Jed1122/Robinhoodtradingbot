@@ -15,6 +15,9 @@ and immutable joint artifact. Recovery checks every prefix against the original 
 tape and retained external head; it does not advance cycles. Missing/corrupt state,
 unresolved claims, stale heads and conflicting facts deny. Exact post-publication retry
 can recover a complete commit without admitting another cycle.
+Recovery also recognizes exactly one internal staging hardlink left by SIGKILL between
+final publication and staging unlink. It never adopts an orphan staging file or accepts
+unexplained/external links; an interrupted claim still blocks advancement.
 
 APIs are `replay_forward_paper`, `advance_forward_paper` and `recover_forward_paper`.
 There is no CLI, daemon, broker adapter, signal factory or promotion writer in this

@@ -62,7 +62,23 @@ def _check(ok: bool) -> None:
 def _read(directory: int, name: str, bound: int = _MAX_BYTES) -> bytes:
     descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
     try:
-        _check(os.fstat(descriptor).st_nlink == 1)
+        info = os.fstat(descriptor)
+        _check(info.st_nlink in (1, 2))
+        if info.st_nlink == 2:
+            # SIGKILL after publication's link but before staging unlink can
+            # retain exactly one internal alias. Neither alias is a new effect.
+            aliases = []
+            for candidate in os.listdir(directory):
+                other = os.stat(candidate, dir_fd=directory, follow_symlinks=False)
+                if (other.st_dev, other.st_ino) == (info.st_dev, info.st_ino):
+                    aliases.append(candidate)
+            _check(len(aliases) == 2)
+            temporary = [candidate for candidate in aliases if _TEMP.fullmatch(candidate)]
+            _check(len(temporary) == 1)
+            final = next(candidate for candidate in aliases if candidate not in temporary)
+            _check(
+                final == "owner.json" or bool(_CLAIM.fullmatch(final) or _JOINT.fullmatch(final))
+            )
         return _read_descriptor(descriptor, bound)
     finally:
         os.close(descriptor)

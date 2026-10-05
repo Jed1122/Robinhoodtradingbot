@@ -292,6 +292,85 @@ owner.advance_forward_paper(
         assert not state.state.qualifying_paper
 
 
+@pytest.mark.parametrize("target", ["owner.json", ".claim.json", ".joint.json"])
+@pytest.mark.parametrize("synchronized", [False, True])
+def test_kill_between_publication_link_and_staging_unlink(private, target, synchronized):
+    code = """
+import os, signal, sys
+from pathlib import Path
+from tests.unit.runtime.test_etf_forward_paper import tape
+from trading_bot.persistence.etf_forward_paper import advance_forward_paper
+original = os.link
+def killed(source, destination, **kwargs):
+    original(source, destination, **kwargs)
+    if destination.endswith(sys.argv[2]):
+        if sys.argv[3] == 'True':
+            os.fsync(kwargs['dst_dir_fd'])
+        os.kill(os.getpid(), signal.SIGKILL)
+os.link = killed
+advance_forward_paper(
+    Path(sys.argv[1]), tape(), repository_root=Path.cwd(), expected_head='0' * 64
+)
+"""
+    process = subprocess.run(
+        [sys.executable, "-c", code, str(private), target, str(synchronized)],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert process.returncode == -9
+    directory = private / NAMESPACE
+    aliases = list(directory.glob(".tmp-*"))
+    assert len(aliases) == 1 and aliases[0].stat().st_nlink == 2
+    if target == ".claim.json":
+        for operation in (advance, recover):
+            with pytest.raises(api().ForwardPaperRecoveryRequired):
+                operation(private, tape(), GENESIS)
+        assert not list(directory.glob("*.joint.json"))
+    elif target == "owner.json":
+        empty = recover(private, tape(), GENESIS)
+        assert empty.sequence == 0 and empty.state.paused
+        stored = advance(private, tape())
+        assert stored.state == replay_forward_paper(tape())
+    else:
+        joint = next(directory.glob("*.joint.json"))
+        head = hashlib.sha256(joint.read_bytes()).hexdigest()
+        restored = recover(private, tape(), head)
+        assert restored.state == replay_forward_paper(tape())
+        assert advance(private, tape()) == restored
+    # Recognized aliases are retained, never adopted as independent economic effects.
+    assert aliases[0].exists() and aliases[0].stat().st_nlink == 2
+
+
+@pytest.mark.parametrize("damage", ["extra_alias", "two_final_names", "outside_alias"])
+def test_unexplained_multilinks_remain_denied(private, damage):
+    stored = advance(private, tape())
+    directory = private / NAMESPACE
+    joint = next(directory.glob("*.joint.json"))
+    if damage != "outside_alias":
+        name = ".tmp-" + "a" * 32 if damage == "extra_alias" else "00000002.joint.json"
+        os.link(joint, directory / name)
+    if damage != "two_final_names":
+        os.link(joint, private / "external-link")
+    with pytest.raises(ValueError):
+        recover(private, tape(), stored.head_hash)
+
+
+@pytest.mark.parametrize("second", [".tmp-" + "b" * 32, "unrecognized.json"])
+def test_two_staging_aliases_or_unrecognized_final_are_never_adopted(private, second):
+    directory = private / NAMESPACE
+    directory.mkdir(mode=0o700)
+    orphan = directory / (".tmp-" + "a" * 32)
+    orphan.write_bytes(b"not an economic commit")
+    orphan.chmod(0o600)
+    os.link(orphan, directory / second)
+    with pytest.raises(ValueError):
+        advance(private, tape())
+    assert not list(directory.glob("*.joint.json"))
+
+
 def test_legacy_namespaces_are_not_read_or_modified_and_bad_head_is_sanitized(private):
     legacy = private / "paper-cycle-journal-v1"
     legacy.mkdir(mode=0o700)

@@ -338,6 +338,9 @@ Recovery requires the original typed tape and independently retained expected he
 it never advances a new cycle. Pending claims, corrupt/missing state, stale writers,
 changed policy and conflicting deliveries deny. Full replay preserves reservations,
 deduplication, settlement, trial losses and risk latches rather than restoring cash alone.
+An interrupted hard-link publication may retain exactly one recognized internal
+staging alias of its final artifact. Both names are verified and retained, not adopted
+as separate effects; unexplained/external links still deny.
 
 Every result remains paused, synthetic, execution-disabled and non-promotable.
 This transport-free owner is not a strategy factory, recurring worker, qualified paper
