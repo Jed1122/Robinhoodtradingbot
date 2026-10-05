@@ -1,5 +1,27 @@
 # Parallel Orchestration Transition Report
 
+## Bounded native quote intake — 2026-10-05
+
+The [versioned catalog](docs/etf-native-quote-catalog.md) implements a separate
+private day/study index and capture-bounded native quote iterator. Original
+Alpaca receipts and exact Decimal/nanosecond/page/row identities remain intact;
+historical controls/gaps remain unobserved under the research waiver. Selected
+captures are validated before initial yield, and later traversal errors cannot
+certify a completed prefix. Nonselected future raw inputs remain unread.
+
+This is intake only: existing replay/account/statistics/checkpoint limits and
+qualified-source factories are unchanged. Whole-study incremental replay,
+accepted after-cost results and genuine customer calibration remain unfinished.
+No new provider, credentials, broker call, data acquisition, deployment or safety
+policy change is included. Fresh preflight denies with
+`ready=false/external_capability_missing`. The operator's new one-trade
+cost-diagnostic grant is [recorded](docs/operator-authority.md); no order was
+placed because authority does not supply missing execution readiness.
+
+Local verification and independent candidate review are recorded in this plan's
+ledger/PR, not inferred from earlier revisions. This checkpoint does not assert
+merge, complete historical coverage, eligible paper/shadow cycles or live readiness.
+
 ## Historical research amendment and native acquisition — 2026-10-05
 
 The operator now explicitly waives historical halt/LULD and gap-coverage proof for
