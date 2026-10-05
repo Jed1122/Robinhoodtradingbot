@@ -1,5 +1,71 @@
 # Parallel Orchestration Transition Report
 
+## Bounded native quote intake — 2026-10-05
+
+The [versioned catalog](docs/etf-native-quote-catalog.md) implements a separate
+private day/study index and capture-bounded native quote iterator. Original
+Alpaca receipts and exact Decimal/nanosecond/page/row identities remain intact;
+historical controls/gaps remain unobserved under the research waiver. Selected
+captures are validated before initial yield, and later traversal errors cannot
+certify a completed prefix. Nonselected future raw inputs remain unread.
+
+This is intake only: existing replay/account/statistics/checkpoint limits and
+qualified-source factories are unchanged. Whole-study incremental replay,
+accepted after-cost results and genuine customer calibration remain unfinished.
+No new provider, credentials, broker call, data acquisition, deployment or safety
+policy change is included. Fresh preflight denies with
+`ready=false/external_capability_missing`. The operator's new one-trade
+cost-diagnostic grant is [recorded](docs/operator-authority.md); no order was
+placed because authority does not supply missing execution readiness.
+
+Local verification and independent candidate review are recorded in this plan's
+ledger/PR, not inferred from earlier revisions. This checkpoint does not assert
+merge, complete historical coverage, eligible paper/shadow cycles or live readiness.
+
+## Historical research amendment and native acquisition — 2026-10-05
+
+The operator now explicitly waives historical halt/LULD and gap-coverage proof for
+the Alpaca-only exploratory study. The [amended specification](docs/superpowers/specs/2026-09-30-focused-etf-research-design.md)
+and [authority](docs/operator-authority.md) supersede conflicting historical research
+requirements below. No forward/paper/live safety, risk, cost or promotion gate is
+waived; older diagnostic evidence is not rewritten or unlocked.
+
+At committed source `454c6515cce6df883188313f3bffac94a9039b17`, a frozen five-minute
+first-eligible-development SPY/SIP request retained 62,346 real quotes over 63 pages.
+Raw hashes, receipt chains and private ownership/modes reverified. The combined
+coverage audit now reports one quoted development session, zero full requested
+sessions, and 63,420 total observations; no holdout was evaluated. Ninety-six
+native capture/archive fixture tests passed. This is useful real acquisition,
+not completed historical execution coverage or qualified data/economics.
+
+Private invoice/receipt reconciliation supports one attributable operating
+payment; it does not supply genuine executions, final per-order fees, slippage or
+causal order clocks. Customer calibration remains `BLOCKED_INPUTS`. Next engineering
+is separately versioned bounded exploratory source/replay intake under the waiver,
+not another provider or a fabricated verified flag. Original records stay outside
+Git/Cloud/delegated tasks. The earlier same-date checkpoint below precedes this
+amendment/acquisition and is retained as an audit snapshot.
+
+## Fresh execution-readiness reassessment — 2026-10-05
+
+The [current reassessment](docs/etf-execution-readiness-2026-10-05.md) supersedes
+the publication-pending wording in the historical checkpoint below. PR #17 is
+merged at `38c2d9a948bb963e348be68d1c1cacede48fedce`, with exactly the reviewed
+`72fe8a93aacc989f8ff1c2992543ae5056810f1a` tree. A newly retained Alpaca calendar
+reference enabled fresh native receipt/date/request-coverage verification:
+2,514 bar dates match, but none of 1,262 required development sessions has full
+requested quote coverage. Reacquisition reproduces the October 2 coverage-report
+identity; it does not restore original retrieval/publication evidence. Private
+customer calibration remains `BLOCKED_INPUTS`.
+
+Read-only host access now succeeds; the existing process is healthy, paused and
+not ready. Its running container has zero mounts and does not contain either
+new forward-owner module. This is not deployed recovery or strategy operation.
+Trusted factory/worker/promotion composition, complete historical execution data,
+genuine costs and accepted economics remain unfinished. No eligibility clocks
+were started, provider/broker writes performed, deployment changed or gate waived.
+The older snapshot below is retained as historical publication context.
+
 ## Forward-paper economic owner checkpoint — 2026-10-05
 
 This section supersedes older software/dependency status below for the focused ETF

@@ -16,6 +16,23 @@ cost/calibration, risk, economic and paper/shadow criteria remain independent.
 Latest-vintage exploratory results remain non-promotable. No live order or
 production deployment is authorized by this amendment.
 
+### Explicit operator amendment — 2026-10-05
+
+The operator authorized continuing the Alpaca-only build without historical
+halt/LULD and gap coverage. Those roles are no longer prerequisites for this
+exploratory latest-vintage study. Missing controls/gaps remain unobserved; do not
+fabricate OPEN messages, sequence continuity, market completeness or executions
+inside unavailable intervals. Preserve the fixed strategy, risk/exit policy,
+quote validity/freshness, cash accounting, cost uncertainty and holdout boundaries.
+
+This changes the research evidence contract, not forward/paper/live safety controls
+or promotion eligibility. A separately versioned exploratory source/replay
+composition is required; sealed qualified-source factories and historical
+diagnostic identities stay unchanged. Waived-coverage results are non-promotable,
+not point-in-time execution validation or expected live performance. Remaining
+price/action/size, execution-cost, economic and runtime prerequisites are not waived.
+No additional provider, purchase, deployment or real-money order is authorized.
+
 ## 1. Approved intent and scope
 
 The operator chose to prioritize an ETF research pilot and approved this design

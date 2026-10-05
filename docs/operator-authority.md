@@ -100,6 +100,10 @@ authorize live operation. The existing credit-only acquisition grant is unchange
 
 ## Unchanged boundaries
 
+The dated diagnostic-trade amendment at the end of this document supersedes the
+no-test-trade statement below only for its narrow conditional scope. The older
+integration/data grants remain non-trading grants.
+
 No broker order review, placement, cancellation, real-money test trade, transfer,
 credential change, deployment, live activation, or risk-limit increase follows
 from the integration or data-acquisition grants above. Existing separately
@@ -215,3 +219,53 @@ latest-vintage exploratory research separate from qualified execution/economic
 evidence. A single-source choice does not waive safety, risk, reconciliation,
 paper/shadow observation or live-authorization gates. No further provider purchase,
 broker order, account change, deployment or live activation is authorized here.
+
+## Historical control-coverage research waiver — 2026-10-05
+
+The operator explicitly authorized continuing the Alpaca-only bot build without
+historical halt/LULD and gap coverage. Do not keep those historical evidence roles
+as prerequisites for the exploratory latest-vintage ETF study or ask again for
+that authority. This supersedes the historical-control/gap prerequisites in the
+focused ETF research specification, not the observation facts in older reports.
+
+Record unavailable historical control state and gaps as unobserved. Do not invent
+OPEN/status/LULD messages, exchange sequence continuity, complete market coverage,
+or fills inside missing intervals. Validity, freshness, causality, price/size
+interpretation, cash conservation, risk limits and honest execution-cost reporting
+remain required. Missing inputs cannot be represented as zero-valued evidence.
+
+Any executable exploratory composition needs its own versioned study/admission
+identity and explicit limitations; it must not unlock a sealed qualified-source
+factory, change a diagnostic schema's permanent flags or rewrite older evidence.
+Results under this waiver remain non-promotable and cannot establish accepted
+live economics. Forward/paper/live stale-data, halt/LULD, account-state,
+reconciliation and kill-switch controls remain unchanged. No new provider,
+purchase, real-money order, production-credential use, risk increase, deployment
+or live activation is authorized by this research waiver.
+
+## One diagnostic trade — explicit 2026-10-05 amendment
+
+The operator explicitly instructed: "I am giving you authority to place a trade
+to determine this" while requesting historical inputs and genuine execution-cost
+calibration for the focused ETF bot. Record that grant as real, conditional
+authority for one cost-diagnostic trade in the existing intended execution
+account, not another request for permission or general live activation.
+
+It does not authorize bypassing pretrade, reconciliation, stale-data, broker
+capability, account-state, risk, kill-switch or promotion controls; increasing
+limits; placing extra sampling/round-trip trades; production credential changes;
+deployment changes; or switching execution brokers. Required safety evidence and
+an admissible, bounded, protected order lifecycle must exist before submission.
+Necessary review/submission for that one diagnostic order remain behind the
+execution owner. Never route around fail-closed software through a direct app tool.
+
+Fresh local preflight returned `ready=false/external_capability_missing`. The
+current standalone composition has no constructible equity write adapter, and
+trusted strategy/execution/recovery composition is incomplete. No order review,
+placement, cancellation, credential operation or live-mode change occurred under
+this grant at this checkpoint. Authority is not the blocker; readiness is.
+
+A genuine single fill would only be a dated sample. Final reconciled fees and
+causal quote/order clocks are required for sample-level calibration; one sample
+cannot establish historical 2016–2025 costs, latency tails, fee completeness or
+profitability. Keep missing observations distinct from explicit zero.
