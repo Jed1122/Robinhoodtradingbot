@@ -246,7 +246,7 @@ def advance_owned_order(order: BrokerOrder, event: OwnedOrderEvent) -> BrokerOrd
             if (event.event is OrderEvent.FILL) != complete:
                 _deny()
         if (
-            (next_state is OrderState.SUBMITTED and filled != 0)
+            (next_state in {OrderState.SUBMITTED, OrderState.REJECTED} and filled != 0)
             or (
                 next_state is OrderState.PARTIALLY_FILLED
                 and not 0 < filled < order.requested_quantity

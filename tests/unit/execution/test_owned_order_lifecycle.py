@@ -165,6 +165,23 @@ def test_fill_event_must_match_actual_complete_quantity(kind: OrderEvent, qty: s
         api().advance_owned_order(order(), fact(kind, fill=fill(quantity=Decimal(qty))))
 
 
+@pytest.mark.parametrize("quantity", [Decimal("0.25"), Decimal("1.25")])
+def test_reconciliation_cannot_turn_any_actual_fill_into_rejection(quantity: Decimal) -> None:
+    original = order(state=OrderState.UNKNOWN_REQUIRES_RECONCILIATION, filled_quantity=quantity)
+    with pytest.raises(ValueError, match="owned_order_event_invalid"):
+        api().advance_owned_order(original, fact(OrderEvent.RECONCILE_REJECTED))
+    assert original.filled_quantity == quantity
+    assert original.state is OrderState.UNKNOWN_REQUIRES_RECONCILIATION
+
+
+def test_zero_fill_unknown_order_may_reconcile_to_rejection() -> None:
+    restored = api().advance_owned_order(
+        order(state=OrderState.UNKNOWN_REQUIRES_RECONCILIATION), fact(OrderEvent.RECONCILE_REJECTED)
+    )
+    assert restored.state is OrderState.REJECTED
+    assert restored.filled_quantity == Decimal("0")
+
+
 @pytest.mark.parametrize(
     "changes",
     [

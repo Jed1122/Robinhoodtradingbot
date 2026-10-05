@@ -206,6 +206,22 @@ async def test_cancel_race_and_terminal_preserve_actual_fills(owned_engine: Asyn
     assert await counts(owned_engine) == (1, 3)
 
 
+async def test_rejected_reconciliation_cannot_hide_committed_partial_execution(owned_engine):
+    async with _make_uow(owned_engine) as uow:
+        assert await owner(uow).record_event(event())
+        assert await owner(uow).record_event(event(index=1, kind=OrderEvent.RECONCILIATION_DRIFT))
+        await uow.commit()
+    with pytest.raises(ValueError, match="owned_order_journal_invalid"):
+        async with _make_uow(owned_engine) as uow:
+            await owner(uow).record_event(event(index=2, kind=OrderEvent.RECONCILE_REJECTED))
+    async with _make_uow(owned_engine) as restarted:
+        actual = await owner(restarted).get_broker_order(OrderId("order-1"))
+        assert actual.state is OrderState.UNKNOWN_REQUIRES_RECONCILIATION
+        assert actual.filled_quantity == Decimal("0.25")
+        assert await restarted.fills.get(FillId("fill-0")) == event().fill
+    assert await counts(owned_engine) == (1, 2)
+
+
 @pytest.mark.parametrize("change", ["missing", "foreign_account", "wrong_ordinal", "key_reuse"])
 async def test_unknown_and_conflicting_fill_ownership_denies(owned_engine: AsyncEngine, change):
     bad = event()
@@ -263,6 +279,18 @@ async def test_modified_review_and_intent_bindings_deny_recovery(owned_engine, s
         async with _make_uow(owned_engine) as uow:
             await owner(uow).record_event(event(index=1, quantity="1", kind=OrderEvent.FILL))
     assert await counts(owned_engine) == (1, 1)
+
+
+async def test_zero_fill_anchor_with_average_price_denies_recovery_and_append(owned_engine):
+    async with async_session_factory(owned_engine).begin() as session:
+        await session.execute(text("UPDATE orders SET average_fill_price='10' WHERE id='order-1'"))
+    with pytest.raises(ValueError, match="owned_order_journal_invalid"):
+        async with _make_uow(owned_engine) as uow:
+            await owner(uow).get_broker_order(OrderId("order-1"))
+    with pytest.raises(ValueError, match="owned_order_journal_invalid"):
+        async with _make_uow(owned_engine) as uow:
+            await owner(uow).record_event(event())
+    assert await counts(owned_engine) == (0, 0)
 
 
 async def test_missing_order_and_fill_reads_remain_absent(owned_engine: AsyncEngine):

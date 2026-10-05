@@ -137,6 +137,7 @@ async def _anchor(
         or intent.asset_class != AssetClass.EQUITY.value
         or order.state is not OrderState.SUBMITTED
         or order.filled_quantity != 0
+        or row.average_fill_price is not None
         or attempt.outcome_class != "accepted"
         or attempt.completed_at is None
         or attempt.sanitized_response_hash != canonical_broker_order_response_sha256(order)

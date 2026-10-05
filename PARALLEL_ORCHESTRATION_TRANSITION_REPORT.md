@@ -1,5 +1,96 @@
 # Parallel Orchestration Transition Report
 
+## Durable owned equity lifecycle candidate — 2026-10-05
+
+This checkpoint supersedes conflicting current software, blocker and dependency
+wording below for the focused ETF execution workstream only. All earlier sections
+remain immutable historical checkpoints; their revision-specific tests and
+operational observations do not certify this candidate. Alpaca remains the sole
+market-data source and Robinhood remains the execution-broker target.
+
+The primary coordinator owns the lifecycle specification, implementation,
+persistence/recovery integration and release decision. The credential-free
+[durable lifecycle contract](docs/etf-durable-equity-lifecycle.md),
+[saved specification](docs/superpowers/specs/2026-10-05-etf-durable-equity-lifecycle-design.md)
+and [implementation plan](docs/superpowers/plans/2026-10-05-etf-durable-equity-lifecycle.md)
+are implemented in a candidate building on reviewed/published head
+`5b746c53b68a937e73b994f82beea2bef3c93a4c`, based on
+`16048648d7fe8b29010e00505793abb678148a05`, in
+[PR #20](https://github.com/Jed1122/Robinhoodtradingbot/pull/20). The specification
+is coordinator-written, not a newly operator-reviewed artifact. Publication is
+not deployment, research acceptance or live authorization. The exact final
+candidate, validation and integration status are recorded in PR #20; this
+pre-integration checkpoint does not certify a later revision or a merge result.
+
+The pure `domain/owned_order_lifecycle.py` API supplies `OwnedOrderEvent`,
+`encode_owned_event`, `decode_owned_event` and `advance_owned_order` using the
+canonical state machine and exact Decimal quantities. Behind the existing
+UnitOfWork, `orders.record_event` atomically stages an append-only journal fact,
+transition and optional provider-scoped FillRow; `orders.get_broker_order`
+reconstructs and validates the owned projection. `fills.get` and
+`fills.list_for_account(account_id, since)` return exact recorded fills, not
+independently reconciled account or position state. Migration
+`0009_owned_order_lifecycle` adds journal/immutable-fill guards without rewriting
+historical records; no production migration was performed.
+
+The original OrderRow/submission-response hash remains immutable. The supported
+anchor is a known accepted local equity submission with zero fills and a complete
+durable intent/review/submission chain. Initial partial/full responses, unknown
+acceptance and unowned/external history remain denied; they cannot create local
+ownership or justify a submission retry. Every actual fill requires an explicit
+fee: unknown fees never become zero. Typed facts and declaration fixtures do not
+attest authenticated provenance, final charges or causal broker/quote clocks.
+Exact repeated delivery is idempotent, conflicts deny, pending cancellation
+survives raced partial fills and terminal states cannot reopen. Recovery verifies
+the bound intent/review, original acceptance and all journal/transition/fill links.
+Local SQLite isolation and bounded replay are not a live leadership fence or
+independently verified deployed-host recovery.
+
+The coordinator reports **423 targeted tests passing** after the recovery
+corrections. Two independent candidate-review findings were fixed at the recorded
+head. The later GitHub findings are corrected with watched failing regressions:
+filled orders cannot reconcile to rejected, zero-fill anchors cannot retain an
+average fill price, and this authoritative handoff is refreshed. Final integrated
+review, full regression/coverage and exact-head CI for the eventual corrected
+candidate are **not certified** by this checkpoint. Earlier full-suite/CI results
+cannot certify later corrections. Merge remains pending those exact-final-head
+checks and resolution of substantive findings; no check is bypassed.
+
+Subsystem disposition: durable local lifecycle primitive **implemented / release
+evidence in PR #20**; protected economic/broker/runtime composition **blocked /
+unverified**.
+Local credential-free implementation and bounded public fixture/documentation
+work remain **GO** under exact-base, disjoint-path contracts. The coordinator
+retains exclusive integration ownership of execution, joint economic state,
+reconciliation, persistence, risk/fencing, authority and promotion. No private
+customer evidence or protected implementation decision is delegated.
+
+The remaining critical path is:
+
+1. Verify the exact corrected lifecycle
+   candidate before integration; preserve all existing risk and identity gates.
+2. Reconstruct and jointly own cash, positions, reservations, settlement and trial
+   history atomically with execution effects. A terminal order alone must not
+   release an allocation or imply economic reconciliation.
+3. Qualify authenticated nonempty broker history/position reads, exact intent and
+   preview matching, final-fee sources and provider write semantics. The supplied
+   declaration parser remains unqualified; the empty-only adapter remains locked.
+4. Supply concrete fresh initial/final risk context, live leadership/fencing,
+   unknown-acceptance reconciliation/recovery and exact one-intent diagnostic
+   confirmation. The conditional diagnostic grant does not replace mandatory
+   preview confirmation, order policy/limits or protected execution readiness.
+5. Obtain genuine fills, final charges and causal Alpaca quote/order clocks;
+   complete execution inputs and honest after-cost economics; then qualify the
+   trusted paper/shadow composition and independently verify standalone runtime
+   recovery. Preserve every research/promotion and elapsed-observation gate.
+
+This slice and report update perform no real provider/broker call, authenticated
+read or write, credential/customer-record access, order, production-ledger access,
+deployment or live operation. Accepted economics, qualifying paper/shadow evidence,
+runtime readiness and live trading remain independently **NO-GO**. No profitability
+claim or new source/provenance qualification is made; merge authority is not
+activation authority.
+
 ## Bounded native quote intake — 2026-10-05
 
 The [versioned catalog](docs/etf-native-quote-catalog.md) implements a separate

@@ -30,6 +30,9 @@ review binding hashes, and validates the submission/review time window. If an
 original acceptance transition is present, only one exact execution-owner record
 is allowed, bound to the intent, config, correlation, original completion time,
 actor and reason. Unrelated, duplicate or future-dated acceptance records deny.
+A zero-fill anchor must have no average fill price. An order with any recorded
+fill cannot reconcile to submitted or rejected; a failed reconciliation preserves
+the prior unknown state and actual fill history instead of masking execution.
 
 `fills.get` and `fills.list_for_account(account_id, since)` read exact persisted
 domain records. They do not attest ownership, authenticity or completeness of
