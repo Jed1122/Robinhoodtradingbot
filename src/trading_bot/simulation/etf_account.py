@@ -771,7 +771,12 @@ class EtfAccountStepper:
             self._state = state
             return state
         except (
-            ValueError, TypeError, ArithmeticError, AttributeError, RuntimeError, StopIteration
+            ValueError,
+            TypeError,
+            ArithmeticError,
+            AttributeError,
+            RuntimeError,
+            StopIteration,
         ):
             self._failed = True
             self._reducer.close()

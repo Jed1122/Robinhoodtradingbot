@@ -5,6 +5,7 @@ uses the canonical feature, strategy, portfolio, intent and account owners. No
 provider or broker transport is imported. Unknown market semantics deny fills.
 """
 
+from collections.abc import Generator, Iterable
 from dataclasses import replace
 from decimal import Decimal, localcontext
 
@@ -76,6 +77,25 @@ def _development(request: EtfHistoryRequest) -> tuple[EtfReplayEvent, ...]:
 def _outcome(
     request: EtfHistoryRequest, events: tuple[EtfReplayEvent, ...], *, benchmark: bool
 ) -> EtfReplayOutcome:
+    reducer = _outcome_steps(request, events, benchmark=benchmark)
+    try:
+        next(reducer)
+    except StopIteration as finished:
+        return finished.value  # type: ignore[no-any-return]
+    finally:
+        reducer.close()
+    raise ValueError("etf_native_history_invalid")
+
+
+def _outcome_steps(
+    request: EtfHistoryRequest,
+    events: Iterable[EtfReplayEvent | None],
+    *,
+    benchmark: bool,
+    maximum_decisions: int | None = None,
+    decision_counts: dict[str, int] | None = None,
+) -> Generator[EtfReplayOutcome, None, EtfReplayOutcome]:
+    """Boundary sentinels suspend, never finish a session or reset the owner."""
     policy = _policy(request.study)
     cfg = policy.config
     settings = cfg.equity_strategies
@@ -108,6 +128,7 @@ def _outcome(
     current_eligible = False
     split_seen = False
     unresolved_actions: set[str] = set()
+    last_source_event: EtfReplayEvent | None = None
     distributions: list[CorporateAction] = []
     previous_session_open: int | None = None
     fraction = {"conservative": Decimal(".25"), "base": Decimal(".5"), "optimistic": Decimal("1")}[
@@ -120,7 +141,7 @@ def _outcome(
     }[request.fill_scenario]
 
     def append(kind: str, at: int, **values: object) -> None:
-        nonlocal account, state
+        nonlocal state
         ordinal = 0 if state.last_ordinal is None else state.last_ordinal + 1
         event = EtfAccountEvent(
             content_hash(("etf-native-account-fact-v1", state.prefix_hash, kind, at, values)),
@@ -129,11 +150,13 @@ def _outcome(
             kind,
             **values,  # type: ignore[arg-type]
         )
-        restored = account_owner.apply(event)
-        account, state = replace(account, events=account_owner.events), restored
+        state = account_owner.apply(event)
 
     def decide(event: EtfReplayEvent, reason: str, order: str | None = None) -> None:
-        decisions.append(EtfStrategyDecision(event.ordinal, reason, order))
+        if decision_counts is not None:
+            decision_counts[reason] = decision_counts.get(reason, 0) + 1
+        if maximum_decisions is None or len(decisions) < maximum_decisions:
+            decisions.append(EtfStrategyDecision(event.ordinal, reason, order))
 
     def scheduled(until: int) -> None:
         while pending and min(pending)[0] <= until:
@@ -199,7 +222,7 @@ def _outcome(
                 state.dividend_receivable,
                 state.state_hash,
                 ask,
-                len(account.events),
+                len(account_owner.events),
             )
         )
         if nav is None or mark is None:
@@ -241,7 +264,7 @@ def _outcome(
         return None
 
     def propose(event: EtfReplayEvent, protective: EtfEntryPolicy | None) -> None:
-        nonlocal account, state
+        nonlocal state
         signal = frame if protective is None else entry_signals.get(protective.order_id)
         if (
             signal is None
@@ -383,13 +406,13 @@ def _outcome(
             stop_distance=distance,
             fee_bound=request.schedule.episode_fee_bound,
         )
-        admitted = admit_etf_pending_intent(account, fact)
+        admitted = admit_etf_pending_intent(replace(account, events=account_owner.events), fact)
         if not admitted.allowed:
             decide(event, "canonical_account_admission_denied")
             return
         restored = account_owner.apply(fact)
         check(restored == admitted.state)
-        account, state = replace(account, events=account_owner.events), restored
+        state = restored
         pending.extend(
             (
                 (_ns(now) + request.schedule.acknowledgement_delay_ns, "ack", intent.id),
@@ -536,8 +559,22 @@ def _outcome(
         fill_sessions[digest] = session_count
         decide(event, "simulated_fill", order_id)
 
-    with localcontext(_fee_context()):
-        for event in events:
+    def project_outcome() -> EtfReplayOutcome:
+        return EtfReplayOutcome(
+            account_owner.events,
+            state,
+            tuple(daily),
+            tuple(policies),
+            tuple(decisions),
+            tuple(sorted(reasons)),
+        )
+
+    for event in events:
+        if event is None:
+            yield project_outcome()
+            continue
+        last_source_event = event
+        with localcontext(_fee_context()):
             # Flush a closed session before applying observations of the next one.
             if (
                 current_session is not None
@@ -678,6 +715,9 @@ def _outcome(
                 decide(event, "signal_" + frame.action.value)
                 continue
             if quote is None or event.event_at_ns > quote.event_at_ns:
+                # Older quotes never reach capacity use. Only equal-native-time
+                # deliveries share a budget, so the prior frontier is dispensable.
+                capacity.clear()
                 quote, quote_conflict = event, False
             elif event.event_at_ns < quote.event_at_ns:
                 decide(event, "native_quote_time_regression")
@@ -712,7 +752,7 @@ def _outcome(
                 first_fill = min(
                     (
                         e.at_ns
-                        for e in account.events
+                        for e in account_owner.events
                         if e.fill is not None and e.fill.broker_order_id == entry.order_id
                     ),
                     default=None,
@@ -784,19 +824,13 @@ def _outcome(
                 ):
                     attempted.add(day)
                     propose(event, None)
-        if current_session is not None and events:
-            snapshot(events[-1].available_at_ns)
+    with localcontext(_fee_context()):
+        if current_session is not None and last_source_event is not None:
+            snapshot(last_source_event.available_at_ns)
             reasons.add("source_ends_inside_session")
     if not state.complete:
         reasons.add("account_outcome_incomplete")
-    return EtfReplayOutcome(
-        account.events,
-        state,
-        tuple(daily),
-        tuple(policies),
-        tuple(decisions),
-        tuple(sorted(reasons)),
-    )
+    return project_outcome()
 
 
 def run_etf_history(

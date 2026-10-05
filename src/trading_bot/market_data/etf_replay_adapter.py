@@ -15,6 +15,7 @@ The dataset retains the holdout; the owning runner must exclude it from developm
 evaluation.
 """
 
+from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo
@@ -32,6 +33,7 @@ from trading_bot.market_data.alpaca_quote_semantics import interpret_alpaca_quot
 from trading_bot.market_data.etf_calendar import EtfCalendarArchive
 from trading_bot.market_data.etf_issuer_distributions import EtfIssuerDistributionArchive
 from trading_bot.market_data.etf_native_archive import EtfNativeBarsArchive
+from trading_bot.market_data.etf_quote_catalog_models import CatalogQuoteOccurrence
 from trading_bot.market_data.etf_source import _ceil_time, _ns
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_latest_vintage import _bar
@@ -102,6 +104,31 @@ def native_etf_dataset(
     Unknown round-lot or transition capacity stays ``None``. Even descriptive
     share sizes retain every unverified eligibility reason from the interpreter.
     """
+    return _project_dataset(
+        bars, quotes, calendar, distributions, quote_provenance_hash, allow_empty=False
+    )
+
+
+def native_etf_baseline(
+    bars: EtfNativeBarsArchive,
+    calendar: EtfCalendarArchive,
+    distributions: EtfIssuerDistributionArchive,
+    *,
+    catalog_hash: str,
+) -> EtfReplayDataset:
+    """Quote-free incremental projection; the legacy API still denies empty quotes."""
+    return _project_dataset(bars, (), calendar, distributions, catalog_hash, allow_empty=True)
+
+
+def _project_dataset(
+    bars: EtfNativeBarsArchive,
+    quotes: tuple[AlpacaQuoteRecord, ...],
+    calendar: EtfCalendarArchive,
+    distributions: EtfIssuerDistributionArchive,
+    quote_provenance_hash: str,
+    *,
+    allow_empty: bool,
+) -> EtfReplayDataset:
     try:
         _validate_bars(bars)
         _check(type(calendar) is EtfCalendarArchive)
@@ -111,7 +138,8 @@ def native_etf_dataset(
         distributions.__post_init__()
         _check(replace(distributions) == distributions)
         _require_sha256_hex(quote_provenance_hash, "quote provenance")
-        _check(type(quotes) is tuple and 0 < len(quotes) <= MAX_PAGES * 1000)
+        _check(type(quotes) is tuple and len(quotes) <= MAX_PAGES * 1000)
+        _check(bool(quotes) or allow_empty)
 
         events: list[EtfReplayEvent] = []
         by_day = {session.session_date: session for session in calendar.sessions}
@@ -195,23 +223,9 @@ def native_etf_dataset(
         previous = -1
         for quote in quotes:
             _check(type(quote) is AlpacaQuoteRecord)
-            interpreted = interpret_alpaca_quote(quote)
             _check(_START <= quote.timestamp_ns < _END)
             _check(previous <= quote.timestamp_ns)
-            events.append(
-                EtfReplayEvent(
-                    0,
-                    quote.timestamp_ns,
-                    quote.timestamp_ns,
-                    quote.record_hash,
-                    "quote",
-                    bid=quote.bid,
-                    ask=quote.ask,
-                    bid_size=interpreted.bid_size_shares,
-                    ask_size=interpreted.ask_size_shares,
-                    execution_reasons=interpreted.reasons,
-                )
-            )
+            events.append(_quote_event(quote))
             previous = quote.timestamp_ns
 
         events.sort(key=lambda event: (event.available_at_ns, _PRIORITY[event.kind]))
@@ -245,4 +259,69 @@ def native_etf_dataset(
             limitations,
         )
     except (ValueError, TypeError, ArithmeticError, AttributeError, KeyError, RecursionError):
+        raise EtfReplayAdapterError() from None
+
+
+def _quote_event(quote: AlpacaQuoteRecord) -> EtfReplayEvent:
+    interpreted = interpret_alpaca_quote(quote)
+    return EtfReplayEvent(
+        0,
+        quote.timestamp_ns,
+        quote.timestamp_ns,
+        quote.record_hash,
+        "quote",
+        bid=quote.bid,
+        ask=quote.ask,
+        bid_size=interpreted.bid_size_shares,
+        ask_size=interpreted.ask_size_shares,
+        execution_reasons=interpreted.reasons,
+    )
+
+
+def iter_native_etf_events(
+    baseline: EtfReplayDataset, quotes: Iterator[CatalogQuoteOccurrence]
+) -> Iterator[EtfReplayEvent]:
+    """Lazy stable projection; original execution denials are never stripped."""
+    try:
+        _check(type(baseline) is EtfReplayDataset)
+        replace(baseline)
+        _check(baseline.source_kind == "native-latest-vintage")
+        _check(not any(event.kind == "quote" for event in baseline.events))
+        baseline_events = iter(baseline.events)
+        event = next(baseline_events, None)
+        previous = -1
+        exhausted = object()
+
+        def next_quote() -> EtfReplayEvent | None:
+            nonlocal previous
+            occurrence = next(quotes, exhausted)
+            if occurrence is exhausted:
+                return None
+            _check(type(occurrence) is CatalogQuoteOccurrence)
+            if not isinstance(occurrence, CatalogQuoteOccurrence):
+                raise EtfReplayAdapterError()
+            replace(occurrence)
+            _check(_START <= occurrence.record.timestamp_ns < _END)
+            _check(previous <= occurrence.record.timestamp_ns)
+            previous = occurrence.record.timestamp_ns
+            return _quote_event(occurrence.record)
+
+        quote_event = next_quote()
+        ordinal = 0
+        while event is not None or quote_event is not None:
+            use_baseline = event is not None and (
+                quote_event is None
+                or (event.available_at_ns, _PRIORITY[event.kind])
+                <= (quote_event.available_at_ns, _PRIORITY[quote_event.kind])
+            )
+            selected = event if use_baseline else quote_event
+            if selected is None:
+                raise EtfReplayAdapterError()
+            yield replace(selected, ordinal=ordinal)
+            ordinal += 1
+            if use_baseline:
+                event = next(baseline_events, None)
+            else:
+                quote_event = next_quote()
+    except (ValueError, TypeError, ArithmeticError, AttributeError, OSError, RuntimeError):
         raise EtfReplayAdapterError() from None
