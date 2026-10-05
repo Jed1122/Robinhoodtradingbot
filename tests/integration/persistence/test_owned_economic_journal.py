@@ -765,3 +765,103 @@ async def test_changed_original_acceptance_hash_denies_economic_recovery(
             await owner(uow).get(AccountId("account-1"))
         with pytest.raises(UnitOfWorkStateError):
             await uow.commit()
+
+
+async def test_zero_fee_adjustment_cannot_steal_another_orders_fill_reference(owned_engine):
+    from trading_bot.accounting.owned_economic_codec import fee_obligation_id
+    from trading_bot.domain import Fill, FillId, OrderEvent, OrderPurpose, Side
+    from trading_bot.domain.owned_order_lifecycle import OwnedOrderEvent
+    from trading_bot.persistence.models import OwnedEconomicEventRow
+
+    await seed_economics(owned_engine)
+    sell = replace(
+        _make_intent(intent_id="intent-2"),
+        side=Side.SELL,
+        purpose=OrderPurpose.STRATEGY_EXIT,
+        limit_price=Decimal("11"),
+    )
+    exit_order = await seed_additional_order(owned_engine, sell, 2)
+    no_adjustment = e(FinalFees(exit_order.id, Decimal("0.01")), 8)
+    entry = replace(
+        owned_fact(quantity="1.25", kind=OrderEvent.FILL), occurred_at=NOW + timedelta(seconds=3)
+    )
+    entry = replace(
+        entry,
+        fill=replace(
+            entry.fill, id=FillId(fee_obligation_id(no_adjustment)), occurred_at=entry.occurred_at
+        ),
+    )
+    at = NOW + timedelta(seconds=6)
+    exit_fill = Fill(
+        FillId("exit-fill"),
+        exit_order.broker_order_id,
+        sell.account_id,
+        sell.instrument_id,
+        Side.SELL,
+        sell.quantity,
+        Decimal("11"),
+        Decimal("0.01"),
+        at,
+        DataHash(HASH_C),
+    )
+    exit_fact = OwnedOrderEvent(
+        "exit-owned",
+        exit_order.id,
+        OrderEvent.FILL,
+        at,
+        DataHash(HASH_C),
+        exit_fill,
+        "native-exit",
+        0,
+    )
+    for_events = (
+        e(Execution(entry), 3),
+        e(Reserve(sell, "episode-1", Decimal("0.1"), Decimal("13.225")), 4),
+        e(Bind(exit_order), 5),
+        e(Execution(exit_fact), 6),
+        e(FinalFees(entry.order_id, Decimal("0.01")), 7),
+        no_adjustment,
+        e(Settlement(entry.fill.id, Decimal("-12.51")), 9),
+        e(Settlement(exit_fill.id, Decimal("13.74")), 10),
+        e(Release(entry.order_id), 11),
+        e(Release(exit_order.id), 12),
+        e(Complete("episode-1"), 13),
+    )
+    async with _make_uow(owned_engine) as uow:
+        for event in for_events:
+            await owner(uow).append(event)
+        await uow.commit()
+    async with async_session_factory(owned_engine)() as session:
+        row = await session.get(OwnedEconomicEventRow, "economics-9")
+        assert row.order_id == "order-1" and row.intent_id == "intent-1"
+    async with _make_uow(owned_engine) as uow:
+        s = await owner(uow).get(AccountId("account-1"))
+        assert s.book_cash == s.available_cash == s.settled_cash == Decimal("501.23")
+        assert not s.obligations and s.trial.consumed_loss == 0
+
+
+async def test_registered_account_is_denied_before_economic_read(owned_engine, monkeypatch):
+    import trading_bot.logging as logging_module
+    from trading_bot.logging import SecretRegistry
+
+    monkeypatch.setattr(logging_module, "_REGISTRY_STATE", logging_module._RegistryState())
+    SecretRegistry().register("fictional-sensitive-account")
+    async with _make_uow(owned_engine) as uow:
+        with pytest.raises(EconomicError):
+            await owner(uow).get(AccountId("fictional-sensitive-account"))
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()
+
+
+async def test_missing_original_order_denies_joint_recovery(owned_engine, database_path):
+    await seed_economics(owned_engine)
+    # Hostile temporary database owner; no production connection or schema.
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute("DELETE FROM orders WHERE id='order-1'")
+        connection.commit()
+    async with _make_uow(owned_engine) as uow:
+        with pytest.raises(EconomicError):
+            await owner(uow).get(AccountId("account-1"))
+        with pytest.raises(UnitOfWorkStateError):
+            await uow.commit()

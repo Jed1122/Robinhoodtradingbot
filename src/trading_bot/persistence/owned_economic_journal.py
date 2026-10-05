@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trading_bot.accounting.owned_economic_codec import (
     decode_economic_event,
     encode_economic_event,
-    fee_obligation_id,
 )
 from trading_bot.accounting.owned_economic_models import (
     MAX_EVENTS,
@@ -22,14 +21,11 @@ from trading_bot.accounting.owned_economic_models import (
     EconomicEvent,
     EconomicState,
     Execution,
-    FinalFees,
-    Release,
     Reserve,
-    Settlement,
     deny,
     identity,
 )
-from trading_bot.accounting.owned_economic_projection import project_economics
+from trading_bot.accounting.owned_economic_projection import project_economics_and_references
 from trading_bot.domain import AccountId, CodeHash, ConfigHash
 from trading_bot.domain.owned_order_lifecycle import encode_owned_event
 from trading_bot.logging import contains_registered_secret
@@ -87,41 +83,6 @@ def _hash(row: OwnedEconomicEventRow) -> str:
     ).hexdigest()
 
 
-def _references(
-    events: tuple[EconomicEvent, ...],
-) -> list[tuple[str | None, str | None, str | None]]:
-    intents: dict[str, str] = {}
-    obligations: dict[str, str] = {}
-    result: list[tuple[str | None, str | None, str | None]] = []
-    for e in events:
-        p = e.payload
-        intent_id: str | None = None
-        order_id: str | None = None
-        owned_id: str | None = None
-        if type(p) is Reserve:
-            intent_id = p.intent.id
-        elif type(p) is Bind:
-            if p.order.intent_id is None:
-                deny()
-            intent_id, order_id = p.order.intent_id, p.order.id
-            intents[order_id] = intent_id
-        elif type(p) is Execution:
-            owned_id, order_id = p.event.id, p.event.order_id
-            intent_id = intents[order_id]
-            if p.event.fill is not None:
-                obligations[p.event.fill.id] = order_id
-        elif type(p) is FinalFees or type(p) is Release:
-            order_id = p.order_id
-            intent_id = intents[order_id]
-            if type(p) is FinalFees:
-                obligations[fee_obligation_id(e)] = order_id
-        elif type(p) is Settlement:
-            order_id = obligations[p.obligation_id]
-            intent_id = intents[order_id]
-        result.append((intent_id, order_id, owned_id))
-    return result
-
-
 class SqlEconomicRepository:
     def __init__(
         self,
@@ -174,8 +135,7 @@ class SqlEconomicRepository:
             head = row.event_hash
             events.append(event)
         frozen = tuple(events)
-        state = project_economics(frozen)
-        refs = _references(frozen)
+        state, refs = project_economics_and_references(frozen)
         bound: set[str] = set()
         expected_owned: dict[str, str] = {}
         for row, event, reference in zip(rows, frozen, refs, strict=True):
@@ -254,8 +214,8 @@ class SqlEconomicRepository:
                 deny()
             del state
             prospective = (*events, event)
-            project_economics(prospective)
-            intent_id, order_id, owned_id = _references(prospective)[-1]
+            _, refs = project_economics_and_references(prospective)
+            intent_id, order_id, owned_id = refs[-1]
             p = event.payload
             if type(p) is Reserve:
                 intent = await self._session.get(OrderIntentRow, p.intent.id)

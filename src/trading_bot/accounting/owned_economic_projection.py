@@ -56,6 +56,13 @@ def _available(
 
 
 def project_economics(events: tuple[EconomicEvent, ...]) -> EconomicState:
+    return project_economics_and_references(events)[0]
+
+
+def project_economics_and_references(
+    events: tuple[EconomicEvent, ...],
+) -> tuple[EconomicState, tuple[tuple[str | None, str | None, str | None], ...]]:
+    """Derive journal links from the same actual obligations as money, once."""
     try:
         if type(events) is not tuple or not 1 <= len(events) <= MAX_EVENTS:
             deny()
@@ -67,7 +74,9 @@ def project_economics(events: tuple[EconomicEvent, ...]) -> EconomicState:
         deny()
 
 
-def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
+def _project(
+    events: tuple[EconomicEvent, ...],
+) -> tuple[EconomicState, tuple[tuple[str | None, str | None, str | None], ...]]:
     # Existing arithmetic imports execution's service bootstrap. Defer that import
     # until module initialization is complete, without duplicating its accounting.
     from trading_bot.simulation.events import EventCursor
@@ -101,6 +110,7 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
     flows: dict[str, Decimal] = {}
     seen = {first.id: encode_economic_event(first)}
     previous_at = first.occurred_at
+    references: list[tuple[str | None, str | None, str | None]] = [(None, None, None)]
     for e in events[1:]:
         encoded = encode_economic_event(e)
         if e.id in seen:
@@ -112,8 +122,12 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
         seen[e.id] = encoded
         previous_at = e.occurred_at
         p = e.payload
+        intent_id: str | None = None
+        order_id: str | None = None
+        owned_id: str | None = None
         if type(p) is Reserve:
             i = p.intent
+            intent_id = i.id
             if (
                 i.id in orders
                 or i.account_id != account
@@ -153,6 +167,7 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
             if a is None or a.order is not None or b.id in order_ids:
                 deny()
             i = a.reservation.intent
+            intent_id, order_id = i.id, b.id
             if (
                 b.account_id,
                 b.instrument_id,
@@ -185,6 +200,7 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
             if key is None:
                 deny()
             a = orders[key]
+            intent_id, order_id, owned_id = a.reservation.intent.id, fact.order_id, fact.id
             if a.released or a.fees_final or a.order is None:
                 deny()
             projected = advance_owned_order(a.order, fact)
@@ -222,6 +238,7 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
         elif type(p) is FinalFees:
             key = order_ids[p.order_id]
             a = orders[key]
+            intent_id, order_id = a.reservation.intent.id, p.order_id
             if (
                 a.order is None
                 or a.order.state not in _TERMINAL
@@ -242,11 +259,14 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
             obligation = obligations.get(p.obligation_id)
             if obligation is None or obligation.amount != p.amount:
                 deny()
+            order_id = obligation.order_id
+            intent_id = orders[order_ids[order_id]].reservation.intent.id
             cash += p.amount
             del obligations[p.obligation_id]
         elif type(p) is Release:
             key = order_ids[p.order_id]
             a = orders[key]
+            intent_id, order_id = a.reservation.intent.id, p.order_id
             if (
                 a.released
                 or not a.fees_final
@@ -276,9 +296,10 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
             cash += p.amount
         else:
             deny()
+        references.append((intent_id, order_id, owned_id))
         if cash < 0 or cash + sum((x.amount for x in obligations.values()), _ZERO) < 0:
             deny()
-    return EconomicState(
+    state = EconomicState(
         account,
         config,
         position,
@@ -290,3 +311,4 @@ def _project(events: tuple[EconomicEvent, ...]) -> EconomicState:
         TrialLossState(tuple(episodes.values())),
         len(seen),
     )
+    return state, tuple(references)
