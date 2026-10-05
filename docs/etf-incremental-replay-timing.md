@@ -39,6 +39,9 @@ inside the existing initial-risk, review, final-risk and durable-attempt sequenc
 Before-transport receipt failure prevents placement. After-transport failure
 cannot erase the committed outcome or authorize retry. The receipt sink's own
 UTC/monotonic clock session records local observations, not exchange latency.
+`record_alpaca_frame(body)` returns selected quote identities from the sink's
+actual sampled receipt clock, not a guessed caller timestamp. That instrumentation
+point includes prior source retention; it does not establish socket arrival time.
 
 An additive v2 `final_fees` receipt may finalize a fee-less terminal observation,
 bound to the exact terminal receipt and separately retained fee source. Missing

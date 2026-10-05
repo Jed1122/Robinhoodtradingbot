@@ -40,6 +40,7 @@ _PAYLOAD_KEYS = {
     "acknowledged": {"order_hash", "source_hash"},
     "fill": {"order_hash", "fill_hash", "quantity", "price", "source_hash"},
     "terminal": {"order_hash", "source_hash", "state", "charged_fees"},
+    "final_fees": {"order_hash", "terminal_hash", "source_hash", "charged_fees"},
 }
 
 
@@ -92,6 +93,7 @@ def validate_receipt_payload(kind: str, value: object) -> dict[str, object]:
         "observation_hash",
         "fill_hash",
         "body_sha256",
+        "terminal_hash",
     ):
         if key in row:
             _digest(row[key])
@@ -104,6 +106,8 @@ def validate_receipt_payload(kind: str, value: object) -> dict[str, object]:
     elif kind == "terminal":
         _check(row["state"] in ("filled", "cancelled", "rejected", "failed"))
         _fees(row["charged_fees"])
+    elif kind == "final_fees":
+        _check(_fees(row["charged_fees"]) is not None)
     return row
 
 
@@ -173,6 +177,8 @@ class _Order:
     ack: int | None = None
     fills: list[dict[str, object]] = field(default_factory=list)
     terminal: dict[str, object] | None = None
+    terminal_hash: str | None = None
+    final_fees: dict[str, object] | None = None
 
 
 def _link(
@@ -215,7 +221,8 @@ def _link(
                 "payload",
             },
         )
-        _check(row["schema"] == "etf-execution-receipt-v1" and row["session_hash"] == session_hash)
+        _check(row["schema"] in ("etf-execution-receipt-v1", "etf-execution-receipt-v2"))
+        _check(row["session_hash"] == session_hash)
         _check(_integer(row["sequence"]) == sequence and row["previous_hash"] == previous)
         _time(row["received_at"])
         utc = parse_timestamp_ns(_string(row["received_at"]))
@@ -224,6 +231,7 @@ def _link(
         previous_utc, previous_mono, previous = utc, mono, source_digest(body)
         kind = _string(row["kind"])
         payload = validate_receipt_payload(kind, row["payload"])
+        _check(kind != "final_fees" or row["schema"] == "etf-execution-receipt-v2")
         for key in ("source_hash", "terms_hash", "body_sha256"):
             if key in payload:
                 reference = _string(payload[key])
@@ -277,6 +285,19 @@ def _link(
         if kind == "fill" and _string(payload["fill_hash"]) in fills:
             _check(fills[_string(payload["fill_hash"])] == payload)
             continue
+        if kind == "final_fees":
+            _check(order.terminal is not None and order.terminal_hash == payload["terminal_hash"])
+            if order.terminal is None:
+                raise EtfReceiptError()
+            terminal_payload = cast(dict[str, object], order.terminal["payload"])
+            _check(terminal_payload["charged_fees"] is None)
+            fees = _fees(payload["charged_fees"])
+            _check(fees is not None and fees["source_hash"] == payload["source_hash"])
+            if order.final_fees is not None:
+                _check(order.final_fees == payload)
+            else:
+                order.final_fees = payload
+            continue
         _check(order.terminal is None)
         if kind == "acknowledged":
             _check(order.ack is None and not order.fills)
@@ -301,6 +322,7 @@ def _link(
             if fees is not None:
                 _check(fees["source_hash"] == payload["source_hash"])
             order.terminal = row
+            order.terminal_hash = source_digest(body)
     completed: list[dict[str, object]] = []
     unfilled_outcomes: list[dict[str, object]] = []
     incomplete = unfilled = missing_fees = 0
@@ -315,7 +337,11 @@ def _link(
                 {
                     "order_hash": order_hash,
                     "state": outcome["state"],
-                    "charged_fees": outcome["charged_fees"],
+                    "charged_fees": (
+                        outcome["charged_fees"]
+                        if order.final_fees is None
+                        else order.final_fees["charged_fees"]
+                    ),
                 }
             )
             continue
@@ -323,7 +349,11 @@ def _link(
             raise EtfReceiptError()
         terminal_payload = cast(dict[str, object], order.terminal["payload"])
         submitted_payload = cast(dict[str, object], order.submitted["payload"])
-        fee = terminal_payload["charged_fees"]
+        fee = (
+            terminal_payload["charged_fees"]
+            if order.final_fees is None
+            else order.final_fees["charged_fees"]
+        )
         missing_fees += fee is None
         completed.append(
             {

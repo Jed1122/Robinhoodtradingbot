@@ -12,6 +12,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from tests.unit.risk.test_pretrade import valid_harness
@@ -49,6 +50,7 @@ from trading_bot.persistence.models import (
     AccountRow,
     BrokerReviewRow,
     InstrumentRow,
+    OrderIntentRow,
     OrderRow,
     OrderTransitionRow,
     RiskEvaluationRow,
@@ -304,6 +306,7 @@ def make_service(
     review: FakeReview,
     place: FakePlace,
     mode: ExecutionMode = ExecutionMode.PAPER,
+    observer: object | None = None,
 ) -> ExecutionService:
     def uow_factory() -> SqlAlchemyUnitOfWork:
         return SqlAlchemyUnitOfWork(
@@ -322,7 +325,128 @@ def make_service(
         mode=mode,
         provider="paper",
         clock=FixedClock(),
+        observer=observer,  # type: ignore[arg-type]
     )
+
+
+class BoundaryObserver:
+    """Inspect actual committed SQLite facts at observation boundaries."""
+
+    def __init__(self, factory, *, failure=None):
+        self.factory, self.failure = factory, failure
+        self.observed = []
+
+    async def decision(self, intent):
+        async with self.factory() as session:
+            assert await session.scalar(select(func.count()).select_from(OrderIntentRow)) == 1
+            assert await session.scalar(select(func.count()).select_from(BrokerReviewRow)) == 0
+        self.observed.append("decision")
+        if self.failure == "decision":
+            raise OSError("synthetic receipt unavailable")
+
+    async def submitting(self, submission):
+        async with self.factory() as session:
+            attempt = await session.scalar(select(SubmissionAttemptRow))
+            assert attempt.outcome_class == "pending"
+            assert await session.scalar(select(func.count()).select_from(BrokerReviewRow)) == 1
+            assert await session.scalar(select(func.count()).select_from(RiskEvaluationRow)) == 2
+        self.observed.append("submitting")
+        if self.failure == "submitting":
+            raise OSError("synthetic receipt unavailable")
+
+    async def responded(self, submission, response):
+        async with self.factory() as session:
+            attempt = await session.scalar(select(SubmissionAttemptRow))
+            assert attempt.outcome_class == "pending"
+        self.observed.append("responded")
+        if self.failure == "responded":
+            raise OSError("synthetic receipt unavailable")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, "decision", "submitting", "responded"])
+async def test_owner_observations_respect_durable_boundaries_and_fail_closed(
+    execution_database, failure
+):
+    _engine, factory = execution_database
+    intent = make_intent()
+    observer = BoundaryObserver(factory, failure=failure)
+    place = FakePlace(factory, make_broker_order(intent, state=OrderState.SUBMITTED))
+    service = make_service(
+        factory,
+        pretrade=FakePretrade(),
+        review=FakeReview(make_review(intent)),
+        place=place,
+        observer=observer,
+    )
+    result = await service.execute(intent)
+    async with factory() as session:
+        attempt = await session.scalar(select(SubmissionAttemptRow))
+    if failure == "decision":
+        assert place.calls == 0 and attempt is None
+        assert result.state is OrderState.RISK_APPROVED
+        assert result.reason_code == "decision_observation_failed"
+    elif failure == "submitting":
+        assert place.calls == 0 and attempt.outcome_class == "pending"
+        assert result.state is OrderState.SUBMISSION_PENDING
+        assert result.reason_code == "submission_observation_failed"
+    else:
+        assert place.observed_pending and place.calls == 1
+        assert attempt.outcome_class == "accepted"
+        assert result.state is OrderState.SUBMITTED
+        if failure:
+            assert result.reason_code == "accepted_receipt_failed"
+    # Durable identity prevents a second transport, even after receipt failure.
+    with pytest.raises((PersistenceDataError, ValueError, IntegrityError)):
+        await service.execute(intent)
+    assert place.calls == (0 if failure in ("decision", "submitting") else 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mismatch", [False, True])
+async def test_ambiguous_transport_never_records_a_false_acknowledgement(
+    execution_database, mismatch
+):
+    _engine, factory = execution_database
+    intent = make_intent()
+    observer = BoundaryObserver(factory)
+    response = (
+        replace(
+            make_broker_order(intent, state=OrderState.SUBMITTED), requested_quantity=Decimal("2")
+        )
+        if mismatch
+        else BrokerSubmissionAmbiguous()
+    )
+    place = FakePlace(factory, response)
+    result = await make_service(
+        factory,
+        pretrade=FakePretrade(),
+        review=FakeReview(make_review(intent)),
+        place=place,
+        observer=observer,
+    ).execute(intent)
+    assert result.state is OrderState.UNKNOWN_REQUIRES_RECONCILIATION
+    assert observer.observed == ["decision", "submitting"]
+    async with factory() as session:
+        attempt = await session.scalar(select(SubmissionAttemptRow))
+        assert attempt.outcome_class == "ambiguous"
+
+
+@pytest.mark.asyncio
+async def test_final_risk_denial_has_no_submission_receipt(execution_database):
+    _engine, factory = execution_database
+    intent = make_intent()
+    observer = BoundaryObserver(factory)
+    place = FakePlace(factory, make_broker_order(intent, state=OrderState.SUBMITTED))
+    result = await make_service(
+        factory,
+        pretrade=FakePretrade(final_allowed=False),
+        review=FakeReview(make_review(intent)),
+        place=place,
+        observer=observer,
+    ).execute(intent)
+    assert result.state is OrderState.RISK_REJECTED
+    assert observer.observed == ["decision"] and place.calls == 0
 
 
 @pytest.mark.asyncio
