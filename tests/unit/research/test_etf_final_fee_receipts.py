@@ -97,3 +97,13 @@ def test_explicit_zero_is_final_but_not_inferred_from_missing():
     result = link_execution_receipts(session, receipts([*rows, later]), sources)
     assert result["missing_fee_order_count"] == 0
     assert result["cost_input"]["orders"][0]["charged_fees"]["total"] == "0"
+
+
+@pytest.mark.parametrize(
+    "kind", ["alpaca_frame", "decision", "submitted", "acknowledged", "fill", "terminal"]
+)
+def test_v2_is_reserved_for_additive_final_fee_events(kind):
+    session, rows, sources = fixture()
+    next(row for row in rows if row["kind"] == kind)["schema"] = "etf-execution-receipt-v2"
+    with pytest.raises(EtfReceiptError):
+        link_execution_receipts(session, receipts(rows), sources)

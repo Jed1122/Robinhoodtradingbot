@@ -231,7 +231,10 @@ def _link(
         previous_utc, previous_mono, previous = utc, mono, source_digest(body)
         kind = _string(row["kind"])
         payload = validate_receipt_payload(kind, row["payload"])
-        _check(kind != "final_fees" or row["schema"] == "etf-execution-receipt-v2")
+        _check(
+            row["schema"]
+            == ("etf-execution-receipt-v2" if kind == "final_fees" else "etf-execution-receipt-v1")
+        )
         for key in ("source_hash", "terms_hash", "body_sha256"):
             if key in payload:
                 reference = _string(payload[key])
