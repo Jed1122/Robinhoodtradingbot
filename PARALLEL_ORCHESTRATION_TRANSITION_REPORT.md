@@ -1,5 +1,25 @@
 # Parallel Orchestration Transition Report
 
+## Fresh execution-readiness reassessment — 2026-10-05
+
+The [current reassessment](docs/etf-execution-readiness-2026-10-05.md) supersedes
+the publication-pending wording in the historical checkpoint below. PR #17 is
+merged at `38c2d9a948bb963e348be68d1c1cacede48fedce`, with exactly the reviewed
+`72fe8a93aacc989f8ff1c2992543ae5056810f1a` tree. A newly retained Alpaca calendar
+reference enabled fresh native receipt/date/request-coverage verification:
+2,514 bar dates match, but none of 1,262 required development sessions has full
+requested quote coverage. Reacquisition reproduces the October 2 coverage-report
+identity; it does not restore original retrieval/publication evidence. Private
+customer calibration remains `BLOCKED_INPUTS`.
+
+Read-only host access now succeeds; the existing process is healthy, paused and
+not ready. Its running container has zero mounts and does not contain either
+new forward-owner module. This is not deployed recovery or strategy operation.
+Trusted factory/worker/promotion composition, complete historical execution data,
+genuine costs and accepted economics remain unfinished. No eligibility clocks
+were started, provider/broker writes performed, deployment changed or gate waived.
+The older snapshot below is retained as historical publication context.
+
 ## Forward-paper economic owner checkpoint — 2026-10-05
 
 This section supersedes older software/dependency status below for the focused ETF
