@@ -318,8 +318,32 @@ account history, final fees, owned strategy intent, settlement, slippage or orde
 
 No transport, credentials, domain order/fill adapter, production ledger or promotion composition
 is added. All observations remain execution-ineligible and non-promotable. The existing
-authenticated empty-only gate and its shape pin remain unchanged. Positions and a separately
-versioned forward ETF paper owner remain independent future boundaries.
+authenticated empty-only gate and its shape pin remain unchanged. Authenticated nonempty
+positions and a trusted recurring ETF strategy composition remain separate boundaries.
+
+### Versioned forward ETF paper economic owner
+
+`runtime/etf_forward_paper.py` defines the separate `etf-forward-paper-v1` contract.
+It accepts explicit fictional economic facts within a fixed, at-most-31-day forward
+window, without widening the historical study validators or changing their identities.
+It reuses the existing account reducer under its exact Decimal context and preserves
+the canonical $100 risk reference, even at hypothetical $500/$1,000 cash tiers.
+Source-only progress has a separate cursor from account mutation. Strategy/source
+hashes are diagnostic bindings, not authenticated signals or market evidence.
+
+`persistence/etf_forward_paper.py` owns the private `etf-forward-paper-owner-v1`
+namespace. A nonwaiting single-host lock spans full-prefix reconstruction, a durable
+claim and immutable joint publication of the consumed tape and reconstructed economics.
+Recovery requires the original typed tape and independently retained expected head;
+it never advances a new cycle. Pending claims, corrupt/missing state, stale writers,
+changed policy and conflicting deliveries deny. Full replay preserves reservations,
+deduplication, settlement, trial losses and risk latches rather than restoring cash alone.
+
+Every result remains paused, synthetic, execution-disabled and non-promotable.
+This transport-free owner is not a strategy factory, recurring worker, qualified paper
+cycle, shadow adapter or standalone deployment recovery verification. Its namespace
+is not included in the existing deployment backup. See the
+[forward-owner handoff](etf-forward-paper-owner-2026-10-04.md).
 
 ### Existing foundation and operational composition
 

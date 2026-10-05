@@ -1,5 +1,19 @@
 # Limitations
 
+- The versioned forward ETF owner persists and reconstructs explicit fictional economic
+  cycles only. Its strategy/source hashes are not verified strategies or market inputs.
+  All states remain paused, source/cost-unqualified, execution-disabled and non-promotable;
+  these cycles cannot satisfy the 100 eligible paper cycles or seven shadow dates.
+  Recovery requires the original typed tape, complete private namespace and independently
+  retained latest head. Complete host rollback or same-UID compromise is not detectable
+  without an external trust anchor. No production deployment, migration, backup inclusion
+  or standalone recovery drill is established by its local process-kill tests.
+- The October 4 retained-input assessment verified archive integrity and counted 2,514
+  daily bars and 1,074 quote observations, not complete historical execution coverage.
+  Crossed and locked quotes remain observations, not admissible executable inputs.
+  Customer calibration received zero orders/fills and remains `BLOCKED_INPUTS`.
+  Missing fees, cash yield and order clocks must not become explicit zero estimates.
+
 - The new offline research bundle and snapshot loader accept only `synthetic-market-v1`
   captures normalized by `synthetic-normalizer-v1`. Stored raw bytes and replay/hash checks
   establish internal consistency, not authenticity, license rights, complete source history,
