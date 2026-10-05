@@ -92,7 +92,7 @@ class ForwardPaperTape:
 
     def __post_init__(self) -> None:
         _check(type(self.plan) is ForwardPaperPlan)
-        replace(self.plan)
+        _check(replace(self.plan) == self.plan)
         _check(type(self.cycles) is tuple and len(self.cycles) <= MAX_CYCLES)
         _check(self.source_kind == "synthetic-forward-paper-v1")
         previous: ForwardPaperCycle | None = None
@@ -101,7 +101,7 @@ class ForwardPaperTape:
         count = 0
         for cycle in self.cycles:
             _check(type(cycle) is ForwardPaperCycle)
-            replace(cycle)
+            _check(replace(cycle) == cycle)
             _check(_ns(self.plan.starts_at) <= cycle.at_ns < _ns(self.plan.ends_at))
             if previous is not None:
                 _check(previous.at_ns <= cycle.at_ns)
@@ -148,7 +148,7 @@ def replay_forward_paper(tape: ForwardPaperTape) -> ForwardPaperState:
     """Reconstruct all explicit economic facts, never infer missing outcomes."""
     try:
         _check(type(tape) is ForwardPaperTape)
-        replace(tape)
+        _check(replace(tape) == tape)
         plan = tape.plan
         events = tuple(event for cycle in tape.cycles for event in cycle.events)
         inputs = _ForwardAccountInput(

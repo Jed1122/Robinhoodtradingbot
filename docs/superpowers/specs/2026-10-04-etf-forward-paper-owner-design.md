@@ -56,8 +56,9 @@ exposure, fee, trial-loss, settlement or loss calculator is created.
 The owner uses an existing owner-private root outside the repository, fixed new
 namespace, descriptor-relative no-follow I/O, 0600 files and 0700 directories.
 Hold a nonwaiting single-host flock through reconstruction and publication.
-An immutable owner marker binds the plan. Every new sequence first durably claims
-the candidate prefix before calculation, then publishes one immutable commit
+An immutable owner marker binds the plan. Every new sequence reconstructs and
+validates the proposed pure state, durably claims the candidate prefix before any
+publication effect, then publishes one immutable commit
 containing the full consumed tape, replayed account, source cursor, diagnostic
 strategy binding, previous head and nonqualifying observation. No callback or
 broker capability can be injected into this owner.

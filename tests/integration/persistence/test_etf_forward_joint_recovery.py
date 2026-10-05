@@ -1,0 +1,389 @@
+"""Real private-filesystem joint commits, restart, fences and injected faults."""
+
+import fcntl
+import hashlib
+import importlib
+import json
+import os
+import subprocess
+import sys
+from dataclasses import replace
+from datetime import timedelta
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+from tests.unit.runtime.test_etf_forward_paper import tape
+from trading_bot.market_data.recording import content_hash
+from trading_bot.runtime.etf_forward_paper import ForwardPaperCycle, replay_forward_paper
+from trading_bot.simulation.etf_account import EtfAccountEvent
+from trading_bot.simulation.etf_history import _policy
+
+GENESIS = "0" * 64
+REPO = Path(__file__).parents[3]
+NAMESPACE = "etf-forward-paper-owner-v1"
+
+
+def api():
+    try:
+        return importlib.import_module("trading_bot.persistence.etf_forward_paper")
+    except ModuleNotFoundError:
+        pytest.fail("atomic joint forward paper owner is missing")
+
+
+@pytest.fixture
+def private(tmp_path):
+    root = tmp_path / "paper"
+    root.mkdir(mode=0o700)
+    return root
+
+
+def advance(root, request, head=GENESIS):
+    return api().advance_forward_paper(root, request, repository_root=REPO, expected_head=head)
+
+
+def recover(root, request, head):
+    return api().recover_forward_paper(root, request, repository_root=REPO, expected_head=head)
+
+
+def test_each_prefix_restores_joint_economics_and_source_not_just_cash(private):
+    request = tape()
+    head = GENESIS
+    for count in range(1, len(request.cycles) + 1):
+        prefix = replace(request, cycles=request.cycles[:count])
+        stored = advance(private, prefix, head)
+        restored = recover(private, request, stored.head_hash)
+        assert stored.state == restored.state == replay_forward_paper(prefix)
+        assert restored.sequence == count
+        head = stored.head_hash
+    assert (
+        stored.state.account.cash.as_tuple()
+        == replay_forward_paper(request).account.cash.as_tuple()
+    )
+    assert stored.state.account.trial.consumed_loss == Decimal(".12")
+    assert stored.state.account.complete and not stored.state.qualifying_paper
+
+
+def test_source_only_cycle_preserves_independent_account_watermark(private):
+    request = tape()
+    prefix = replace(request, cycles=request.cycles[:2])
+    before = advance(private, prefix)
+    last = prefix.cycles[-1]
+    observed = ForwardPaperCycle(
+        last.at_ns + 1,
+        last.received_monotonic_ns + 1,
+        content_hash("denied-source"),
+        last.strategy_state_hash,
+        (),
+    )
+    updated = replace(prefix, cycles=(*prefix.cycles, observed))
+    after = advance(private, updated, before.head_hash)
+    assert after.state.account == before.state.account
+    assert after.state.source_cursor != before.state.source_cursor
+    assert recover(private, updated, after.head_hash) == after
+
+
+def test_idempotent_same_prefix_and_future_suffix_stability(private):
+    request = tape()
+    prefix = replace(request, cycles=request.cycles[:2])
+    before = advance(private, prefix)
+    assert advance(private, prefix) == before  # Exact response-loss retry, no new effect.
+    changed_future = replace(request.cycles[-1], source_hash=content_hash("later-future"))
+    extended = replace(request, cycles=(*request.cycles[:-1], changed_future))
+    assert recover(private, extended, before.head_hash) == before
+    after = advance(private, extended, before.head_hash)
+    assert after.sequence == 2 and before.sequence == 1
+    assert recover(private, extended, after.head_hash) == after
+
+
+def test_shortened_conflicting_stale_or_changed_owner_denies_without_mutation(private):
+    request = tape()
+    prefix = replace(request, cycles=request.cycles[:2])
+    before = advance(private, prefix)
+    paths = sorted((private / NAMESPACE).glob("*"))
+    original = {p.name: p.read_bytes() for p in paths}
+    with pytest.raises(ValueError):
+        advance(private, request)  # Genesis is stale for a genuinely new suffix.
+    with pytest.raises(ValueError):
+        recover(private, prefix, GENESIS)
+    with pytest.raises(ValueError):
+        advance(private, replace(prefix, cycles=prefix.cycles[:1]), before.head_hash)
+    conflict = replace(prefix.cycles[0], strategy_state_hash=content_hash("conflicting-policy"))
+    with pytest.raises(ValueError):
+        advance(private, replace(prefix, cycles=(conflict, prefix.cycles[1])), before.head_hash)
+    with pytest.raises(ValueError):
+        advance(
+            private,
+            replace(prefix, plan=replace(prefix.plan, initial_cash=prefix.plan.initial_cash * 2)),
+            before.head_hash,
+        )
+    assert {p.name: p.read_bytes() for p in paths} == original
+
+
+def test_pending_pre_effect_claim_is_quarantined_and_not_reclaimed(private, monkeypatch):
+    module = api()
+    publish = module._publish
+
+    def fail_commit(directory, name, body):
+        if name.endswith(".joint.json"):
+            raise OSError("fictional disk unavailable")
+        publish(directory, name, body)
+
+    monkeypatch.setattr(module, "_publish", fail_commit)
+    with pytest.raises(ValueError, match="forward_paper_store_invalid"):
+        advance(private, tape())
+    monkeypatch.setattr(module, "_publish", publish)
+    for operation in (advance, recover):
+        with pytest.raises(module.ForwardPaperRecoveryRequired):
+            operation(private, tape(), GENESIS)
+    assert len(list((private / NAMESPACE).glob("*.claim.json"))) == 1
+    assert not list((private / NAMESPACE).glob("*.joint.json"))
+
+
+def test_fully_published_state_survives_uncertain_sync_response(private, monkeypatch):
+    module = api()
+    publish = module._publish
+
+    def uncertain(directory, name, body):
+        publish(directory, name, body)
+        if name.endswith(".joint.json"):
+            raise OSError("fictional post-publication sync failure")
+
+    monkeypatch.setattr(module, "_publish", uncertain)
+    with pytest.raises(ValueError):
+        advance(private, tape())
+    monkeypatch.setattr(module, "_publish", publish)
+    path = next((private / NAMESPACE).glob("*.joint.json"))
+    head = hashlib.sha256(path.read_bytes()).hexdigest()
+    restored = recover(private, tape(), head)
+    assert advance(private, tape()) == restored
+    assert restored.sequence == 1 and restored.state.account.cash == Decimal("499.88")
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "corrupt",
+        "missing_commit",
+        "missing_owner",
+        "forged_state",
+        "unknown_file",
+        "unsafe_mode",
+        "hardlink",
+    ],
+)
+def test_joint_restore_rejects_partial_loss_corruption_and_rehashed_cash(private, damage):
+    request = tape()
+    stored = advance(private, request)
+    directory = private / NAMESPACE
+    joint = next(directory.glob("*.joint.json"))
+    if damage == "corrupt":
+        joint.write_bytes(b"{}")
+    elif damage == "missing_commit":
+        joint.unlink()
+    elif damage == "missing_owner":
+        (directory / "owner.json").unlink()
+    elif damage == "forged_state":
+        row = json.loads(joint.read_bytes())
+        row["state"]["account"]["cash"] = "999.99"
+        joint.write_text(json.dumps(row))
+    elif damage == "unknown_file":
+        (directory / "unreviewed.json").write_bytes(b"{}")
+    elif damage == "unsafe_mode":
+        joint.chmod(0o644)
+    elif damage == "hardlink":
+        os.link(joint, private / "linked")
+    with pytest.raises((ValueError, api().ForwardPaperRecoveryRequired)):
+        recover(private, request, stored.head_hash)
+
+
+def test_missing_intermediate_joint_and_claim_deny_against_external_head(private):
+    request = tape()
+    one = advance(private, replace(request, cycles=request.cycles[:1]))
+    two = advance(private, request, one.head_hash)
+    (private / NAMESPACE / "00000001.joint.json").unlink()
+    (private / NAMESPACE / "00000001.claim.json").unlink()
+    with pytest.raises(ValueError):
+        recover(private, request, two.head_hash)
+
+
+def test_nonwaiting_owner_and_escaped_symlink_or_repository_root_deny(private, tmp_path):
+    advance(private, tape())
+    with (private / NAMESPACE / "writer.lock").open("rb") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(api().ForwardPaperWriterBusy):
+            advance(private, tape())
+    linked = tmp_path / "linked-root"
+    linked.symlink_to(private, target_is_directory=True)
+    with pytest.raises(ValueError):
+        advance(linked, tape())
+    with pytest.raises(ValueError):
+        api().advance_forward_paper(private, tape(), repository_root=private, expected_head=GENESIS)
+    assert (private / NAMESPACE).stat().st_mode & 0o777 == 0o700
+    assert all(p.stat().st_mode & 0o777 == 0o600 for p in (private / NAMESPACE).iterdir())
+
+
+def test_recovery_in_a_new_process_is_paused_and_does_not_advance(private):
+    request = tape()
+    stored = advance(private, replace(request, cycles=request.cycles[:3]))
+    code = """
+import sys
+from pathlib import Path
+from tests.unit.runtime.test_etf_forward_paper import tape
+from trading_bot.persistence.etf_forward_paper import recover_forward_paper
+r = recover_forward_paper(
+    Path(sys.argv[1]), tape(), repository_root=Path.cwd(), expected_head=sys.argv[2]
+)
+assert r.state.cycle_count == 3 and r.state.paused and not r.state.qualifying_paper
+assert str(r.state.account.cash) == '489.99'
+print(r.head_hash)
+"""
+    process = subprocess.run(
+        [sys.executable, "-c", code, str(private), stored.head_hash],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert process.returncode == 0, process.stderr
+    assert process.stdout.strip() == stored.head_hash
+    assert len(list((private / NAMESPACE).glob("*.joint.json"))) == 1
+
+
+@pytest.mark.parametrize("when", ["before", "after"])
+def test_actual_process_kill_preserves_prior_or_complete_joint_publication(private, when):
+    code = """
+import os, signal, sys
+from pathlib import Path
+from tests.unit.runtime.test_etf_forward_paper import tape
+import trading_bot.persistence.etf_forward_paper as owner
+publish = owner._publish
+def killed(directory, name, body):
+    if name.endswith('.joint.json') and sys.argv[2] == 'before':
+        os.kill(os.getpid(), signal.SIGKILL)
+    publish(directory, name, body)
+    if name.endswith('.joint.json'):
+        os.kill(os.getpid(), signal.SIGKILL)
+owner._publish = killed
+owner.advance_forward_paper(
+    Path(sys.argv[1]), tape(), repository_root=Path.cwd(), expected_head='0' * 64
+)
+"""
+    process = subprocess.run(
+        [sys.executable, "-c", code, str(private), when],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert process.returncode == -9
+    if when == "before":
+        with pytest.raises(api().ForwardPaperRecoveryRequired):
+            recover(private, tape(), GENESIS)
+    else:
+        joint = next((private / NAMESPACE).glob("*.joint.json"))
+        head = hashlib.sha256(joint.read_bytes()).hexdigest()
+        state = recover(private, tape(), head)
+        assert state.state.account.cash == Decimal("499.88")
+        assert state.state.account.trial.consumed_loss == Decimal(".12")
+        assert not state.state.qualifying_paper
+
+
+def test_legacy_namespaces_are_not_read_or_modified_and_bad_head_is_sanitized(private):
+    legacy = private / "paper-cycle-journal-v1"
+    legacy.mkdir(mode=0o700)
+    marker = legacy / "unresolved-legacy-claim.json"
+    marker.write_bytes(b"do not adopt or modify")
+    marker.chmod(0o600)
+    stored = advance(private, tape())
+    assert marker.read_bytes() == b"do not adopt or modify"
+    with pytest.raises(ValueError, match="forward_paper_store_invalid"):
+        recover(private, tape(), "private-invalid-value")
+    assert recover(private, tape(), stored.head_hash) == stored
+
+
+def test_empty_state_and_current_head_retries_are_not_new_cycles(private):
+    request = tape(())
+    empty = advance(private, request)
+    assert empty.sequence == 0 and empty.head_hash == GENESIS
+    assert recover(private, request, GENESIS) == empty
+    stored = advance(private, tape(), GENESIS)
+    assert advance(private, tape(), stored.head_hash) == stored
+
+
+def test_interrupted_staging_file_is_verified_but_never_adopted(private):
+    directory = private / NAMESPACE
+    directory.mkdir(mode=0o700)
+    staging = directory / (".tmp-" + "a" * 32)
+    staging.write_bytes(b"interrupted private staging")
+    staging.chmod(0o600)
+    stored = advance(private, tape())
+    assert stored.sequence == 1 and staging.read_bytes() == b"interrupted private staging"
+    assert recover(private, tape(), stored.head_hash) == stored
+
+
+def test_boolean_cycle_count_in_joint_json_denies(private):
+    request = tape()
+    stored = advance(private, request)
+    joint = next((private / NAMESPACE).glob("*.joint.json"))
+    row = json.loads(joint.read_bytes())
+    row["cycle_count"] = True
+    joint.write_text(json.dumps(row))
+    with pytest.raises(ValueError):
+        recover(private, request, stored.head_hash)
+
+
+def test_changed_build_identity_cannot_reuse_owned_economic_state(private):
+    request = tape()
+    stored = advance(private, request)
+    changed_policy = replace(
+        request.plan.policy, policy=_policy(request.plan.policy), code_hash="d" * 64
+    )
+    changed = replace(request, plan=replace(request.plan, policy=changed_policy))
+    with pytest.raises(ValueError):
+        recover(private, changed, stored.head_hash)
+
+
+def test_drawdown_and_weekly_latches_reconstruct_across_next_day_restart(private):
+    request = tape()
+    first = replace(request, cycles=request.cycles[:3])
+    last = first.cycles[-1]
+    adverse = EtfAccountEvent(
+        content_hash("adverse"), 3, last.at_ns + 1_000_000_000, "mark", mark_price=Decimal(".01")
+    )
+    cycle = ForwardPaperCycle(
+        adverse.at_ns,
+        last.received_monotonic_ns + 1_000_000_000,
+        content_hash("adverse-source"),
+        content_hash("held-policy"),
+        (adverse,),
+    )
+    marked = replace(first, cycles=(*first.cycles, cycle))
+    stored = advance(private, marked)
+    assert stored.state.account.entry_halted and not stored.state.account.complete
+    assert stored.state.account.trial.reserved_risk == Decimal("10.02")
+    next_day = replace(
+        adverse,
+        event_id=content_hash("next-day"),
+        ordinal=4,
+        at_ns=adverse.at_ns + int(timedelta(days=1).total_seconds()) * 1_000_000_000,
+        mark_price=Decimal("100"),
+    )
+    later = replace(
+        cycle,
+        at_ns=next_day.at_ns,
+        received_monotonic_ns=cycle.received_monotonic_ns + 86_400_000_000_000,
+        source_hash=content_hash("later-source"),
+        events=(next_day,),
+    )
+    restored = recover(private, replace(marked, cycles=(*marked.cycles, later)), stored.head_hash)
+    assert restored == stored
+    advanced = advance(private, replace(marked, cycles=(*marked.cycles, later)), stored.head_hash)
+    assert advanced.state.account.entry_halted  # Positive mark cannot clear latched losses.
+    assert (
+        recover(private, replace(marked, cycles=(*marked.cycles, later)), advanced.head_hash)
+        == advanced
+    )

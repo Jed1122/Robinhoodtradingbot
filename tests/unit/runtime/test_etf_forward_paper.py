@@ -217,6 +217,29 @@ def test_clock_regression_prefix_conflict_and_forged_flags_deny():
         api().replay_forward_paper(forged)
 
 
+@pytest.mark.parametrize("target", ["plan", "tape"])
+def test_forged_version_or_source_label_cannot_cross_owner(target):
+    request = tape()
+    if target == "plan":
+        object.__setattr__(request.plan, "schema", "actual-forward")
+    else:
+        object.__setattr__(request, "source_kind", "qualified-native")
+    with pytest.raises(ValueError, match="forward_paper_invalid"):
+        api().replay_forward_paper(request)
+
+
+def test_exact_event_duplicate_is_receipt_only_and_conflict_denies():
+    request = tape()
+    first = request.cycles[0]
+    again = replace(first, received_monotonic_ns=first.received_monotonic_ns + 1)
+    state = api().replay_forward_paper(replace(request, cycles=(first, again)))
+    assert state.account.event_count == 1 and state.account.reserved_cash == D("10.02")
+    assert first.cycle_id != again.cycle_id
+    conflict = replace(again, events=(replace(first.events[0], fee_bound=D(".03")),))
+    with pytest.raises(ValueError):
+        replace(request, cycles=(first, conflict))
+
+
 def test_old_account_hash_and_origin_are_unchanged():
     from trading_bot.simulation.etf_account import replay_etf_account
 

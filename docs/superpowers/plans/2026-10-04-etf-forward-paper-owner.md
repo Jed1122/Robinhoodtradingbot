@@ -48,14 +48,15 @@
 
 **Files:**
 - Create: `src/trading_bot/persistence/etf_forward_paper.py`
-- Test: `tests/integration/persistence/test_etf_forward_paper.py`
+- Test: `tests/integration/persistence/test_etf_forward_joint_recovery.py`
+- Modify/Test: `scripts/check_critical_branch_coverage.py`, `tests/smoke/test_critical_branch_coverage.py` (include both new safety-critical owners in the existing 90% gate)
 
 **Interfaces:**
 - Consumes: Task 1 exact models/replay.
 - Produces: `advance_forward_paper(root: Path, tape: ForwardPaperTape, *, repository_root: Path, expected_head: str) -> ForwardPaperCheckpoint`; `recover_forward_paper(root, tape, *, repository_root, expected_head) -> ForwardPaperCheckpoint`.
 
 - [ ] Write real-filesystem tests for source/economic joint state, each prefix restart, stale/missing head, conflict, plan drift, pending claim, concurrent flock, symlinks/modes, corrupt and missing commits, publication/sync faults, separate-process recovery and unchanged old namespaces.
-- [ ] Run `PYTHONPATH=src .venv/bin/pytest -q tests/integration/persistence/test_etf_forward_paper.py`; expected RED for missing persistence owner.
+- [ ] Run `PYTHONPATH=src .venv/bin/pytest -q tests/integration/persistence/test_etf_forward_joint_recovery.py`; expected RED for missing persistence owner.
 - [ ] Implement new descriptor-bound namespace with pre-effect claims and atomic full-prefix commits, mandatory expected head, full replay comparison and recovery without advancement.
 - [ ] Run both new test files and account/journal suites; expected PASS.
 - [ ] Commit `feat: persist joint forward paper prefixes and recovery`.
