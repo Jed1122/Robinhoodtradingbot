@@ -28,6 +28,10 @@ from trading_bot.diagnostics.alpaca_probe_io import (
 from trading_bot.domain import ExecutionMode
 from trading_bot.domain.decimal_utils import _require_sha256_hex
 from trading_bot.market_data.alpaca_native import MAX_PAGE_BYTES, parse_timestamp_ns
+from trading_bot.market_data.alpaca_observation_capture import (
+    AlpacaObservationCapture,
+    AlpacaObservationFrame,
+)
 from trading_bot.market_data.alpaca_observations import parse_alpaca_observation_frame
 from trading_bot.market_data.bundle_codec import _array, _digest, _json, _mapping
 from trading_bot.market_data.bundle_models import BundleLimits
@@ -505,10 +509,10 @@ async def capture_observations(
             os.close(descriptor)
 
 
-def audit_observation_capture(
-    root: Path, result_hash: str, repository_root: Path
-) -> dict[str, object]:
-    """Reparse each immutable frame and receipt; never infer halt-free history."""
+def _verify_observation_capture(
+    root: Path, result_hash: str, repository_root: Path, *, retain_frames: bool
+) -> tuple[dict[str, object], AlpacaObservationCapture | None]:
+    """One verifier for both aggregate audit and bounded typed retention."""
     descriptor = -1
     try:
         _require_sha256_hex(result_hash, "observation result")
@@ -552,6 +556,8 @@ def audit_observation_capture(
         quality = {"inactive": 0, "locked": 0, "crossed": 0, "two_sided_uncrossed": 0}
         skew_count = 0
         maximum_gap_ns: int | None = None
+        frames: list[AlpacaObservationFrame] = []
+        retained_count = 0
         for index, value in enumerate(hashes):
             digest = _digest(value)
             encoded = _read(descriptor, digest + ".observation-receipt.json", MAX_PAGE_BYTES)
@@ -591,6 +597,23 @@ def audit_observation_capture(
                 raw, frame_index=index, received_at_ns=received_ns
             )
             _check(receipt["observation_hashes"] == [o.observation_hash for o in observations])
+            if retain_frames:
+                from trading_bot.market_data.alpaca_observation_capture import (
+                    MAX_CAPTURE_OBSERVATIONS,
+                )
+
+                retained_count += len(observations)
+                _check(retained_count <= MAX_CAPTURE_OBSERVATIONS)
+                frames.append(
+                    AlpacaObservationFrame(
+                        frame_index=index,
+                        receipt_sha256=digest,
+                        body_sha256=raw_hash,
+                        received_at_ns=received_ns,
+                        received_monotonic_ns=mono_ns,
+                        observations=observations,
+                    )
+                )
             for observation in observations:
                 counts[observation.kind] += 1
                 skew_count += observation.timestamp_ns > received_ns
@@ -622,7 +645,7 @@ def audit_observation_capture(
             if result["termination"] == "duration_limit" and not duration_verified
             else result["termination"]
         )
-        return {
+        report: dict[str, object] = {
             "schema": "alpaca-observation-audit-v2",
             "result_hash": result_hash,
             "status": "OBSERVED_UNQUALIFIED" if any(counts.values()) else "BLOCKED_INPUTS",
@@ -649,8 +672,41 @@ def audit_observation_capture(
             "execution_enabled": False,
             "evidence_promotable": False,
         }
+        capture = None
+        if retain_frames:
+            capture = AlpacaObservationCapture(
+                result_hash=result_hash,
+                plan_hash=plan_hash,
+                code_revision=plan.code_revision,
+                config_hash=plan.config_hash,
+                started_at_ns=start_ns,
+                finished_at_ns=end_ns,
+                collection_window=window,
+                predecessor_result_hash=plan.predecessor_result_hash,
+                termination=cast(str, termination),
+                frames=tuple(frames),
+            )
+        return report, capture
     except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError, AttributeError):
         raise AlpacaObservationError() from None
     finally:
         if descriptor >= 0:
             os.close(descriptor)
+
+
+def audit_observation_capture(
+    root: Path, result_hash: str, repository_root: Path
+) -> dict[str, object]:
+    """Reparse each immutable frame and receipt; never infer halt-free history."""
+    report, _ = _verify_observation_capture(root, result_hash, repository_root, retain_frames=False)
+    return report
+
+
+def read_observation_capture(
+    root: Path, result_hash: str, repository_root: Path
+) -> AlpacaObservationCapture:
+    """Read retained receipt-ordered records without credentials or qualification."""
+    _, capture = _verify_observation_capture(root, result_hash, repository_root, retain_frames=True)
+    if capture is None:
+        raise AlpacaObservationError()
+    return capture

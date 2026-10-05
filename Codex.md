@@ -41,6 +41,13 @@ checkpoints. The offline `link-costs` command rehashes them, derives quotes from
 retained Alpaca frames and preserves incomplete/unfilled outcomes separately from
 terminal filled samples. It is not wired to an authenticated execution runtime;
 customer provenance and internally consistent clocks remain unattested declarations.
+The verified retained-capture reader returns immutable receipt-ordered frames
+through the aggregate audit's shared verifier. Its offline `stream-prefix`
+command requires both UTC and monotonic receipt cutoffs from one capture and
+publishes a private hash/count report. Neither provider timestamp sorting nor
+predecessor chaining is allowed; source/execution/promotion/live stay false.
+Typed retention denies more than 10,000 observations atomically without changing
+the existing aggregate audit bounds or wire format.
 Its transport is fixed to `wss://stream.data.alpaca.markets/v2/sip` and SPY quote/status/LULD
 subscriptions. It uses only an explicitly selected owner-private Alpaca paper-key file containing
 `key_id` and `secret_key`; the market-data-only authority does not establish that the key itself
