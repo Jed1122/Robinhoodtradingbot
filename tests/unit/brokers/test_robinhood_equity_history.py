@@ -568,3 +568,32 @@ def test_matching_declared_filters_bind_rows_without_upgrading_authentication():
     )
     page = parse(encoded(), request=request)
     assert len(page.orders) == 1 and not page.authenticated
+
+
+@pytest.mark.parametrize("zero", [False, True])
+def test_partial_state_with_zero_or_complete_shares_denies_internal_consistency(zero):
+    row = order_row()
+    row["state"] = "partially_filled"
+    if zero:
+        row.update(cumulative_quantity="0", fees="0", average_price=None, executions=[])
+    order = parse(encoded(row)).orders[0]
+    assert "partial_quantity_mismatch" in order.issues
+    assert not order.internally_consistent
+    assert not assemble(parse(encoded(row))).internally_consistent
+
+
+@pytest.mark.parametrize("dollar_based", [False, True])
+def test_legitimate_fractional_partial_fill_preserves_nullable_requested_quantity(dollar_based):
+    row = order_row()
+    row.update(state="partially_filled", quantity="2.00")
+    if dollar_based:
+        row.update(
+            quantity=None,
+            dollar_based_amount={"amount": "200.00", "currency_code": "USD"},
+            type="market",
+            price=None,
+        )
+    order = parse(encoded(row)).orders[0]
+    assert order.internally_consistent
+    assert order.cumulative_quantity == Decimal("1.00")
+    assert order.quantity == (None if dollar_based else Decimal("2.00"))

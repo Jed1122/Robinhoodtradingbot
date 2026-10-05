@@ -117,8 +117,8 @@ def _uuid(value: object) -> str:
 
 def _stamp(value: object, receipt: int, *, minimum: int = 0) -> int:
     match = _STAMP.fullmatch(_text(value, 40))
-    _check(match is not None)
-    assert match is not None
+    if match is None:
+        raise EquityHistoryError()
     try:
         instant = datetime.fromisoformat(match[1] + "+00:00")
     except ValueError:
@@ -430,6 +430,10 @@ def _order(value: object, receipt: int) -> EquityOrderObservation:
         issues.append("requested_quantity_exceeded")
     if state == "filled" and (cumulative == 0 or (quantity is not None and cumulative != quantity)):
         issues.append("filled_quantity_mismatch")
+    if state == "partially_filled" and (
+        cumulative == 0 or (quantity is not None and cumulative >= quantity)
+    ):
+        issues.append("partial_quantity_mismatch")
     if cumulative > 0 and average is None:
         issues.append("average_price_missing")
     if cumulative == 0 and average is not None:
