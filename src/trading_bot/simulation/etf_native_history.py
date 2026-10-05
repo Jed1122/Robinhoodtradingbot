@@ -34,8 +34,8 @@ from trading_bot.simulation.costs import SimulatedCosts, execution_price
 from trading_bot.simulation.etf_account import (
     EtfAccountEvent,
     EtfAccountRequest,
+    EtfAccountStepper,
     admit_etf_pending_intent,
-    replay_etf_account,
 )
 from trading_bot.simulation.etf_history import _policy, _session_date
 from trading_bot.simulation.etf_native_models import (
@@ -80,7 +80,8 @@ def _outcome(
     cfg = policy.config
     settings = cfg.equity_strategies
     account = EtfAccountRequest(request.study, request.initial_cash, ())
-    state = replay_etf_account(account)
+    account_owner = EtfAccountStepper(account)
+    state = account_owner.state
     bars: dict[int, Bar] = {}
     frame: StrategyDecision | None = None
     entry_signals: dict[str, StrategyDecision] = {}
@@ -128,9 +129,8 @@ def _outcome(
             kind,
             **values,  # type: ignore[arg-type]
         )
-        candidate = replace(account, events=(*account.events, event))
-        restored = replay_etf_account(candidate)
-        account, state = candidate, restored
+        restored = account_owner.apply(event)
+        account, state = replace(account, events=account_owner.events), restored
 
     def decide(event: EtfReplayEvent, reason: str, order: str | None = None) -> None:
         decisions.append(EtfStrategyDecision(event.ordinal, reason, order))
@@ -387,7 +387,9 @@ def _outcome(
         if not admitted.allowed:
             decide(event, "canonical_account_admission_denied")
             return
-        account, state = replace(account, events=(*account.events, fact)), admitted.state
+        restored = account_owner.apply(fact)
+        check(restored == admitted.state)
+        account, state = replace(account, events=account_owner.events), restored
         pending.extend(
             (
                 (_ns(now) + request.schedule.acknowledgement_delay_ns, "ack", intent.id),

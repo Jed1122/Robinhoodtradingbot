@@ -6,6 +6,8 @@ fill accounting. A strategy/execution owner must supply independently admitted
 intents and observations; this fixture path cannot certify their market origin.
 """
 
+import hashlib
+from collections.abc import Generator
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
@@ -31,7 +33,7 @@ from trading_bot.domain import (
 from trading_bot.domain.decimal_utils import _require_sha256_hex, require_bounded_decimal
 from trading_bot.domain.order_state_machine import transition
 from trading_bot.market_data.etf_source import _ceil_time, _ns
-from trading_bot.market_data.recording import content_hash
+from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.portfolio.sizing import SizingDecision, SizingRequest
 from trading_bot.research.etf_study import EtfStudy
 from trading_bot.risk.limits import evaluate_exposure_limits
@@ -311,9 +313,10 @@ class _AccountReplayInput(Protocol):
     def run_id(self) -> str: ...
 
 
-def _run(
-    request: _AccountReplayInput, count: int, *, origin: datetime | None = None
-) -> EtfAccountResult:
+def _steps(
+    request: _AccountReplayInput, *, origin: datetime | None = None
+) -> Generator[EtfAccountResult, EtfAccountEvent, None]:
+    """Shared one-fact owner; never suspend inside a Decimal local context."""
     loaded = _policy(request.study)
     # Only a separately validated forward wrapper supplies an origin. The
     # historical public path retains its original preimages and UTC window.
@@ -340,6 +343,7 @@ def _run(
     fills: dict[str, tuple[str, str]] = {}
     seen: dict[str, str] = {}
     consumed: list[EtfAccountEvent] = []
+    prefix = hashlib.sha256(b"[")
     last: EtfAccountEvent | None = None
     active_episode: str | None = None
     completed: list[tuple[Decimal, datetime]] = []
@@ -369,8 +373,46 @@ def _run(
                 completed.append((_required(episode.net_cash_flow), now))
                 active_episode = None
 
-    with localcontext(_context(exact=True)):
-        for event in request.events[:count]:
+    def project() -> EtfAccountResult:
+        with localcontext(_context(exact=True)):
+            account_ceiling_breached = (
+                cash + position.market_value + sum((a for a, _ in receivables.values()), ZERO)
+                > cfg.portfolio.live_account_equity_ceiling_usd
+            )
+            digest = prefix.copy()
+            digest.update(b"]")
+            return EtfAccountResult(
+                request.run_id,
+                request.study.study_hash,
+                request.initial_cash,
+                len(consumed),
+                last.ordinal if last else None,
+                last.at_ns if last else None,
+                digest.hexdigest(),
+                cash,
+                cash - sum((amount for amount, _ in unsettled.values()), ZERO),
+                position,
+                fees,
+                tuple(orders.values()),
+                TrialLossState(tuple(episodes.values())),
+                tuple((key, *value) for key, value in unsettled.items()),
+                tuple((key, *value) for key, value in receivables.items()),
+                account_ceiling_breached
+                or weekly_latched
+                or drawdown_latched
+                or (
+                    loss_snapshot is not None
+                    and not evaluate_loss_limits(
+                        snapshot=loss_snapshot,
+                        settings=cfg.loss_limits,
+                        purpose=OrderPurpose.ENTRY,
+                    ).allowed
+                ),
+            )
+
+    while True:
+        event = yield project()
+        with localcontext(_context(exact=True)):
             digest = event.event_hash
             if event.event_id in seen:
                 _check(seen[event.event_id] == digest)
@@ -664,38 +706,76 @@ def _run(
                 now,
             )
             seen[event.event_id] = digest
+            if consumed:
+                prefix.update(b",")
+            prefix.update(canonical_json(event).encode())
             consumed.append(event)
             last = event
-        account_ceiling_breached = (
-            cash + position.market_value + sum((a for a, _ in receivables.values()), ZERO)
-            > cfg.portfolio.live_account_equity_ceiling_usd
-        )
-    return EtfAccountResult(
-        request.run_id,
-        request.study.study_hash,
-        request.initial_cash,
-        len(consumed),
-        last.ordinal if last else None,
-        last.at_ns if last else None,
-        content_hash(tuple(consumed)),
-        cash,
-        cash - sum((amount for amount, _ in unsettled.values()), ZERO),
-        position,
-        fees,
-        tuple(orders.values()),
-        TrialLossState(tuple(episodes.values())),
-        tuple((key, *value) for key, value in unsettled.items()),
-        tuple((key, *value) for key, value in receivables.items()),
-        account_ceiling_breached
-        or weekly_latched
-        or drawdown_latched
-        or (
-            loss_snapshot is not None
-            and not evaluate_loss_limits(
-                snapshot=loss_snapshot, settings=cfg.loss_limits, purpose=OrderPurpose.ENTRY
-            ).allowed
-        ),
-    )
+
+
+def _run(
+    request: _AccountReplayInput, count: int, *, origin: datetime | None = None
+) -> EtfAccountResult:
+    reducer = _steps(request, origin=origin)
+    try:
+        state = next(reducer)
+        for event in request.events[:count]:
+            state = reducer.send(event)
+        return state
+    finally:
+        reducer.close()
+
+
+class EtfAccountStepper:
+    """Bounded offline advancement; a failed reducer cannot be used again.
+
+    Reconstruction reduces the retained tape once. Results and hashes remain
+    legacy v1; this object is not a production risk or authorization capability.
+    """
+
+    def __init__(self, request: EtfAccountRequest) -> None:
+        _check(type(request) is EtfAccountRequest)
+        replace(request)
+        self._request = replace(request, events=())
+        self._events: list[EtfAccountEvent] = []
+        self._failed = False
+        self._reducer = _steps(self._request)
+        self._state = next(self._reducer)
+        for event in request.events:
+            self.apply(event)
+
+    @property
+    def state(self) -> EtfAccountResult:
+        return self._state
+
+    @property
+    def events(self) -> tuple[EtfAccountEvent, ...]:
+        return tuple(self._events)
+
+    @property
+    def failed(self) -> bool:
+        return self._failed
+
+    def apply(self, event: EtfAccountEvent) -> EtfAccountResult:
+        try:
+            _check(not self._failed and len(self._events) < 10000)
+            _check(type(event) is EtfAccountEvent)
+            replace(event)
+            _check(
+                _ns(self._request.study.requested_start)
+                <= event.at_ns
+                < _ns(self._request.study.requested_end)
+            )
+            state = self._reducer.send(event)
+            self._events.append(event)
+            self._state = state
+            return state
+        except (
+            ValueError, TypeError, ArithmeticError, AttributeError, RuntimeError, StopIteration
+        ):
+            self._failed = True
+            self._reducer.close()
+            raise EtfAccountError() from None
 
 
 def replay_etf_account(
