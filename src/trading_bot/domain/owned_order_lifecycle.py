@@ -1,4 +1,4 @@
-"""Versioned local post-submission facts; never an authenticated broker mapper."""
+"""Pure versioned local post-submission facts; never an authenticated broker mapper."""
 
 from __future__ import annotations
 

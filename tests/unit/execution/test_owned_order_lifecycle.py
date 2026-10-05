@@ -31,7 +31,7 @@ HASH = "a" * 64
 
 
 def api():  # type: ignore[no-untyped-def]
-    name = "trading_bot.execution.owned_order_lifecycle"
+    name = "trading_bot.domain.owned_order_lifecycle"
     assert importlib.util.find_spec(name) is not None, "owned lifecycle API not implemented"
     return importlib.import_module(name)
 

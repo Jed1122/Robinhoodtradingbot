@@ -29,7 +29,7 @@
 
 ### Task 1: Pure owned lifecycle contract
 
-**Files:** Create `src/trading_bot/execution/owned_order_lifecycle.py`; test `tests/unit/execution/test_owned_order_lifecycle.py`.
+**Files:** Create `src/trading_bot/domain/owned_order_lifecycle.py`; test `tests/unit/execution/test_owned_order_lifecycle.py`. The pure contract lives at the dependency root to avoid persistence/execution-bootstrap cycles.
 
 **Interfaces:** Consumes exact `BrokerOrder`, `Fill`, `OrderEvent`, canonical `transition`. Produces `OwnedOrderEvent`, `encode_owned_event(event) -> str`, `decode_owned_event(payload) -> OwnedOrderEvent`, `advance_owned_order(order, event) -> BrokerOrder`.
 

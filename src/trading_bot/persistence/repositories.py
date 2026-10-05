@@ -40,6 +40,7 @@ from trading_bot.domain.identifiers import (
     ConfigHash,
     CorrelationId,
     DataHash,
+    FillId,
     InstrumentId,
     OrderId,
     OrderIntentId,
@@ -52,9 +53,11 @@ from trading_bot.domain.order_state_machine import InvalidOrderTransition, trans
 from trading_bot.domain.orders import (
     BrokerOrder,
     BrokerOrderReview,
+    Fill,
     OrderIntent,
     PersistedReviewedOrder,
 )
+from trading_bot.domain.owned_order_lifecycle import OwnedOrderEvent
 from trading_bot.logging import contains_registered_secret
 from trading_bot.persistence.audit import _stage_audit_event
 from trading_bot.persistence.base import PersistenceDataError
@@ -71,6 +74,11 @@ from trading_bot.persistence.models import (
     RiskEvaluationRow,
     SubmissionAttemptRow,
 )
+from trading_bot.persistence.owned_order_journal import (
+    SqlFillReader,
+    get_owned_order,
+    record_owned_event,
+)
 
 ActiveGuard = Callable[[], None]
 ConfigGuard = Callable[[ConfigHash], None]
@@ -84,6 +92,10 @@ class OrderRepository(Protocol):
     async def add(self, intent: OrderIntent) -> None: ...
 
     async def get(self, intent_id: OrderIntentId) -> OrderIntent | None: ...
+
+    async def record_event(self, event: OwnedOrderEvent) -> bool: ...
+
+    async def get_broker_order(self, order_id: OrderId) -> BrokerOrder | None: ...
 
     async def add_risk_evaluation(
         self,
@@ -152,7 +164,13 @@ class SubmissionAttemptRepository(Protocol):
 
 
 class FillRepository(Protocol):
-    """Reserved interface pending a provider-scoped fill persistence command."""
+    """Exact read interface; writes belong to the owned lifecycle transaction."""
+
+    async def get(self, fill_id: FillId) -> Fill | None: ...
+
+    async def list_for_account(
+        self, account_id: AccountId, since: datetime
+    ) -> tuple[Fill, ...]: ...
 
 
 class DataQualityRepository(Protocol):
@@ -425,6 +443,14 @@ class _SqlOrderRepository:
         if intent is None:
             raise PersistenceDataError("order intent must be durable before dependent evidence")
         return intent
+
+    async def record_event(self, event: OwnedOrderEvent) -> bool:
+        self._ensure_active()
+        return await record_owned_event(self._session, event, self._ensure_config_hash)
+
+    async def get_broker_order(self, order_id: OrderId) -> BrokerOrder | None:
+        self._ensure_active()
+        return await get_owned_order(self._session, order_id)
 
     async def add_risk_evaluation(
         self,
@@ -803,8 +829,8 @@ class _SqlSubmissionAttemptRepository(_DeferredSqlRepository):
             raise PersistenceDataError("submission attempt already has a terminal outcome")
 
 
-class _SqlFillRepository(_DeferredSqlRepository):
-    """Fill persistence will land with its provider-scoped replay command."""
+class _SqlFillRepository(SqlFillReader):
+    """Compatible unit-of-work binding for exact fill reads."""
 
 
 class _SqlDataQualityRepository(_DeferredSqlRepository):
