@@ -9,7 +9,6 @@ from contextlib import closing
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 from alembic import command
@@ -530,7 +529,8 @@ async def test_real_process_kill_never_publishes_a_partial_effect(
         subprocess.run,
         [
             sys.executable,
-            str(Path(__file__).with_name("_owned_order_crash_worker.py")),
+            "-m",
+            "tests.integration.persistence._owned_order_crash_worker",
             database_url,
             phase,
         ],
