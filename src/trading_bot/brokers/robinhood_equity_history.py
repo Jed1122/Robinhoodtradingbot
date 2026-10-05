@@ -18,6 +18,9 @@ from uuid import UUID
 ORDER_DECLARATION_SHA256 = "ee8c4019da683b7bfd56ff62ad20f0cf1d3d4080f3baa5f6f785a50a218fd470"
 MAX_PAGE_BYTES = 1_048_576
 MAX_ROWS = 2_000
+MAX_PAGES = 128
+MAX_CHAIN_BYTES = 16_777_216
+MAX_CHAIN_RECORDS = 20_000
 _DECIMAL = re.compile(r"(?:0|[1-9][0-9]{0,19})(?:\.[0-9]{1,18})?\Z")
 _STAMP = re.compile(
     r"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\.([0-9]{1,9}))?(Z|\+00:00)\Z"
@@ -496,6 +499,15 @@ def parse_equity_orders_page(
         if "next" in data:
             next_cursor = _text(data["next"], 4096, empty=True)
         orders = tuple(_order(row, receipt) for row in cast(list[object], rows))
+        for key, value in request.filters:
+            if key == "order_id":
+                _check(len(orders) <= 1)
+            for order in orders:
+                if key == "created_at_gte":
+                    lower = value + "T00:00:00Z" if len(value) == 10 else value
+                    _check(order.created_at_ns >= _stamp(lower, 2**63 - 1))
+                else:
+                    _check(getattr(order, "id" if key == "order_id" else key) == value)
         return EquityOrdersPage(
             body,
             hashlib.sha256(body).hexdigest(),
@@ -508,4 +520,87 @@ def parse_equity_orders_page(
             "next" in data,
         )
     except (ValueError, TypeError, ArithmeticError, RecursionError, OverflowError):
+        raise EquityHistoryError() from None
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class EquityOrderHistory(_Unqualified):
+    request: EquityHistoryRequest
+    page_hashes: tuple[str, ...]
+    orders: tuple[EquityOrderObservation, ...]
+    duplicate_orders: int
+    unique_executions: int
+
+    @property
+    def supplied_chain_complete(self) -> Literal[True]:
+        return True
+
+    @property
+    def internally_consistent(self) -> bool:
+        return all(order.internally_consistent for order in self.orders)
+
+    @property
+    def history_hash(self) -> str:
+        return _digest(
+            {
+                "schema": "robinhood-2-equity-order-history-v1",
+                "request": self.request.request_hash,
+                "pages": self.page_hashes,
+            }
+        )
+
+
+def assemble_equity_order_history(pages: tuple[EquityOrdersPage, ...]) -> EquityOrderHistory:
+    """Reparse an entire supplied terminal chain; never fetch or attest full history."""
+    try:
+        _check(type(pages) is tuple and 1 <= len(pages) <= MAX_PAGES)
+        _check(all(type(page) is EquityOrdersPage and type(page.body) is bytes for page in pages))
+        _check(sum(len(page.body) for page in pages) <= MAX_CHAIN_BYTES)
+        orders: dict[str, EquityOrderObservation] = {}
+        execution_owners: dict[str, str] = {}
+        cursors: set[str] = set()
+        page_hashes: list[str] = []
+        expected_cursor = None
+        previous_receipt = 0
+        request_hash = pages[0].request.request_hash
+        duplicate_orders = 0
+        for index, supplied in enumerate(pages):
+            page = parse_equity_orders_page(
+                supplied.body,
+                request=supplied.request,
+                requested_cursor=supplied.requested_cursor,
+                received_at_ns=supplied.received_at_ns,
+                declaration_sha256=supplied.declaration_sha256,
+            )
+            _check(page == supplied)
+            _check(page.request.request_hash == request_hash)
+            _check(page.received_at_ns >= previous_receipt)
+            _check(page.requested_cursor == expected_cursor)
+            if page.requested_cursor is not None:
+                _check(page.requested_cursor not in cursors)
+                cursors.add(page.requested_cursor)
+            terminal = page.next_cursor in (None, "")
+            _check(terminal == (index == len(pages) - 1))
+            for order in page.orders:
+                if order.id in orders:
+                    _check(orders[order.id] == order)
+                    duplicate_orders += 1
+                    continue
+                for execution in order.executions or ():
+                    _check(execution.id not in execution_owners)
+                    execution_owners[execution.id] = order.id
+                    _check(len(execution_owners) <= MAX_CHAIN_RECORDS)
+                orders[order.id] = order
+                _check(len(orders) <= MAX_CHAIN_RECORDS)
+            page_hashes.append(page.page_hash)
+            expected_cursor = page.next_cursor
+            previous_receipt = page.received_at_ns
+        return EquityOrderHistory(
+            pages[0].request,
+            tuple(page_hashes),
+            tuple(orders.values()),
+            duplicate_orders,
+            len(execution_owners),
+        )
+    except (ValueError, TypeError, AttributeError, ArithmeticError, RecursionError):
         raise EquityHistoryError() from None

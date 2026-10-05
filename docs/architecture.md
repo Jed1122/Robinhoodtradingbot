@@ -306,6 +306,21 @@ An in-memory synthetic integration test connects the real loader and feature pip
 existing decision cycle with no strategies, no planned intents, and an execution stage that
 raises if called. This is not production wiring or a complete paper, shadow, or live cycle.
 
+### Declaration-bound supplied equity history
+
+`brokers/robinhood_equity_history.py` separately parses supplied Robinhood-2 order pages.
+Its immutable observations retain exact Decimal spelling, UTC event nanoseconds, receipt
+context, raw-byte/declaration/request hashes, nullable execution detail, native fill IDs and
+regulatory/clearing observations. The pure assembler reparses bytes, enforces unchanged opaque
+cursor chains and bounded resources, and denies conflicting same-order snapshots or cross-order
+execution reuse. Consistent totals and terminal supplied pagination do not establish authenticated
+account history, final fees, owned strategy intent, settlement, slippage or order latency.
+
+No transport, credentials, domain order/fill adapter, production ledger or promotion composition
+is added. All observations remain execution-ineligible and non-promotable. The existing
+authenticated empty-only gate and its shape pin remain unchanged. Positions and a separately
+versioned forward ETF paper owner remain independent future boundaries.
+
 ### Existing foundation and operational composition
 
 The repository is a paper-safe, fail-closed foundation, not a running trading system.

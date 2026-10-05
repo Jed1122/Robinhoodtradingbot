@@ -24,6 +24,8 @@ Deduplicate exact execution redelivery by native execution UUID within an order 
 
 `assemble_equity_order_history(pages: tuple[EquityOrdersPage, ...]) -> EquityOrderHistory` accepts 1–128 pages, max 2,000 orders/page, 2,000 executions/order, 1 MiB/page, 16 MiB total and 20,000 unique orders/executions per chain. Reparse retained bytes at the assembler boundary so mutated/hand-built page summaries cannot alter evidence. First cursor is absent; subsequent cursor must exactly equal the previous nonempty next; unchanged request/declaration identity, nondecreasing receipts, no cursor loops, and a terminal final page are mandatory. Exact duplicate order deliveries deduplicate/count; changed order UUID snapshots or cross-order execution UUID reuse fail. A terminal supplied chain establishes supplied-chain completeness only, not account or execution-history completeness.
 
+Rows must also match each explicit request filter; single-order mode permits at most one row. These checks reject mismatched supplied evidence, not attest actual transport arguments or account identity. Original declaration metadata is hashed without the storage file's added terminal newline.
+
 All outputs expose permanently false `authenticated`, `execution_eligible`, and `promotable` properties. `fees_final` and `history_complete` remain unknown (`None`). Even matching fees prove only consistency of cumulative/per-execution regulatory-plus-clearing observations—not commission/SEC/TAF/CAT breakout, final settled charges or completeness. Do not adapt to `BrokerOrder`, `Fill`, calibration samples, promotion evidence or production ledger records.
 
 ## Verification and handoff

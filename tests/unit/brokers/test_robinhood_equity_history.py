@@ -3,7 +3,7 @@
 import copy
 import hashlib
 import json
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -342,3 +342,229 @@ def test_duplicate_execution_spelling_drift_is_not_an_exact_redelivery():
     row["executions"].append(duplicate)
     with pytest.raises(EquityHistoryError):
         parse(encoded(row))
+
+
+def assemble(*pages):  # type: ignore[no-untyped-def]
+    from trading_bot.brokers.robinhood_equity_history import assemble_equity_order_history
+
+    return assemble_equity_order_history(pages)
+
+
+def test_chain_preserves_source_order_and_opaque_cursor_without_transport():
+    cursor = "https://NOT-A-REQUEST.invalid/?cursor=untouched"
+    first = parse(encoded(next=cursor))
+    second = parse(encoded(rows=[], next=""), requested_cursor=cursor, received_at_ns=RECEIPT + 1)
+    result = assemble(first, second)
+    assert result.orders[0].id == ORDER and len(result.orders) == 1
+    assert result.page_hashes == (first.page_hash, second.page_hash)
+    assert result.supplied_chain_complete and result.history_complete is None
+    assert result.fees_final is None and not result.authenticated
+    assert not result.execution_eligible and not result.promotable
+    assert result.request.request_hash == first.request.request_hash
+    assert result.history_hash == assemble(first, second).history_hash
+    later = replace(second, received_at_ns=RECEIPT + 2)
+    assert result.history_hash != assemble(first, later).history_hash
+
+
+def test_chain_counts_order_redelivery_without_double_counting_partial_fills():
+    first = parse(encoded(next="opaque"))
+    second = parse(encoded(), requested_cursor="opaque")
+    result = assemble(first, second)
+    assert len(result.orders) == 1 and result.duplicate_orders == 1
+    assert result.unique_executions == 2
+    assert result.orders[0].execution_fees == Decimal("0.003")
+
+
+@pytest.mark.parametrize(
+    "changed", [{"fees": "0.004"}, {"fees": "0.0030"}, {"state": "pending_cancelled"}]
+)
+def test_chain_rejects_changed_snapshots_under_the_same_order_uuid(changed):
+    first = parse(encoded(next="opaque"))
+    row = order_row()
+    row.update(changed)
+    second = parse(encoded(row), requested_cursor="opaque")
+    with pytest.raises(EquityHistoryError):
+        assemble(first, second)
+
+
+def test_chain_rejects_execution_uuid_reused_by_another_order():
+    row = order_row()
+    row["id"] = "55555555-5555-4555-8555-555555555555"
+    page = parse(encoded(rows=[order_row(), row]))
+    with pytest.raises(EquityHistoryError):
+        assemble(page)
+
+
+@pytest.mark.parametrize(
+    "tamper", ["orders", "body_sha256", "next_cursor", "next_present", "declaration_sha256"]
+)
+def test_assembler_reparses_raw_bytes_and_denies_tampered_summaries(tamper):
+    page = parse(encoded())
+    replacements = {
+        "orders": (),
+        "body_sha256": "f" * 64,
+        "next_cursor": "invented",
+        "next_present": True,
+        "declaration_sha256": "f" * 64,
+    }
+    with pytest.raises(EquityHistoryError):
+        assemble(replace(page, **{tamper: replacements[tamper]}))
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing",
+        "wrong_cursor",
+        "first_cursor",
+        "loop",
+        "extra_terminal",
+        "earlier_receipt",
+        "filter_drift",
+        "account_drift",
+    ],
+)
+def test_incomplete_or_changed_chain_never_becomes_supplied_complete(case):
+    first = parse(encoded(rows=[], next="opaque"))
+    second = parse(encoded(rows=[]), requested_cursor="opaque")
+    pages = (first, second)
+    if case == "missing":
+        pages = (first,)
+    elif case == "wrong_cursor":
+        pages = (first, replace(second, requested_cursor="other"))
+    elif case == "first_cursor":
+        pages = (replace(first, requested_cursor="opaque"), second)
+    elif case == "loop":
+        second = parse(encoded(rows=[], next="opaque"), requested_cursor="opaque")
+        pages = (first, second, parse(encoded(rows=[]), requested_cursor="opaque"))
+    elif case == "extra_terminal":
+        pages = (parse(encoded(rows=[])), second)
+    elif case == "earlier_receipt":
+        pages = (first, replace(second, received_at_ns=RECEIPT - 1))
+    elif case == "filter_drift":
+        pages = (
+            first,
+            replace(second, request=EquityHistoryRequest(ACCOUNT, (("symbol", "SPY"),))),
+        )
+    else:
+        pages = (first, replace(second, request=EquityHistoryRequest("b" * 64)))
+    with pytest.raises(EquityHistoryError):
+        assemble(*pages)
+
+
+def test_creation_filter_and_terminal_pages_do_not_attest_execution_window_coverage():
+    request = EquityHistoryRequest(
+        ACCOUNT, (("created_at_gte", "2026-10-02"), ("placed_agent", "agentic"))
+    )
+    result = assemble(parse(encoded(rows=[]), request=request))
+    assert result.supplied_chain_complete and result.orders == ()
+    assert result.history_complete is None and result.fees_final is None
+    assert not result.promotable and result.unique_executions == 0
+
+
+def test_page_chain_resource_limits_fail_without_partial_history():
+    with pytest.raises(EquityHistoryError):
+        assemble()
+    with pytest.raises(EquityHistoryError):
+        assemble(*([parse(encoded(rows=[]))] * 129))
+    pages = []
+    for i in range(17):
+        body = encoded(rows=[], **({"next": str(i + 1)} if i < 16 else {}))
+        pages.append(
+            parse(body + b" " * (1048576 - len(body)), requested_cursor=str(i) if i else None)
+        )
+    with pytest.raises(EquityHistoryError):
+        assemble(*pages)
+
+
+@pytest.mark.parametrize("target", ["orders", "executions"])
+def test_per_page_and_per_order_row_limits_reject_before_interpreting_rows(target):
+    if target == "orders":
+        body = encoded(rows=[{}] * 2001)
+    else:
+        row = order_row()
+        row["executions"] = [{}] * 2001
+        body = encoded(row)
+    with pytest.raises(EquityHistoryError):
+        parse(body)
+
+
+def test_chain_unique_order_limit_is_enforced_across_small_pages():
+    row = order_row()
+    row.update(
+        executions=[],
+        cumulative_quantity="0",
+        fees="0",
+        average_price=None,
+        last_transaction_at=None,
+        state="queued",
+    )
+    pages = []
+    for page in range(21):
+        rows = []
+        for index in range(1000):
+            item = dict(row)
+            item["id"] = f"00000000-0000-4000-8000-{page * 1000 + index:012d}"
+            rows.append(item)
+        pages.append(
+            parse(
+                encoded(rows=rows, **({"next": str(page + 1)} if page < 20 else {})),
+                requested_cursor=str(page) if page else None,
+            )
+        )
+    with pytest.raises(EquityHistoryError):
+        assemble(*pages)
+
+
+def test_nonempty_parsed_history_does_not_unlock_authenticated_mapping():
+    from trading_bot.brokers.robinhood_equity_mapping import (
+        UnverifiedNonemptyShape,
+        ensure_authenticated_empty_collection,
+    )
+
+    page = parse(encoded())
+    assert assemble(page).unique_executions == 2
+    with pytest.raises(UnverifiedNonemptyShape):
+        ensure_authenticated_empty_collection(
+            [order_row()], collection_name="orders", next_page=None
+        )
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [
+        (("symbol", "QQQ"),),
+        (("order_id", FILL_1),),
+        (("placed_agent", "user"),),
+        (("state", "queued"),),
+        (("created_at_gte", "2026-10-03"),),
+    ],
+)
+def test_rows_contradicting_explicit_request_filters_are_not_bound_as_matching(filters):
+    with pytest.raises(EquityHistoryError):
+        parse(encoded(), request=EquityHistoryRequest(ACCOUNT, filters))
+
+
+def test_single_order_mode_does_not_accept_two_order_deliveries():
+    row = order_row()
+    row["id"] = "55555555-5555-4555-8555-555555555555"
+    with pytest.raises(EquityHistoryError):
+        parse(
+            encoded(rows=[order_row(), row]),
+            request=EquityHistoryRequest(ACCOUNT, (("order_id", ORDER),)),
+        )
+
+
+def test_matching_declared_filters_bind_rows_without_upgrading_authentication():
+    request = EquityHistoryRequest(
+        ACCOUNT,
+        (
+            ("created_at_gte", "2026-10-02T14:00:00Z"),
+            ("order_id", ORDER),
+            ("placed_agent", "agentic"),
+            ("state", "filled"),
+            ("symbol", "SPY"),
+        ),
+    )
+    page = parse(encoded(), request=request)
+    assert len(page.orders) == 1 and not page.authenticated
