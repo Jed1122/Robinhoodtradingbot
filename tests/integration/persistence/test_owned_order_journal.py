@@ -238,6 +238,33 @@ async def test_modified_transition_denies_recovery(owned_engine: AsyncEngine):
             await owner(uow).get_broker_order(OrderId("order-1"))
 
 
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE broker_reviews SET normalized_intent_hash='" + "d" * 64 + "'",
+        "UPDATE broker_reviews SET sanitized_response_hash='" + "d" * 64 + "'",
+        "UPDATE broker_reviews SET outbound_payload_sha256='" + "d" * 64 + "'",
+        "UPDATE broker_reviews SET estimated_fees='-1'",
+        "UPDATE broker_reviews SET expires_at=reviewed_at",
+        "UPDATE order_intents SET expires_at=created_at",
+    ],
+)
+async def test_modified_review_and_intent_bindings_deny_recovery(owned_engine, statement):
+    async with _make_uow(owned_engine) as uow:
+        assert await owner(uow).record_event(event())
+        await uow.commit()
+    # Corrupt fictional persisted evidence; no provider or customer data is used.
+    async with async_session_factory(owned_engine).begin() as session:
+        await session.execute(text(statement))
+    with pytest.raises(ValueError, match="owned_order_journal_invalid"):
+        async with _make_uow(owned_engine) as uow:
+            await owner(uow).get_broker_order(OrderId("order-1"))
+    with pytest.raises(ValueError, match="owned_order_journal_invalid"):
+        async with _make_uow(owned_engine) as uow:
+            await owner(uow).record_event(event(index=1, quantity="1", kind=OrderEvent.FILL))
+    assert await counts(owned_engine) == (1, 1)
+
+
 async def test_missing_order_and_fill_reads_remain_absent(owned_engine: AsyncEngine):
     async with _make_uow(owned_engine) as uow:
         assert await owner(uow).get_broker_order(OrderId("missing")) is None
@@ -387,20 +414,50 @@ async def test_unjournaled_local_transition_is_not_silently_ignored(owned_engine
 async def test_initial_submission_transition_can_coexist_with_owned_history(owned_engine):
     async with _make_uow(owned_engine) as uow:
         await uow.orders.add_transition(
-            "submission-transition",
+            "transition-accepted-" + hashlib.sha256(b"intent-1|transition-accepted").hexdigest(),
             _make_intent().id,
             OrderId("order-1"),
             OrderState.SUBMISSION_PENDING,
             OrderEvent.BROKER_ACCEPTED,
             OrderState.SUBMITTED,
-            "fixture",
-            "fixture",
+            "execution-service",
+            "broker_accepted",
             NOW,
-            "correlation-1",
+            "execution-" + hashlib.sha256(b"intent-1|execution").hexdigest(),
         )
         assert await owner(uow).record_event(event())
         await uow.commit()
     assert await counts(owned_engine) == (1, 2)
+
+
+@pytest.mark.parametrize("invalid", ["duplicate", "future", "id", "actor", "reason", "correlation"])
+async def test_unrelated_acceptance_transition_denies_recovery_and_fill(owned_engine, invalid):
+    expected_id = (
+        "transition-accepted-" + hashlib.sha256(b"intent-1|transition-accepted").hexdigest()
+    )
+    expected_correlation = "execution-" + hashlib.sha256(b"intent-1|execution").hexdigest()
+    async with _make_uow(owned_engine) as uow:
+        for index in range(2 if invalid == "duplicate" else 1):
+            await uow.orders.add_transition(
+                "unrelated" if invalid == "id" or index else expected_id,
+                _make_intent().id,
+                OrderId("order-1"),
+                OrderState.SUBMISSION_PENDING,
+                OrderEvent.BROKER_ACCEPTED,
+                OrderState.SUBMITTED,
+                "foreign-owner" if invalid == "actor" else "execution-service",
+                "foreign-reason" if invalid == "reason" else "broker_accepted",
+                NOW + timedelta(days=5) if invalid == "future" else NOW,
+                "foreign-correlation" if invalid == "correlation" else expected_correlation,
+            )
+        await uow.commit()
+    with pytest.raises(ValueError, match="owned_order_journal_invalid"):
+        async with _make_uow(owned_engine) as uow:
+            await owner(uow).get_broker_order(OrderId("order-1"))
+    with pytest.raises(ValueError, match="owned_order_journal_invalid"):
+        async with _make_uow(owned_engine) as uow:
+            await owner(uow).record_event(event())
+    assert await counts(owned_engine) == (0, 2 if invalid == "duplicate" else 1)
 
 
 @pytest.mark.parametrize("method", ["order", "fill", "list"])

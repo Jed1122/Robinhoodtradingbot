@@ -18,6 +18,7 @@ from trading_bot.domain import (
     AssetClass,
     BrokerOrder,
     BrokerOrderId,
+    BrokerOrderReview,
     ClientOrderId,
     ConfigHash,
     DataHash,
@@ -42,7 +43,12 @@ from trading_bot.domain.owned_order_lifecycle import (
     encode_owned_event,
 )
 from trading_bot.persistence.base import PersistenceDataError
-from trading_bot.persistence.evidence import canonical_broker_order_response_sha256
+from trading_bot.persistence.evidence import (
+    canonical_broker_order_response_sha256,
+    canonical_order_intent_sha256,
+    canonical_review_response_sha256,
+    order_intent_from_row,
+)
 from trading_bot.persistence.models import (
     BrokerReviewRow,
     FillRow,
@@ -52,6 +58,7 @@ from trading_bot.persistence.models import (
     OwnedOrderEventRow,
     SubmissionAttemptRow,
 )
+from trading_bot.risk.pretrade import canonical_review_payload_sha256
 
 
 class OwnedOrderJournalError(PersistenceDataError):
@@ -114,7 +121,9 @@ def _fill(row: FillRow) -> Fill:
     )
 
 
-async def _anchor(session: AsyncSession, row: OrderRow) -> BrokerOrder:
+async def _anchor(
+    session: AsyncSession, row: OrderRow
+) -> tuple[BrokerOrder, OrderIntentRow, SubmissionAttemptRow]:
     if row.intent_id is None or row.review_id is None or row.submission_attempt_id is None:
         _deny()
     order = _order(row)
@@ -173,13 +182,37 @@ async def _anchor(session: AsyncSession, row: OrderRow) -> BrokerOrder:
         )
     ):
         _deny()
-    return order
+    normalized = order_intent_from_row(intent)
+    reconstructed_review = BrokerOrderReview(
+        normalized_order=normalized,
+        source=review.source,
+        reviewed_at=review.reviewed_at,
+        expires_at=review.expires_at,
+        estimated_notional=review.estimated_notional,
+        estimated_fees=review.estimated_fees,
+        client_order_id=(
+            None if review.client_order_id is None else ClientOrderId(review.client_order_id)
+        ),
+        outbound_payload_sha256=review.outbound_payload_sha256,
+        broker_review_id=review.broker_review_id,
+    )
+    if (
+        review.normalized_intent_hash != canonical_order_intent_sha256(normalized)
+        or review.sanitized_response_hash != canonical_review_response_sha256(reconstructed_review)
+        or review.outbound_payload_sha256
+        != canonical_review_payload_sha256(normalized, client_order_id=order.client_order_id)
+        or not normalized.created_at <= review.reviewed_at <= attempt.attempt_started_at
+        or not attempt.attempt_started_at < review.expires_at
+        or attempt.completed_at < attempt.attempt_started_at
+    ):
+        _deny()
+    return order, intent, attempt
 
 
 async def _recover(
     session: AsyncSession, row: OrderRow
 ) -> tuple[BrokerOrder, list[OwnedOrderEventRow], str]:
-    order = await _anchor(session, row)
+    order, intent, attempt = await _anchor(session, row)
     head = _hash([VERSION, row.provider, canonical_broker_order_response_sha256(order)])
     journals = list(
         await session.scalars(
@@ -264,8 +297,7 @@ async def _recover(
             )
         ):
             _deny()
-        intent = await session.get(OrderIntentRow, row.intent_id)
-        if intent is None or stored_transition.config_hash != intent.config_hash:
+        if stored_transition.config_hash != intent.config_hash:
             _deny()
         consumed_transitions.add(expected_transition)
         order_hash = canonical_broker_order_response_sha256(projected)
@@ -275,11 +307,43 @@ async def _recover(
         head, order = expected_head, projected
     if consumed_fills != set(fill_map):
         _deny()
-    for item in transitions:
-        if item.id not in consumed_transitions and (
-            item.from_state != OrderState.SUBMISSION_PENDING.value
-            or item.event != OrderEvent.BROKER_ACCEPTED.value
-            or item.to_state != OrderState.SUBMITTED.value
+    original_acceptance = [item for item in transitions if item.id not in consumed_transitions]
+    if len(original_acceptance) > 1:
+        _deny()
+    for item in original_acceptance:
+        acceptance_id = (
+            "transition-accepted-"
+            + hashlib.sha256(f"{intent.id}|transition-accepted".encode()).hexdigest()
+        )
+        correlation_id = (
+            "execution-" + hashlib.sha256(f"{intent.id}|execution".encode()).hexdigest()
+        )
+        if (
+            item.id,
+            item.intent_id,
+            item.order_id,
+            item.from_state,
+            item.event,
+            item.to_state,
+            item.actor,
+            item.reason_code,
+            item.occurred_at,
+            item.config_hash,
+            item.correlation_id,
+            item.corrects_id,
+        ) != (
+            acceptance_id,
+            intent.id,
+            row.id,
+            OrderState.SUBMISSION_PENDING.value,
+            OrderEvent.BROKER_ACCEPTED.value,
+            OrderState.SUBMITTED.value,
+            "execution-service",
+            "broker_accepted",
+            attempt.completed_at,
+            intent.config_hash,
+            correlation_id,
+            None,
         ):
             _deny()
     return order, journals, head

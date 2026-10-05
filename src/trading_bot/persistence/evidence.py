@@ -9,12 +9,52 @@ from decimal import Decimal
 
 from trading_bot.clock import require_utc
 from trading_bot.domain import (
+    AccountId,
+    AssetClass,
     BrokerOrder,
     BrokerOrderReview,
+    ConfigHash,
+    DataHash,
     DomainValidationError,
+    InstrumentId,
+    OrderIntent,
+    OrderIntentId,
+    OrderPurpose,
+    OrderType,
+    Side,
+    TimeInForce,
     canonical_decimal_text,
     canonical_order_intent_sha256,
 )
+from trading_bot.persistence.base import PersistenceDataError
+from trading_bot.persistence.models import OrderIntentRow
+
+
+def order_intent_from_row(row: OrderIntentRow) -> OrderIntent:
+    """Reconstruct the existing canonical intent, including all evidence fields."""
+
+    try:
+        return OrderIntent(
+            id=OrderIntentId(row.id),
+            account_id=AccountId(row.account_id),
+            instrument_id=InstrumentId(row.instrument_id),
+            asset_class=AssetClass(row.asset_class),
+            side=Side(row.side),
+            purpose=OrderPurpose(row.purpose),
+            order_type=OrderType(row.order_type),
+            time_in_force=TimeInForce(row.time_in_force),
+            quantity=row.quantity,
+            limit_price=row.limit_price,
+            stop_price=row.stop_price,
+            created_at=row.created_at,
+            expires_at=row.expires_at,
+            strategy_version=row.strategy_version,
+            config_hash=ConfigHash(row.config_hash),
+            data_hash=DataHash(row.data_hash),
+            exit_policy_version=row.exit_policy_version,
+        )
+    except (DomainValidationError, ValueError):
+        raise PersistenceDataError("stored order intent violates the domain contract") from None
 
 
 def _utc_text(value: datetime) -> str:
@@ -93,4 +133,5 @@ __all__ = [
     "canonical_broker_order_response_sha256",
     "canonical_order_intent_sha256",
     "canonical_review_response_sha256",
+    "order_intent_from_row",
 ]

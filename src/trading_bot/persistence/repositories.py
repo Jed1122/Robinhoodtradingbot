@@ -23,14 +23,9 @@ from trading_bot.domain.decimal_utils import (
 )
 from trading_bot.domain.decisions import RiskEvaluation
 from trading_bot.domain.enums import (
-    AssetClass,
     OrderEvent,
-    OrderPurpose,
     OrderState,
-    OrderType,
-    Side,
     SubmissionOutcome,
-    TimeInForce,
 )
 from trading_bot.domain.events import AuditEvent
 from trading_bot.domain.identifiers import (
@@ -39,9 +34,7 @@ from trading_bot.domain.identifiers import (
     CodeHash,
     ConfigHash,
     CorrelationId,
-    DataHash,
     FillId,
-    InstrumentId,
     OrderId,
     OrderIntentId,
     OrderTransitionId,
@@ -66,6 +59,7 @@ from trading_bot.persistence.evidence import (
     canonical_order_intent_sha256,
     canonical_review_response_sha256,
 )
+from trading_bot.persistence.evidence import order_intent_from_row as _intent_from_row
 from trading_bot.persistence.models import (
     BrokerReviewRow,
     OrderIntentRow,
@@ -346,31 +340,6 @@ def _order_row_matches_response(
         and row.updated_at == response.updated_at
         and row.data_hash == response.data_hash
     )
-
-
-def _intent_from_row(row: OrderIntentRow) -> OrderIntent:
-    try:
-        return OrderIntent(
-            id=OrderIntentId(row.id),
-            account_id=AccountId(row.account_id),
-            instrument_id=InstrumentId(row.instrument_id),
-            asset_class=AssetClass(row.asset_class),
-            side=Side(row.side),
-            purpose=OrderPurpose(row.purpose),
-            order_type=OrderType(row.order_type),
-            time_in_force=TimeInForce(row.time_in_force),
-            quantity=row.quantity,
-            limit_price=row.limit_price,
-            stop_price=row.stop_price,
-            created_at=row.created_at,
-            expires_at=row.expires_at,
-            strategy_version=row.strategy_version,
-            config_hash=ConfigHash(row.config_hash),
-            data_hash=DataHash(row.data_hash),
-            exit_policy_version=row.exit_policy_version,
-        )
-    except (DomainValidationError, ValueError):
-        raise PersistenceDataError("stored order intent violates the domain contract") from None
 
 
 class _SqlOrderRepository:

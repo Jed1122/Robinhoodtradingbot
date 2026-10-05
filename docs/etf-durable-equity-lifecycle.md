@@ -25,6 +25,12 @@ state is returned by `orders.get_broker_order`; complete fact/transition/fill
 links and hashes are replayed before returning it. Pending cancellation remains
 pending through a partial race fill, and terminal states cannot reopen.
 
+Recovery reconstructs the full canonical intent and review, verifies all three
+review binding hashes, and validates the submission/review time window. If an
+original acceptance transition is present, only one exact execution-owner record
+is allowed, bound to the intent, config, correlation, original completion time,
+actor and reason. Unrelated, duplicate or future-dated acceptance records deny.
+
 `fills.get` and `fills.list_for_account(account_id, since)` read exact persisted
 domain records. They do not attest ownership, authenticity or completeness of
 legacy fills. The explicit time filter must eventually align with the broker
