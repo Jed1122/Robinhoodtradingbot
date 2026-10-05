@@ -36,6 +36,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         "etf_strategy_checkpoint.py",
         "etf_native_checkpoint.py",
         "paper_cycle_journal.py",
+        "etf_forward_paper.py",
     ):
         persistence_module = source_root / "persistence" / filename
         if persistence_module.is_file():
@@ -51,6 +52,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         Path("runtime/options_monitor.py"),
         Path("runtime/paper_promotion.py"),
         Path("runtime/paper_promotion_runtime.py"),
+        Path("runtime/etf_forward_paper.py"),
     ):
         options_module = source_root / relative_path
         if options_module.is_file():

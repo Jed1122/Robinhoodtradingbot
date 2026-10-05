@@ -104,6 +104,8 @@ def test_requires_scoped_capability_verification_branches(tmp_path: Path) -> Non
         "src/trading_bot/persistence/paper_cycle_journal.py",
         "src/trading_bot/runtime/paper_promotion.py",
         "src/trading_bot/runtime/paper_promotion_runtime.py",
+        "src/trading_bot/runtime/etf_forward_paper.py",
+        "src/trading_bot/persistence/etf_forward_paper.py",
     ],
 )
 def test_requires_every_paper_owner_and_promotion_branch_report(tmp_path, relative_path):

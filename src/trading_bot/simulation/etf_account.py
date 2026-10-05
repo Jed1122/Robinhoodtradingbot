@@ -9,7 +9,7 @@ intents and observations; this fixture path cannot certify their market origin.
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
-from typing import Literal
+from typing import Literal, Protocol
 
 from trading_bot.domain import (
     AccountId,
@@ -295,8 +295,29 @@ def _order(intent: OrderIntent, at_ns: int, *, accepted: bool = True) -> BrokerO
     )
 
 
-def _run(request: EtfAccountRequest, count: int) -> EtfAccountResult:
+class _AccountReplayInput(Protocol):
+    """Internal economic seam; public historical request guards stay unchanged."""
+
+    @property
+    def study(self) -> EtfStudy: ...
+
+    @property
+    def initial_cash(self) -> Decimal: ...
+
+    @property
+    def events(self) -> tuple[EtfAccountEvent, ...]: ...
+
+    @property
+    def run_id(self) -> str: ...
+
+
+def _run(
+    request: _AccountReplayInput, count: int, *, origin: datetime | None = None
+) -> EtfAccountResult:
     loaded = _policy(request.study)
+    # Only a separately validated forward wrapper supplies an origin. The
+    # historical public path retains its original preimages and UTC window.
+    starts_at = request.study.requested_start if origin is None else origin
     cfg = loaded.config
     cash = request.initial_cash
     position = Position(
@@ -306,7 +327,7 @@ def _run(request: EtfAccountRequest, count: int) -> EtfAccountResult:
         ZERO,
         None,
         ZERO,
-        request.study.requested_start,
+        starts_at,
         content_hash("etf-account-origin"),
     )
     fees = ZERO
@@ -324,7 +345,7 @@ def _run(request: EtfAccountRequest, count: int) -> EtfAccountResult:
     completed: list[tuple[Decimal, datetime]] = []
     peak_equity = request.initial_cash
     day_equity = week_equity = request.initial_cash
-    day_start = week_start = request.study.requested_start
+    day_start = week_start = starts_at
     weekly_latched = drawdown_latched = False
     loss_snapshot: LossSnapshot | None = None
 
