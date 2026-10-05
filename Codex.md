@@ -45,7 +45,9 @@ An optional observer now joins the existing non-live persisted-before-place owne
 to that sink. It records only after initial/final risk and durable attempt boundaries;
 pre-transport sink failure prevents placement, while post-response failure preserves
 the database outcome and cannot retry. A same-sink frame projection returns quote
-identities from the recorder's actual sampled clock. Additive v2 final-fee receipts
+identities from the recorder's actual sampled clock. The observer path reloads
+final evidence and persists a fresh 24-check result after receipt work and before
+transport; delay cannot reuse an old approval. Additive v2 final-fee receipts
 may finalize a fee-less terminal observation without changing execution timings;
 source linkage still does not attest actual customer/broker semantics.
 The verified retained-capture reader returns immutable receipt-ordered frames

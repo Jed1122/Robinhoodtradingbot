@@ -565,6 +565,35 @@ class ExecutionService:
                         review_id=review_id,
                         attempt_id=submission.submission_attempt_id,
                     )
+                # Receipt auditing can consume time. Reload all final evidence,
+                # evaluate the same 24 checks and commit that evaluation before
+                # any transport. A denial leaves the original attempt held.
+                transport_context = await self._context_loader.load_final(intent, review)
+                transport_evaluation = self._validate_evaluation(
+                    self._pretrade.evaluate_final(transport_context),
+                    intent,
+                    expected_check_count=24,
+                )
+                async with self._uow_factory() as uow:
+                    await uow.orders.add_risk_evaluation(
+                        _derived_id(intent, "risk-transport"), "final", transport_evaluation
+                    )
+                    await uow.commit()
+                transport_at = self._now()
+                if (
+                    not transport_evaluation.allowed
+                    or transport_at < transport_evaluation.evaluated_at
+                    or transport_at >= intent.expires_at
+                    or transport_at >= review.expires_at
+                ):
+                    return self._result(
+                        intent,
+                        OrderState.SUBMISSION_PENDING,
+                        "transport_risk_denied",
+                        correlation_id,
+                        review_id=review_id,
+                        attempt_id=submission.submission_attempt_id,
+                    )
             try:
                 response = await self._place.place_order(submission)
             except Exception:

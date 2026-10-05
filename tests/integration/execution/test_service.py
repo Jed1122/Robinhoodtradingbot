@@ -450,6 +450,34 @@ async def test_final_risk_denial_has_no_submission_receipt(execution_database):
 
 
 @pytest.mark.asyncio
+async def test_receipt_work_cannot_bypass_a_new_final_risk_denial(execution_database):
+    _engine, factory = execution_database
+    intent = make_intent()
+    pretrade = FakePretrade()
+
+    class ChangedRiskObserver(BoundaryObserver):
+        async def submitting(self, submission):
+            await super().submitting(submission)
+            pretrade.final_allowed = False
+
+    observer = ChangedRiskObserver(factory)
+    place = FakePlace(factory, make_broker_order(intent, state=OrderState.SUBMITTED))
+    result = await make_service(
+        factory,
+        pretrade=pretrade,
+        review=FakeReview(make_review(intent)),
+        place=place,
+        observer=observer,
+    ).execute(intent)
+    assert place.calls == 0 and result.state is OrderState.SUBMISSION_PENDING
+    assert result.reason_code == "transport_risk_denied"
+    async with factory() as session:
+        evaluations = (await session.scalars(select(RiskEvaluationRow))).all()
+        assert len(evaluations) == 3
+        assert evaluations[-1].phase == "final" and not evaluations[-1].allowed
+
+
+@pytest.mark.asyncio
 async def test_denied_initial_risk_never_reviews_or_places(
     execution_database: tuple[AsyncEngine, async_sessionmaker[AsyncSession]],
 ) -> None:
