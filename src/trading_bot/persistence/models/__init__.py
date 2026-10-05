@@ -45,6 +45,7 @@ from trading_bot.persistence.models.orders import (
     OrderTransitionRow,
     SubmissionAttemptRow,
 )
+from trading_bot.persistence.models.owned_orders import OwnedOrderEventRow
 
 __all__ = [
     "AccountRow",
@@ -71,6 +72,7 @@ __all__ = [
     "OrderIntentRow",
     "OrderRow",
     "OrderTransitionRow",
+    "OwnedOrderEventRow",
     "PortfolioSnapshotRow",
     "PositionRow",
     "PromotionEvidenceRow",

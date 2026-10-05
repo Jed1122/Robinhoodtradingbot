@@ -5,6 +5,23 @@ outside the service host, and placement factories behind authorization and promo
 
 ## Implemented boundary
 
+### Durable local owned equity order facts
+
+`domain/owned_order_lifecycle.py` adds a pure versioned post-submission fact contract
+using the unchanged canonical state machine. `persistence/owned_order_journal.py`
+reconstructs current local order state from an append-only journal linked to exact
+FillRow and OrderTransitionRow facts. The existing UnitOfWork owns their atomic
+publication; original accepted OrderRow/submission hashes are preserved.
+Native execution keys/ordinals are explicit, duplicate facts are idempotent and
+conflicts or missing links deny. Cancel-pending partial fills retain pending state.
+The initial supported ownership anchor is a complete accepted equity submission
+with zero fills; unknown, external or initially filled responses are not adopted.
+
+This is execution-fact storage only, not a joint account/position/reservation owner,
+provider mapper, authenticated fee source, live lease, qualifying paper cycle or
+deployed recovery proof. See [the durable lifecycle boundary](etf-durable-equity-lifecycle.md)
+for APIs, bounds, rollback limitations and remaining integration dependencies.
+
 ### Standalone Alpaca observations and offline cost reports
 
 The main operator CLI and connected Compose profiles retain their reviewed Robinhood read
