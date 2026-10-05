@@ -341,6 +341,9 @@ deduplication, settlement, trial losses and risk latches rather than restoring c
 An interrupted hard-link publication may retain exactly one recognized internal
 staging alias of its final artifact. Both names are verified and retained, not adopted
 as separate effects; unexplained/external links still deny.
+Tape admission replays the pure common reducer to enforce the complete 8 MiB joint
+byte budget through the journal's shared canonical encoder. The directory bound
+includes retained crash aliases for the full supported owner lifetime.
 
 Every result remains paused, synthetic, execution-disabled and non-promotable.
 This transport-free owner is not a strategy factory, recurring worker, qualified paper

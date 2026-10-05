@@ -248,3 +248,21 @@ def test_old_account_hash_and_origin_are_unchanged():
     assert legacy.cash == D("499.90") and legacy.trial.consumed_loss == D(".10")
     assert '"paused":true' in canonical_json(legacy)
     assert study().requested_end == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_oversized_exact_redeliveries_deny_at_tape_construction():
+    request = tape()
+    first = request.cycles[0]
+    # Event count alone admits this 12 MiB tape, beyond the durable 8 MiB envelope.
+    repeated = replace(first, events=first.events * 10000)
+    with pytest.raises(ValueError, match="forward_paper_invalid"):
+        replace(request, cycles=(repeated,))
+
+
+def test_budget_includes_reconstructed_state_and_envelope_not_only_tape(monkeypatch):
+    request = tape()
+    # A smaller resource budget exercises the same boundary without huge fixtures.
+    budget = len(canonical_json(request).encode()) + 1024
+    monkeypatch.setattr(api(), "MAX_JOINT_BYTES", budget, raising=False)
+    with pytest.raises(ValueError, match="forward_paper_invalid"):
+        replace(request)

@@ -25,14 +25,16 @@ from trading_bot.market_data.bundle_store import (
 from trading_bot.market_data.recording import canonical_json
 from trading_bot.runtime.etf_forward_paper import (
     MAX_CYCLES,
+    MAX_JOINT_BYTES,
     ForwardPaperState,
     ForwardPaperTape,
+    _joint_bytes,
     replay_forward_paper,
 )
 
 _NAMESPACE = "etf-forward-paper-owner-v1"
 _GENESIS = "0" * 64
-_MAX_BYTES = 8 * 1048576
+_MAX_BYTES = MAX_JOINT_BYTES
 _LIMITS = BundleLimits(_MAX_BYTES, _MAX_BYTES, _MAX_BYTES, 250000, 32)
 _CLAIM = re.compile(r"([0-9]{8})\.claim\.json")
 _JOINT = re.compile(r"([0-9]{8})\.joint\.json")
@@ -105,25 +107,14 @@ def _claim(sequence: int, previous: str, state: ForwardPaperState) -> bytes:
 
 
 def _joint(sequence: int, previous: str, tape: ForwardPaperTape, state: ForwardPaperState) -> bytes:
-    body = canonical_json(
-        {
-            "schema": "etf-forward-paper-joint-v1",
-            "sequence": sequence,
-            "previous_hash": previous,
-            "cycle_count": state.cycle_count,
-            "tape": tape,
-            "state": state,
-            "execution_enabled": False,
-            "evidence_promotable": False,
-        }
-    ).encode()
-    _check(len(body) <= _MAX_BYTES)
-    return body
+    return _joint_bytes(sequence, previous, tape, state)
 
 
 def _restore(directory: int, tape: ForwardPaperTape) -> tuple[ForwardPaperCheckpoint, str]:
     names = set(os.listdir(directory))
-    _check(len(names) <= 2 * MAX_CYCLES + 16)
+    # Every owner/claim/joint may retain one verified internal crash alias.
+    # The finite spare allowance for unlinked staging remains bounded.
+    _check(len(names) <= 4 * MAX_CYCLES + 16)
     marker = canonical_json(
         {
             "schema": "etf-forward-paper-owner-v1",

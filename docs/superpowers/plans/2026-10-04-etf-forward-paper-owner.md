@@ -14,7 +14,10 @@
 
 - Preserve historical v1 dates/types/hashes and canonical $100 risk reference/$1,000 ceiling/$50 cumulative trial cap.
 - Forward window on/after 2026-01-01 UTC, maximum 31 days; hypothetical cash $500 or $1,000.
-- Maximum 1,000 cycles, 10,000 economic events, 8 MiB joint artifact.
+- Maximum 1,000 cycles, 10,000 economic events, 8 MiB joint artifact. Tape
+  admission includes replayed state and envelope in this unchanged byte budget.
+  The bounded journal directory also accommodates one retained crash alias per
+  published owner/claim/joint, without adopting aliases or clearing claims.
 - Source progress and account mutation have separate cursors; no native data relabeling.
 - Always paused/nonqualifying; no broker, credentials, deployment, spending or promotion-store writes.
 - All implementation is coordinator-owned; agents only inspect public contracts/tests.

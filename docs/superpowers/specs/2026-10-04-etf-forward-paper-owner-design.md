@@ -46,8 +46,11 @@ and economic identity is bounded, reconstructed and serialized canonically.
 
 `ForwardPaperTape` validates exact types, chronological/append-only source and
 economic cursors, the forward window, and a maximum of 1,000 cycles/10,000 economic
-facts. Explicit unknown orders/reservations/unsettled obligations survive end of
-input. Complete tape replay reuses the sole account reducer, with an explicit
+facts. Admission also replays the pure shared reducer to check the complete joint
+envelope (tape plus state) against its 8 MiB budget before any filesystem effect.
+The runtime and journal share that exact canonical encoding; event-count limits
+alone do not promise that a tape fits. Explicit unknown orders/reservations/unsettled
+obligations survive end of input. Complete tape replay reuses the sole account reducer, with an explicit
 origin time and independently domain-separated run identity; no second sizing,
 exposure, fee, trial-loss, settlement or loss calculator is created.
 
@@ -79,6 +82,11 @@ remain paused; source/cost/execution/promotion/live eligibility stay false.
 The new namespace is not covered by the old deployment backup script; preserve
 the complete private namespace AND original tape jointly. No production backup,
 migration, deployment or restart drill is included.
+
+The directory-entry bound includes one recognized retained crash alias for every
+published owner/claim/joint over the entire supported lifetime. The finite spare
+allowance for unlinked staging remains resource-bounded. No alias is adopted or
+removed, and external/unexplained links and unresolved claims still deny.
 
 ## Qualification and verification
 

@@ -13,7 +13,7 @@ from typing import Literal
 from trading_bot.clock import require_utc
 from trading_bot.domain.decimal_utils import _require_sha256_hex, require_bounded_decimal
 from trading_bot.market_data.etf_source import _ns
-from trading_bot.market_data.recording import content_hash
+from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_study import EtfStudy
 from trading_bot.simulation.etf_account import EtfAccountEvent, EtfAccountResult, _run
 from trading_bot.simulation.etf_history import _policy
@@ -21,6 +21,7 @@ from trading_bot.simulation.lifecycle_accounting import _context
 
 MAX_CYCLES = 1000
 MAX_EVENTS = 10000
+MAX_JOINT_BYTES = 8 * 1048576
 _FORWARD_START = datetime(2026, 1, 1, tzinfo=UTC)
 
 
@@ -118,6 +119,19 @@ class ForwardPaperTape:
                 seen[event.event_id] = event.event_hash
                 last = event
             previous = cycle
+        try:
+            # Admission includes replayed state and envelope, not just event count
+            # or input bytes. Use the largest supported sequence's encoded width.
+            _joint_bytes(MAX_CYCLES, "0" * 64, self, _replay(self))
+        except (
+            ValueError,
+            TypeError,
+            ArithmeticError,
+            AttributeError,
+            RuntimeError,
+            RecursionError,
+        ):
+            raise ForwardPaperError() from None
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,30 +158,54 @@ class ForwardPaperState:
     evidence_promotable: Literal[False] = field(default=False, init=False)
 
 
+def _joint_bytes(
+    sequence: int, previous: str, tape: ForwardPaperTape, state: ForwardPaperState
+) -> bytes:
+    body = canonical_json(
+        {
+            "schema": "etf-forward-paper-joint-v1",
+            "sequence": sequence,
+            "previous_hash": previous,
+            "cycle_count": state.cycle_count,
+            "tape": tape,
+            "state": state,
+            "execution_enabled": False,
+            "evidence_promotable": False,
+        }
+    ).encode()
+    _check(len(body) <= MAX_JOINT_BYTES)
+    return body
+
+
+def _replay(tape: ForwardPaperTape) -> ForwardPaperState:
+    """Pure reducer over structurally validated facts; no recursive construction."""
+    plan = tape.plan
+    events = tuple(event for cycle in tape.cycles for event in cycle.events)
+    inputs = _ForwardAccountInput(
+        plan.policy,
+        plan.initial_cash,
+        events,
+        content_hash(("etf-forward-paper-account-v1", plan.plan_hash)),
+    )
+    with localcontext(_context(exact=True)):
+        account = _run(inputs, len(events), origin=plan.starts_at)
+    account = replace(account, study_hash=plan.plan_hash)
+    last = tape.cycles[-1] if tape.cycles else None
+    return ForwardPaperState(
+        plan.plan_hash,
+        len(tape.cycles),
+        content_hash(("etf-forward-paper-prefix-v1", plan.plan_hash, tape.cycles)),
+        None if last is None else (last.at_ns, last.received_monotonic_ns, last.source_hash),
+        None if last is None else last.strategy_state_hash,
+        account,
+    )
+
+
 def replay_forward_paper(tape: ForwardPaperTape) -> ForwardPaperState:
     """Reconstruct all explicit economic facts, never infer missing outcomes."""
     try:
         _check(type(tape) is ForwardPaperTape)
         _check(replace(tape) == tape)
-        plan = tape.plan
-        events = tuple(event for cycle in tape.cycles for event in cycle.events)
-        inputs = _ForwardAccountInput(
-            plan.policy,
-            plan.initial_cash,
-            events,
-            content_hash(("etf-forward-paper-account-v1", plan.plan_hash)),
-        )
-        with localcontext(_context(exact=True)):
-            account = _run(inputs, len(events), origin=plan.starts_at)
-        account = replace(account, study_hash=plan.plan_hash)
-        last = tape.cycles[-1] if tape.cycles else None
-        return ForwardPaperState(
-            plan.plan_hash,
-            len(tape.cycles),
-            content_hash(("etf-forward-paper-prefix-v1", plan.plan_hash, tape.cycles)),
-            None if last is None else (last.at_ns, last.received_monotonic_ns, last.source_hash),
-            None if last is None else last.strategy_state_hash,
-            account,
-        )
+        return _replay(tape)
     except (ValueError, TypeError, ArithmeticError, AttributeError, RuntimeError, RecursionError):
         raise ForwardPaperError() from None

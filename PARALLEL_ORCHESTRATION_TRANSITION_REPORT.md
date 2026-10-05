@@ -1,5 +1,57 @@
 # Parallel Orchestration Transition Report
 
+## Forward-paper economic owner checkpoint — 2026-10-05
+
+This section supersedes older software/dependency status below for the focused ETF
+workstream only. Alpaca remains the sole market-data source and Robinhood remains
+the execution-broker target. No live, data, cost or promotion gate has been waived.
+
+The declaration-bound supplied equity-history parser is integrated through
+[PR #16](https://github.com/Jed1122/Robinhoodtradingbot/pull/16), merge
+`a6f4e5c8ae3b88ff95437a52fac376dfad15c720` on
+`codex/robinhood-system-implementation`. Its integration tree
+`282fbff3bef889ac0fd4a58dfcea91e35dc2aa99` matches reviewed parser head
+`00a226d47ae735b303a2cabf7d62b8c96c341895`, the forward-owner branch's starting
+parent. The merge is a publication base, not an ancestor of that branch.
+
+The [versioned forward-paper owner](docs/etf-forward-paper-owner-2026-10-04.md)
+is implemented on [PR #17](https://github.com/Jed1122/Robinhoodtradingbot/pull/17).
+Its separate forward identities reuse the existing economic reducer without
+widening historical validators. The private single-host owner jointly publishes
+the full fictional tape and economic state, verifies every retained prefix on
+restart, preserves trial reservations/losses and risk latches, and never advances
+during recovery. The complete 8 MiB admission budget and journal entry bound
+include reconstructed state and recognized retained publication-crash aliases.
+Missing state, stale heads, unresolved claims and unexplained links still deny.
+This branch is not represented as merged: integration requires current exact-head
+checks and resolution of substantive review findings. Earlier review/test evidence
+is revision-specific and cannot certify a changed candidate.
+
+At this publication checkpoint, software primitive: **implemented, integration
+pending**. Trusted strategy factory,
+recurring worker, promotion composition and standalone deployed recovery:
+**blocked/unverified**. Every owner result is paused, synthetic, source/cost
+unqualified, execution-disabled and non-promotable. Its cycles do not count toward
+eligible paper/shadow observations. Production backup inclusion, host rollback and
+distributed ownership remain outside its contract.
+
+The October 4 bounded retained-input assessment remains separate: archive receipt
+integrity was reverified, but complete calendar-backed execution coverage was not
+rerun because its required calendar reference was unresolved in the approved
+retained scope. Customer costs remain `BLOCKED_INPUTS`; absent genuine fills,
+final fees and causal order/quote clocks are not zero-valued observations. No new
+private records or broker/provider calls are inspected by this checkpoint.
+
+The current dependency chain is complete qualified Alpaca historical roles and
+execution coverage plus genuine customer-cost evidence → accepted after-cost
+economic study → trusted strategy-to-joint-owner/recurring composition → separate
+standalone recovery verification and genuine eligible paper/shadow observations.
+Root retains ownership of risk, execution, reconciliation, persistence and promotion
+integration. Parallel work remains limited to exact-base, credential-free public
+contract/fixture/documentation audits; no customer evidence may be delegated.
+Economic acceptance, qualifying runtime/paper/shadow operation and live trading
+remain independently **NO-GO**. Merge authority is not activation authority.
+
 ## Alpaca observation/calibration checkpoint — 2026-10-02
 
 The focused ETF path uses Alpaca as its sole market-data source and retains

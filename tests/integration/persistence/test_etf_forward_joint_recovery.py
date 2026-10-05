@@ -404,6 +404,64 @@ def test_interrupted_staging_file_is_verified_but_never_adopted(private):
     assert recover(private, tape(), stored.head_hash) == stored
 
 
+def test_retained_crash_aliases_fit_the_whole_owner_lifetime(private, monkeypatch):
+    # Scale the journal lifetime to eight commits: all publication/recovery is real.
+    # The old 2*N+16 bound fails at 18 final files + 15 recognized aliases = 33.
+    monkeypatch.setattr(api(), "MAX_CYCLES", 8)
+    request = tape()
+    head = GENESIS
+    for count in range(1, 9):
+        stored = advance(private, replace(request, cycles=request.cycles[:count]), head)
+        head = stored.head_hash
+    directory = private / NAMESPACE
+    final_names = ["owner.json"] + [
+        f"{sequence:08d}.{kind}.json"
+        for sequence in range(1, 8)
+        for kind in ("claim", "joint")
+    ]
+    aliases = []
+    for index, name in enumerate(final_names):
+        alias = directory / f".tmp-{index:032x}"
+        os.link(directory / name, alias)
+        aliases.append(alias)
+    assert len(list(directory.iterdir())) == 33
+    restored = recover(private, request, head)
+    assert restored.sequence == 8 and restored.state.account.cash == Decimal("499.88")
+    assert restored.state.account.trial.consumed_loss == Decimal(".12")
+    assert not restored.state.qualifying_paper
+    assert all(alias.stat().st_nlink == 2 for alias in aliases)
+
+
+def test_large_admitted_duplicate_tape_roundtrips_without_extra_effects(private):
+    request = tape()
+    first = request.cycles[0]
+    bounded = replace(request, cycles=(replace(first, events=first.events * 4000),))
+    stored = advance(private, bounded)
+    assert recover(private, bounded, stored.head_hash) == stored
+    assert stored.state.account.cash == Decimal("500")
+    assert stored.state.account.reserved_cash == Decimal("10.02")
+    assert stored.state.account.event_count == 1 and stored.sequence == 1
+    assert not stored.state.execution_enabled and not stored.state.evidence_promotable
+
+
+def test_wire_identity_is_unchanged_by_shared_byte_budget(private):
+    stored = advance(private, tape())
+    assert stored.head_hash == "fe7f58acfd6e5d790be817667a22801861018350fd9eacbc96b4ffce1b8abe67"
+
+
+def test_unlinked_staging_entries_remain_resource_bounded(private, monkeypatch):
+    monkeypatch.setattr(api(), "MAX_CYCLES", 8)
+    stored = advance(private, tape())
+    directory = private / NAMESPACE
+    for index in range(45):
+        staging = directory / f".tmp-{index:032x}"
+        staging.write_bytes(b"unlinked interrupted staging")
+        staging.chmod(0o600)
+    assert len(list(directory.iterdir())) == 49
+    with pytest.raises(ValueError, match="forward_paper_store_invalid"):
+        recover(private, tape(), stored.head_hash)
+
+
 def test_boolean_cycle_count_in_joint_json_denies(private):
     request = tape()
     stored = advance(private, request)
