@@ -19,8 +19,10 @@ from trading_bot.diagnostics.alpaca_observe import (
     prepare_observation_capture,
     read_observation_capture,
 )
+from trading_bot.diagnostics.alpaca_probe import _json_object
 from trading_bot.diagnostics.alpaca_probe_io import _publish_private_file, _read_private_file
 from trading_bot.diagnostics.etf_execution_receipts import read_execution_receipts
+from trading_bot.diagnostics.etf_fee_attachments import publish_fee_attachment, read_fee_attachment
 from trading_bot.market_data.bundle_store import _open_root, _publish, _read
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_cost_calibration import load_etf_cost_observations
@@ -285,12 +287,18 @@ def link_costs(
     input_root: Annotated[Path, typer.Option()],
     manifest_hash: Annotated[str, typer.Option()],
     report_dir: Annotated[Path, typer.Option()],
+    fee_attachment_hash: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Link a private receipt checkpoint offline; never authenticates or trades."""
     source_descriptor = destination_descriptor = -1
     try:
         revision = _revision()
-        linked = read_execution_receipts(input_root, manifest_hash, _REPOSITORY)
+        if fee_attachment_hash is None:
+            linked = read_execution_receipts(input_root, manifest_hash, _REPOSITORY)
+        else:
+            linked = read_fee_attachment(input_root, fee_attachment_hash, _REPOSITORY)
+            if linked["checkpoint_hash"] != manifest_hash:
+                raise ValueError("receipt_checkpoint_mismatch")
         body = canonical_json(linked["cost_input"]).encode()
         input_hash = source_digest(body)
         source_descriptor = _open_root(input_root, _REPOSITORY)
@@ -319,6 +327,9 @@ def link_costs(
             "calibration_verified",
         ):
             report[name] = linked[name]
+        if fee_attachment_hash is not None:
+            report["fee_attachment_hash"] = linked["fee_attachment_hash"]
+            report["fee_observed_at"] = linked["fee_observed_at"]
         report["report_hash"] = content_hash(report)
         digest = _publish_report(report_dir, report)
     except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
@@ -338,6 +349,59 @@ def link_costs(
                 "completed_order_count": report["completed_order_count"],
                 "incomplete_order_count": report["incomplete_order_count"],
                 "unfilled_order_count": report["unfilled_order_count"],
+                "calibration_status": "unverified",
+                "evidence_promotable": False,
+                "execution_enabled": False,
+            }
+        )
+    )
+    raise typer.Exit(2)
+
+
+@app.command("attach-fees")
+def attach_fees(
+    input_root: Annotated[Path, typer.Option()],
+    manifest_hash: Annotated[str, typer.Option()],
+    order_hash: Annotated[str, typer.Option()],
+    fee_components_file: Annotated[Path, typer.Option()],
+    fee_source_file: Annotated[Path, typer.Option()],
+) -> None:
+    """Attach explicit later fee observations privately; never authenticate charges."""
+    try:
+        _revision()
+        components = _json_object(
+            _read_private_file(
+                fee_components_file,
+                repository_root=_REPOSITORY,
+                max_bytes=16384,
+                code="etf_fee_components_invalid",
+            ),
+            max_bytes=16384,
+            code="etf_fee_components_invalid",
+        )
+        source = _read_private_file(
+            fee_source_file,
+            repository_root=_REPOSITORY,
+            max_bytes=MAX_BODY_BYTES,
+            code="etf_fee_source_invalid",
+        )
+        digest = publish_fee_attachment(
+            input_root,
+            manifest_hash,
+            order_hash=order_hash,
+            charged_fees=components,
+            source=source,
+            clock=SystemClock(),
+            repository_root=_REPOSITORY,
+        )
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _denied()
+        return
+    typer.echo(
+        canonical_json(
+            {
+                "status": "attached_unverified",
+                "fee_attachment_hash": digest,
                 "calibration_status": "unverified",
                 "evidence_promotable": False,
                 "execution_enabled": False,

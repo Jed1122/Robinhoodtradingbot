@@ -24,6 +24,7 @@ from trading_bot.research.etf_execution_receipts import (
     _decode,
     _integer,
     link_execution_receipts,
+    receipt_schema,
     source_digest,
     validate_clock_session,
     validate_receipt_payload,
@@ -105,6 +106,22 @@ class EtfExecutionReceiptRecorder:
     def _available(self) -> None:
         _check(not self._failed and self._descriptor >= 0)
 
+    def check_occurrence(self, occurred_at: datetime) -> None:
+        """Reject future local facts using this recorder's clock, never broker time.
+
+        This check confers no authenticity. Subsequent receipts sample the same
+        monotonic session and cannot precede this boundary. No timestamp is
+        reconstructed when a process restarts.
+        """
+        try:
+            self._available()
+            _check(type(occurred_at) is datetime and occurred_at.utcoffset() == timedelta(0))
+            utc, _ = self._sample()
+            _check(parse_timestamp_ns(occurred_at.isoformat()) <= parse_timestamp_ns(utc))
+        except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+            self._failed = True
+            raise EtfReceiptError() from None
+
     def retain_source(self, body: bytes) -> str:
         try:
             self._available()
@@ -141,11 +158,7 @@ class EtfExecutionReceiptRecorder:
                 )
             body = canonical_json(
                 {
-                    "schema": (
-                        "etf-execution-receipt-v2"
-                        if kind == "final_fees"
-                        else "etf-execution-receipt-v1"
-                    ),
+                    "schema": receipt_schema(kind),
                     "session_hash": self._session_hash,
                     "sequence": len(self._receipts),
                     "previous_hash": self._receipts[-1] if self._receipts else None,

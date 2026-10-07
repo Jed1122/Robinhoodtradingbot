@@ -78,6 +78,14 @@ final evidence and persists a fresh 24-check result after receipt work and befor
 transport; delay cannot reuse an old approval. Additive v2 final-fee receipts
 may finalize a fee-less terminal observation without changing execution timings;
 source linkage still does not attest actual customer/broker semantics.
+The checked local lifecycle observer additionally records complete fills,
+cancellation/expiry outcomes and exact duplicate delivery without resampling.
+`CommittedCostRecording` publishes joint local economics before observation;
+restart never recreates missing original receipt clocks. Immutable delayed-fee
+attachments can reference a closed session without altering its execution times.
+These local seams retain all false authentication/qualification/promotion flags
+and do not add a provider write adapter. See
+`docs/etf-recorder-lifecycle-integration.md` for commands and failure boundaries.
 The verified retained-capture reader returns immutable receipt-ordered frames
 through the aggregate audit's shared verifier. Its offline `stream-prefix`
 command requires both UTC and monotonic receipt cutoffs from one capture and
