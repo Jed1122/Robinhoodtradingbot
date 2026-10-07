@@ -269,3 +269,40 @@ A genuine single fill would only be a dated sample. Final reconciled fees and
 causal quote/order clocks are required for sample-level calibration; one sample
 cannot establish historical 2016–2025 costs, latency tails, fee completeness or
 profitability. Keep missing observations distinct from explicit zero.
+
+## Lean ETF milestone amendment — 2026-10-07
+
+The operator instructed: "what do we actually need to build a profitable bot,
+please waive everything else that we really do not need and show me an updated
+task list." The [lean delivery list](etf-lean-delivery-plan-2026-10-07.md) now
+governs work priority for the fixed SPY/cash pilot and supersedes the earlier
+requirement to finish whole-history quote collection before the initial economic
+screen. Existing implementation/release evidence remains unchanged.
+
+Remove additional asset classes/providers, parameter optimization, dashboards,
+LLM reporting, multi-host infrastructure and whole-history archive engineering
+from the initial milestone. Genuine customer-fill calibration is waived as a
+prerequisite to starting an explicitly assumption-based economic screen. Reuse
+retained daily Alpaca data and distributions, freeze a separate exploratory
+screen identity, disclose conservative execution/cost assumptions, and preserve
+the untouched final test. The fixed features need 100 completed prior bars for
+that new screen; the legacy registered 750-bar contract is not edited.
+
+Prioritize cost and sizing feasibility, the development screen, then conditional
+out-of-sample/execution evidence and protected broker/runtime integration. Further
+bulk acquisition must have an economic justification after screening. Preserve
+all acquired originals and prior reports. No paid subscription change, funding,
+additional trade, deployment or new provider agreement follows from this amendment.
+
+The instruction does not establish profitability or license an implementation to
+invent missing facts. Current risk/trial limits, account ceiling, fresh data,
+ownership, reconciliation, kill controls, secret protections and live authorization
+remain in force. Fixed 100-cycle/seven-date quotas are waived prospectively for
+the new fixed-SPY bounded-pilot policy described in task 5, replacing them with
+genuine session/decision coverage, tested lifecycle/recovery behavior, consistent
+identities and clean reconciliation. That replacement is not effective until its
+reviewed versioned envelope and tests are implemented; current runtime minimums
+remain enforced meanwhile. Normal-live expansion requirements are not waived.
+Old diagnostic schemas retain their permanently false eligibility flags. Accepted
+economic admission still requires a reviewed contract and evidence appropriate to
+the chosen model.
