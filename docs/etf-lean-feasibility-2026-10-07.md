@@ -116,8 +116,12 @@ authorized sizing does not make those expenses easier for this strategy to earn.
 - Public source/cost/execution/promotion fields remain false. Customer billing,
   genuine fills, final fees and causal quote/order clocks were not inspected.
 
-No production Python/configuration changed; a full runtime-suite rerun was not
-required for this human report. PR22 separately merged at
+No production Python/configuration changed in this report. The full unchanged-code
+baseline subsequently ran at documentation revision `dadf3fc`: 9,021 passed,
+33 optional skips and one existing warning in 320.83 seconds. This is retained
+baseline evidence, not certification of later revisions; all exact-candidate
+release checks remain required. There is no documentation-only exemption.
+PR22 separately merged at
 `73ccd6c19ad0138e522d8cbf64541415fafec317`, tree
 `90353d7fa6d7917363e63630afe67a60f785aa1a`, exactly matching its reviewed candidate
 after all fourteen hosted checks passed. That is integration, not deployment.
