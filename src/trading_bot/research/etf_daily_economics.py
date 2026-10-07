@@ -78,7 +78,7 @@ def etf_daily_economic_plan_hash(protocol: EtfDailyProtocol) -> str:
     protocol.__post_init__()
     return content_hash(
         {
-            "schema": "etf-daily-economic-development-protocol-v1",
+            "schema": "etf-daily-economic-development-protocol-v2",
             "daily_protocol": protocol.protocol_hash,
             "cost_plan": etf_daily_cost_plan_hash(),
             "costs": _COSTS,
@@ -87,6 +87,7 @@ def etf_daily_economic_plan_hash(protocol: EtfDailyProtocol) -> str:
             "operating_cost": "whole_month_renewals_anchored_first_decision_no_proration",
             "references": "mean_dollar_exposure_matched_buy_hold_capped_at_canonical_order_limit",
             "uncertainty": "paired_fixed_capital_pnl_20_100_blocks_1000_draws_95pct",
+            "performance": "prior_nav_period_returns_nonpositive_prior_nav_undefined",
             "criteria": (
                 "canonical_drawdown_and_completed_episode_proxy_then_positive_paired_bounds"
             ),
@@ -205,10 +206,23 @@ def _renewals(first: date, last: date) -> int:
 
 
 def _returns(nav: tuple[Decimal, ...], origin: Decimal) -> tuple[Decimal, ...]:
+    """Fixed-capital P&L fractions for paired uncertainty, not performance."""
     previous = origin
     changes = []
     for value in nav:
         changes.append(_ratio(value - previous, origin))
+        previous = value
+    return tuple(changes)
+
+
+def _period_returns(nav: tuple[Decimal, ...], origin: Decimal) -> tuple[Decimal, ...] | None:
+    """Conventional returns; never invent a denominator after nonpositive NAV."""
+    previous = origin
+    changes = []
+    for value in nav:
+        if previous <= 0:
+            return None
+        changes.append(_ratio(value - previous, previous))
         previous = value
     return tuple(changes)
 
@@ -218,6 +232,7 @@ def _performance(out: EtfDailyResult) -> PerformanceMetrics:
     points = out.points
     bars = {row.session_date: row for row in out.request.bars}
     nav = tuple(point.liquidation_proxy for point in points)
+    period_returns = _period_returns(nav, origin)
     elapsed = _ratio(
         Decimal((points[-1].session_date - points[0].session_date).days + 1), Decimal("365.25")
     )
@@ -239,7 +254,7 @@ def _performance(out: EtfDailyResult) -> PerformanceMetrics:
                     (bars[points[0].session_date].raw.starts_at, origin),
                     *((bars[p.session_date].raw.ends_at, p.liquidation_proxy) for p in points),
                 ),
-                _returns(nav, origin),
+                period_returns if period_returns is not None else (),
                 trades,
                 252,
                 elapsed,
@@ -252,6 +267,14 @@ def _performance(out: EtfDailyResult) -> PerformanceMetrics:
                 out.account.fees,
                 0,
             )
+        )
+    if period_returns is None:
+        undefined = MetricValue(None, "undefined_nonpositive_prior_nav")
+        metrics = replace(
+            metrics,
+            annualized_volatility_pct=undefined,
+            sharpe=undefined,
+            sortino=undefined,
         )
     return replace(
         metrics,

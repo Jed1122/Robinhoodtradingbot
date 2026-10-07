@@ -1,15 +1,36 @@
 # Parallel Orchestration Transition Report
 
+## Performance-return correction; release blocked — 2026-10-07
+
+A new substantive review finding in [PR #24](https://github.com/Jed1122/Robinhoodtradingbot/pull/24#discussion_r4212582213)
+identified fixed-capital bootstrap P&L fractions being reused as conventional
+volatility/Sharpe/Sortino returns. The scoped correction separates prior-NAV
+performance returns from the unchanged fixed-capital paired series. Nonpositive
+prior NAV leaves return metrics undefined rather than inventing a denominator.
+Economic protocol v2 binds this report convention; strategy, risk, sizing,
+execution assumptions, costs, bootstrap and screening criteria remain unchanged.
+Fresh exact-candidate validation, review and all hosted checks remain mandatory.
+
+The original private DEVELOPMENT reports and preregistration are preserved,
+not rewritten or rerun. They remain observations of the old code/protocol only:
+their identities cannot certify corrected-code performance or current economic
+results. The earlier non-surviving candidate does not justify data/execution
+expansion. No current corrected-code economic study is asserted, and the final
+2024–2025 outcome set remains untouched. All source/cost/execution/economic/
+promotion/live flags remain false. No broker/provider/customer/credential,
+spending, deployment, risk or trading action is included in this correction.
+
 ## Daily DEVELOPMENT screen completed; release pending — 2026-10-07
 
-This checkpoint supersedes the older next-work wording below. All three tasks in
+This historical checkpoint superseded the older next-work wording below before
+the performance correction above. All three implementation tasks in
 the [daily-screen implementation plan](docs/superpowers/plans/2026-10-07-etf-lean-daily-screen.md)
 are complete. The [runnable daily screen](docs/etf-daily-development-screen.md)
 reuses the fixed strategy, canonical risk and account machinery, with versioned
 research-only protocol, private reports and explicit adverse daily execution
 assumptions. It does not manufacture quote/fill observations or broker support.
 
-The frozen private DEVELOPMENT study completed once after independent review
+The original frozen private DEVELOPMENT study completed once after independent review
 and local certification. **No scenario qualified for further research.** Reject
 execution/data expansion for this candidate: no acquisition, calibration trade,
 new broker worker, paper/shadow-policy work or deployment is justified by this

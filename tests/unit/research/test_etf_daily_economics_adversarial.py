@@ -249,3 +249,47 @@ def test_further_research_verdict_never_promotes_positive_score_only_projection(
     for record in (result, out, out.request, out.request.protocol):
         assert_unqualified(record)
     assert out.account.execution_enabled is False and out.account.evidence_promotable is False
+
+
+def test_performance_uses_prior_nav_not_fixed_capital_returns(actual_daily_result):
+    # Initial500 ->1000 ->1100 ->880 ->792 means period returns1,.1,-.2,-.1.
+    # Mean=.2, sample variance=.3, downside sample variance=.005.
+    result = scored(projected(actual_daily_result, tuple(map(D, ("1000", "1100", "880", "792")))))
+    metrics = result.performance
+    assert metrics is not None
+    with localcontext() as context:
+        context.prec = 64
+        annual_root = D("252").sqrt()
+        deviation = D(".3").sqrt()
+        downside = D(".005").sqrt()
+        assert abs(metrics.annualized_volatility_pct.value - deviation * annual_root * 100) < D(
+            "1e-55"
+        )
+        assert abs(metrics.sharpe.value - D(".2") / deviation * annual_root) < D("1e-55")
+        assert abs(metrics.sortino.value - D(".2") / downside * annual_root) < D("1e-55")
+    assert metrics.total_return_pct.value == D("58.4")
+    assert_unqualified(result)
+
+
+def test_paired_returns_remain_fixed_capital_after_performance_correction(actual_daily_result):
+    nav = (*tuple(map(D, ("1000", "1100", "880", "792"))), *((D("792"),) * 96))
+    result = scored(projected(actual_daily_result, nav))
+    # Full100-block must telescope to292/500/100, not sum compounded returns.
+    interval = result.uncertainty.vs_cash[1].interval
+    assert interval.lower == interval.upper == D(".00584")
+    assert result.operating_profit_proxy == D("292")
+    assert_unqualified(result)
+
+
+@pytest.mark.parametrize("prior", [D("0"), D("-1")])
+def test_nonpositive_prior_nav_marks_return_metrics_unknown(actual_daily_result, prior):
+    result = scored(projected(actual_daily_result, (prior, D("10"))))
+    metrics = result.performance
+    assert metrics is not None
+    for metric in (metrics.annualized_volatility_pct, metrics.sharpe, metrics.sortino):
+        assert metric.value is None
+        assert metric.status == "undefined_nonpositive_prior_nav"
+    # Preserve other observed values and rejection; do not invent zero returns.
+    assert result.marked_trading_pnl == D("-490")
+    assert result.screening_verdict == "REJECT"
+    assert_unqualified(result)

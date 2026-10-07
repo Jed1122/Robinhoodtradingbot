@@ -48,6 +48,13 @@ existing seeded 20/100-session block protocol. Completed episodes and bootstrap
 draws do not establish independent opportunities. Daily close drawdown/occupancy
 does not establish intraday protection or recovery.
 
+Descriptive trading volatility, Sharpe and Sortino use conventional period
+returns over the preceding NAV, not the fixed-capital paired series. If a
+preceding NAV is nonpositive, those return metrics are explicitly undefined;
+no invented zero return or truncated-prefix metric is reported. The economic
+protocol v2 binds this convention. Earlier reports remain immutable and bound
+to their original code/protocol; they do not certify corrected-code outcomes.
+
 `REJECT`, `INSUFFICIENT_EVIDENCE` and `PROCEED_TO_FURTHER_RESEARCH` are screening
 verdicts only. Economic admission and source/cost/execution/promotion flags are
 always false. Untouched final testing needs eligible sources and protected actual
