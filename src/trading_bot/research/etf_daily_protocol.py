@@ -53,16 +53,11 @@ class _DailyRecord:
 
 def _markers(record: _DailyRecord) -> None:
     _check(
-        all(
-            getattr(record, name) is False
-            for name in (
-                "source_qualified",
-                "cost_qualified",
-                "execution_enabled",
-                "economic_admitted",
-                "evidence_promotable",
-            )
-        )
+        record.source_qualified is False
+        and record.cost_qualified is False
+        and record.execution_enabled is False
+        and record.economic_admitted is False
+        and record.evidence_promotable is False
     )
 
 
