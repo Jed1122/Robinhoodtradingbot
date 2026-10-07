@@ -33,6 +33,14 @@ changed by editing this document.
 
 ### 1. Establish affordable operation and admissible sizing — next
 
+October 7 result: the [cost/sizing diagnostic](etf-lean-feasibility-2026-10-07.md)
+is complete for the current path. Receipt-verified development prices prove zero
+native whole-share size under both capital tiers. Hypothetical fractional math
+fits the numerical caps, but actual broker/runtime support and an affordable
+fresh-quote operating path remain unverified. Do not expand the failed integer
+route. Task 2 can proceed only as separately identified assumption-based research,
+not a claim that executable sizing has been established.
+
 - Produce the $500 and $1,000 capital-feasibility report using actual canonical
   limits and supported account/instrument/order terms.
 - Current reference equity is $100; base caps include $15/order and $60 gross,
@@ -178,7 +186,9 @@ not guarantee a profitable trading strategy.
 Retained inputs include 2,514 daily bars, calendar/date matching and issuer
 distribution work. Accounting, lifecycle, offline replay, economic-evaluator and
 local recorder primitives already exist. PR22 has current implementation evidence;
-publication and merge status must be verified before release integration.
+it was verified merged October 7 at 73ccd6c19ad0138e522d8cbf64541415fafec317,
+with the exact reviewed tree and fourteen hosted checks passing. This did not
+deploy a worker or establish any source/cost/promotion capability.
 
 No accepted after-cost edge, trusted recurring execution worker, qualifying
 paper/shadow campaign or live pilot is established. One complete quote session

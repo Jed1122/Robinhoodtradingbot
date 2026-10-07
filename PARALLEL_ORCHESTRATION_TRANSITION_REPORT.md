@@ -1,5 +1,22 @@
 # Parallel Orchestration Transition Report
 
+## Lean delivery progress — 2026-10-07
+
+The [current cost/sizing report](docs/etf-lean-feasibility-2026-10-07.md)
+reverified retained native bars and established zero admissible native whole-share
+quantity under current $15/$5 caps at both hypothetical capital tiers. No holdout
+outcomes were evaluated. Fractional numerical examples remain explicitly
+hypothetical; supported standalone order terms and affordable fresh quote access
+are unverified. Keep failed integer execution and bulk acquisition off the next
+critical path. Next is the separately identified fixture-first daily screen.
+
+PR22 merged at 73ccd6c19ad0138e522d8cbf64541415fafec317 on October 7,
+tree 90353d7fa6d7917363e63630afe67a60f785aa1a, equal to reviewed head c21c4c2.
+All fourteen hosted CI/research jobs passed; local evidence checksums and
+substantive review output were rechecked. CodeRabbit's skipped review was not
+counted as approval. No deployment, broker operation, subscription change,
+funding, risk modification or qualification followed.
+
 ## Lean ETF priority amendment — 2026-10-07
 
 The operator requested removal of unnecessary work and an updated task list.
