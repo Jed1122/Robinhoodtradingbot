@@ -31,6 +31,7 @@ from trading_bot.domain import (
 from trading_bot.market_data.etf_source import _ns
 from trading_bot.market_data.recording import content_hash
 from trading_bot.portfolio.sizing import SizingRequest, size_position
+from trading_bot.research.etf_benchmark import _money_context
 from trading_bot.research.etf_daily_protocol import (
     EtfDailyBar,
     EtfDailyError,
@@ -147,7 +148,8 @@ class _Owner:
         self.stop: Decimal | None = None
         self.target: Decimal | None = None
         self.entry_stop = ZERO
-        self.rate = self.protocol.per_side_cost_bps / Decimal("10000")
+        with localcontext(_money_context()):
+            self.rate = self.protocol.per_side_cost_bps / Decimal("10000")
 
     @property
     def state(self) -> EtfAccountResult:
@@ -172,11 +174,12 @@ class _Owner:
         self.events.append(event)
 
     def price(self, raw: Decimal, side: Side) -> Decimal:
-        adverse = raw * (1 + self.rate if side is Side.BUY else 1 - self.rate)
-        rounding = ROUND_CEILING if side is Side.BUY else ROUND_FLOOR
-        return (adverse / self.protocol.price_increment).to_integral_value(
-            rounding=rounding
-        ) * self.protocol.price_increment
+        with localcontext(_money_context()):
+            adverse = raw * (1 + self.rate if side is Side.BUY else 1 - self.rate)
+            rounding = ROUND_CEILING if side is Side.BUY else ROUND_FLOOR
+            return (adverse / self.protocol.price_increment).to_integral_value(
+                rounding=rounding
+            ) * self.protocol.price_increment
 
     def instrument(self, at: datetime) -> Instrument:
         return Instrument(
@@ -429,12 +432,13 @@ class _Owner:
         self.protection(row, index, opening=False)
         self.apply(self.event("mark", row.raw.ends_at, mark_price=row.raw.close))
         state = self.state
-        nav = state.cash + state.position.market_value + state.dividend_receivable
-        proxy = nav - (
-            state.position.market_value * self.rate + self.protocol.side_fee
-            if state.shares
-            else ZERO
-        )
+        with localcontext(_money_context()):
+            nav = state.cash + state.position.market_value + state.dividend_receivable
+            proxy = nav - (
+                state.position.market_value * self.rate + self.protocol.side_fee
+                if state.shares
+                else ZERO
+            )
         self.points.append(
             EtfDailyPoint(
                 row.session_date,

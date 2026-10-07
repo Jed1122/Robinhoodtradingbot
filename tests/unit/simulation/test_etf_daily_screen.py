@@ -277,3 +277,16 @@ def test_below_minimum_adverse_order_size_has_zero_effect():
     out = run(replace(req, bars=rows))
     assert out.attempts[0].reason == "sizing_denied"
     assert out.attempts[0].quantity == 0 and not fills(out)
+
+
+def test_small_positive_cost_is_not_erased_by_financial_context_rounding():
+    req = request()
+    p = replace(req.protocol, per_side_cost_bps=D("1e-100"))
+    out = run(replace(req, protocol=p))
+    assert fills(out)[0].price == D("101.010001")
+    with localcontext() as context:
+        context.prec = 512
+        final = out.points[-1]
+        assert final.marked_nav - final.liquidation_proxy == (
+            out.account.position.market_value * D("1e-104") + D(".01")
+        )

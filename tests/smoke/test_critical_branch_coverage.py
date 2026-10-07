@@ -110,6 +110,24 @@ def test_requires_incremental_historical_owner_branch_report(tmp_path):
 @pytest.mark.parametrize(
     "relative_path",
     [
+        "src/trading_bot/simulation/etf_daily_screen.py",
+        "src/trading_bot/research/etf_daily_protocol.py",
+        "src/trading_bot/research/etf_daily_intake.py",
+        "src/trading_bot/research/etf_daily_economics.py",
+    ],
+)
+def test_daily_screen_cannot_escape_critical_branch_gate(tmp_path, relative_path):
+    root = tmp_path / "project"
+    _source(root, relative_path)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative_path}"
+    ]
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
         "src/trading_bot/domain/owned_order_lifecycle.py",
         "src/trading_bot/persistence/owned_order_journal.py",
     ],
