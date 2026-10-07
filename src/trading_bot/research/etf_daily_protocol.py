@@ -21,6 +21,15 @@ from trading_bot.simulation.lifecycle_accounting import _context
 ANCHOR = date(2016, 5, 26)
 HOLDOUT_START = date(2024, 1, 1)
 MAX_ROWS = 10000
+_LIMITATIONS = (
+    "daily_ohlc_is_not_quotes_or_fill_evidence",
+    "fractional_order_and_fill_terms_hypothetical",
+    "raw_unadjusted_and_no_splits_assumed_not_verified",
+    "publication_corrections_and_historical_controls_unobserved",
+    "costs_and_fee_rounding_uncalibrated",
+    "adverse_daily_ordering_and_t_plus_two_assumed",
+    "legacy_750_bar_admission_boundary_unchanged",
+)
 
 
 class EtfDailyError(ValueError):
@@ -79,25 +88,25 @@ class EtfDailyProtocol(_DailyRecord):
     price_increment: Decimal = field(default=Decimal(".000001"), init=False)
     minimum_notional: Decimal = field(default=Decimal("1"), init=False)
     fractional_terms_verified: Literal[False] = field(default=False, init=False)
-    limitations: tuple[str, ...] = field(
-        default=(
-            "daily_ohlc_is_not_quotes_or_fill_evidence",
-            "fractional_order_and_fill_terms_hypothetical",
-            "raw_unadjusted_and_no_splits_assumed_not_verified",
-            "publication_corrections_and_historical_controls_unobserved",
-            "costs_and_fee_rounding_uncalibrated",
-            "adverse_daily_ordering_and_t_plus_two_assumed",
-            "legacy_750_bar_admission_boundary_unchanged",
-        ),
-        init=False,
-    )
+    limitations: tuple[str, ...] = field(default=_LIMITATIONS, init=False)
 
     def __post_init__(self) -> None:
         try:
             _markers(self)
             cfg = _policy(self.study).config
+            _check(
+                self.study.execution_enabled is False and self.study.evidence_promotable is False
+            )
+            _check(type(self.limitations) is tuple and self.limitations == _LIMITATIONS)
             _check(type(self.sessions) is tuple and 101 <= len(self.sessions) <= MAX_ROWS)
-            _check(all(type(day) is date and day < HOLDOUT_START for day in self.sessions))
+            _check(
+                all(
+                    type(day) is date
+                    and self.study.requested_start.date() <= day < HOLDOUT_START
+                    and day.weekday() < 5
+                    for day in self.sessions
+                )
+            )
             _check(all(a < b for a, b in zip(self.sessions, self.sessions[1:], strict=False)))
             _check(ANCHOR in self.sessions and self.sessions.index(ANCHOR) >= 100)
             _check(self.protocol_id == "spy-cash-daily-development-v1")
@@ -105,9 +114,14 @@ class EtfDailyProtocol(_DailyRecord):
             _check(type(self.warmup_bars) is int and self.warmup_bars == 100)
             _check(type(self.rebalance_sessions) is int and self.rebalance_sessions == 5)
             _check(type(self.settlement_sessions) is int and self.settlement_sessions == 2)
-            _check(self.quantity_increment == Decimal(".001"))
-            _check(self.price_increment == Decimal(".000001"))
-            _check(self.minimum_notional == Decimal("1"))
+            _check(
+                type(self.quantity_increment) is Decimal
+                and self.quantity_increment == Decimal(".001")
+            )
+            _check(
+                type(self.price_increment) is Decimal and self.price_increment == Decimal(".000001")
+            )
+            _check(type(self.minimum_notional) is Decimal and self.minimum_notional == Decimal("1"))
             _check(self.fractional_terms_verified is False)
             _check(self.price_basis in ("raw-unadjusted-assumption", "unknown"))
             _check(self.study.windows == (20, 100))
@@ -163,23 +177,24 @@ class EtfDailyRequest(_DailyRecord):
         try:
             _markers(self)
             _check(type(self.protocol) is EtfDailyProtocol)
-            replace(self.protocol)
+            self.protocol.__post_init__()
             _check(type(self.bars) is tuple and len(self.bars) <= MAX_ROWS)
             _check(type(self.distributions) is tuple and len(self.distributions) <= MAX_ROWS)
             previous = None
             for row in self.bars:
                 _check(type(row) is EtfDailyBar)
-                replace(row)
+                row.__post_init__()
                 _check(row.session_date in self.protocol.sessions)
                 _check(previous is None or row.session_date > previous)
                 previous = row.session_date
             previous = None
-            for row in self.distributions:
-                _check(type(row) is EtfBenchmarkDistribution)
-                replace(row)
-                _check(row.ex_date < HOLDOUT_START)
-                _check(previous is None or row.ex_date > previous)
-                previous = row.ex_date
+            for distribution in self.distributions:
+                _check(type(distribution) is EtfBenchmarkDistribution)
+                distribution.__post_init__()
+                _check(distribution.ex_date < HOLDOUT_START)
+                _check(distribution.ex_date in self.protocol.sessions)
+                _check(previous is None or distribution.ex_date > previous)
+                previous = distribution.ex_date
             require_bounded_decimal(self.initial_cash, "daily initial cash", positive=True)
             _check(self.initial_cash in self.protocol.study.capital_tiers)
         except (ValueError, TypeError, ArithmeticError, AttributeError):
