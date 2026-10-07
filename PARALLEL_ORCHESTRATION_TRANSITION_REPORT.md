@@ -1,5 +1,39 @@
 # Parallel Orchestration Transition Report
 
+## Lean ETF priority amendment — 2026-10-07
+
+The operator requested removal of unnecessary work and an updated task list.
+The [lean ETF delivery list](docs/etf-lean-delivery-plan-2026-10-07.md) and
+[authority amendment](docs/operator-authority.md#lean-etf-milestone-amendment--2026-10-07)
+supersede conflicting work priorities in older checkpoints below. No trading,
+billing, risk configuration, deployment or qualification change occurred.
+
+The critical path is now cost/sizing feasibility -> daily-data development
+screen -> conditional out-of-sample and targeted execution evidence -> protected
+Robinhood worker -> qualifying paper/shadow/recovery -> authorized live pilot.
+The first screen reuses daily data, preserves the fixed candidate and uses
+explicit adverse execution/cost assumptions; no historical fill is asserted.
+
+Defer remaining full-history quote acquisition and compression/scaling work,
+additional providers/assets, parameter searches, dashboards/LLM reporting and
+multi-host infrastructure. Actual fill calibration does not precede the first
+assumption-based research screen. Existing acquired files remain intact.
+
+Current sizing policy still has a $100 reference, $15 base order cap and $5
+micro order cap; the $1,000 ceiling does not enlarge them. Integer-only native
+research and the supported fractional/order route must be reconciled before
+claiming feasible implementation. A $99/month service costs $1,188/year; recurring
+operating costs must be tested against the proposed $500/$1,000 capital tiers.
+
+Accounting/replay/economic/recorder primitives already exist. Accepted economic
+evidence and trusted recurring broker composition remain unestablished. Current
+configured paper/shadow policy remains enforced until the reviewed versioned
+coverage-based bounded-pilot replacement is implemented and verified. Arbitrary
+100-cycle/seven-date quotas are not requirements of that future lean policy.
+Risk/reconciliation/kill controls, secret handling and explicit live authorization
+remain in force. Status of PR22 and any later release must be checked against the
+actual candidate and completed checks.
+
 ## Independent joint equity economic candidate — 2026-10-05
 
 This leading checkpoint supersedes conflicting current software/blocker wording
