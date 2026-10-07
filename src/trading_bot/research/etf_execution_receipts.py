@@ -40,6 +40,7 @@ _PAYLOAD_KEYS = {
     "acknowledged": {"order_hash", "source_hash"},
     "fill": {"order_hash", "fill_hash", "quantity", "price", "source_hash"},
     "terminal": {"order_hash", "source_hash", "state", "charged_fees"},
+    "terminal_v2": {"order_hash", "source_hash", "state", "charged_fees"},
     "final_fees": {"order_hash", "terminal_hash", "source_hash", "charged_fees"},
 }
 
@@ -52,6 +53,16 @@ class EtfReceiptError(ValueError):
 def _check(condition: bool) -> None:
     if not condition:
         raise EtfReceiptError()
+
+
+def receipt_schema(kind: str) -> str:
+    """New terminal semantics use v3; existing receipt preimages stay unchanged."""
+    _check(type(kind) is str and kind in _PAYLOAD_KEYS)
+    if kind == "terminal_v2":
+        return "etf-execution-receipt-v3"
+    if kind == "final_fees":
+        return "etf-execution-receipt-v2"
+    return "etf-execution-receipt-v1"
 
 
 def _integer(value: object, *, positive: bool = False) -> int:
@@ -103,8 +114,9 @@ def validate_receipt_payload(kind: str, value: object) -> dict[str, object]:
         _check(row["side"] in ("buy", "sell"))
     elif kind == "fill":
         _check(_decimal(row["quantity"]) > 0 and _decimal(row["price"]) > 0)
-    elif kind == "terminal":
-        _check(row["state"] in ("filled", "cancelled", "rejected", "failed"))
+    elif kind in ("terminal", "terminal_v2"):
+        states = ("filled", "cancelled", "rejected", "failed")
+        _check(row["state"] in ((*states, "expired") if kind == "terminal_v2" else states))
         _fees(row["charged_fees"])
     elif kind == "final_fees":
         _check(_fees(row["charged_fees"]) is not None)
@@ -221,7 +233,10 @@ def _link(
                 "payload",
             },
         )
-        _check(row["schema"] in ("etf-execution-receipt-v1", "etf-execution-receipt-v2"))
+        _check(
+            row["schema"]
+            in ("etf-execution-receipt-v1", "etf-execution-receipt-v2", "etf-execution-receipt-v3")
+        )
         _check(row["session_hash"] == session_hash)
         _check(_integer(row["sequence"]) == sequence and row["previous_hash"] == previous)
         _time(row["received_at"])
@@ -231,10 +246,7 @@ def _link(
         previous_utc, previous_mono, previous = utc, mono, source_digest(body)
         kind = _string(row["kind"])
         payload = validate_receipt_payload(kind, row["payload"])
-        _check(
-            row["schema"]
-            == ("etf-execution-receipt-v2" if kind == "final_fees" else "etf-execution-receipt-v1")
-        )
+        _check(row["schema"] == receipt_schema(kind))
         for key in ("source_hash", "terms_hash", "body_sha256"):
             if key in payload:
                 reference = _string(payload[key])
@@ -318,7 +330,7 @@ def _link(
                     "received_monotonic_ns": mono,
                 }
             )
-        elif kind == "terminal":
+        elif kind in ("terminal", "terminal_v2"):
             _check(payload["state"] != "filled" or bool(order.fills))
             _check(payload["state"] not in ("rejected", "failed") or not order.fills)
             fees = _fees(payload["charged_fees"])
