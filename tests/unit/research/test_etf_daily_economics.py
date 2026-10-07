@@ -67,6 +67,24 @@ def test_fee_embedded_in_pnl_is_not_subtracted_again():
     assert s.cash_benchmark_pnl == 0
 
 
+def test_private_scores_explain_admitted_and_denied_entry_sizing():
+    report = api().run_etf_daily_economics(gap_request())
+    sizing = score(report).entry_sizing
+    assert sizing.scheduled_entries == sizing.attempted_entries == sizing.admitted_entries == 1
+    assert sizing.denied_entries == 0 and sizing.denial_counts == ()
+    assert sizing.minimum_quantity == sizing.maximum_quantity == D(".148")
+    assert sizing.minimum_notional == sizing.maximum_notional == D("14.95695474")
+    req = request()
+    rows = tuple(
+        daily_bar(day, D("5") + D(i) / 1000, D(".5")) for i, day in enumerate(req.protocol.sessions)
+    )
+    denied = score(api().run_etf_daily_economics(replace(req, bars=rows))).entry_sizing
+    assert denied.attempted_entries == denied.denied_entries == 1
+    assert denied.admitted_entries == 0
+    assert denied.denial_counts == (("canonical_account_admission_denied", 1),)
+    assert denied.minimum_quantity is None and denied.maximum_notional is None
+
+
 def test_open_outcome_never_reports_realized_pnl_or_forces_a_sale():
     report = api().run_etf_daily_economics(request())
     s = score(report)

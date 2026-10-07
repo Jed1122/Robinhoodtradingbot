@@ -26,6 +26,10 @@ the stop first. Missing sessions interrupt rather than invent fills. Full
 cash/trial/fee reservation and the shared account reducer remain authoritative;
 generic sizing does not evade an account admission denial. No additions or
 terminal forced sale occur; open positions/receivables/settlements stay incomplete.
+The versioned `dividend_ex_mark_v2` account fact recognizes pre-entry entitlement
+and ex-date opening valuation atomically before the unchanged loss calculation.
+It cannot create a fictitious cum-dividend peak or transient ex-dividend loss;
+real economic losses still halt entries. Legacy event preimages remain unchanged.
 
 ## Economics
 
@@ -48,6 +52,9 @@ does not establish intraday protection or recovery.
 verdicts only. Economic admission and source/cost/execution/promotion flags are
 always false. Untouched final testing needs eligible sources and protected actual
 cost calibration first; this command has no holdout or qualification override.
+Bounded entry summaries distinguish scheduled decisions, attempts, admissions and
+denials, retaining reason counts and admitted quantity/notional ranges. No fill
+measurement or executable sizing qualification is inferred from these summaries.
 
 ## Private command
 

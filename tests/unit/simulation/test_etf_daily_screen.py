@@ -173,6 +173,48 @@ def test_fixed_five_session_rebalance_and_no_position_additions():
     assert len(tuple(f for f in fills(out) if f.side is Side.BUY)) == 1
 
 
+@pytest.mark.parametrize("extra_drop, halted", [(D("0"), False), (D("70"), True)])
+def test_ex_date_entitlement_and_open_mark_are_one_risk_observation(extra_drop, halted):
+    req = request()
+    rows = list(req.bars)
+    distribution = D("70") if extra_drop == 0 else D(".10")
+    opening = D("101.01") - distribution - extra_drop
+    for index in (102, 103, 104):
+        rows[index] = daily_bar(rows[index].session_date, opening)
+    action = EtfBenchmarkDistribution(
+        req.protocol.sessions[102],
+        req.protocol.sessions[104],
+        distribution,
+        content_hash(("synthetic-atomic-ex-date", distribution)),
+    )
+    out = run(replace(req, bars=tuple(rows), distributions=(action,)))
+    assert out.account.complete
+    assert out.account.entry_halted is halted
+    if extra_drop == 0:
+        assert out.account.cash == D("499.98")
+        assert out.account.trial.consumed_loss == D(".02")
+        assert max(point.marked_nav for point in out.points) == D("500")
+    atomic = tuple(e for e in out.events if e.kind == "dividend_ex_mark_v2")
+    assert len(atomic) == 1
+    assert atomic[0].mark_price == opening
+    # Every retained prefix has an economically coherent risk observation;
+    # restart cannot adopt the transient cum-dividend mark plus receivable.
+    checkpoint = replay_etf_account(
+        EtfAccountRequest(req.protocol.study, req.initial_cash, out.events),
+        through_ordinal=atomic[0].ordinal,
+    )
+    assert checkpoint.entry_halted is True  # Unsettled fill/receivable still blocks entries.
+    assert checkpoint.cash + checkpoint.position.market_value + checkpoint.dividend_receivable == (
+        D("499.99") - extra_drop * D(".148")
+    )
+    assert (
+        resume_etf_account(
+            EtfAccountRequest(req.protocol.study, req.initial_cash, out.events), checkpoint
+        )
+        == out.account
+    )
+
+
 def test_maximum_hold_exit_uses_next_open_after_100_held_sessions():
     req = request(205)
     p = replace(req.protocol, side_fee=D("0"), episode_fee_bound=D("0"))

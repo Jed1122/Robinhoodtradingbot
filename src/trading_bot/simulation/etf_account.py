@@ -60,6 +60,7 @@ _KINDS = {
     "order_status",
     "settlement",
     "dividend_ex",
+    "dividend_ex_mark_v2",  # Atomic assumed entitlement + ex-date opening valuation.
     "dividend_pay",
     "mark",
 }
@@ -127,6 +128,7 @@ class EtfAccountEvent:
             "order_status": {"order_id", "order_event"},
             "settlement": set(),
             "dividend_ex": {"action_id", "cash_per_share"},
+            "dividend_ex_mark_v2": {"action_id", "cash_per_share", "mark_price"},
             "dividend_pay": {"action_id"},
             "mark": {"mark_price"},
         }
@@ -161,7 +163,10 @@ class EtfAccountEvent:
 
     @property
     def event_hash(self) -> str:
-        return content_hash({"schema": "etf-account-event-v1", "event": self})
+        schema = (
+            "etf-account-event-v2" if self.kind == "dividend_ex_mark_v2" else "etf-account-event-v1"
+        )
+        return content_hash({"schema": schema, "event": self})
 
 
 @dataclass(frozen=True, slots=True)
@@ -651,7 +656,7 @@ def _steps(
                         _check(fill_id in unsettled)
                         unsettled.pop(fill_id)
                         settled_fills.add(fill_id)
-            elif event.kind == "dividend_ex":
+            elif event.kind in ("dividend_ex", "dividend_ex_mark_v2"):
                 action_id, cash_per_share = (
                     _required(event.action_id),
                     _required(event.cash_per_share),
@@ -662,6 +667,16 @@ def _steps(
                 if amount:
                     _check(active_episode is not None)
                     receivables[action_id] = (amount, _required(active_episode))
+                if event.kind == "dividend_ex_mark_v2":
+                    # Neither the cum-dividend mark plus receivable nor the
+                    # lower ex mark alone is an economically valid risk state.
+                    # Publish both facts before the unchanged risk calculation.
+                    position = replace(
+                        position,
+                        market_value=position.quantity * _required(event.mark_price),
+                        observed_at=now,
+                        data_hash=DataHash(event.event_hash),
+                    )
             elif event.kind == "dividend_pay":
                 _check(event.action_id in distributions)
                 if event.action_id in receivables:

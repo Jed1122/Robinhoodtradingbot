@@ -7,11 +7,13 @@ The retrospective exposure-matched reference is mathematical, not an executable
 allocation. Completed episodes are not claimed independent opportunities.
 """
 
+from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, localcontext
 from typing import Literal
 
+from trading_bot.domain import Side
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_benchmark import (
     EtfBenchmarkBar,
@@ -106,6 +108,38 @@ class EtfDailyUncertainty:
 
 
 @dataclass(frozen=True, slots=True)
+class EtfDailySizing(_DailyRecord):
+    scheduled_entries: int
+    attempted_entries: int
+    admitted_entries: int
+    denied_entries: int
+    denial_counts: tuple[tuple[str, int], ...]
+    minimum_quantity: Decimal | None
+    maximum_quantity: Decimal | None
+    minimum_notional: Decimal | None
+    maximum_notional: Decimal | None
+
+
+def _sizing(out: EtfDailyResult) -> EtfDailySizing:
+    attempts = tuple(a for a in out.attempts if a.side is Side.BUY)
+    denied = tuple(a for a in attempts if not a.admitted)
+    fills = tuple(e.fill for e in out.events if e.fill is not None and e.fill.side is Side.BUY)
+    quantities = tuple(fill.quantity for fill in fills)
+    notionals = tuple(fill.quantity * fill.price for fill in fills)
+    return EtfDailySizing(
+        sum(d.scheduled == "entry" for d in out.decisions),
+        len(attempts),
+        sum(a.admitted for a in attempts),
+        len(denied),
+        tuple(sorted(Counter(a.reason for a in denied).items())),
+        min(quantities) if quantities else None,
+        max(quantities) if quantities else None,
+        min(notionals) if notionals else None,
+        max(notionals) if notionals else None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class EtfDailyScore(_DailyRecord):
     initial_cash: Decimal
     cost_scenario: str
@@ -134,6 +168,7 @@ class EtfDailyScore(_DailyRecord):
     uncertainty: EtfDailyUncertainty | None
     screening_verdict: Literal["REJECT", "PROCEED_TO_FURTHER_RESEARCH", "INSUFFICIENT_EVIDENCE"]
     incomplete_reasons: tuple[str, ...]
+    entry_sizing: EtfDailySizing
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,6 +298,7 @@ def _score(
             None,
             "INSUFFICIENT_EVIDENCE",
             out.incomplete_reasons,
+            _sizing(out),
         )
     protocol = out.request.protocol
     cfg = _policy(protocol.study).config
@@ -389,6 +425,7 @@ def _score(
         uncertainty,
         verdict,
         out.incomplete_reasons,
+        _sizing(out),
     )
 
 

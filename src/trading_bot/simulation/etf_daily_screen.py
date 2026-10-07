@@ -412,7 +412,11 @@ class _Owner:
                 key = distribution.source_hash
                 self.apply(
                     self.event(
-                        "dividend_ex", at, action_id=key, cash_per_share=distribution.cash_per_share
+                        "dividend_ex_mark_v2",
+                        at,
+                        action_id=key,
+                        cash_per_share=distribution.cash_per_share,
+                        mark_price=row.raw.open,
                     )
                 )
                 self.entitlements[key] = distribution.pay_date
