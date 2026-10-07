@@ -108,7 +108,10 @@ or cannot trade under the applicable policy, stop its implementation expansion.
   document what they establish before choosing broader coverage.
 - Build a reviewed admission/report contract for the supported evidence rather
   than unlocking permanently unqualified diagnostic schemas. Cost assumptions
-  remain disclosed until calibrated or supported by defensible bounds.
+  remain disclosed during screening. Assumption-based final-test sensitivity
+  results can justify further research, but cannot pass economic admission.
+  Accepted out-of-sample economics require calibrated execution-cost evidence
+  under that reviewed contract; the initial-screen waiver does not waive this.
 
 **Done when:** the candidate passes stated after-cost and risk criteria on
 supported out-of-sample evidence, or is rejected. Positive gross returns alone
@@ -197,6 +200,23 @@ not the next delivery prerequisite.
 
 Risk limits, clean reconciliation, fresh order data, ownership/idempotency,
 kill controls, secret handling, relevant tests, explicit authority and honest
-economic reporting remain required throughout. Routine documentation edits do
-not require repeating the full runtime test suite; critical code changes require
-the relevant tests, integrated review and existing release checks.
+economic reporting remain required throughout. Retain the repository baseline
+and exact-candidate release checks, including authoritative documentation changes;
+record unavailable checks explicitly. Critical code changes additionally require
+focused tests and integrated review.
+
+## Scope reconciliation with earlier contracts
+
+The October 7 operator amendment is prospective. The separate development screen
+uses 100 prior bars only to compute the fixed features; it cannot satisfy the
+750-observation evidence boundary of the September 30 registered study. Neither
+that study nor its evaluation/promotion factory is altered. A positive new-screen
+result means only further research is justified, never acceptance of the old study.
+
+Likewise, the proposed coverage-based bounded-pilot policy intentionally requires
+a separately reviewed authority/envelope amendment before use. It does not meet
+or alter the existing non-reducible elapsed-time gates in `docs/live-activation.md`.
+Those gates remain enforced for all current profiles and normal-live expansion.
+The new policy cannot be enabled merely by assigning a new ID or reading this
+task list; canonical validation, integrated tests and operational evidence remain
+necessary. No current runtime safety requirement is weakened by these documents.
