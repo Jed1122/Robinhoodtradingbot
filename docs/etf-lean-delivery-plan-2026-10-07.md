@@ -96,6 +96,10 @@ or cannot trade under the applicable policy, stop its implementation expansion.
 
 ### 3. Validate the surviving candidate out of sample — conditional on task 2
 
+- Keep every assumption-only sensitivity evaluation in development. Before
+  opening the 2024–2025 final test, complete the minimum protected recorder/cost
+  path from task 4 needed for calibration and an independently eligible source
+  path. Do not consume the holdout first and change its frozen costs afterward.
 - Freeze rules, evaluator, cost scenarios and acceptance criteria before opening
   the final test, including the reviewed admission/report semantics for the
   supported model. Preserve all prior attempts and uncertainty about dependent
@@ -108,16 +112,21 @@ or cannot trade under the applicable policy, stop its implementation expansion.
   document what they establish before choosing broader coverage.
 - Build a reviewed admission/report contract for the supported evidence rather
   than unlocking permanently unqualified diagnostic schemas. Cost assumptions
-  remain disclosed during screening. Assumption-based final-test sensitivity
-  results can justify further research, but cannot pass economic admission.
+  remain disclosed during development screening; they cannot pass admission.
   Accepted out-of-sample economics require calibrated execution-cost evidence
-  under that reviewed contract; the initial-screen waiver does not waive this.
+  and eligible source evidence under that reviewed contract. Retained
+  latest-vintage waiver inputs remain permanently non-promotable; a new report
+  cannot upgrade them. The initial-screen waiver does not waive these conditions.
 
 **Done when:** the candidate passes stated after-cost and risk criteria on
 supported out-of-sample evidence, or is rejected. Positive gross returns alone
 do not satisfy this task.
 
-### 4. Finish the protected Robinhood worker — conditional on viability
+### 4. Finish the protected Robinhood worker — conditional on development viability
+
+The minimal protected measurement path may precede task 3's holdout evaluation;
+general live operation cannot. This prevents a calibration/holdout dependency
+cycle without authorizing a trade, activation or source upgrade.
 
 - Reuse the implemented execution/accounting journals, receipt recorder and fee
   attachments; complete their runtime wiring rather than rebuilding them.
