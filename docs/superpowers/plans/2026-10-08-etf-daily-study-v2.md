@@ -23,28 +23,28 @@ Apply all five focus items in the spec: identity separation, holdout exclusion, 
 **Files:** this plan and its spec; main-only own scratch/ledger.
 **Interfaces:** consumes the approved lean plan and fixed existing `daily-screen-run` contract; produces committed freeze and a passing fresh synthetic verification record.
 
-- [ ] Verify clean isolated branch and current compatible merged source; hash input identities and original reports without reading prior outcomes.
-- [ ] Commit the unchanged-rule operation freeze. Expected: human documentation only; source/config/tests/locks/workflows identical to baseline.
-- [ ] Run `env PYTHONPATH=src uv run --frozen pytest -q tests/unit/research/test_etf_daily_protocol.py tests/unit/research/test_etf_daily_protocol_adversarial.py tests/unit/research/test_etf_daily_intake.py tests/unit/research/test_etf_daily_economics.py tests/unit/research/test_etf_daily_economics_adversarial.py tests/unit/simulation/test_etf_daily_screen.py tests/unit/simulation/test_etf_account.py tests/unit/simulation/test_etf_account_incremental.py tests/unit/simulation/test_etf_history.py tests/unit/risk/test_sizing.py tests/integration/cli/test_etf_daily_screen_cli.py tests/smoke/test_critical_branch_coverage.py tests/architecture/test_broker_imports.py`. Expected: all pass, no authenticated calls.
-- [ ] Independently review the public freeze/existing contract with fabricated fixtures only. Resolve any substantive defect before market outcomes; source changes require a new freeze and regression, never holdout tuning.
+- [x] Verify clean isolated branch and current compatible merged source; hash input identities and original reports without reading prior outcomes.
+- [x] Commit the unchanged-rule operation freeze. Expected: human documentation only; source/config/tests/locks/workflows identical to baseline.
+- [x] Run `env PYTHONPATH=src uv run --frozen pytest -q tests/unit/research/test_etf_daily_protocol.py tests/unit/research/test_etf_daily_protocol_adversarial.py tests/unit/research/test_etf_daily_intake.py tests/unit/research/test_etf_daily_economics.py tests/unit/research/test_etf_daily_economics_adversarial.py tests/unit/simulation/test_etf_daily_screen.py tests/unit/simulation/test_etf_account.py tests/unit/simulation/test_etf_account_incremental.py tests/unit/simulation/test_etf_history.py tests/unit/risk/test_sizing.py tests/integration/cli/test_etf_daily_screen_cli.py tests/smoke/test_critical_branch_coverage.py tests/architecture/test_broker_imports.py`. Expected: all pass, no authenticated calls.
+- [x] Independently review the public freeze/existing contract with fabricated fixtures only. Resolve any substantive defect before market outcomes; source changes require a new freeze and regression, never holdout tuning.
 
 ### Task 2: Run and privately verify the frozen study
 
 **Files:** a fresh private report directory outside all repositories; main-only verification record.
 **Interfaces:** consumes frozen input hashes/config and existing CLI; produces new preregistration and all24 scenario reports with their code/config/input/protocol identities.
 
-- [ ] Create a new current-user0700 private report directory; do not reuse the old study root.
-- [ ] Invoke the documented `daily-screen-run` once with exact hashes/private paths in the main-only record. Expected: exit0, preregistration then report, sanitized stdout, all eligibility false.
-- [ ] Independently verify hashes/ownership0600/0700, identity links, date boundaries, all24 scenario combinations, Decimal costs/fees/sizing conservation and verdict criteria. Compute expectations from this report, not old verdict counts.
-- [ ] Rehash original reports and input reference bytes after evaluation. Expected: unchanged identities. No private source/report is delegated.
+- [x] Create a new current-user0700 private report directory; do not reuse the old study root.
+- [x] Invoke the documented `daily-screen-run` once with exact hashes/private paths in the main-only record. Expected: exit0, preregistration then report, sanitized stdout, all eligibility false.
+- [x] Independently verify hashes/ownership0600/0700, identity links, date boundaries, all24 scenario combinations, Decimal costs/fees/sizing conservation and verdict criteria. Compute expectations from this report, not old verdict counts.
+- [x] Rehash original reports and input reference bytes after evaluation. Expected: unchanged identities. No private source/report is delegated.
 
 ### Task 3: Record the truthful decision and handoff
 
 **Files:** new sanitized study-status documentation, authoritative transition checkpoint and private derived summary.
 **Interfaces:** consumes verified study results; produces a completion/rejection/insufficiency handoff and conditional next steps, never economic admission.
 
-- [ ] Keep monetary results private; publish only code/hash/verification/status/limitation metadata in Git.
-- [ ] Update the authoritative checkpoint with actual completion and current verdict. Stop candidate expansion if no scenario proceeds; do not repeat evaluation to select a winner.
-- [ ] Verify documentation/diff and unchanged executable identities; record review exclusions and any rulings/cost-if-wrong. Preserve the ledger and all reports recoverably.
+- [x] Keep monetary results private; publish only code/hash/verification/status/limitation metadata in Git.
+- [x] Update the authoritative checkpoint with actual completion and current verdict. Stop candidate expansion if no scenario proceeds; do not repeat evaluation to select a winner.
+- [x] Verify documentation/diff and unchanged executable identities; record review exclusions and any rulings/cost-if-wrong. Preserve the ledger and all reports recoverably.
 
 No failing production test is invented for an already implemented operational command. If a feature/bug fix becomes necessary, TDD and full exact-candidate release checks apply before outcomes. No private study rerun follows a changed source without a separately frozen identity.

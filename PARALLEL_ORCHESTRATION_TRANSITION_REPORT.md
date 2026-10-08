@@ -1,5 +1,31 @@
 # Parallel Orchestration Transition Report
 
+## Corrected-code development screen completed — 2026-10-08
+
+The newly authorized step2 study has completed exactly once at unchanged
+corrected source `bc49e1104a5c3c3d2498df6ea39ecc6f008e9bc1` after the
+before-outcomes freeze `e5166633e1c48c916eb75bcd91c15023da08e84d`, fresh588
+focused tests and an independent clean public freeze review. Main-only input,
+hash, mode, identity and all24 Decimal scenario/criteria checks passed.
+
+Current result: **9 REJECT, 15 INSUFFICIENT_EVIDENCE, 0 PROCEED_TO_FURTHER_RESEARCH**.
+This is a corrected-code DEVELOPMENT result, not reinterpretation of the old
+invalidated report. 2,012 pre2024 bars/1,912 evaluated sessions through
+December29,2023 were used; 2024–2025 outcomes were not evaluated by this run.
+All constrained-reference uncertainty lower bounds were negative. Private
+monetary records remain outside Git, Cloud and delegation; old bytes are unchanged.
+See the [new status/identity record](docs/etf-daily-study-v2-status-2026-10-08.md).
+
+Stop execution/data expansion for this candidate: no acquisition, calibration
+trade, new worker/paper-shadow policy or runtime deployment is justified.
+Further research requires a new frozen hypothesis/development study, not holdout
+tuning or unapproved risk increases. All source/cost/execution/economic/promotion/
+live flags remain false. The broader trading project remains incomplete;
+broker/paper-shadow/recovery and genuine cost evidence are not established.
+The existing integration automation stays paused. PR17/22/23/24 are completed
+history and must not be resumed or remerged. Older sections below are historical
+checkpoints, superseded by this leading disposition.
+
 ## Newly authorized corrected-code development study — 2026-10-08
 
 PR24 is verified merged at `bc49e1104a5c3c3d2498df6ea39ecc6f008e9bc1`, tree
@@ -17,7 +43,7 @@ study; it does not authorize changes to strategy, risk, source admission, trades
 spending, deployment or holdout evaluation. Prior reports remain immutable and
 invalid as corrected-code evidence; their old results are not current results.
 
-New study is not yet evaluated at this checkpoint. All source/cost/execution/
+At that historical freeze checkpoint the study was not yet evaluated. All source/cost/execution/
 economic/promotion/live flags remain false. Existing recurring integration
 automation stays paused; do not resume old PR17/22/23/24 or repeat completed
 implementation work. No broker/customer/credential/provider calls are included.
