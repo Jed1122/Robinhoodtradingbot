@@ -1,10 +1,13 @@
 # New SPY/cash hypothesis: fixed monthly SMA10 with canonical protection
 
 Date: October 8, 2026.
-Status: **written preregistration proposal; operator review pending**.
+Status: **written research design approved by the operator on October 8, 2026;
+implementation plan review pending**.
 Scope: design only. No implementation, market-outcome evaluation, source upgrade,
 broker call, purchase, deployment, risk change or live operation is authorized by
-this document. Its numerical choices are fixed for review, not approved for use.
+this document. Its numerical choices are approved for the research design, not
+an executable outcome run or production use. The operator replied "Ok, please
+proceed" after receiving the written specification; preserve native execution.
 
 ## 1. Intent, motivation and alternative approaches
 
@@ -254,8 +257,8 @@ A follow-on idea needs a retained, separately frozen research hypothesis.
 
 ## 7. Verification and gates before any outcome run
 
-This specification is not an implementation plan. Required next gate: operator
-reviews this written design, then a written implementation plan is prepared and
+This specification is not an implementation plan. Written-design review is
+complete. Required next gate: a written implementation plan is prepared and
 reviewed using the existing native execution preference. No outcome run occurs
 until that work is implemented, reviewed and the actual executable protocol is
 registered before evaluation.
