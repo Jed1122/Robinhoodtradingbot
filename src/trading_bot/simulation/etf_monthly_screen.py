@@ -4,7 +4,7 @@ All prices, fills and settlement clocks are declared simulation assumptions.
 This is not a broker worker, durable runtime or promotion capability.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal, localcontext
 from typing import cast
@@ -301,6 +301,35 @@ def _owner(request: EtfMonthlyRequest) -> _Owner:
     return _Owner(replace(request))
 
 
+def _exact_values(left: object, right: object) -> bool:
+    """Compare concrete leaf/container types after the dataclass projection.
+
+    Python equality treats bool/int/Decimal/float and string-valued enums as
+    interchangeable in some cases. They are not interchangeable evidence.
+    """
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict) and isinstance(right, dict):
+        return (
+            {(type(key), key) for key in left} == {(type(key), key) for key in right}
+            and all(_exact_values(value, right[key]) for key, value in left.items())
+        )
+    if isinstance(left, (tuple, list)) and isinstance(right, (tuple, list)):
+        return len(left) == len(right) and all(
+            _exact_values(a, b) for a, b in zip(left, right, strict=True)
+        )
+    return left == right
+
+
+def _verify_identity(
+    expected: EtfMonthlyCheckpoint | EtfMonthlyResult,
+    observed: EtfMonthlyCheckpoint | EtfMonthlyResult,
+) -> None:
+    _check(expected == observed)
+    _check(_exact_values(asdict(expected), asdict(observed)))
+    _check(content_hash(expected) == content_hash(observed))
+
+
 def run_etf_monthly_screen(
     request: EtfMonthlyRequest, *, through_session: date | None = None
 ) -> EtfMonthlyResult:
@@ -344,7 +373,7 @@ def _restored_owner(request: EtfMonthlyRequest, checkpoint: EtfMonthlyCheckpoint
         # halt before comparing the checkpoint, never advance its cursor.
         _check(checkpoint.next_session_index < len(request.protocol.sessions))
         owner.run_until(checkpoint.next_session_index + 1)
-    _check(owner.result().checkpoint == checkpoint)
+    _verify_identity(owner.result().checkpoint, checkpoint)
     return owner
 
 
@@ -373,6 +402,6 @@ def verify_etf_monthly_result(result: EtfMonthlyResult) -> None:
         with localcontext(_context(exact=False)) as context:
             context.prec = 64
             owner = _restored_owner(result.request, result.checkpoint)
-            _check(owner.result() == result)
+            _verify_identity(owner.result(), result)
     except (ValueError, TypeError, ArithmeticError, AttributeError):
         raise EtfMonthlyError() from None

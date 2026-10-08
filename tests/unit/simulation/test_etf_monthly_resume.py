@@ -100,3 +100,58 @@ def test_terminal_prefix_pending_and_missing_source_resume_without_invented_even
     missing = replace(inputs(), bars=inputs().bars[:-2])
     stopped = api().run_etf_monthly_screen(missing)
     assert api().resume_etf_monthly_screen(missing, stopped.checkpoint) == stopped
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("entry_stop", True),
+        ("entry_stop", 1),
+        ("entry_stop", 1.0),
+        ("entry_index", Decimal("216")),
+        ("entry_index", 216.0),
+    ],
+)
+def test_equality_equivalent_checkpoint_numeric_types_are_rejected(field, value):
+    req = inputs()
+    result = api().run_etf_monthly_screen(req, through_session=date(2016, 11, 1))
+    altered = replace(result.checkpoint, **{field: value})
+    assert altered == result.checkpoint  # Demonstrate why equality is insufficient.
+    with pytest.raises(ValueError):
+        api().resume_etf_monthly_screen(req, altered)
+    forged = replace(result, checkpoint=altered)
+    with pytest.raises(ValueError):
+        api().verify_etf_monthly_result(forged)
+    with pytest.raises(ValueError):
+        api().checkpoint_etf_monthly_screen(forged)
+
+
+@pytest.mark.parametrize("value", [0, False, 0.0])
+def test_nested_checkpoint_decimal_types_are_not_laundered(value):
+    req = inputs()
+    req = replace(req, protocol=replace(req.protocol, side_fee=Decimal("0")))
+    result = api().run_etf_monthly_screen(req, through_session=date(2016, 11, 1))
+    account = replace(result.account, fees=value)
+    assert account == result.account
+    altered = replace(result.checkpoint, account=account)
+    with pytest.raises(ValueError):
+        api().resume_etf_monthly_screen(req, altered)
+    with pytest.raises(ValueError):
+        api().verify_etf_monthly_result(replace(result, account=account))
+
+
+def test_nested_enum_string_and_result_integer_decimal_substitutions_are_rejected():
+    req = inputs()
+    result = api().run_etf_monthly_screen(req, through_session=date(2016, 11, 1))
+    position = replace(result.account.position)
+    object.__setattr__(position, "asset_class", "equity")
+    account = replace(result.account, position=position)
+    assert account == result.account
+    with pytest.raises(ValueError):
+        api().resume_etf_monthly_screen(req, replace(result.checkpoint, account=account))
+    with pytest.raises(ValueError):
+        api().verify_etf_monthly_result(replace(result, account=account))
+    account = replace(result.account, event_count=Decimal(result.account.event_count))
+    assert account == result.account
+    with pytest.raises(ValueError):
+        api().verify_etf_monthly_result(replace(result, account=account))
