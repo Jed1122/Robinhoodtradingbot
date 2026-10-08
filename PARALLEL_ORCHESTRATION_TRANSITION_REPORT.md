@@ -1,5 +1,27 @@
 # Parallel Orchestration Transition Report
 
+## Newly authorized corrected-code development study — 2026-10-08
+
+PR24 is verified merged at `bc49e1104a5c3c3d2498df6ea39ecc6f008e9bc1`, tree
+`ba6e2d4984a7e8098a6e01423aae676e572d421f`, equal to reviewed/tested head16494c5.
+All14 exact-head hosted jobs passed; current source full9265/native20 and unchanged
+80%/90% coverage gates passed. This is software integration, not deployment.
+
+The operator has now explicitly authorized step2: a newly frozen research-only
+DEVELOPMENT study using that corrected evaluator and unchanged fixed SPY/cash
+rules, inputs, risk, costs and rejection criteria. See the
+[operation specification](docs/superpowers/specs/2026-10-08-etf-daily-study-v2-design.md)
+and [execution plan](docs/superpowers/plans/2026-10-08-etf-daily-study-v2.md).
+This new authorization supersedes the prior release-only prohibition on a fresh
+study; it does not authorize changes to strategy, risk, source admission, trades,
+spending, deployment or holdout evaluation. Prior reports remain immutable and
+invalid as corrected-code evidence; their old results are not current results.
+
+New study is not yet evaluated at this checkpoint. All source/cost/execution/
+economic/promotion/live flags remain false. Existing recurring integration
+automation stays paused; do not resume old PR17/22/23/24 or repeat completed
+implementation work. No broker/customer/credential/provider calls are included.
+
 ## Performance-return correction; release blocked — 2026-10-07
 
 A new substantive review finding in [PR #24](https://github.com/Jed1122/Robinhoodtradingbot/pull/24#discussion_r4212582213)
