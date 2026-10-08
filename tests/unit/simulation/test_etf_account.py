@@ -53,6 +53,26 @@ def instrument():
     )
 
 
+def test_atomic_ex_mark_v2_is_explicit_and_old_event_preimages_remain_unchanged():
+    old = api().EtfAccountEvent(
+        content_hash("legacy-ex"),
+        0,
+        _ns(NOW),
+        "dividend_ex",
+        action_id=content_hash("action"),
+        cash_per_share=D("1"),
+    )
+    assert old.event_hash == content_hash({"schema": "etf-account-event-v1", "event": old})
+    with pytest.raises(ValueError):
+        replace(old, kind="dividend_ex_mark_v2")
+    atomic = replace(old, kind="dividend_ex_mark_v2", mark_price=D("99"))
+    assert atomic.event_hash == content_hash({"schema": "etf-account-event-v2", "event": atomic})
+    with pytest.raises(ValueError):
+        replace(atomic, kind="dividend_ex")
+    with pytest.raises(ValueError):
+        replace(atomic, mark_price=D("0"))
+
+
 def intent(name="entry", side=Side.BUY, quantity=Decimal(".1"), price=Decimal("100"), at=NOW):
     frozen = study()
     return OrderIntent(

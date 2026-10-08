@@ -76,11 +76,13 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.extend(simulation_directory.glob("etf_native_history.py"))
         modules.extend(simulation_directory.glob("etf_native_models.py"))
         modules.extend(simulation_directory.glob("etf_incremental_history.py"))
+        modules.extend(simulation_directory.glob("etf_daily_screen.py"))
 
     research_directory = source_root / "research"
     if research_directory.is_dir():
         modules.extend(research_directory.glob("options_account_*.py"))
         modules.extend(research_directory.glob("etf_costs.py"))
+        modules.extend(research_directory.glob("etf_daily_*.py"))
 
     return tuple(sorted((module.resolve() for module in modules), key=str))
 

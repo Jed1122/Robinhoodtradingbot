@@ -1,5 +1,72 @@
 # Parallel Orchestration Transition Report
 
+## Performance-return correction; release blocked — 2026-10-07
+
+A new substantive review finding in [PR #24](https://github.com/Jed1122/Robinhoodtradingbot/pull/24#discussion_r4212582213)
+identified fixed-capital bootstrap P&L fractions being reused as conventional
+volatility/Sharpe/Sortino returns. The scoped correction separates prior-NAV
+performance returns from the unchanged fixed-capital paired series. Nonpositive
+prior NAV leaves return metrics undefined rather than inventing a denominator.
+Economic protocol v2 binds this report convention; strategy, risk, sizing,
+execution assumptions, costs, bootstrap and screening criteria remain unchanged.
+Fresh exact-candidate validation, review and all hosted checks remain mandatory.
+
+The original private DEVELOPMENT reports and preregistration are preserved,
+not rewritten or rerun. They remain observations of the old code/protocol only:
+their identities cannot certify corrected-code performance or current economic
+results. The earlier non-surviving candidate does not justify data/execution
+expansion. No current corrected-code economic study is asserted, and the final
+2024–2025 outcome set remains untouched. All source/cost/execution/economic/
+promotion/live flags remain false. No broker/provider/customer/credential,
+spending, deployment, risk or trading action is included in this correction.
+
+## Daily DEVELOPMENT screen completed; release pending — 2026-10-07
+
+This historical checkpoint superseded the older next-work wording below before
+the performance correction above. All three implementation tasks in
+the [daily-screen implementation plan](docs/superpowers/plans/2026-10-07-etf-lean-daily-screen.md)
+are complete. The [runnable daily screen](docs/etf-daily-development-screen.md)
+reuses the fixed strategy, canonical risk and account machinery, with versioned
+research-only protocol, private reports and explicit adverse daily execution
+assumptions. It does not manufacture quote/fill observations or broker support.
+
+The original frozen private DEVELOPMENT study completed once after independent review
+and local certification. **No scenario qualified for further research.** Reject
+execution/data expansion for this candidate: no acquisition, calibration trade,
+new broker worker, paper/shadow-policy work or deployment is justified by this
+result. The final 2024–2025 outcome set remains untouched. A future hypothesis
+requires a new frozen design and development evaluation, not holdout tuning.
+Private monetary aggregates and original captures remain outside Git and Cloud.
+
+Code candidate `f962f0d5b0040e08c04b6356680012ef28c8441b` passed 9,261 tests
+with 33 optional skips, then 20 native tests; combined coverage was 91.71% and
+unchanged 80% overall / 90% critical gates passed. Ruff, Mypy, Bandit, both frozen
+locks, advisory audits, SBOM reproducibility and deployment-manifest checks
+passed. Optional backup-test skips do not establish deployed recovery. Reviewed
+ex-dividend accounting and sizing findings were regression-tested and fixed;
+the architecture guard remained intact. These results certify that code
+candidate, not new hosted jobs or a running deployment.
+
+[PR #24](https://github.com/Jed1122/Robinhoodtradingbot/pull/24) is open and
+release remains pending. Its handoff-only correction must receive exact-current-
+head checks and review; prior-head green jobs cannot be substituted. Merge only
+after every required push/PR quality, research, security, dependency and
+configuration job actually succeeds and substantive findings are resolved.
+The actual integration base is `ce4a4dbfd706a55fc9fd370c676a8dbdaf0bc1b7`,
+the verified PR23 merge with tree `0cfda837467f77233c8c659cbdc269b9c3efef62`.
+PR22 and PR23 are already merged; never merge them again. A merge is not deployment.
+
+Native whole-share quantity remains zero under unchanged $15/$5 caps.
+Hypothetical fractional terms, raw/no-splits basis, daily fills, T+2 settlement
+and costs are assumptions; historical publication/correction chronology remains
+unqualified. Source, genuine-cost, execution, economic, promotion and live flags
+remain false. Genuine fees/fills/causal clocks, eligible historical execution
+inputs, accepted after-cost evidence, trusted paper/shadow composition and actual
+chosen-runtime recovery remain separately blocked or unverified. The prospective
+lean pilot policy is not implemented; existing gates and permanently ineligible
+diagnostic owners remain unchanged. No broker/customer/credential call, spending,
+subscription change, risk increase, activation or real-money order occurred.
+
 ## Lean delivery progress — 2026-10-07
 
 The [current cost/sizing report](docs/etf-lean-feasibility-2026-10-07.md)

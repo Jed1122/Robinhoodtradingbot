@@ -706,5 +706,94 @@ def benchmark_screen_run(
     )
 
 
+@app.command("daily-screen-run")
+def daily_screen_run(
+    capture_dir: Annotated[Path, typer.Option()],
+    manifest_hash: Annotated[str, typer.Option()],
+    reference_dir: Annotated[Path, typer.Option()],
+    calendar_hash: Annotated[str, typer.Option()],
+    issuer_hash: Annotated[str, typer.Option()],
+    report_dir: Annotated[Path, typer.Option()],
+    config_dir: Annotated[Path, typer.Option()] = Path("configs"),
+) -> None:
+    """Private fixed-rule DEVELOPMENT screen, not eligible economics or execution."""
+    descriptor = -1
+    try:
+        from trading_bot.research.etf_daily_economics import (
+            etf_daily_cost_plan_hash,
+            etf_daily_economic_plan_hash,
+            run_etf_daily_economics,
+        )
+        from trading_bot.research.etf_daily_intake import (
+            etf_daily_source_plan_hash,
+            make_etf_daily_request,
+        )
+
+        source = read_etf_native_bars(capture_dir, manifest_hash, repository_root=_REPOSITORY)
+        calendar, issuer = _read_reference_inputs(reference_dir, calendar_hash, issuer_hash)
+        study = freeze_etf_study(
+            _load(config_dir),
+            code_hash=_code_hash(),
+            source_plan_hash=etf_daily_source_plan_hash(source, calendar, issuer),
+            cost_plan_hash=etf_daily_cost_plan_hash(),
+            holdout_previously_examined=False,
+        )
+        request = make_etf_daily_request(study, source, calendar, issuer)
+        descriptor = _open_root(report_dir, _REPOSITORY)
+        preregistration_hash = _publish_report_fd(
+            descriptor,
+            {
+                "schema": "etf-daily-screen-preregistration-v1",
+                "study": study,
+                "protocol": request.protocol,
+                "economic_plan_hash": etf_daily_economic_plan_hash(request.protocol),
+                "input_hash": request.request_hash,
+                "screening_verdict": "NOT_EVALUATED",
+                "holdout_evaluated": False,
+                "source_qualified": False,
+                "cost_qualified": False,
+                "execution_enabled": False,
+                "economic_admitted": False,
+                "evidence_promotable": False,
+            },
+        )
+        result = run_etf_daily_economics(request)
+        digest = _publish_report_fd(
+            descriptor,
+            {
+                "schema": "etf-daily-screen-report-v1",
+                **asdict(result),
+                "result_hash": result.result_hash,
+                "preregistration_hash": preregistration_hash,
+                "holdout_evaluated": False,
+                "live_authorized": False,
+            },
+        )
+    except (ValueError, TypeError, ArithmeticError, OSError, RuntimeError):
+        _invalid()
+        return
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    typer.echo(
+        canonical_json(
+            {
+                "report_hash": digest,
+                "preregistration_hash": preregistration_hash,
+                "protocol_hash": result.protocol_hash,
+                "screening_verdict_counts": dict(
+                    Counter(s.screening_verdict for s in result.scores)
+                ),
+                "holdout_evaluated": False,
+                "source_qualified": False,
+                "cost_qualified": False,
+                "execution_enabled": False,
+                "economic_admitted": False,
+                "evidence_promotable": False,
+            }
+        )
+    )
+
+
 if __name__ == "__main__":
     app()
