@@ -1,5 +1,46 @@
 # Parallel Orchestration Transition Report
 
+## Monthly development study complete; candidate stopped — 2026-10-08
+
+The approved monthly-SMA10 implementation, integrated verification, executable
+freeze and one main-only DEVELOPMENT study are complete. The fixed 24-case grid
+returned **24 INSUFFICIENT_EVIDENCE, 0 REJECT, 0 PROCEED_TO_FURTHER_RESEARCH**;
+the disposition is **STOP_CANDIDATE**. All cases retained an unattempted scheduled
+intent at the boundary, 12 also retained open account obligations, and no
+constrained-reference uncertainty lower bound was positive. Incomplete evidence
+does not prove profitability or definitively establish unprofitability. No
+boundary, costs, rules or criteria were changed to obtain a favorable result.
+
+Reviewed executable `7dc2671615582eedff5295012895ddcdbe123384` was integrated by
+PR25 at `f4d03a4d23a6de5d632a5e6e2f0e40efd2920ea5`, matching executable tree
+`624c1093eea64a66ac34d5440bfa475e2da3e7f6`. Full local 9,433/native 20 tests,
+combined 91.86% coverage and unchanged overall80/critical90 gates passed;
+all14 required exact-head hosted jobs passed. The independent review finding
+was corrected with watched regressions and the full suite before outcomes.
+
+The one study used 2,012 pre-2024 bars and 1,802 evaluated sessions through
+December29,2023. 2016–2023 remains adaptive previously examined development;
+2024–2025 outcomes were not evaluated. Original captures are unchanged. Main-only
+aggregate checks verified all24 Decimal cost/accounting/verdict cases, six
+terminal states, private owner/mode, hashes and preregistration-before-result
+linkage without rerunning market outcomes. See the
+[complete sanitized status and identity record](docs/etf-monthly-study-status-2026-10-08.md).
+
+Stop this candidate's data/execution expansion: no acquisitions, calibration
+trades, holdout tuning, new worker/paper-shadow policy or deployment. Native
+whole-share sizing is zero; fractional execution and operating routes remain
+unverified. All source/cost/execution/economic/promotion/live flags remain false.
+Genuine costs, accepted economics, trusted paper/shadow and actual deployed
+recovery remain separate unfinished prerequisites. Existing risk caps, paused
+defaults and old gates remain intact; the old automation stays paused.
+Completed PR17/22/23/24/25 must not be resumed or remerged.
+
+Next: a separately frozen, economically plausible new hypothesis and feasible
+operating/order route, then conditional development/final validation before any
+protected worker, genuine paper/shadow/recovery or explicitly authorized live
+pilot. The broader project is incomplete; no profitability is promised.
+Older checkpoints below are historical and superseded by this leading state.
+
 ## Monthly research software implemented; integrated gates pending — 2026-10-08
 
 The approved six-task monthly-SMA10 plan is executing natively. The distinct
