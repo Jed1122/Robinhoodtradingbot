@@ -1,18 +1,20 @@
 """Fail-closed YAML/environment loading and release-envelope enforcement."""
 
+import json
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, cast, get_args, get_origin
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from trading_bot.config.hashing import hash_loaded_config
 from trading_bot.config.models import AppConfig, SafetyEnvelope
 from trading_bot.domain import ConfigHash, ExecutionMode
+from trading_bot.domain.decimal_utils import _require_sha256_hex
 
 ENV_PREFIX = "TRADING_BOT__"
 ENV_ALIASES: dict[str, tuple[str, ...]] = {
@@ -35,6 +37,53 @@ class LoadedConfig:
     safety_envelope: SafetyEnvelope
     canonical_json: bytes
     config_hash: ConfigHash
+
+
+def _restore_canonical_value(value: object, annotation: Any) -> object:
+    """Decode the existing complete graph; canonical decimals are text."""
+    if get_origin(annotation) is Annotated:
+        return _restore_canonical_value(value, get_args(annotation)[0])
+    if annotation is Decimal:
+        if type(value) is not str:
+            raise ConfigLoadError("canonical configuration invalid")
+        return Decimal(value)
+    if get_origin(annotation) is tuple:
+        if type(value) is not list:
+            raise ConfigLoadError("canonical configuration invalid")
+        return [
+            _restore_canonical_value(item, get_args(annotation)[0])
+            for item in cast(list[object], value)
+        ]
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        if type(value) is not dict or set(value) != set(annotation.model_fields):
+            raise ConfigLoadError("canonical configuration invalid")
+        return {
+            name: _restore_canonical_value(cast(dict[str, object], value)[name], field.annotation)
+            for name, field in annotation.model_fields.items()
+        }
+    return value
+
+
+def restore_loaded_config(canonical_json: bytes, expected_hash: ConfigHash) -> LoadedConfig:
+    """Reconstruct bounded canonical evidence through the one validated graph."""
+    try:
+        if type(canonical_json) is not bytes or not 0 < len(canonical_json) <= 1048576:
+            raise ConfigLoadError("canonical configuration invalid")
+        _require_sha256_hex(expected_hash, "canonical configuration")
+        row = json.loads(canonical_json)
+        if type(row) is not dict or set(row) != {"config", "safety_envelope"}:
+            raise ConfigLoadError("canonical configuration invalid")
+        config = AppConfig.model_validate(_restore_canonical_value(row["config"], AppConfig))
+        envelope = SafetyEnvelope.model_validate(
+            _restore_canonical_value(row["safety_envelope"], SafetyEnvelope)
+        )
+        enforce_safety_envelope(config, envelope)
+        canonical, digest = hash_loaded_config(config, envelope)
+        if (canonical, digest) != (canonical_json, expected_hash):
+            raise ConfigLoadError("canonical configuration invalid")
+        return LoadedConfig(config, envelope, canonical, digest)
+    except (ValueError, TypeError, ArithmeticError, RecursionError):
+        raise ConfigLoadError("canonical configuration invalid") from None
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):

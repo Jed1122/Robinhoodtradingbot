@@ -1,5 +1,118 @@
 # Parallel Orchestration Transition Report
 
+## Monthly research software implemented; integrated gates pending — 2026-10-08
+
+The approved six-task monthly-SMA10 plan is executing natively. The distinct
+offline contract/input path, shared protected lifecycle with checked pure
+resumption and frozen24-case economics are implemented. Task3's206 and
+Task4's341 focused/regression tests passed, including exact legacy hash controls,
+fee-once cash expectations and fail-closed mutation/window checks. The new
+private CLI publishes preregistration before evaluation, bounds reports8MiB,
+holds the verified output descriptor and requires unchanged clean committed
+code/config. These are software/fixture facts, not customer execution evidence.
+
+The entire branch still needs final exact-candidate local/hosted verification
+and independent review. No new executable study freeze or market outcome run
+has occurred. 2016–2023 remains previously examined adaptive development;
+2024–2025 outcomes are excluded. Old study bytes/strategy rejection stay intact.
+All source/cost/execution/economic/promotion/live flags remain false. No broker,
+provider, credential, acquisition, billing, deployment or risk-limit change is
+included. Next: complete integrated gates, freeze the reviewed executable and
+run exactly one main-only development study; then report its honest disposition.
+
+Older checkpoints below are historical, superseded by this leading state.
+
+## Monthly hypothesis and implementation plan approved; execution started — 2026-10-08
+
+The operator approved the written monthly-SMA10 research design with "Ok, please
+proceed." The [implementation plan](docs/superpowers/plans/2026-10-08-etf-monthly-trend-hypothesis.md)
+now maps six fixture-first increments onto existing canonical configuration,
+economic accounting and reporting primitives. Native execution is preserved;
+the operator approved all six increments through one frozen development study.
+Fixture-first implementation has started, without a completion claim. New typed policy,
+source, result and checkpoint identities remain distinct from the rejected
+20/100 study. No executable freeze or new economic result is established.
+
+This checkpoint changes human documentation only. No source/config/test/lock/
+workflow changes, market outcomes, private-data inspection, broker/provider
+calls, purchases, deployment, risk changes or live operation occurred. All
+readiness flags remain false; the old candidate remains stopped, private originals
+are preserved and final 2024–2025 outcomes stay excluded. Next: implement and
+verify the credential-free research path, then freeze before one study. No acquisition or
+execution expansion is justified by an untested hypothesis.
+Sections below are retained historical checkpoints, superseded by this leading
+state; their earlier pending-review wording is not the current disposition.
+
+## New monthly SPY/cash hypothesis proposed — 2026-10-08
+
+The operator requested a new frozen research hypothesis after the corrected
+20/100 candidate failed its DEVELOPMENT screen. The
+[written monthly-SMA10 proposal](docs/superpowers/specs/2026-10-08-etf-monthly-trend-hypothesis-design.md)
+fixes one ten-month/month-end SPY/cash rule, unchanged canonical protective exits
+and risk, adverse next-session assumptions and explicit conservative criteria.
+It is a design-only preregistration proposal awaiting written-specification
+review, not an approved implementation, executable freeze or economic result.
+No source/config/test/lock/workflow behavior changed and no new outcome run,
+private input inspection, broker/provider call, spending or deployment occurred.
+
+The previously examined development period must remain labeled adaptive research;
+2024–2025 outcomes remain excluded. The rejected momentum candidate stays stopped,
+and its results/original captures are preserved. The new policy requires separate
+versioned research contracts, fixture-first compatibility verification, reviewed
+implementation and exact executable preregistration before any evaluation. No
+parameter grid or outcome-driven rule amendment is included. All source/cost/
+execution/economic/promotion/live flags stay false. The existing integration
+automation remains paused; no completed PR is resumed. The next gate is written
+design review, then an implementation plan—not execution/data expansion.
+
+## Corrected-code development screen completed — 2026-10-08
+
+The newly authorized step2 study has completed exactly once at unchanged
+corrected source `bc49e1104a5c3c3d2498df6ea39ecc6f008e9bc1` after the
+before-outcomes freeze `e5166633e1c48c916eb75bcd91c15023da08e84d`, fresh588
+focused tests and an independent clean public freeze review. Main-only input,
+hash, mode, identity and all24 Decimal scenario/criteria checks passed.
+
+Current result: **9 REJECT, 15 INSUFFICIENT_EVIDENCE, 0 PROCEED_TO_FURTHER_RESEARCH**.
+This is a corrected-code DEVELOPMENT result, not reinterpretation of the old
+invalidated report. 2,012 pre2024 bars/1,912 evaluated sessions through
+December29,2023 were used; 2024–2025 outcomes were not evaluated by this run.
+All constrained-reference uncertainty lower bounds were negative. Private
+monetary records remain outside Git, Cloud and delegation; old bytes are unchanged.
+See the [new status/identity record](docs/etf-daily-study-v2-status-2026-10-08.md).
+
+Stop execution/data expansion for this candidate: no acquisition, calibration
+trade, new worker/paper-shadow policy or runtime deployment is justified.
+Further research requires a new frozen hypothesis/development study, not holdout
+tuning or unapproved risk increases. All source/cost/execution/economic/promotion/
+live flags remain false. The broader trading project remains incomplete;
+broker/paper-shadow/recovery and genuine cost evidence are not established.
+The existing integration automation stays paused. PR17/22/23/24 are completed
+history and must not be resumed or remerged. Older sections below are historical
+checkpoints, superseded by this leading disposition.
+
+## Newly authorized corrected-code development study — 2026-10-08
+
+PR24 is verified merged at `bc49e1104a5c3c3d2498df6ea39ecc6f008e9bc1`, tree
+`ba6e2d4984a7e8098a6e01423aae676e572d421f`, equal to reviewed/tested head16494c5.
+All14 exact-head hosted jobs passed; current source full9265/native20 and unchanged
+80%/90% coverage gates passed. This is software integration, not deployment.
+
+The operator has now explicitly authorized step2: a newly frozen research-only
+DEVELOPMENT study using that corrected evaluator and unchanged fixed SPY/cash
+rules, inputs, risk, costs and rejection criteria. See the
+[operation specification](docs/superpowers/specs/2026-10-08-etf-daily-study-v2-design.md)
+and [execution plan](docs/superpowers/plans/2026-10-08-etf-daily-study-v2.md).
+This new authorization supersedes the prior release-only prohibition on a fresh
+study; it does not authorize changes to strategy, risk, source admission, trades,
+spending, deployment or holdout evaluation. Prior reports remain immutable and
+invalid as corrected-code evidence; their old results are not current results.
+
+At that historical freeze checkpoint the study was not yet evaluated. All source/cost/execution/
+economic/promotion/live flags remain false. Existing recurring integration
+automation stays paused; do not resume old PR17/22/23/24 or repeat completed
+implementation work. No broker/customer/credential/provider calls are included.
+
 ## Performance-return correction; release blocked — 2026-10-07
 
 A new substantive review finding in [PR #24](https://github.com/Jed1122/Robinhoodtradingbot/pull/24#discussion_r4212582213)

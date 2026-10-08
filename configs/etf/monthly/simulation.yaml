@@ -1,0 +1,21 @@
+# Distinct credential-free research selection. Existing risk/envelope stay unchanged.
+mode: simulation
+live_trading_enabled: false
+runtime:
+  start_paused: true
+options:
+  enabled: false
+crypto:
+  enabled: false
+prediction_markets:
+  simulation_enabled: false
+  live_enabled: false
+equity_strategies:
+  etf_pilot:
+    enabled: false
+  research_candidate_strategy_ids:
+    - spy-cash-monthly-sma10-protected-development-v1
+  research_universe_symbols:
+    - SPY
+  research_relative_strength_top_n:
+    - 1

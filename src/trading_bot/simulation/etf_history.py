@@ -6,18 +6,14 @@ are implemented. Resume revalidates/replays the consumed fixture prefix; it is
 not a durable ledger or a production restart mechanism.
 """
 
-import json
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
-from typing import Annotated, Any, cast, get_args, get_origin
+from typing import Any
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel
-
-from trading_bot.config import LoadedConfig, enforce_safety_envelope
-from trading_bot.config.hashing import hash_loaded_config
-from trading_bot.config.models import AppConfig, SafetyEnvelope
+from trading_bot.config import LoadedConfig
+from trading_bot.config.loader import _restore_canonical_value, restore_loaded_config
 from trading_bot.domain import ConfigHash, InstrumentId
 from trading_bot.domain.decimal_utils import require_bounded_decimal
 from trading_bot.market_data.etf_source import (
@@ -58,34 +54,16 @@ _NEW_YORK = ZoneInfo("America/New_York")
 
 def _restore_value(value: object, annotation: Any) -> object:
     """Decode canonical Decimal text by the existing model, not a second schema."""
-    if get_origin(annotation) is Annotated:
-        return _restore_value(value, get_args(annotation)[0])
-    if annotation is Decimal:
-        _check(type(value) is str)
-        return Decimal(cast(str, value))
-    if get_origin(annotation) is tuple:
-        _check(type(value) is list)
-        return [_restore_value(item, get_args(annotation)[0]) for item in cast(list[object], value)]
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        _check(type(value) is dict and set(value) == set(annotation.model_fields))
-        return {
-            name: _restore_value(cast(dict[str, object], value)[name], field.annotation)
-            for name, field in annotation.model_fields.items()
-        }
-    return value
+    try:
+        return _restore_canonical_value(value, annotation)
+    except (ValueError, TypeError, ArithmeticError, RecursionError):
+        raise EtfHistoryError() from None
 
 
 def _policy(study: EtfStudy) -> LoadedConfig:
     _check(type(study) is EtfStudy)
     _check(type(study.canonical_config) is str and len(study.canonical_config) <= 1048576)
-    row = json.loads(study.canonical_config)
-    _check(type(row) is dict and set(row) == {"config", "safety_envelope"})
-    config = AppConfig.model_validate(_restore_value(row["config"], AppConfig))
-    envelope = SafetyEnvelope.model_validate(_restore_value(row["safety_envelope"], SafetyEnvelope))
-    enforce_safety_envelope(config, envelope)
-    canonical, digest = hash_loaded_config(config, envelope)
-    _check(canonical.decode() == study.canonical_config and digest == study.config_hash)
-    loaded = LoadedConfig(config, envelope, canonical, digest)
+    loaded = restore_loaded_config(study.canonical_config.encode(), ConfigHash(study.config_hash))
     # Reconstruct the record against its own frozen graph, not mutable files/env.
     reconstructed = replace(study, policy=loaded)
     _check(reconstructed == study and reconstructed.study_hash == study.study_hash)

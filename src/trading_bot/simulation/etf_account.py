@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
 from typing import Literal, Protocol
 
+from trading_bot.config import LoadedConfig
 from trading_bot.domain import (
     AccountId,
     AssetClass,
@@ -35,6 +36,7 @@ from trading_bot.domain.order_state_machine import transition
 from trading_bot.market_data.etf_source import _ceil_time, _ns
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.portfolio.sizing import SizingDecision, SizingRequest
+from trading_bot.research.etf_monthly_study import EtfMonthlyStudy, monthly_policy
 from trading_bot.research.etf_study import EtfStudy
 from trading_bot.risk.limits import evaluate_exposure_limits
 from trading_bot.risk.losses import (
@@ -306,7 +308,7 @@ class _AccountReplayInput(Protocol):
     """Internal economic seam; public historical request guards stay unchanged."""
 
     @property
-    def study(self) -> EtfStudy: ...
+    def study(self) -> EtfStudy | EtfMonthlyStudy: ...
 
     @property
     def initial_cash(self) -> Decimal: ...
@@ -322,7 +324,7 @@ def _steps(
     request: _AccountReplayInput, *, origin: datetime | None = None
 ) -> Generator[EtfAccountResult, EtfAccountEvent, None]:
     """Shared one-fact owner; never suspend inside a Decimal local context."""
-    loaded = _policy(request.study)
+    loaded = _account_policy(request.study)
     # Only a separately validated forward wrapper supplies an origin. The
     # historical public path retains its original preimages and UTC window.
     starts_at = request.study.requested_start if origin is None else origin
@@ -741,17 +743,22 @@ def _run(
         reducer.close()
 
 
-class EtfAccountStepper:
+def _account_policy(study: EtfStudy | EtfMonthlyStudy) -> LoadedConfig:
+    # Only these two immutable, separately validated offline contracts enter.
+    if isinstance(study, EtfMonthlyStudy):
+        return monthly_policy(study)
+    return _policy(study)
+
+
+class _AccountStepper:
     """Bounded offline advancement; a failed reducer cannot be used again.
 
     Reconstruction reduces the retained tape once. Results and hashes remain
     legacy v1; this object is not a production risk or authorization capability.
     """
 
-    def __init__(self, request: EtfAccountRequest) -> None:
-        _check(type(request) is EtfAccountRequest)
-        replace(request)
-        self._request = replace(request, events=())
+    def __init__(self, request: _AccountReplayInput) -> None:
+        self._request = request
         self._events: list[EtfAccountEvent] = []
         self._failed = False
         self._reducer = _steps(self._request)
@@ -796,6 +803,12 @@ class EtfAccountStepper:
             self._failed = True
             self._reducer.close()
             raise EtfAccountError() from None
+
+
+class EtfAccountStepper(_AccountStepper):
+    def __init__(self, request: EtfAccountRequest) -> None:
+        _check(type(request) is EtfAccountRequest)
+        super().__init__(replace(request))
 
 
 def replay_etf_account(
@@ -868,6 +881,12 @@ def admit_etf_pending_intent(
     broker, mutable reservation, retry or automatic quantity change is introduced.
     """
     current = replay_etf_account(request)
+    return _admit_pending(request, candidate, current)
+
+
+def _admit_pending(
+    request: _AccountReplayInput, candidate: EtfAccountEvent, current: EtfAccountResult
+) -> EtfPendingAdmission:
     _check(type(candidate) is EtfAccountEvent and candidate.kind == "pending_intent")
     replace(candidate)
     intent = _required(candidate.intent)
@@ -880,7 +899,13 @@ def admit_etf_pending_intent(
             False, "duplicate_pending_identity", candidate.event_hash, current
         )
     try:
-        proposed = replay_etf_account(replace(request, events=(*request.events, candidate)))
+        _check(len(request.events) < 10000)
+        _check(
+            _ns(request.study.requested_start) <= candidate.at_ns < _ns(request.study.requested_end)
+        )
+        proposed = _run(
+            _AppendedInput(request, (*request.events, candidate)), len(request.events) + 1
+        )
     except EtfAccountError:
         return EtfPendingAdmission(
             False, "canonical_account_admission_denied", candidate.event_hash, current
@@ -894,3 +919,21 @@ def admit_etf_pending_intent(
     return EtfPendingAdmission(
         True, "canonical_account_limits_allow", candidate.event_hash, proposed
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _AppendedInput:
+    original: _AccountReplayInput
+    events: tuple[EtfAccountEvent, ...]
+
+    @property
+    def study(self) -> EtfStudy | EtfMonthlyStudy:
+        return self.original.study
+
+    @property
+    def initial_cash(self) -> Decimal:
+        return self.original.initial_cash
+
+    @property
+    def run_id(self) -> str:
+        return self.original.run_id
