@@ -12,12 +12,12 @@ from decimal import Decimal, localcontext
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from trading_bot.clock import require_utc
 from trading_bot.domain import Bar, BarInterval, ConfigHash, InstrumentId
 from trading_bot.market_data.alpaca_native import AlpacaBarRecord
 from trading_bot.market_data.etf_native_archive import EtfNativeBarsArchive
 from trading_bot.market_data.etf_source import _ceil_time, _ns
 from trading_bot.market_data.recording import content_hash
+from trading_bot.research.etf_exploratory_intake import validate_etf_exploratory_archive
 from trading_bot.research.etf_study import EtfStudy
 from trading_bot.simulation.etf_history import _policy
 from trading_bot.simulation.lifecycle_accounting import _context
@@ -62,34 +62,10 @@ class EtfLatestVintageRequest:
     def __post_init__(self) -> None:
         try:
             _policy(self.study)
-            if (
-                type(self.archive) is not EtfNativeBarsArchive
-                or self.study.source_plan_hash != latest_vintage_source_plan_hash(self.archive)
-                or type(self.archive.bars) is not tuple
-                or not 0 < len(self.archive.bars) <= 10000
-            ):
+            if self.study.source_plan_hash != latest_vintage_source_plan_hash(self.archive):
                 raise EtfLatestVintageError()
-            require_utc(self.archive.captured_at)
-            replace(self.archive.request)
-            if self.archive.request.kind != "bars":
-                raise EtfLatestVintageError()
-            previous = -1
-            for row in self.archive.bars:
-                if type(row) is not AlpacaBarRecord:
-                    raise EtfLatestVintageError()
-                replace(row)
-                start = _ceil_time(row.timestamp_ns).astimezone(_NEW_YORK)
-                if (
-                    row.timestamp_ns <= previous
-                    or min(row.open, row.high, row.low, row.close) <= 0
-                    or (start.hour, start.minute, start.second, start.microsecond) != (0, 0, 0, 0)
-                    or _ns(start.astimezone(UTC)) != row.timestamp_ns
-                    or not _ns(self.study.requested_start)
-                    <= row.timestamp_ns
-                    < _ns(self.study.requested_end)
-                ):
-                    raise EtfLatestVintageError()
-                previous = row.timestamp_ns
+            validate_etf_exploratory_archive(self.archive, start=self.study.requested_start,
+                                            end=self.study.requested_end)
         except (ValueError, TypeError, ArithmeticError, AttributeError):
             raise EtfLatestVintageError() from None
 
