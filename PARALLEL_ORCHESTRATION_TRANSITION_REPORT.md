@@ -1,5 +1,27 @@
 # Parallel Orchestration Transition Report
 
+## Monthly research software implemented; integrated gates pending — 2026-10-08
+
+The approved six-task monthly-SMA10 plan is executing natively. The distinct
+offline contract/input path, shared protected lifecycle with checked pure
+resumption and frozen24-case economics are implemented. Task3's206 and
+Task4's341 focused/regression tests passed, including exact legacy hash controls,
+fee-once cash expectations and fail-closed mutation/window checks. The new
+private CLI publishes preregistration before evaluation, bounds reports8MiB,
+holds the verified output descriptor and requires unchanged clean committed
+code/config. These are software/fixture facts, not customer execution evidence.
+
+The entire branch still needs final exact-candidate local/hosted verification
+and independent review. No new executable study freeze or market outcome run
+has occurred. 2016–2023 remains previously examined adaptive development;
+2024–2025 outcomes are excluded. Old study bytes/strategy rejection stay intact.
+All source/cost/execution/economic/promotion/live flags remain false. No broker,
+provider, credential, acquisition, billing, deployment or risk-limit change is
+included. Next: complete integrated gates, freeze the reviewed executable and
+run exactly one main-only development study; then report its honest disposition.
+
+Older checkpoints below are historical, superseded by this leading state.
+
 ## Monthly hypothesis and implementation plan approved; execution started — 2026-10-08
 
 The operator approved the written monthly-SMA10 research design with "Ok, please
