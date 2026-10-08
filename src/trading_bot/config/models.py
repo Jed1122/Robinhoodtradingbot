@@ -81,7 +81,10 @@ Pct = ConfigDecimal
 Seconds = ConfigDecimal
 
 _RESEARCH_SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,14}\Z")
-_EQUITY_RESEARCH_CANDIDATES = frozenset({"equity_momentum", "equity_relative_strength"})
+_MONTHLY_ETF_CANDIDATE = "spy-cash-monthly-sma10-protected-development-v1"
+_EQUITY_RESEARCH_CANDIDATES = frozenset(
+    {"equity_momentum", "equity_relative_strength", _MONTHLY_ETF_CANDIDATE}
+)
 
 
 class StrictModel(BaseModel):
@@ -595,6 +598,18 @@ class AppConfig(StrictModel):
 
     @model_validator(mode="after")
     def live_flag_never_unpauses_startup(self) -> Self:
+        if _MONTHLY_ETF_CANDIDATE in self.equity_strategies.research_candidate_strategy_ids and (
+            self.equity_strategies.research_candidate_strategy_ids != (_MONTHLY_ETF_CANDIDATE,)
+            or self.equity_strategies.research_universe_symbols != ("SPY",)
+            or self.equity_strategies.etf_pilot.enabled
+            or self.mode not in {ExecutionMode.BACKTEST, ExecutionMode.SIMULATION}
+            or self.live_trading_enabled
+            or not self.runtime.start_paused
+            or self.options.enabled
+            or self.crypto.enabled
+            or self.prediction_markets.simulation_enabled
+        ):
+            raise ValueError("monthly ETF selection is singleton paused offline research only")
         if self.equity_strategies.etf_pilot.enabled and (
             self.mode not in {ExecutionMode.BACKTEST, ExecutionMode.SIMULATION}
             or self.live_trading_enabled

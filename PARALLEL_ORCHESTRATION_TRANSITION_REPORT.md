@@ -1,12 +1,13 @@
 # Parallel Orchestration Transition Report
 
-## Monthly hypothesis approved; implementation plan prepared — 2026-10-08
+## Monthly hypothesis and implementation plan approved; execution started — 2026-10-08
 
 The operator approved the written monthly-SMA10 research design with "Ok, please
 proceed." The [implementation plan](docs/superpowers/plans/2026-10-08-etf-monthly-trend-hypothesis.md)
 now maps six fixture-first increments onto existing canonical configuration,
 economic accounting and reporting primitives. Native execution is preserved;
-the plan is awaiting operator review before implementation. New typed policy,
+the operator approved all six increments through one frozen development study.
+Fixture-first implementation has started, without a completion claim. New typed policy,
 source, result and checkpoint identities remain distinct from the rejected
 20/100 study. No executable freeze or new economic result is established.
 
@@ -14,8 +15,8 @@ This checkpoint changes human documentation only. No source/config/test/lock/
 workflow changes, market outcomes, private-data inspection, broker/provider
 calls, purchases, deployment, risk changes or live operation occurred. All
 readiness flags remain false; the old candidate remains stopped, private originals
-are preserved and final 2024–2025 outcomes stay excluded. Next: review the plan,
-then implement and verify the credential-free research path. No acquisition or
+are preserved and final 2024–2025 outcomes stay excluded. Next: implement and
+verify the credential-free research path, then freeze before one study. No acquisition or
 execution expansion is justified by an untested hypothesis.
 Sections below are retained historical checkpoints, superseded by this leading
 state; their earlier pending-review wording is not the current disposition.

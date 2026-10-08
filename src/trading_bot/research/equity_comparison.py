@@ -55,6 +55,10 @@ class EquityComparisonRequest:
     dataset: EquityResearchDataset
 
     def __post_init__(self) -> None:
+        if "spy-cash-monthly-sma10-protected-development-v1" in (
+            self.loaded.config.equity_strategies.research_candidate_strategy_ids
+        ):
+            raise ValueError("monthly ETF policy requires its separate offline study")
         canonical, config_hash = hash_loaded_config(
             self.loaded.config,
             self.loaded.safety_envelope,

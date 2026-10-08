@@ -10,7 +10,7 @@
 
 **Spec:** [Approved research design](../specs/2026-10-08-etf-monthly-trend-hypothesis-design.md).
 
-**Status:** Prepared for operator review; no implementation or market-outcome run completed. Preserve the already supplied native execution method. Starting committed base: `000e2519b3d60c896cefef932f29a90db8649126`; this plan and approval checkpoint are subsequent human-document changes only.
+**Status:** Operator approved the implementation plan and full fixture-first implementation, integrated verification, executable freeze and one development study on October 8, 2026. Native execution underway; no implementation or market-outcome result yet established. Starting execution head: `d254eabf2817b2a14a28e9049aedd8d151caedbd`; preceding design/plan changes were human documentation only.
 
 ## Global Constraints
 
@@ -237,6 +237,6 @@ the exact binary/version; unavailable tooling is a gap, not a passing check.
 
 The plan covers approved spec sections1–2 in Task1/attempt recording; sections3–4 in Tasks2–3; section5 in Tasks3/5; section6 in Task4; section7 in Tasks1–6; section8 in the conditional handoff. Five Review Focus conditions have explicit owning task tests. The shared interfaces above define each name before consumption, and old protocol/config/hash guards remain controls rather than casualties of extraction.
 
-This is a written plan, not completion evidence. Required next action: operator reviews it; preserve native execution and use `superpowers:executing-plans` after that review. Main implements critical paths; independent agents may audit public contracts/fixtures only. Only reviewed, verified software and a later exact executable freeze can precede market outcomes.
+This approved plan is not completion evidence. Execute using `superpowers:executing-plans`; main implements critical paths and independent agents may audit public contracts/fixtures only. Only reviewed, verified software and a later exact executable freeze can precede market outcomes.
 
 Project completion remains conditional: surviving development -> eligible sources/defensible costs -> untouched final evaluation -> protected broker worker -> genuine qualifying paper/shadow/recovery/backups/alerts -> separately authorized bounded live pilot. No stage automatically promotes the next or promises profitability.
