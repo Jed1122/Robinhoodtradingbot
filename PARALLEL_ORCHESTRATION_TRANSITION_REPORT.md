@@ -1,5 +1,27 @@
 # Parallel Orchestration Transition Report
 
+## New monthly SPY/cash hypothesis proposed — 2026-10-08
+
+The operator requested a new frozen research hypothesis after the corrected
+20/100 candidate failed its DEVELOPMENT screen. The
+[written monthly-SMA10 proposal](docs/superpowers/specs/2026-10-08-etf-monthly-trend-hypothesis-design.md)
+fixes one ten-month/month-end SPY/cash rule, unchanged canonical protective exits
+and risk, adverse next-session assumptions and explicit conservative criteria.
+It is a design-only preregistration proposal awaiting written-specification
+review, not an approved implementation, executable freeze or economic result.
+No source/config/test/lock/workflow behavior changed and no new outcome run,
+private input inspection, broker/provider call, spending or deployment occurred.
+
+The previously examined development period must remain labeled adaptive research;
+2024–2025 outcomes remain excluded. The rejected momentum candidate stays stopped,
+and its results/original captures are preserved. The new policy requires separate
+versioned research contracts, fixture-first compatibility verification, reviewed
+implementation and exact executable preregistration before any evaluation. No
+parameter grid or outcome-driven rule amendment is included. All source/cost/
+execution/economic/promotion/live flags stay false. The existing integration
+automation remains paused; no completed PR is resumed. The next gate is written
+design review, then an implementation plan—not execution/data expansion.
+
 ## Corrected-code development screen completed — 2026-10-08
 
 The newly authorized step2 study has completed exactly once at unchanged
