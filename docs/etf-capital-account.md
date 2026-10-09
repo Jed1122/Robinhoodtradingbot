@@ -1,12 +1,12 @@
 # Capital research account boundary
 
-Status: funding and v2 composition released through PR29/PR30; opt-in v3
-corporate-action accounting released through PR31. The v3 prefix release is
-PR32, pending hosted checks. Action-aware risk/admission and joint original-input
-restart reconstruction completed independent integrated review and local9,804
-full/20 native tests,92.10% combined coverage and unchanged80/90 gates at0a4ff8d.
-Hosted release certification remains pending. The strategy/fold
-economic evaluator and executable economic freeze are not implemented.
+Status: funding/v2 composition, v3 corporate actions, prefixes and joint
+action-aware risk/recovery are released through PR29–PR33. PR34's corrected
+signal/frontier contract remains pending hosted integration after local9,826
+full/20 native tests,92.11% combined coverage and unchanged80/90 gates atf889808.
+The separate entry/exit adapter at e814a29 passed9,896full/20native/92.16% and
+unchanged80/90 gates locally; its release is pending. The complete daily owner,
+strategy/fold economic evaluator and executable economic freeze are not implemented.
 See [Action-account boundary](etf-capital-actions.md). No operational readiness
 or accepted economic result is asserted.
 
@@ -15,8 +15,9 @@ or accepted economic result is asserted.
 Current entry admission additionally requires its final original observation to
 consume every supplied event. Historical-prefix replay is informational and
 cannot be used to ignore a known action/fill suffix when sizing a new entry.
-The PR34 correction requires fresh exact-source verification; the earlier
-release certification does not certify this changed admission behavior.
+The PR34 correction has completed fresh local exact-source verification, but
+hosted checks and integration remain pending. Earlier parent certification alone
+does not certify this changed admission behavior.
 
 `replay_capital_action_risk` and `evaluate_capital_action_entry` reuse the shared
 account-prefix reducer, canonical loss evaluation and sizing. Distribution

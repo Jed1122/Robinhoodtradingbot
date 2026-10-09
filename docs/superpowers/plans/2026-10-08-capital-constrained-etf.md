@@ -10,6 +10,17 @@
 
 **Spec:** docs/superpowers/specs/2026-10-08-capital-constrained-etf-design.md
 
+## Current Task5 checkpoint — 2026-10-09
+
+PR29–PR33 are integrated; corrected signal/frontier PR34 is pending hosted gates.
+Entry/exit executable e814a29 completed9,896full/20native/92.16% and unchanged
+80overall/90critical gates with independent review's duplicate-BUY correction
+covered RED-to-GREEN. This does not complete Task5. Pure policy verification,
+the original-event daily owner, train-only selection/account-policy carryover,
+dependent statistics/reports and full-workload verification remain. No executable
+economic freeze or study has run; qualified authorized inputs remain necessary.
+Retain earlier checkpoints as history, not current release or readiness claims.
+
 ## Global Constraints
 
 - No broker/provider calls, credentials, spending, live activation or deployment in the first increment.

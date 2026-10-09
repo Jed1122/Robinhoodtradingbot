@@ -29,3 +29,9 @@ The complete candidate scheduler, ATR/hold/regime policy owner, cross-fold
 selection/carryover, workload/statistical evaluation and economic study remain
 unfinished. Local fixtures and release checks cannot establish profitability,
 genuine customer costs, paper/shadow readiness or deployed recovery.
+
+Local executable `e814a29` completed9,896 full tests (33 optional skips/one
+existing warning),20 native tests and92.16% combined coverage with unchanged
+80overall/90critical gates. Ruff/Mypy375/Bandit, frozen locks, SBOM and
+shell/Compose checks passed. Hosted exact-head checks/integration remain pending;
+the covered duplicate-BUY correction does not require another source review.
