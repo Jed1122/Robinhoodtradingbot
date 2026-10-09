@@ -190,6 +190,51 @@ def test_rotation_distribution_cash_is_once_and_not_reinvested() -> None:
     assert result.eligible_symbols == ("SPY",)
 
 
+def test_duplicate_distribution_cannot_manufacture_positive_rotation() -> None:
+    records = projections(tuple(Decimal(1000 - i) for i in range(200)))
+    spy = records[0]
+    day = spy.raw_bars[-1].ends_at.date()
+    cash = CapitalDistribution(day, day, day, Decimal(11), "f" * 64)
+    candidate = CapitalCandidate("rotation", 20, 0, 2)
+    kwargs = dict(config_hash=ConfigHash("d" * 64), as_of=spy.raw_bars[-1].ends_at)
+    assert (
+        capital_strategy_signal(
+            candidate, (replace(spy, distributions=(cash,)), *records[1:]), **kwargs
+        ).entry_symbol
+        is None
+    )
+    with pytest.raises(ValueError):
+        capital_strategy_signal(
+            candidate, (replace(spy, distributions=(cash, cash)), *records[1:]), **kwargs
+        )
+
+
+@pytest.mark.parametrize("feature_only", [True, False])
+def test_nondaily_feature_or_interpolated_original_denies(feature_only: bool) -> None:
+    records = projections(tuple(Decimal(100 + i) for i in range(200)))
+    spy = records[0]
+    if feature_only:
+        changed = replace(
+            spy,
+            feature_bars=tuple(
+                replace(b, interval=BarInterval.ONE_MINUTE) for b in spy.feature_bars
+            ),
+        )
+    else:
+        changed = replace(
+            spy,
+            raw_bars=tuple(replace(b, interpolated=True) for b in spy.raw_bars),
+            feature_bars=tuple(replace(b, interpolated=True) for b in spy.feature_bars),
+        )
+    with pytest.raises(ValueError):
+        capital_strategy_signal(
+            CapitalCandidate("momentum", 5, 20, 2),
+            (changed, *records[1:]),
+            config_hash=ConfigHash("d" * 64),
+            as_of=spy.raw_bars[-1].ends_at,
+        )
+
+
 def test_calendar_only_fold_boundaries_purge_and_tail() -> None:
     sessions = tuple(date(2016, 1, 1) + timedelta(days=i) for i in range(1423))
     folds = capital_walk_forward_folds(sessions)
