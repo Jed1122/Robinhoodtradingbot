@@ -60,6 +60,9 @@ class CapitalAccountSubmission:
             self.request.order.instrument_id,
         ):
             _identifier(value)
+        for optional_id in (self.request.order.intent_id, self.request.order.client_order_id):
+            if optional_id is not None:
+                _identifier(optional_id)
         require_bounded_decimal(self.episode_fee_bound, "fee_bound", nonnegative=True)
         if (
             self.request.events
@@ -87,6 +90,8 @@ class CapitalSaleSettlement:
 
 @dataclass(frozen=True, slots=True)
 class CapitalFeesFinal:
+    """Historical unbound v1 evidence; never current finality authority."""
+
     event_id: str
     cursor: EventCursor
     total_fees: Decimal
@@ -98,12 +103,28 @@ class CapitalFeesFinal:
         require_bounded_decimal(self.total_fees, "total_fees", nonnegative=True)
 
 
+@dataclass(frozen=True, slots=True)
+class CapitalEpisodeFeesFinal:
+    event_id: str
+    cursor: EventCursor
+    total_fees: Decimal
+    account_id: str
+    opening_order_id: str
+
+    def __post_init__(self) -> None:
+        validate_cursor(self.cursor)
+        for value in (self.event_id, self.account_id, self.opening_order_id):
+            _identifier(value)
+        require_bounded_decimal(self.total_fees, "total_fees", nonnegative=True)
+
+
 type CapitalAccountEvent = (
     CapitalAccountSubmission
     | LifecycleControlEvent
     | LifecycleFillEvent
     | CapitalSaleSettlement
     | CapitalFeesFinal
+    | CapitalEpisodeFeesFinal
 )
 
 
@@ -137,7 +158,20 @@ def replay_capital_account(
         _deny()
 
 
-def _replay(initial: Decimal, events: tuple[CapitalAccountEvent, ...]) -> CapitalAccountReplay:
+def replay_capital_account_v1(
+    *, initial_cash: Decimal, events: tuple[CapitalAccountEvent, ...]
+) -> CapitalAccountReplay:
+    """Explicit historical reader only; unbound records cannot feed current owners."""
+    try:
+        with localcontext(_CONTEXT):
+            return _replay(initial_cash, events, legacy=True)
+    except (ValueError, TypeError, DecimalException):
+        _deny()
+
+
+def _replay(
+    initial: Decimal, events: tuple[CapitalAccountEvent, ...], *, legacy: bool = False
+) -> CapitalAccountReplay:
     require_bounded_decimal(initial, "initial_cash", positive=True)
     if initial not in _TIERS or type(events) is not tuple or len(events) > 4096:
         _deny()
@@ -151,6 +185,7 @@ def _replay(initial: Decimal, events: tuple[CapitalAccountEvent, ...]) -> Capita
     current: LifecycleResult | None = None
     account_id: str | None = None
     symbol: str | None = None
+    opening_order_id: str | None = None
     previous_cursor: EventCursor | None = None
     order_fees_before = _ZERO
     seen: dict[str, DataHash] = {}
@@ -165,6 +200,11 @@ def _replay(initial: Decimal, events: tuple[CapitalAccountEvent, ...]) -> Capita
             LifecycleFillEvent,
             CapitalSaleSettlement,
             CapitalFeesFinal,
+            CapitalEpisodeFeesFinal,
+        ):
+            _deny()
+        if (isinstance(event, CapitalFeesFinal) and not legacy) or (
+            isinstance(event, CapitalEpisodeFeesFinal) and legacy
         ):
             _deny()
         event.__post_init__()
@@ -186,7 +226,12 @@ def _replay(initial: Decimal, events: tuple[CapitalAccountEvent, ...]) -> Capita
             elif isinstance(event, LifecycleControlEvent):
                 for value in (event.account_id, event.instrument_id, event.broker_order_id):
                     _identifier(value)
-        digest = content_hash({"namespace": "capital-account-event-v1", "event": event})
+        digest = content_hash(
+            {
+                "namespace": "capital-account-event-v1" if legacy else "capital-account-event-v2",
+                "event": event,
+            }
+        )
         if event_id in seen:
             if seen[event_id] != digest:
                 _deny()
@@ -219,6 +264,7 @@ def _replay(initial: Decimal, events: tuple[CapitalAccountEvent, ...]) -> Capita
                 fee_bound = event.episode_fee_bound
                 final = False
                 symbol = event.symbol
+                opening_order_id = proposed.order.id
             elif (
                 quantity == 0
                 or event.symbol != symbol
@@ -254,6 +300,10 @@ def _replay(initial: Decimal, events: tuple[CapitalAccountEvent, ...]) -> Capita
                 _deny()
             del settlements[event.fill_id]
         else:
+            if isinstance(event, CapitalEpisodeFeesFinal) and (
+                event.account_id != account_id or event.opening_order_id != opening_order_id
+            ):
+                _deny()
             if (
                 final
                 or current is None
@@ -298,7 +348,7 @@ def _replay(initial: Decimal, events: tuple[CapitalAccountEvent, ...]) -> Capita
         final and quantity == 0 and not settlements,
         content_hash(
             {
-                "namespace": "capital-account-replay-v1",
+                "namespace": "capital-account-replay-v1" if legacy else "capital-account-replay-v2",
                 "initial": initial,
                 "applied": tuple(digests),
             }

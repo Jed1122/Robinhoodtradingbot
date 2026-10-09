@@ -24,7 +24,7 @@ fee bound reserve20.10. A0.1-share fill at99 with0.04 fee leaves90.06 cash and
 notional but retains0.06 episode fees, leaving90.00 available. A0.1-share sale
 at101 with0.05 fee yields100.11 economic cash,10.05 unsettled proceeds and0.01
 unused fee capacity:90.05 available. After explicit settlement and final fees,
-100.11 is available. Fees total0.09 and net profit0.11 in this fixture only.
+100.11 is available. Fees total0.09 and synthetic ending-cash delta0.11.
 No real fill, fee or settlement has been observed or asserted here.
 
 The output is informational, with permanently false execution/promotion flags.
@@ -66,3 +66,20 @@ Only then compose the approved three strategy families and purged walk-forward
 economic evaluator. Source acceptance, actual costs, prospective final testing,
 trusted paper/shadow and deployed recovery remain separate unfinished stages.
 Production limits/defaults are unchanged; live remains disabled.
+
+## Versioned episode finality
+
+Current account replay uses the explicit `capital-account-event-v2` and
+`capital-account-replay-v2` namespaces. `CapitalEpisodeFeesFinal` binds final
+fees to the account and its unique opening order; equal amounts from another
+account or earlier episode cannot release this episode's reserve. Both optional
+submission identifiers (`intent_id`, `client_order_id`) use the same256-character
+bound before serialization/hashing; absent identifiers remain absent.
+
+Historical `CapitalFeesFinal` records and their dataclass shape remain intact.
+Only the explicitly historical `replay_capital_account_v1` reader accepts them
+and preserves valid original v1 hash preimages. Current replay rejects unbound
+legacy completion, and the historical reader rejects v2 completion. Neither
+reader grants execution, promotion, authenticated account evidence or a broker
+final-fee completeness claim. Checkpoint/risk descendants must be re-composed
+against this new strict contract before their old certification can apply.

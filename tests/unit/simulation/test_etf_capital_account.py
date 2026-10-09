@@ -54,7 +54,10 @@ def observation(submit, event):
 
 
 def script():
-    from trading_bot.simulation.etf_capital_account import CapitalFeesFinal, CapitalSaleSettlement
+    from trading_bot.simulation.etf_capital_account import (
+        CapitalEpisodeFeesFinal,
+        CapitalSaleSettlement,
+    )
 
     buy = opening()
     sell = opening(5, Side.SELL, "90.06", ".1")
@@ -70,7 +73,13 @@ def script():
         CapitalSaleSettlement(
             "settle-sale", EventCursor(8, ORIGIN + timedelta(seconds=8)), "sell-fill"
         ),
-        CapitalFeesFinal("final-fees", EventCursor(9, ORIGIN + timedelta(seconds=9)), D(".09")),
+        CapitalEpisodeFeesFinal(
+            "final-fees",
+            EventCursor(9, ORIGIN + timedelta(seconds=9)),
+            D(".09"),
+            buy.request.order.account_id,
+            buy.request.order.id,
+        ),
     )
 
 

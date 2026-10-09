@@ -1,5 +1,26 @@
 # Parallel Orchestration Transition Report
 
+## Account finality correction; certification reset — 2026-10-09
+
+New PR29 review found missing bounds on optional submission identifiers and
+unbound fee-final records. Six adversarial controls were watched RED before
+fixing both. Current account replay uses versioned v2 identities and requires
+finality to match the account and its unique opening order. Unbound historical
+records remain readable only through the explicit v1 historical reader, preserving
+valid original hashes; they cannot release reserves in current replay.
+
+The old account9637/checkpoint9661 certifications belong to earlier source.
+Unfinished risk/prefix full runs were interrupted before correcting this inherited
+contract; their partial logs are not certification. Current source needs fresh
+full/native/static/release checks. Descendant checkpoint/risk/prefix owners must
+be recomposed against strict v2 finality before their release can proceed.
+No source, cost, economic, broker, paper/shadow, runtime or live qualification
+is established. No data acquisition, credentials, orders or deployment occurred.
+
+Next: complete this fix's exact-source gates and current PR29 review/checks,
+then recompose descendants; corporate actions, joint-state recovery and economics
+remain unfinished. The following snapshots are retained historical context.
+
 ## Account release preparation; intake merged — 2026-10-09
 
 PR28 intake is merged at `2bcc6a2d27f13f71849de216faeff8be2abc496c`,
