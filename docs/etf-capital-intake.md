@@ -94,3 +94,25 @@ Session-close availability and latest-vintage action completeness are research
 assumptions, not original publication evidence. All qualification, promotion and
 execution flags remain false. No actual source capture or economic evaluation
 has been performed by these fixtures.
+
+## Policy-bound supplied development dataset
+
+`build_capital_dataset` restores the exact canonical research configuration via
+the existing loader and requires the five policy symbols, consistent windows,
+complete pagination, all declared sessions and explicit action inputs. Inputs
+are sorted by canonical universe order before hashing. Dataset identifiers bind
+configuration, calendar, archive and action identities; missing or duplicated
+symbols and altered flags deny. The aggregate input is bounded to20,000bars.
+
+This version accepts only adaptive development dates before2024. It cannot
+relabel2024–2025 as untouched or stand in for a prospective final-test contract.
+Declared calendar completeness and supplied action completeness still are not
+authenticated provider evidence. Its source, promotion and execution flags are
+permanently false.
+
+`capital_dataset_features` returns a fresh as-of slice; it does not reuse a
+terminal split-normalized series for earlier decisions. Unavailable requested
+sessions deny rather than being clipped. Raw OHLC quality is checked during
+construction. No forward fill, execution quote, original publication time or
+automatic cash settlement is invented. Strategy/account/total-return composition
+and actual-source acquisition remain unfinished.
