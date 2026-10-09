@@ -1,5 +1,51 @@
 # Parallel Orchestration Transition Report
 
+## Intake calendar provenance correction; current certification pending — 2026-10-09
+
+New hosted PR28 review found that copying a calendar reset fixed metadata
+instead of validating the supplied original. Four inventory/feature controls
+were watched RED, then fixed by original validation and strict canonical
+calendar source-kind/limitation checks. Dataset controls also exercise the
+shared guard. Legacy calendar schemas and valid hash preimages are unchanged.
+Earlier278735a local certification is historical, not certification of this
+source correction. Current full/native/hosted gates must finish before merge.
+No strategy study or real data outcome was run or reinterpreted. Funding,
+account/restart replay and strategy economics remain unfinished; live is blocked.
+
+## Capital foundation merged; bounded multi-ETF intake verified locally — 2026-10-08
+
+PR27 integrated the reviewed capital foundation at
+`9af63ab25ba4cb4879143d5713d2b4b23c2a0222`, tree
+`a3dc760adad2f101f300d3645826faa3f9cfd5a2`. All14 required hosted jobs passed;
+the exact source passed9,482 full tests plus20 native tests,91.87% combined
+coverage and unchanged80%overall/90%critical gates. This is not deployment.
+
+The next offline intake increment supports bounded separately versioned daily
+requests for SPY/QQQ/IWM/SHY/IEF, original-byte private archives, session inventory,
+declared split/distribution facts, per-decision split-feature projections and a
+canonical-policy-bound pre2024 development dataset. The prior SPY schemas and
+historical hashes remain unchanged. See [intake limitations](docs/etf-capital-intake.md).
+
+An independent whole-intake review found three Important defects. Repeating
+split ratios, original nested/provenance flags and impossible declared receipt
+clocks were reproduced RED and corrected together;175 combined controls passed.
+The corrected source at278735a passed9,564 full tests plus20 actual native tests,
+91.93% combined coverage and unchanged80/90 gates. Ruff/Mypy367/Bandit, locked
+graphs, SBOM reproducibility and manifests passed. Intake release CI is still
+pending; source integrity is not authenticated provider provenance.
+
+Actual free SIP access, action adapter/source acceptance and calendar/action
+coverage remain unverified. Original/corrected publication chronology is unknown;
+latest-vintage signal assumptions are explicit. No market outcome study, genuine
+cost calibration, broker call or deployment was performed. Source/cost/execution/
+economic/promotion/live verdicts remain false or unverified.
+
+Next: integrate only the reviewed intake candidate when its current checks pass,
+then complete capital-aware cash/reservation/settlement replay, three approved
+strategy families and purged walk-forward evaluation. Paper/shadow/recovery stay
+conditional on a supported survivor; no profitability is established. The
+remaining sections are retained historical checkpoints, not current readiness.
+
 ## Capital-constrained research foundation implemented; release gates pending — 2026-10-08
 
 The operator's new capital-constrained ETF override supersedes the old fixed-SPY
