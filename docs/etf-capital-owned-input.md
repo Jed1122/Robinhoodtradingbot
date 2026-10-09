@@ -8,7 +8,8 @@ copy is validated again and its dataset hash must equal the original hash. A
 changed original during copying denies; this is not a general concurrency proof.
 
 Exact immutable scalar values may be shared. New owned intake requires exact
-`datetime` clocks with `datetime.UTC`, rejecting custom mutable timezone aliases.
+`datetime` clocks with `datetime.UTC`, rejecting custom mutable timezone aliases
+before public validation, hashing or copying can invoke their hooks.
 Existing public readers and their historical hashes are unchanged. Invalid
 original publication/eligibility fields cannot be reset into valid copied values.
 

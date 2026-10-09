@@ -6,7 +6,13 @@ from decimal import localcontext
 from hashlib import sha256
 from typing import cast
 
-from trading_bot.market_data.etf_capital_actions import CapitalDistribution, CapitalSplit
+from trading_bot.market_data.etf_calendar import EtfCalendarArchive, EtfCalendarSession
+from trading_bot.market_data.etf_capital_actions import (
+    CapitalActionArchive,
+    CapitalDistribution,
+    CapitalSplit,
+)
+from trading_bot.market_data.etf_capital_archive import CapitalDailyArchive
 from trading_bot.market_data.etf_capital_dataset import (
     CapitalResearchDataset,
     capital_dataset_features,
@@ -33,20 +39,36 @@ def _immutable_clock(value: datetime) -> None:
 def _validate_originals(dataset: CapitalResearchDataset) -> str:
     if type(dataset) is not CapitalResearchDataset:
         raise ValueError("capital_owned_source_invalid")
-    dataset.__post_init__()
+    if (
+        type(dataset.archives) is not tuple
+        or type(dataset.actions) is not tuple
+        or type(dataset.calendar) is not EtfCalendarArchive
+        or type(dataset.calendar.sessions) is not tuple
+    ):
+        raise ValueError("capital_owned_source_invalid")
+    # Reject callable timezone leaves before existing public validators can
+    # invoke them. This is a private ownership restriction, not new parsing.
     for archive in dataset.archives:
+        if type(archive) is not CapitalDailyArchive or type(archive.received_at) is not tuple:
+            raise ValueError("capital_owned_source_invalid")
         for instant in archive.received_at:
             _immutable_clock(instant)
+    for action in dataset.actions:
+        if type(action) is not CapitalActionArchive:
+            raise ValueError("capital_owned_source_invalid")
+        _immutable_clock(action.received_at)
+    for session in dataset.calendar.sessions:
+        if type(session) is not EtfCalendarSession:
+            raise ValueError("capital_owned_source_invalid")
+        _immutable_clock(session.opens_at)
+        _immutable_clock(session.closes_at)
+    dataset.__post_init__()
+    for archive in dataset.archives:
         for page in archive.pages:
             for record in page.records:
                 # Validate the ORIGINAL before replace() can reset its init=False
                 # publication marker; do not launder forged chronology.
                 record.bar.__post_init__()
-    for action in dataset.actions:
-        _immutable_clock(action.received_at)
-    for session in dataset.calendar.sessions:
-        _immutable_clock(session.opens_at)
-        _immutable_clock(session.closes_at)
     last = max(
         row.session_date
         for row in dataset.calendar.sessions

@@ -148,6 +148,33 @@ class MutableUtc(tzinfo):
         return timedelta(0)
 
 
+class ForbiddenOffset(tzinfo):
+    def utcoffset(self, value):
+        raise AssertionError("custom timezone hook must not be invoked")
+
+
+@pytest.mark.parametrize("target", ["receipt", "action", "session"])
+def test_owned_clock_rejection_precedes_public_validation_timezone_hooks(target):
+    source = originals()
+    if target == "receipt":
+        original = source.archives[0].received_at[0]
+        object.__setattr__(
+            source.archives[0], "received_at", (original.replace(tzinfo=ForbiddenOffset()),)
+        )
+    elif target == "action":
+        original = source.actions[0].received_at
+        object.__setattr__(
+            source.actions[0], "received_at", original.replace(tzinfo=ForbiddenOffset())
+        )
+    else:
+        original = source.calendar.sessions[0].opens_at
+        object.__setattr__(
+            source.calendar.sessions[0], "opens_at", original.replace(tzinfo=ForbiddenOffset())
+        )
+    with pytest.raises(ValueError, match="capital_owned_source_invalid"):
+        own(source)
+
+
 @pytest.mark.parametrize("target", ["receipt", "action", "session"])
 def test_owned_boundary_rejects_custom_mutable_timezone_without_changing_public_api(target):
     source = originals()
@@ -205,3 +232,25 @@ def test_copy_time_source_change_denies_instead_of_binding_mixed_originals(monke
     with pytest.raises(ValueError, match="capital_owned_source_invalid"):
         own(source)
     assert changed
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["archives", "actions", "calendar", "sessions", "archive", "receipts", "action", "session"],
+)
+def test_malformed_clock_containers_deny_before_nested_access(target):
+    source = originals()
+    rows = {
+        "archives": (source, "archives", []),
+        "actions": (source, "actions", []),
+        "calendar": (source, "calendar", None),
+        "sessions": (source.calendar, "sessions", []),
+        "archive": (source, "archives", (None,)),
+        "receipts": (source.archives[0], "received_at", []),
+        "action": (source, "actions", (None,)),
+        "session": (source.calendar, "sessions", (None,)),
+    }
+    record, field, value = rows[target]
+    object.__setattr__(record, field, value)
+    with pytest.raises(ValueError, match="capital_owned_source_invalid"):
+        own(source)
