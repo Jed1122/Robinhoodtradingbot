@@ -110,3 +110,31 @@ store is not a market-data archive, authenticated observation reader or forward
 paper owner. Source, costs, execution and promotion remain unqualified. Complete
 critical review and release verification before composing risk/actions and
 strategy economics with these checkpoints.
+
+## Synthetic marked loss composition (partial)
+
+`replay_capital_risk` reconstructs original account prefixes and explicit assumed
+marks before applying the existing canonical purpose-aware loss evaluator.
+Held shares without a positive mark deny; flat valuation is reconstructed cash.
+Daily and weekly reset declarations are synthetic inputs, not reconciliation
+attestations. New UTC windows use the preceding observed NAV so overnight gaps
+are not absorbed by resets. Weekly breaches require a reviewed new-week reset;
+drawdown remains latched. Loss percentages round upward to 18 decimal places
+in whole-percent units, using a fixed Decimal context.
+
+Completed flat, settled, final-fee episodes update the consecutive-loss streak.
+Observation jumps consume every intervening original prefix, and the final
+completion event sets the loss clock. Repeated observations neither recount
+episodes nor extend the pause. Positive completed episodes clear the streak;
+this does not replenish the separate non-replenishing trial budget.
+
+`evaluate_capital_entry` first reconstructs loss state and denies incomplete
+episodes, including pending unfilled orders or unresolved settlement/final fees.
+It then reuses current-equity research sizing and declared instrument/fee terms.
+It does not accept saved balances or caller risk decisions as authority.
+
+This is not complete Task 5: split basis, distribution entitlement/payment,
+durable joint risk/account recovery, representative replay performance and
+economic evaluator integration are unfinished. Marks, resets and source coverage
+remain unqualified assumptions. No production consumer or broker capability is
+added; execution and promotion remain permanently false.
