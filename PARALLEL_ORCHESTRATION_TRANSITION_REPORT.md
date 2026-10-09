@@ -1,5 +1,28 @@
 # Parallel Orchestration Transition Report
 
+## Entry/exit adapters locally certified; daily owner unfinished — 2026-10-09
+
+Current adapter executable `e814a29dd1cc0c356aa29623bc015807695631dd`
+passed9,896 full tests (33 optional skips/one existing warning),20 actual native
+tests and92.16% combined coverage. Unchanged80overall/90critical gates passed,
+as did Ruff/Mypy375/Bandit, both frozen locks, SBOM and shell/Compose checks.
+Clean advisory evidence is retained for identical dependency graphs, not a new
+network audit. Independent review's duplicate-BUY selection defect was watched
+RED, fixed against validated unique-event cursors, and covered by these runs.
+
+PR32/PR33 are merged. PR34's corrected signal/frontier source `f889808` has
+separate completed9,826full/20native/92.11% certification; hosted checks and
+review-thread disposition remain pending. The adapters are not yet integrated,
+and no merge is deployment. Earlier status sections below are retained history.
+
+Next: finish exact-head release gates, compose the original-event daily owner,
+train-only selection and policy carryover, then verify statistics and the full
+28x6x4x5 workload before freezing executable study identities. The separate
+pure-policy increment is still under verification. No new economic freeze or
+study, qualified five-symbol inputs, genuine customer cost calibration, broker
+operation or deployed recovery is established. All source/cost/execution/
+economic/promotion/live flags remain false; production limits are unchanged.
+
 ## PR34 frontier corrections pending certification — 2026-10-09
 
 PR32 merged aaf9df0da5b8c981ad6fd9730a48166dc2a0fde2; PR33 merged
@@ -11,8 +34,29 @@ per Eastern date, and a complete original action-tape frontier before entry
 admission. Historical-prefix risk replay remains informational. Earlier82c6457
 full/native results below are historical after these source changes; fresh
 full/native/hosted certification is required. No new study or economic freeze.
-MAIN's separate daily entry-only adapter remains under verification, not a full
-daily owner or economic evaluator. All qualification/live boundaries remain.
+MAIN's entry-only15d1 source passed9,854 full tests before inheriting these
+corrections; that is now historical, not corrected-source certification. No old
+native append or release is claimed. Entry adapter is not a full daily owner or
+economic evaluator. All qualification/live boundaries remain. Earlier sections
+below preserve prior checkpoints only.
+
+## Prefix released; bounded daily entry increment under verification — 2026-10-09
+
+PR32 merged at `aaf9df0da5b8c981ad6fd9730a48166dc2a0fde2`, tree
+`b88d1056fc79280e6e1ff67d4616e3d565e29e21`, matching its reviewed candidate.
+All14 current required checks passed and no substantive findings remained.
+PR33 risk/joint recovery and PR34 signal/fold contracts remain pending releases.
+This is software integration, not deployment or economic acceptance.
+
+The next main-owned increment is only a synthetic next-open entry adapter. It
+uses existing original-state account/risk/sizing engines, adverse price/tick
+assumptions and explicit rejected/unfilled/partial outcomes. Shared lifecycle
+ordering remains strict; declared clocks are not measured execution timings.
+Its full-source review and release verification are pending. See
+`docs/etf-capital-daily-entry.md` for its boundaries. It is not the complete
+strategy executor, exit scheduler, train-only selection or economic evaluator.
+No source prices, customer records, credentials, provider/broker calls, study,
+deployment or risk changes occurred. Earlier sections are retained history.
 
 ## Strategy/fold contracts locally certified; economic runner unfinished — 2026-10-09
 
