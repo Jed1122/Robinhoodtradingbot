@@ -50,6 +50,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.append(recorded_options_runtime)
 
     for relative_path in (
+        Path("market_data/etf_capital_owned.py"),
         Path("domain/options_account.py"),
         Path("domain/owned_order_lifecycle.py"),
         Path("accounting/owned_economic_models.py"),
