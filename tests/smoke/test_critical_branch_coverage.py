@@ -60,6 +60,16 @@ def test_capital_daily_entry_requires_critical_branch_coverage(tmp_path):
     ]
 
 
+def test_capital_daily_exit_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/simulation/etf_capital_daily_exit.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 def _load_checker():
     spec = importlib.util.spec_from_file_location("critical_branch_coverage", SCRIPT)
     assert spec is not None and spec.loader is not None
