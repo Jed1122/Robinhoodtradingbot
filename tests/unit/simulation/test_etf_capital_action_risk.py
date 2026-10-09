@@ -30,6 +30,25 @@ def run(events=(), observations=None):
     )
 
 
+@pytest.mark.parametrize("count", [0, 5])
+def test_entry_cannot_ignore_supplied_action_tape_suffix(count):
+    from trading_bot.simulation.etf_capital_risk import evaluate_capital_action_entry
+
+    events = (*script()[:5], action())
+    observations = (point(0, 0),) if count == 0 else (point(0, 0), point(1, 5, "99"))
+    with pytest.raises(ValueError):
+        evaluate_capital_action_entry(
+            loaded=loaded(),
+            initial_cash=D("100"),
+            events=events,
+            observations=observations,
+            instrument=instrument(),
+            entry_price=D("100"),
+            stop_distance=D("2"),
+            fee_bound=D(".1"),
+        )
+
+
 @pytest.mark.parametrize("kind", ["split", "distribution"])
 def test_atomic_action_mark_prevents_phantom_peak_or_loss(kind):
     result = run((*script()[:5], action(kind)), (point(0, 0), point(1, 6)))

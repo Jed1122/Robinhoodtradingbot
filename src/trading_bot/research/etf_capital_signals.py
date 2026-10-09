@@ -143,6 +143,10 @@ def capital_strategy_signal(
         if type(projection) is not CapitalFeatureProjection:
             raise ValueError("capital_signal_invalid")
         projection.__post_init__()
+        session_dates = tuple(
+            bar.ends_at.astimezone(ZoneInfo("America/New_York")).date()
+            for bar in projection.raw_bars
+        )
         ex_dates = tuple(row.ex_date for row in projection.distributions)
         record_ids = tuple(row.record_hash for row in projection.distributions)
         if (
@@ -152,6 +156,8 @@ def capital_strategy_signal(
             )
             or ex_dates != tuple(sorted(set(ex_dates)))
             or len(set(record_ids)) != len(record_ids)
+            or session_dates[-1] != projection.as_of_session
+            or len(set(session_dates)) != len(session_dates)
             or projection.as_of_session != projections[0].as_of_session
             or projection.raw_bars[-1].ends_at != projections[0].raw_bars[-1].ends_at
             or tuple(bar.ends_at for bar in projection.raw_bars)

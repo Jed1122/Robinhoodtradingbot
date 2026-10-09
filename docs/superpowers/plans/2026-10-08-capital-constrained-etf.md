@@ -104,6 +104,13 @@
 
 ## Execution status
 
+October9 subsequent checkpoint: PR32 merged aaf9df0 and PR33 merged93c0f2e.
+PR34 has three newly reproduced frontier/session findings; four RED controls
+now pass with strict latest-date/unique-session and complete-tape entry guards.
+Fresh corrected-source full/native/hosted verification is required; earlier
+82c6457 certification below is historical, not certification of this correction.
+No economic freeze or study has run. The following preserves prior checkpoints.
+
 October9 latest: action-aware risk and fixed-original-input joint restart source
 0a4ff8d completed9,804 full/20 native tests,92.10% combined coverage and unchanged
 80overall/90critical gates. Independent integrated review found no Critical or

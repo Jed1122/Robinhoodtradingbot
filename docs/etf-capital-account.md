@@ -12,6 +12,12 @@ or accepted economic result is asserted.
 
 ## Action-aware risk and joint recovery
 
+Current entry admission additionally requires its final original observation to
+consume every supplied event. Historical-prefix replay is informational and
+cannot be used to ignore a known action/fill suffix when sizing a new entry.
+The PR34 correction requires fresh exact-source verification; the earlier
+release certification does not certify this changed admission behavior.
+
 `replay_capital_action_risk` and `evaluate_capital_action_entry` reuse the shared
 account-prefix reducer, canonical loss evaluation and sizing. Distribution
 receivables contribute once to NAV, never to spendable cash. Each consumed

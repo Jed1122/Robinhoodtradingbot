@@ -1,5 +1,13 @@
 # Capital research signal and fold contracts
 
+Current PR34 correction: latest-bar Eastern session must equal the declared
+as-of session, and each projection permits only one bar per Eastern date.
+Action-aware entry admission must consume the complete supplied original tape;
+historical-prefix risk replay remains supported for analysis, not stale entry.
+Four regressions were watched RED before these admission fixes. The earlier
+82c6457 full/native certification below is historical after this source change;
+fresh exact-source full/native and hosted release verification remain required.
+
 This is a synthetic-tested research component, not a completed backtest,
 executable study freeze or accepted economic result. Source, economic,
 execution and promotion flags remain permanently false. No broker interface
