@@ -1,5 +1,12 @@
 # Prior-close capital-research policy
 
+Local release evidence belongs to executable b2dc8f8:9,918 full passes,
+33 optional skips/one existing warning;20 native passes;92.17% combined coverage
+and unchanged80overall/90critical gates. Ruff/Mypy376/Bandit, locks and SBOM
+passed. Hosted exact-head checks/integration remain pending; this is not a fresh
+full run at a later human-document head. The known-holding-deadline correction
+was watched RED-to-GREEN before this certification.
+
 `capital_daily_policy` recomputes the fixed five-symbol signal using completed
 original projections. It emits research instructions only, not orders, risk
 permission, authoritative balances or a brokerage route.

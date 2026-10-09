@@ -2,7 +2,7 @@
 
 Status: funding/v2 composition, v3 corporate actions, prefixes and joint
 action-aware risk/recovery are released through PR29–PR33. PR34's corrected
-signal/frontier contract remains pending hosted integration after local9,826
+signal/frontier contract is merged atf1326c9 after all14 hosted jobs and local9,826
 full/20 native tests,92.11% combined coverage and unchanged80/90 gates atf889808.
 The separate entry/exit adapter at e814a29 passed9,896full/20native/92.16% and
 unchanged80/90 gates locally; its release is pending. The complete daily owner,
@@ -15,9 +15,9 @@ or accepted economic result is asserted.
 Current entry admission additionally requires its final original observation to
 consume every supplied event. Historical-prefix replay is informational and
 cannot be used to ignore a known action/fill suffix when sizing a new entry.
-The PR34 correction has completed fresh local exact-source verification, but
-hosted checks and integration remain pending. Earlier parent certification alone
-does not certify this changed admission behavior.
+The PR34 correction completed fresh local and hosted exact-source verification
+and integration. Earlier parent certification alone did not certify this changed
+admission behavior. Source/account authentication remains unverified.
 
 `replay_capital_action_risk` and `evaluate_capital_action_entry` reuse the shared
 account-prefix reducer, canonical loss evaluation and sizing. Distribution

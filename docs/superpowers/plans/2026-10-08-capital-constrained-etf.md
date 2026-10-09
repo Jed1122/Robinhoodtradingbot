@@ -12,11 +12,13 @@
 
 ## Current Task5 checkpoint — 2026-10-09
 
-PR29–PR33 are integrated; corrected signal/frontier PR34 is pending hosted gates.
+PR29–PR34 are integrated; corrected signal/frontier PR34 merged atf1326c9.
 Entry/exit executable e814a29 completed9,896full/20native/92.16% and unchanged
 80overall/90critical gates with independent review's duplicate-BUY correction
-covered RED-to-GREEN. This does not complete Task5. Pure policy verification,
-the original-event daily owner, train-only selection/account-policy carryover,
+covered RED-to-GREEN; PR35's hosted integration remains pending. Pure policy
+executableb2dc8f8 completed9,918full/20native/92.17% and unchanged80/90 gates,
+with reviewed holding-deadline correction covered RED-to-GREEN. This does not
+complete Task5. Policy release, the original-event daily owner, train-only selection/account-policy carryover,
 dependent statistics/reports and full-workload verification remain. No executable
 economic freeze or study has run; qualified authorized inputs remain necessary.
 Retain earlier checkpoints as history, not current release or readiness claims.
