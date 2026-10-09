@@ -12,6 +12,7 @@ from tests.unit.simulation.test_etf_capital_account import observation, opening,
 from trading_bot.domain import BrokerOrderId, FillId, OrderEvent, OrderId, OrderPurpose
 from trading_bot.simulation.etf_capital_account import (
     CapitalAccountSubmission,
+    CapitalEpisodeFeesFinal,
     CapitalSaleSettlement,
 )
 from trading_bot.simulation.events import EventCursor
@@ -45,6 +46,13 @@ def test_genesis_cash_is_reconstructed_and_cannot_enable_execution():
     assert result.points[-1].decision.new_entries_allowed
     assert not result.execution_enabled
     assert not result.evidence_promotable
+
+
+def test_current_risk_cannot_consume_unbound_historical_fee_finality():
+    from tests.unit.simulation.test_etf_capital_account_finality import old_script
+
+    with pytest.raises(ValueError):
+        run(old_script(), (point(0, 0), point(1, 10)))
 
 
 def test_partial_fill_mark_loss_blocks_entry_and_preserves_exit_purpose():
@@ -173,6 +181,8 @@ def losing_episodes(count):
                 value = replace(event, event_id=prefix + event.event_id, cursor=cursor)
                 if isinstance(event, CapitalSaleSettlement):
                     value = replace(value, fill_id=prefix + event.fill_id)
+                elif isinstance(event, CapitalEpisodeFeesFinal):
+                    value = replace(value, opening_order_id=prefix + event.opening_order_id)
                 elif index in (1, 3, 4, 6):
                     value = replace(
                         value, broker_order_id=BrokerOrderId(prefix + event.broker_order_id)

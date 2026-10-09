@@ -189,7 +189,7 @@ def replay_capital_risk(
                 tuple(points),
                 content_hash(
                     (
-                        "capital-risk-replay-v1",
+                        "capital-risk-replay-v2",
                         loaded.config_hash,
                         initial_cash,
                         purpose,

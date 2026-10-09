@@ -5,7 +5,11 @@ from decimal import Decimal as D
 import pytest
 
 from tests.unit.simulation.test_etf_capital_account import script
-from trading_bot.simulation.etf_capital_account import replay_capital_account
+from tests.unit.simulation.test_etf_capital_account_finality import old_script
+from trading_bot.simulation.etf_capital_account import (
+    replay_capital_account,
+    replay_capital_account_v1,
+)
 
 
 def prefixes(events):
@@ -14,7 +18,7 @@ def prefixes(events):
     return replay_capital_account_prefixes(initial_cash=D("100"), events=events)
 
 
-def test_all_prefixes_preserve_existing_values_and_v1_hashes():
+def test_all_current_prefixes_preserve_account_values_and_v2_hashes():
     events = script()
     expected = tuple(
         replay_capital_account(initial_cash=D("100"), events=events[:count])
@@ -62,7 +66,11 @@ def test_genesis_empty_prefix_retains_existing_identity():
 
 
 def test_certified_original_v1_hash_preimages_are_unchanged():
-    values = prefixes(script())
+    events = old_script()
+    values = tuple(
+        replay_capital_account_v1(initial_cash=D("100"), events=events[:count])
+        for count in range(len(events) + 1)
+    )
     assert tuple(values[n].economic_hash for n in (0, 3, 8, 10)) == (
         "4849ac56925413aa4f2a7923d4cc3bceefa23d3599078af32ef43eb6f3f35ad3",
         "c359bfed8e7674273af99899faba95e3ad6b72de7255e502889cc6f0834eef2e",

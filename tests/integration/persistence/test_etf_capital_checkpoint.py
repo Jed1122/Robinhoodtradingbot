@@ -56,6 +56,32 @@ def test_partial_unsettled_and_final_prefixes_restore_exactly(private_root):
     assert advance(private_root, 10, final.head_hash) == final
 
 
+def test_current_checkpoint_does_not_adopt_or_mutate_legacy_storage(private_root):
+    legacy = private_root / "capital-account-checkpoints-v1"
+    legacy.mkdir(mode=0o700)
+    original = b"retained historical bytes, not current account evidence"
+    retained = legacy / "owner.json"
+    retained.write_bytes(original)
+    retained.chmod(0o600)
+    value = advance(private_root, 10)
+    assert value.result.complete
+    current = private_root / "capital-account-checkpoints-v2"
+    owner = json.loads((current / "owner.json").read_bytes())
+    record = json.loads(next(current.glob("*.capital-account-checkpoint.json")).read_bytes())
+    assert owner["schema"] == "capital-account-owner-v2"
+    assert record["schema"] == "capital-account-checkpoint-v2"
+    assert retained.read_bytes() == original
+    assert tuple(legacy.iterdir()) == (retained,)
+
+
+def test_unbound_legacy_fee_finality_denies_before_storage_mutation(private_root):
+    from tests.unit.simulation.test_etf_capital_account_finality import old_script
+
+    with pytest.raises(ValueError):
+        advance(private_root, 10, events=old_script())
+    assert tuple(private_root.iterdir()) == ()
+
+
 def test_old_head_and_backward_count_cannot_advance(private_root):
     first = advance(private_root, 3)
     advance(private_root, 8, first.head_hash)
@@ -179,7 +205,7 @@ def test_initial_owner_and_checkpoint_capacity_reserved_before_either_write(priv
     seed.mkdir(mode=0o700)
     advance(seed, 3)
     owner = next(seed.rglob("owner.json")).read_bytes()
-    directory = private_root / "capital-account-checkpoints-v1"
+    directory = private_root / "capital-account-checkpoints-v2"
     directory.mkdir(mode=0o700)
     for index in range(8193):
         path = directory / f".tmp-{index:032x}"

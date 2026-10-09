@@ -236,7 +236,9 @@ def _replay(
             final and quantity == 0 and not settlements,
             content_hash(
                 {
-                    "namespace": "capital-account-replay-v1" if legacy else "capital-account-replay-v2",
+                    "namespace": (
+                        "capital-account-replay-v1" if legacy else "capital-account-replay-v2"
+                    ),
                     "initial": initial,
                     "applied": tuple(digests),
                 }

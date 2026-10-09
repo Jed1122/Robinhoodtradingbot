@@ -57,7 +57,7 @@ def _body(
 ) -> bytes:
     body = canonical_json(
         {
-            "schema": "capital-account-checkpoint-v1",
+            "schema": "capital-account-checkpoint-v2",
             "request_hash": request_hash,
             "sequence": sequence,
             "previous_hash": previous,
@@ -143,7 +143,7 @@ def advance_capital_account_checkpoint(
         accounts = replay_capital_account_prefixes(initial_cash=initial_cash, events=events)
         source = canonical_json(
             (
-                "capital-account-input-v1",
+                "capital-account-input-v2",
                 loaded.config_hash,
                 code_hash,
                 initial_cash,
@@ -151,7 +151,7 @@ def advance_capital_account_checkpoint(
             )
         ).encode()
         _require(len(source) <= _MAX_BYTES)
-        request_hash = content_hash(("capital-account-input-v1", source.decode()))
+        request_hash = content_hash(("capital-account-input-v2", source.decode()))
         result = accounts[through_count]
         # Bound the complete input/envelope pair before any publication.
         _require(
@@ -159,7 +159,7 @@ def advance_capital_account_checkpoint(
             <= _MAX_BYTES
         )
         descriptor = _open_root(root, repository_root)
-        child = _subdirectory(descriptor, "capital-account-checkpoints-v1", create=True)
+        child = _subdirectory(descriptor, "capital-account-checkpoints-v2", create=True)
         lock = os.open(
             "writer.lock",
             os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
@@ -175,7 +175,7 @@ def advance_capital_account_checkpoint(
         names, occupancy = _inventory(child)
         owner = canonical_json(
             {
-                "schema": "capital-account-owner-v1",
+                "schema": "capital-account-owner-v2",
                 "request_hash": request_hash,
                 "execution_enabled": False,
                 "evidence_promotable": False,
