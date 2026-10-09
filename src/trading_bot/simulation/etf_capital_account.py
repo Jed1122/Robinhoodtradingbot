@@ -175,6 +175,28 @@ def replay_capital_action_account(
         _deny()
 
 
+def replay_capital_action_account_prefixes(
+    *, initial_cash: Decimal, events: tuple[CapitalAccountEvent | CapitalActionEvent, ...]
+) -> tuple[CapitalActionAccountReplay, ...]:
+    """Validate all originals once, then return immutable aligned v3 prefixes.
+
+    Genesis and duplicate deliveries retain their own tuple positions. No
+    result escapes if any later event is invalid; saved balances are not input.
+    """
+    try:
+        with localcontext(_CONTEXT):
+            prefixes: list[CapitalAccountReplay] = []
+            _replay(initial_cash, events, prefixes, actions=True)
+            results: list[CapitalActionAccountReplay] = []
+            for prefix in prefixes:
+                if type(prefix) is not CapitalActionAccountReplay:
+                    _deny()
+                results.append(prefix)
+            return tuple(results)
+    except (ValueError, TypeError, DecimalException):
+        _deny()
+
+
 def replay_capital_account(
     *, initial_cash: Decimal, events: tuple[CapitalAccountEvent, ...]
 ) -> CapitalAccountReplay:

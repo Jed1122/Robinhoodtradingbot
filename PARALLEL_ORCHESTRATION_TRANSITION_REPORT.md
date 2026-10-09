@@ -1,5 +1,24 @@
 # Parallel Orchestration Transition Report
 
+## Action-account released; original-prefix composition in progress — 2026-10-09
+
+PR31 merged at `678f3d2f51a752a8d08c36e20c97379fed84e324`, exact reviewed
+tree `c2a25cd7de3930ec46937dabca7c842661e28702`. Corrected source80f1f2e passed
+9,763 full tests,20 native tests,92.07% combined coverage and unchanged80overall/
+90critical gates. All14 current hosted jobs passed; both verified review findings
+were resolved before merge. This is offline software release, not deployment.
+
+The next bounded increment exposes immutable v3 original-action prefixes through
+the same account reducer. Six missing-API tests were watched RED;130 focused
+account/action/prefix/risk tests now pass. Broader verification/review remains
+pending. No action-aware risk or joint checkpoint consumer is implemented yet.
+Historical persisted-checkpoint compatibility and representative performance
+remain unfinished, followed by strategy/fold/economic executable freeze.
+All source/cost/execution/economic/promotion/live readiness remains unqualified.
+No private data, broker/provider calls, study, deployment or risk changes.
+
+The sections below retain historical checkpoints, not current release status.
+
 ## Intermediate action valuation correction; release pending — 2026-10-09
 
 PR31 received another substantive review finding: an oversized intermediate
