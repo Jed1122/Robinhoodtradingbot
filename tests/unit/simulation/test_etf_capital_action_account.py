@@ -344,3 +344,16 @@ def test_partial_fill_invalidates_action_mark_even_if_later_control_arrives():
     )
     assert result.quantity == D(".05")
     assert result.mark is None and result.marked_equity is None
+
+
+@pytest.mark.parametrize("normalizer", ["split", "distribution"])
+def test_invalid_intermediate_action_nav_cannot_be_hidden_by_later_mark(normalizer):
+    oversized = action("split", ratio=D("1e255"), post_action_mark=D("1e300"))
+    if normalizer == "split":
+        later = action(
+            "split", n=6, action_id="reverse-split", ratio=D("1e-255"), post_action_mark=D("99")
+        )
+    else:
+        later = action(n=6, amount_per_share=D("0"), ex_mark=D("1"))
+    with pytest.raises(ValueError):
+        replay((*script()[:5], oversized, later))

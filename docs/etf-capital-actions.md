@@ -44,6 +44,14 @@ execution and promotion flags remain permanently false.
 
 ## Remaining work
 
+A later PR31 finding identified invalid intermediate marked equity being hidden
+by subsequent actions. Two synthetic regressions were watched RED; valuation is
+now bounded after every unique v3 event as well as at snapshot.356 focused tests
+pass, but fresh full/native/hosted certification is still required. The preceding
+mark-preservation source completed9,761full/20native/92.07% and critical gates;
+that certification is historical after this new correction. No economic or
+operational qualification follows from either correction.
+
 PR31's subsequent review reproduced six failures: accepted/cancel controls
 incorrectly discarded explicit action marks while holdings were unchanged. The
 correction retains those declared marks across non-fill controls, but every

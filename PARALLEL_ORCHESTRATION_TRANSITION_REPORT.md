@@ -1,5 +1,23 @@
 # Parallel Orchestration Transition Report
 
+## Intermediate action valuation correction; release pending — 2026-10-09
+
+PR31 received another substantive review finding: an oversized intermediate
+marked equity could be hidden by a later action or fill. Two synthetic cases
+were watched RED before the correction. The same valuation helper now checks
+marked equity after every unique v3 event and at snapshot; unknown held marks
+remain unknown. Focused account/risk/architecture checks passed356 tests.
+
+The preceding mark-preservation source `da76de0` completed9,761 full tests,
+20 native tests,92.07% combined coverage and unchanged80overall/90critical gates;
+all14 hosted jobs passed. Those results are historical after this new source
+change, not certification of the intermediate-valuation correction. PR31 remains
+unmerged with substantive threads open pending fresh global verification.
+No study, data acquisition, account access, deployment or risk changes occurred.
+
+Next: complete this exact source's release gates, then action-aware risk and
+joint original-state recovery before executable strategy/economic freeze.
+
 ## Action-mark review correction; current certification pending — 2026-10-09
 
 New PR31 review identified that non-fill exit controls discarded explicit action

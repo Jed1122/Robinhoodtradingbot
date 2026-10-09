@@ -262,6 +262,16 @@ def _replay(
         require_bounded_decimal(total, "distribution_receivable", nonnegative=True)
         return total
 
+    def action_equity(receivable: Decimal) -> Decimal | None:
+        equity = (
+            cash + receivable
+            if quantity == 0
+            else (None if mark is None else cash + receivable + quantity * mark)
+        )
+        if equity is not None:
+            require_bounded_decimal(equity, "marked_equity", nonnegative=True)
+        return equity
+
     def snapshot() -> CapitalAccountReplay:
         unsettled = sum(settlements.values(), _ZERO)
         available = cash
@@ -293,13 +303,7 @@ def _replay(
         )
         if not actions:
             return base
-        equity = (
-            cash + receivable
-            if quantity == 0
-            else (None if mark is None else cash + receivable + quantity * mark)
-        )
-        if equity is not None:
-            require_bounded_decimal(equity, "marked_equity", nonnegative=True)
+        equity = action_equity(receivable)
         return CapitalActionAccountReplay(
             base.cash,
             base.available_cash,
@@ -513,7 +517,7 @@ def _replay(
         # Recompute authoritative capacity after every unique event. Never adopt
         # an externally supplied reservation or release it on end-of-input.
         if actions:
-            receivable_total()
+            action_equity(receivable_total())
         if current is not None:
             reservation = _capital_order_reservation(
                 order=current.snapshot.order,
