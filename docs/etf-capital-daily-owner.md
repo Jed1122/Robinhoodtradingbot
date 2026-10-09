@@ -41,6 +41,13 @@ may regenerate with the declared as-of date, but economic fields and original
 archive/action/calendar identities remain constrained and every supplied hash
 remains input-bound. Unheld overnight split rebases are unsupported in this
 version and fail closed before an old entry instruction can be admitted.
+The original account immediately before each new split must actually hold
+positive quantity. A terminal rejected/unfilled BUY identity and fee finality
+do not establish ownership. An original fill earlier in the same frame can
+establish that frontier through the same account reducer; saved balances cannot.
+Distribution projections retain their exact prior prefix. New observations may
+append only with ex-dates after the preceding as-of session and no later than
+the current session; removal, revision and backdated insertion fail closed.
 Opening-time facts retain every unique action frontier; a compatible last
 same-source observation absorbs opening mark/reset declarations rather than
 creating a duplicate clock. Conflicting marks still deny.

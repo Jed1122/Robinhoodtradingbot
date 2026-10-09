@@ -1,5 +1,23 @@
 # Parallel Orchestration Transition Report
 
+## Current owner release correction — 2026-10-10 UTC
+
+PR37 remains unmerged. Published14d8285 retains exactfea60a9 source/tree;
+that source completed10,037 full and20 native tests,92.22% combined coverage
+and unchanged80overall/90critical gates. Two subsequent substantive hosted
+findings require a new corrected candidate: flat terminal BUYs could authorize
+split rebases, and prior distribution projections could change between frames.
+Five regressions were watched RED, then strict original positive-held pre-split
+frontiers and append-only distribution history corrected both. Seven focused
+controls and480 related tests pass; owner74branches5partial exceeds90%.
+Ruff/Mypy378 pass. Earlier certification is HISTORICAL after this source change;
+fresh full/native/critical/current exact-head hosted checks remain required.
+No executable economic freeze/study, qualified inputs or workload pass exists.
+Independent owned-source/signal-batch foundations in the second worktree are
+reviewed, unconsumed preparation, not a complete evaluator or economic result.
+Preserve all previous source-bound artifacts and pending review threads until
+global verification supports their disposition. Earlier checkpoints follow.
+
 ## Current Task5 continuation — 2026-10-09
 
 PR35 is merged atdeee82e; PR36 is merged at8302f9a with reviewed tree4b300e68

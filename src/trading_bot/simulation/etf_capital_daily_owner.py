@@ -143,20 +143,36 @@ def _feature_continuity(
     current: CapitalFeatureProjection,
     facts: tuple[CapitalDailyOriginalFact, ...],
     events: tuple[_Event, ...],
+    initial_cash: Decimal,
 ) -> None:
     """Allow only original position-bound split rebasing, not revised prices."""
     _check(
         (prior.archive_hash, prior.action_hash, prior.calendar_hash)
         == (current.archive_hash, current.action_hash, current.calendar_hash)
     )
+    _check(current.distributions[: len(prior.distributions)] == prior.distributions)
+    _check(
+        all(
+            prior.as_of_session < row.ex_date <= current.as_of_session
+            for row in current.distributions[len(prior.distributions) :]
+        )
+    )
     seen = {event.event_id for event in events if type(event) is CapitalSplitApplied}
     ratio = Decimal(1)
-    for fact in facts:
+    for index, fact in enumerate(facts):
         _check(type(fact) is CapitalDailyOriginalFact)
         event = fact.event
         if type(event) is CapitalSplitApplied and event.event_id not in seen:
             event.__post_init__()
             if event.symbol == str(current.raw_bars[-1].instrument_id):
+                account_before = replay_capital_action_account(
+                    initial_cash=initial_cash,
+                    events=(*events, *(item.event for item in facts[:index])),
+                )
+                # The reducer validates the action's account, opening order and
+                # symbol when consumed. A terminal unfilled BUY is not a held
+                # position and cannot authorize feature-history rebasing.
+                _check(account_before.quantity > 0)
                 ratio *= event.ratio
                 require_bounded_decimal(ratio, "feature split ratio", positive=True)
             seen.add(event.event_id)
@@ -302,7 +318,11 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                     _check(len(projection.raw_bars) == len(previous) + 1)
                     _check(projection.raw_bars[:-1] == previous)
                     _feature_continuity(
-                        prior_features[symbol], projection, frame.original_facts, events
+                        prior_features[symbol],
+                        projection,
+                        frame.original_facts,
+                        events,
+                        request.initial_cash,
                     )
             prior_projections = frame.projections
             bars = tuple(p.raw_bars[-1] for p in frame.projections)

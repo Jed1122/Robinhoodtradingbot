@@ -648,6 +648,152 @@ def test_flat_overnight_split_rebase_cannot_use_pending_pre_split_stop():
         run(records=(records[0], replace(records[-1], projections=changed)))
 
 
+def test_flat_rejected_episode_split_cannot_authorize_pending_feature_rebase():
+    from trading_bot.simulation.etf_capital_account import CapitalEpisodeFeesFinal
+    from trading_bot.simulation.etf_capital_daily_owner import CapitalDailyOriginalFact
+    from trading_bot.simulation.events import EventCursor
+
+    records = action_records("split")
+    rejected = run(
+        records=records[:2], entry_outcome="rejected", entry_fill_fraction=D(0), entry_fee=D(0)
+    )
+    assert rejected.account.quantity == 0 and not rejected.account.complete
+    buy = rejected.events[0].request.order
+    opened = records[-1].projections[0].raw_bars[-1].starts_at
+    split = replace(
+        records[-1].original_facts[0].event,
+        cursor=EventCursor(1000, opened - timedelta(seconds=2)),
+        account_id=buy.account_id,
+        opening_order_id=buy.id,
+    )
+    final = CapitalEpisodeFeesFinal(
+        "flat-final", EventCursor(1002, opened - timedelta(seconds=1)), D(0), buy.account_id, buy.id
+    )
+    records = (
+        *records[:-1],
+        replace(
+            records[-1],
+            original_facts=(
+                CapitalDailyOriginalFact(split, None),
+                CapitalDailyOriginalFact(final, None),
+            ),
+        ),
+    )
+    with pytest.raises(ValueError):
+        run(records=records, entry_outcome="rejected", entry_fill_fraction=D(0), entry_fee=D(0))
+
+
+def test_original_fill_before_split_in_same_frame_establishes_held_frontier():
+    from trading_bot.simulation.etf_capital_daily_owner import CapitalDailyOriginalFact
+    from trading_bot.simulation.events import EventCursor
+    from trading_bot.simulation.lifecycle_models import LifecycleFillEvent
+
+    records = action_records("split")
+    filled = run(records=records[:2])
+    fill = next(event for event in filled.events if type(event) is LifecycleFillEvent)
+    unfilled = run(
+        records=records[:2], entry_outcome="unfilled", entry_fill_fraction=D(0), entry_fee=D(0)
+    )
+    buy = unfilled.events[0].request.order
+    opened = records[-1].projections[0].raw_bars[-1].starts_at
+    fill = replace(
+        fill,
+        cursor=EventCursor(999, opened - timedelta(seconds=2)),
+        fill=replace(
+            fill.fill,
+            broker_order_id=buy.broker_order_id,
+            fee=D(0),
+            occurred_at=opened - timedelta(seconds=2),
+        ),
+    )
+    last = replace(
+        records[-1],
+        original_facts=(
+            CapitalDailyOriginalFact(fill, D(301)),
+            replace(
+                records[-1].original_facts[0],
+                event=replace(records[-1].original_facts[0].event, opening_order_id=buy.id),
+            ),
+        ),
+    )
+    value = run(
+        records=(*records[:-1], last),
+        entry_outcome="unfilled",
+        entry_fill_fraction=D(0),
+        entry_fee=D(0),
+    )
+    assert value.account.quantity == D(".132")
+    assert value.account.average_price == D("150.075")
+    assert value.account.cash == D("80.1901")
+    assert value.points[-1].opening.stop_distance == D(2)
+
+
+@pytest.mark.parametrize("change", ("remove", "amount", "record", "backdated_addition"))
+def test_later_distribution_projection_cannot_revise_prior_asof_facts(change):
+    from trading_bot.market_data.etf_capital_actions import CapitalDistribution
+
+    records = frames(2)
+    first_date = records[0].projections[0].as_of_session
+    old_date = first_date - timedelta(days=2)
+    original = CapitalDistribution(old_date, old_date, old_date, D(1), "a" * 64)
+    rows = (original,)
+    changed = (
+        ()
+        if change == "remove"
+        else (
+            (replace(original, amount_per_share=D(2)),)
+            if change == "amount"
+            else (replace(original, record_hash="f" * 64),)
+            if change == "record"
+            else (
+                original,
+                replace(
+                    original,
+                    ex_date=first_date,
+                    record_date=first_date,
+                    pay_date=first_date,
+                    record_hash="f" * 64,
+                ),
+            )
+        )
+    )
+    records = tuple(
+        replace(
+            frame,
+            entry_decision_allowed=False,
+            projections=tuple(
+                replace(p, distributions=rows if i == 0 else changed) for p in frame.projections
+            ),
+        )
+        for i, frame in enumerate(records)
+    )
+    with pytest.raises(ValueError):
+        run(records=records)
+
+
+def test_new_current_session_distribution_extends_original_history_without_rewriting():
+    from trading_bot.market_data.etf_capital_actions import CapitalDistribution
+
+    records = frames(2)
+    first_date = records[0].projections[0].as_of_session
+    next_date = records[1].projections[0].as_of_session
+    old = CapitalDistribution(first_date, first_date, first_date, D(1), "a" * 64)
+    new = CapitalDistribution(next_date, next_date, next_date, D(2), "b" * 64)
+    records = tuple(
+        replace(
+            frame,
+            entry_decision_allowed=False,
+            projections=tuple(
+                replace(p, distributions=(old,) if i == 0 else (old, new))
+                for p in frame.projections
+            ),
+        )
+        for i, frame in enumerate(records)
+    )
+    value = run(records=records)
+    assert value.account.cash == D(100) and value.events == ()
+
+
 def test_as_of_feature_hash_regeneration_does_not_rewrite_economic_history():
     from trading_bot.domain import DataHash
 
