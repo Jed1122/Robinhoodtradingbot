@@ -12,6 +12,19 @@
 
 ## Current Task5 checkpoint — 2026-10-09
 
+Subsequent current checkpoint: PR35/PR36 are integrated atdeee82e/8302f9a,
+each after all14 exact-head hosted jobs passed and reviewed compatible identity
+was verified. Daily owner sourcece71f1c completed9,952full/20native/92.20%
+combined and unchanged80overall/90critical gates, with reviewed history-erasure
+fix covered RED-to-GREEN. Hosted owner release remains pending. Separate
+selection/statistics/cutoff compositionc650673 has483focused/97.58% coverage
+and a passed statistics-only full-family resource check, but independent review
+and full/native/release checks remain pending. No complete evaluator, executable
+economic freeze/study or qualified five-symbol input claim. Next: owned original
+training outcomes/settlement/actions/account-policy carryover, complete statistics/
+benchmark/cost report binding and full strategy workload before freeze/evaluation.
+The following paragraphs preserve older checkpoints, not current status.
+
 PR29–PR34 are integrated; corrected signal/frontier PR34 merged atf1326c9.
 Entry/exit executable e814a29 completed9,896full/20native/92.16% and unchanged
 80overall/90critical gates with independent review's duplicate-BUY correction

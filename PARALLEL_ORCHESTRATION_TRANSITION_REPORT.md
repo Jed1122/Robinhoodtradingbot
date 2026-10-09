@@ -1,5 +1,39 @@
 # Parallel Orchestration Transition Report
 
+## Daily owner locally certified; economic composition unfinished — 2026-10-09
+
+PR35 merged deee82ed4173265b13bf7b17a72a5dc2e33f3cd6; PR36 merged
+8302f9a7f35caecb51b01741e6219e24f8754905 at20:26:44Z after all14 current
+exact-head hosted jobs passed, no substantive findings, and compatible reviewed
+preview/tree verified. PR36 merge tree4b300e683423b2857b0970a8cfc0428c1b50e96f
+equals its candidate. Neither merge is deployment. Older pending sections below
+are retained historical checkpoints, not current release state.
+
+Daily owner source ce71f1caf19835f9a45763bcc96049568bf0ae24 passed9,952
+full tests/33optional skips/one existing warning,20 actual native tests and92.20%
+combined coverage. Unchanged80overall/90critical gates passed. Independent
+review's raw-history-erasure defect was watched RED, fixed and certified by
+these runs. Ruff/Mypy377/Bandit, locks and SBOM pass; unchanged dependency and
+deployment-manifest evidence is retained, not fresh network/deployment proof.
+The earlier full run that ended without a summary remains partial NONCERT.
+Current full/native/coverage/critical hashes are recorded in the release ledger.
+This publication changes human docs only, not the certified executable.
+
+The owner is a fixed-input assumed daily trajectory using shared original-state
+account/risk/lifecycle/policy engines. It is not a growing durable process worker
+or a complete economic evaluator. The separate c650673 selection/statistics
+increment is locally focused-tested and under independent review, not integrated
+or fully certified. Its2,088-column630-session statistics-only workload passed
+29.13seconds/201850880peakRSS; this is NOT full28x6x4x5 strategy validation.
+
+Next: finish exact-candidate releases; derive training scores from original-event
+runs with purged entry windows, settlement/actions and account-policy carryover;
+bind complete comparison families, costs/taxes and benchmarks; verify the full
+workload; then freeze executable/source/calendar/actions/cost/selection/statistical
+identities before economic evaluation. Qualified authorized five-symbol inputs
+are not established. Source/cost/execution/economic/promotion/live flags remain
+false; production limits unchanged. No new study or accepted edge is claimed.
+
 ## Pure prior-close policy locally certified; owner unfinished — 2026-10-09
 
 PR34 merged at f1326c901a12430abcbae25ede7401c62f22ea55, reviewed tree

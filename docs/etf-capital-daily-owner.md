@@ -3,7 +3,14 @@
 This bounded offline increment composes the existing prior-close policy,
 daily entry/exit adapters, v3 account/risk reducers and lifecycle replay.
 It is not a broker worker, economic study, promotion path or live service.
-Release verification and independent review remain pending.
+Executable ce71f1caf19835f9a45763bcc96049568bf0ae24 completed9,952 full
+tests (33 optional skips/one existing warning),20 actual native tests and92.20%
+combined coverage; unchanged80overall/90critical gates passed. Independent
+review's history-erasure/holding-clock finding was reproduced RED and fixed
+before this certification. Ruff/Mypy377/Bandit, frozen locks and SBOM passed;
+unchanged dependency/manifests retain their earlier verified evidence. Optional
+backup skips do not prove deployed recovery. Hosted exact-head release gates
+remain required. Human-document publication is not a fresh full-source rerun.
 
 `replay_capital_daily_owner` starts with cash and immutable original frames.
 The first completed close may create an instruction but cannot trade its own
