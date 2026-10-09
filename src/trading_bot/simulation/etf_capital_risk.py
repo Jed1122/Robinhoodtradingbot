@@ -354,6 +354,7 @@ def evaluate_capital_action_entry(
     result = replay_capital_action_risk(
         loaded=loaded, initial_cash=initial_cash, events=events, observations=observations
     )
+    _check(observations[-1].source_count == len(events))
     return _entry(loaded, result, instrument, entry_price, stop_distance, fee_bound)
 
 

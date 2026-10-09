@@ -1,5 +1,44 @@
 # Parallel Orchestration Transition Report
 
+## PR34 frontier corrections pending certification — 2026-10-09
+
+PR32 merged aaf9df0da5b8c981ad6fd9730a48166dc2a0fde2; PR33 merged
+93c0f2e23e21578d3225f261bdecbab2fc7f91c0 after all14 current hosted jobs passed
+and no substantive unresolved findings. Neither release is deployment.
+PR34 remains unmerged: three new hosted findings reproduced four RED controls.
+Current corrections require latest Eastern session/as-of equality, one daily bar
+per Eastern date, and a complete original action-tape frontier before entry
+admission. Historical-prefix risk replay remains informational. Earlier82c6457
+full/native results below are historical after these source changes; fresh
+full/native/hosted certification is required. No new study or economic freeze.
+MAIN's separate daily entry-only adapter remains under verification, not a full
+daily owner or economic evaluator. All qualification/live boundaries remain.
+
+## Strategy/fold contracts locally certified; economic runner unfinished — 2026-10-09
+
+Executable source `82c6457f42321806d08535f3e3ec6976c24340ef` passed9,822 full
+tests (33 optional skips/one existing warning),20 native tests and92.11%
+combined coverage. Unchanged80overall/90critical gates, Ruff/Mypy373/Bandit,
+both frozen locks, SBOM and actual shell/Compose checks passed. Dependency
+graphs match the retained clean advisory-audit graphs; no fresh network audit
+is implied. Independent review's two Important input findings were reproduced
+RED and fixed before this full certification. Additional literal numerical
+fixtures remain a deferred strengthening suggestion, not economic evidence.
+
+The28 fixed candidates and five calendar-only folds are contracts, not the
+account-gated executor or accepted strategy results. Risk/joint source0a4ff8d
+is separately certified9,804full/20native/92.10% and published as PR33; PR32 is
+its pending prefix dependency. Neither pending release is deployed. This
+publication incorporates only PR33's four human-doc changes by ancestry merge;
+executable/config/test/lock/CI bytes remain those certified at82c6457.
+
+Next: finish exact-head reviewed release gates, implement the daily execution
+adapter and train-only selection/policy carryover, validate complete workload
+performance and statistics, then freeze executable identities before outcomes.
+No development study has run, no private source prices were inspected, and
+source/cost/economic/execution/promotion/live flags remain false. Prior sections
+are historical snapshots, not current status.
+
 ## Action-aware risk and joint recovery locally certified — 2026-10-09
 
 Source `0a4ff8d1ba91fcfac65f8d062548da688e5020f5` completed9,804 full tests,

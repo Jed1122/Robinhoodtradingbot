@@ -104,19 +104,27 @@
 
 ## Execution status
 
+October9 subsequent checkpoint: PR32 merged aaf9df0 and PR33 merged93c0f2e.
+PR34 has three newly reproduced frontier/session findings; four RED controls
+now pass with strict latest-date/unique-session and complete-tape entry guards.
+Fresh corrected-source full/native/hosted verification is required; earlier
+82c6457 certification below is historical, not certification of this correction.
+No economic freeze or study has run. The following preserves prior checkpoints.
+
 October9 latest: action-aware risk and fixed-original-input joint restart source
 0a4ff8d completed9,804 full/20 native tests,92.10% combined coverage and unchanged
 80overall/90critical gates. Independent integrated review found no Critical or
 Important defect;83 independent controls passed. Static/lock/SBOM/manifests pass;
 same unchanged dependency-graph clean advisory evidence is retained. This is
 local synthetic software certification, not hosted release or deployed recovery.
-PR31 is merged; PR32 remains pending. Risk/joint release is being prepared.
+PR31 is merged; PR32 remains pending. Risk/joint release is published as PR33.
 Representative100/500/1000/3000-event replay/publication checks passed; no maximum-
 input or linear-complexity claim. V1 stored checkpoints remain unsupported and
 preserved, with no automatic migration; existing v2 API remains unchanged.
 
-Separate strategy/fold source82c6457 has291 focused passes after two reviewed
-input-boundary fixes; full verification remains running. Task5 still needs the
+Separate strategy/fold source82c6457 passed9,822 full and20 native tests with
+92.11% combined coverage and unchanged80overall/90critical gates after two
+reviewed input-boundary fixes. Its hosted release remains pending. Task5 needs the
 account-gated daily execution adapter, hold/protection enforcement, train-only
 selection/policy carryover, dependent statistics and capital-specific reports.
 No executable economic freeze or study has run; source/cost/operational/live
