@@ -110,13 +110,14 @@ October9 latest: action-aware risk and fixed-original-input joint restart source
 Important defect;83 independent controls passed. Static/lock/SBOM/manifests pass;
 same unchanged dependency-graph clean advisory evidence is retained. This is
 local synthetic software certification, not hosted release or deployed recovery.
-PR31 is merged; PR32 remains pending. Risk/joint release is being prepared.
+PR31 is merged; PR32 remains pending. Risk/joint release is published as PR33.
 Representative100/500/1000/3000-event replay/publication checks passed; no maximum-
 input or linear-complexity claim. V1 stored checkpoints remain unsupported and
 preserved, with no automatic migration; existing v2 API remains unchanged.
 
-Separate strategy/fold source82c6457 has291 focused passes after two reviewed
-input-boundary fixes; full verification remains running. Task5 still needs the
+Separate strategy/fold source82c6457 passed9,822 full and20 native tests with
+92.11% combined coverage and unchanged80overall/90critical gates after two
+reviewed input-boundary fixes. Its hosted release remains pending. Task5 needs the
 account-gated daily execution adapter, hold/protection enforcement, train-only
 selection/policy carryover, dependent statistics and capital-specific reports.
 No executable economic freeze or study has run; source/cost/operational/live
