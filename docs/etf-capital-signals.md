@@ -6,7 +6,10 @@ Action-aware entry admission must consume the complete supplied original tape;
 historical-prefix risk replay remains supported for analysis, not stale entry.
 Four regressions were watched RED before these admission fixes. The earlier
 82c6457 full/native certification below is historical after this source change;
-fresh exact-source full/native and hosted release verification remain required.
+Fresh corrected-source9,826 full/20 native tests,92.11% combined coverage and
+unchanged80overall/90critical gates passed. All14 exact-head hosted jobs passed;
+PR34 merged atf1326c9 with the reviewed treea652f3f. These checks do not qualify
+the supplied source data or prove economic/execution readiness.
 
 This is a synthetic-tested research component, not a completed backtest,
 executable study freeze or accepted economic result. Source, economic,

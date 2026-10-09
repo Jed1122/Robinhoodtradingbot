@@ -1,5 +1,32 @@
 # Parallel Orchestration Transition Report
 
+## Pure prior-close policy locally certified; owner unfinished — 2026-10-09
+
+PR34 merged at f1326c901a12430abcbae25ede7401c62f22ea55, reviewed tree
+a652f3f01c71932184cf225b3fb0416a08a176d2, after all14 exact-head hosted jobs
+passed and all four substantive threads were adjudicated/resolved. This is
+software integration, not deployment. PR35's entry/exit adapters remain pending
+hosted integration. Earlier pending PR34 sections are historical checkpoints.
+
+Pure policy executable b2dc8f8457d83a4216e3ebfd6b023b7a4fd65396 completed9,918
+full tests (33 optional skips/one existing warning),20 actual native tests and
+92.17% combined coverage; unchanged80overall/90critical gates passed. Current
+Ruff/Mypy376/Bandit, frozen locks and SBOM passed; unchanged shell/Compose and
+same-graph advisory evidence are retained, not new network audits. Independent
+review's Important holding-deadline/warmup finding was reproduced RED and fixed
+before certification. Extra positive ATR-outlier coverage remains a deferred
+strengthening suggestion; the zero-recent-ATR fixture already distinguishes the
+100-bar window from200. No duplicate whole-source review is required for the
+covered fix. Subsequent human-document/ancestry heads retain these exact-source
+results, not a new full test run.
+
+Next: integrate PR35 before the policy release, then implement the original-event
+daily owner and train-only selection/policy carryover, dependent statistics and
+complete28x6x4x5 workload verification. A28-candidate one-session synthetic probe
+passed its bounded timing/memory budget; it is not complete-workload evidence.
+No executable economic freeze/study has run. Source/cost/broker/runtime evidence
+remain independently unqualified; all eligibility flags stay false.
+
 ## Entry/exit adapters locally certified; daily owner unfinished — 2026-10-09
 
 Current adapter executable `e814a29dd1cc0c356aa29623bc015807695631dd`

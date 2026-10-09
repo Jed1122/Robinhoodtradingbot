@@ -1,10 +1,11 @@
 # Capital research action accounting — partial implementation
 
-Current follow-on: shared v3 prefixes await PR32 release. Action-aware risk and
-fixed-original-input joint checkpoint reconstruction passed independent review,
+Current follow-on: shared v3 prefixes and action-aware risk/joint reconstruction
+are released through PR32/PR33; corrected signal/admission PR34 is merged atf1326c9.
+Fixed-original-input joint checkpoint reconstruction passed independent review,
 9,804 full/20 native tests and92.10% combined coverage at0a4ff8d, including the
-unchanged80overall/90critical gates. This follow-on is locally certified, not
-merged/deployed. Representative replay and local SIGKILL checks are synthetic;
+unchanged80overall/90critical gates. This follow-on is merged, not deployed.
+Representative replay and local SIGKILL checks are synthetic;
 economic execution/evaluation and genuine source/cost evidence remain unfinished.
 Older remaining-work paragraphs below describe prior source increments only.
 
