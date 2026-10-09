@@ -10,6 +10,16 @@ ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "check_critical_branch_coverage.py"
 
 
+def test_capital_account_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/simulation/etf_capital_account.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 def _load_checker():
     spec = importlib.util.spec_from_file_location("critical_branch_coverage", SCRIPT)
     assert spec is not None and spec.loader is not None

@@ -1,7 +1,8 @@
 # Capital research account boundary
 
-Status: first funding primitive implemented; integrated review/release pending.
-The complete capital-aware account/replay owner is **not implemented**.
+Status: funding primitive and bounded synthetic account reconstruction implemented;
+integrated review/release pending. The complete risk/corporate-action/recovery
+composition and economic evaluator are **not implemented**.
 
 `simulation.etf_capital_funding.capital_order_reservation` validates original
 broker-neutral LIMIT order records and explicit bounded whole-episode fee facts.
@@ -36,11 +37,26 @@ Those independent checks remain necessary; no order factory is introduced.
 
 ## Next steps
 
-Finish integrated verification/review. Then implement one bounded versioned
-capital account owner using shared sizing, lifecycle transitions/fill accounting
-and canonical loss rules. Preserve partial/rejected/unfilled/uncertain orders,
-explicit settlement and final fees, split basis/distribution entitlements,
-single-position limits, event deduplication and restart-equivalent prefixes.
+The new `replay_capital_account` recomputes one cash account from at most4096
+original typed events, never from caller-declared balances or reservations.
+Orders use a research-only instrument namespace and the existing lifecycle
+transition/fill accounting. It denies additions, overlapping active orders,
+oversells, account/basis changes, conflicting duplicates, stale events and
+unsupported symbols. Explicit sale-fill settlement and matching whole-episode
+fee finality are necessary to release obligations. Pending, partial and terminal
+incomplete histories remain incomplete; input end never forces a fill.
+
+Thirty-six synthetic controls include independent cash expectations and a
+separate-process reconstruction of partial, sold-unsettled and completed prefixes.
+This is not durable checkpoint restoration or deployed recovery: those controls
+reconstruct supplied fixtures, not a production store or broker observations.
+The reducer has no canonical entry-approval or cost/source-qualified verdict.
+It is not directly consumable by an execution service. Hashes are structural,
+not authentication. All execution/promotion flags remain permanently false.
+
+Finish exact-source integrated verification/review. Then compose canonical sizing,
+current-equity loss latches, explicit marks, split basis/distribution entitlements
+and versioned bounded checkpoints with this account reconstruction.
 Only then compose the approved three strategy families and purged walk-forward
 economic evaluator. Source acceptance, actual costs, prospective final testing,
 trusted paper/shadow and deployed recovery remain separate unfinished stages.

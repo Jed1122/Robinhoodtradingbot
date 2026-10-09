@@ -1,5 +1,22 @@
 # Parallel Orchestration Transition Report
 
+## Synthetic capital account reconstruction implemented; release pending — 2026-10-09
+
+The first account reducer reconstructs cash, holdings, reservations, whole-episode
+fees and sale settlement from bounded ordered original records using shared
+lifecycle accounting.36 synthetic controls pass, including literal cash values,
+duplicate/conflict checks, cross-symbol episode ownership and separate-process
+prefix reconstruction. No partial record is adopted as a restored account.
+See [precise scope and unfinished composition](docs/etf-capital-account.md).
+
+This is not canonical entry admission, corporate-action/loss-latch composition,
+durable checkpoint recovery, complete strategy economics or genuine execution.
+Current exact-source review/full/native/hosted release gates remain pending.
+Earlier funding/full intake results do not certify this changed source. No actual
+data study, broker/provider call, credentials, trade, deployment or risk change.
+Next: finish release gates; integrate account risk/actions/checkpoints; implement
+the approved strategy families and frozen after-cost development evaluator.
+
 ## Intake calendar provenance correction; current certification pending — 2026-10-09
 
 New hosted PR28 review found that copying a calendar reset fixed metadata
