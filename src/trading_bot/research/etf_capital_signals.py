@@ -136,6 +136,29 @@ def capital_strategy_signal(
     ):
         raise ValueError("capital_signal_invalid")
     candidate.__post_init__()
+    clock, source_hashes = _validate_capital_signal_projections(projections, config_hash, as_of)
+    return _calculate_capital_signal(candidate, projections, config_hash, clock, source_hashes)
+
+
+def _capital_strategy_signals(
+    projections: tuple[CapitalFeatureProjection, ...],
+    *,
+    config_hash: ConfigHash,
+    as_of: datetime,
+) -> tuple[CapitalSignal, ...]:
+    """Private all-candidate preparation; no caller-provided cached authority."""
+    clock, source_hashes = _validate_capital_signal_projections(projections, config_hash, as_of)
+    return tuple(
+        _calculate_capital_signal(candidate, projections, config_hash, clock, source_hashes)
+        for candidate in capital_candidates()
+    )
+
+
+def _validate_capital_signal_projections(
+    projections: tuple[CapitalFeatureProjection, ...], config_hash: ConfigHash, as_of: datetime
+) -> tuple[datetime, tuple[tuple[str, str], ...]]:
+    if type(projections) is not tuple or len(projections) != 5:
+        raise ValueError("capital_signal_invalid")
     as_of = require_utc(as_of)
     _require_sha256_hex(config_hash, "config")
     symbols = []
@@ -167,15 +190,25 @@ def capital_strategy_signal(
         symbols.append(str(projection.raw_bars[-1].instrument_id))
     if tuple(sorted(symbols)) != _SYMBOLS:
         raise ValueError("capital_signal_invalid")
+    return as_of, tuple(
+        sorted((str(p.raw_bars[-1].instrument_id), p.projection_hash) for p in projections)
+    )
+
+
+def _calculate_capital_signal(
+    candidate: CapitalCandidate,
+    projections: tuple[CapitalFeatureProjection, ...],
+    config_hash: ConfigHash,
+    as_of: datetime,
+    source_hashes: tuple[tuple[str, str], ...],
+) -> CapitalSignal:
     identity = content_hash(
         (
             "capital-signals-v1",
             candidate,
             config_hash,
             as_of,
-            tuple(
-                sorted((str(p.raw_bars[-1].instrument_id), p.projection_hash) for p in projections)
-            ),
+            source_hashes,
         )
     )
     if any(len(p.feature_bars) < 200 for p in projections):
