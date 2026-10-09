@@ -10,7 +10,11 @@ from trading_bot.domain import Bar, BarInterval, DataHash, InstrumentId
 from trading_bot.domain.decimal_utils import _require_sha256_hex, require_bounded_decimal
 from trading_bot.market_data.alpaca_capital_native import assess_capital_daily_pages
 from trading_bot.market_data.etf_calendar import EtfCalendarArchive
-from trading_bot.market_data.etf_capital_actions import CapitalActionArchive, CapitalDistribution
+from trading_bot.market_data.etf_capital_actions import (
+    CapitalActionArchive,
+    CapitalDistribution,
+    CapitalSplit,
+)
 from trading_bot.market_data.etf_capital_archive import CapitalDailyArchive
 from trading_bot.market_data.etf_capital_inventory import capital_daily_inventory
 from trading_bot.market_data.etf_source import _ceil_time
@@ -178,28 +182,9 @@ def capital_split_feature_bars(
                         )
                     ),
                 )
-                factor = Decimal("1")
-                for split in actions.splits:
-                    if day < split.effective_date <= as_of_session:
-                        factor *= split.new_shares_per_old_share
-                        require_bounded_decimal(factor, "cumulative split factor", positive=True)
-                feature = replace(
-                    bar,
-                    open=bar.open / factor,
-                    high=bar.high / factor,
-                    low=bar.low / factor,
-                    close=bar.close / factor,
-                    volume=bar.volume * factor,
-                    source="capital-split-feature-assumption-v2",
+                feature = _capital_split_bar(
+                    bar, splits=actions.splits, as_of_session=as_of_session
                 )
-                for value in (
-                    feature.open,
-                    feature.high,
-                    feature.low,
-                    feature.close,
-                    feature.volume,
-                ):
-                    require_bounded_decimal(value, "feature value", nonnegative=True)
                 feature = replace(
                     feature,
                     data_hash=DataHash(
@@ -229,3 +214,26 @@ def capital_split_feature_bars(
         tuple(adjusted),
         tuple(row for row in actions.distributions if row.ex_date <= as_of_session),
     )
+
+
+def _capital_split_bar(bar: Bar, *, splits: tuple[CapitalSplit, ...], as_of_session: date) -> Bar:
+    """The shared raw-to-feature arithmetic; never round prior adjusted prices."""
+    with localcontext(_CONTEXT):
+        day = bar.ends_at.astimezone(_ZONE).date()
+        factor = Decimal(1)
+        for split in splits:
+            if day < split.effective_date <= as_of_session:
+                factor *= split.new_shares_per_old_share
+                require_bounded_decimal(factor, "cumulative split factor", positive=True)
+        feature = replace(
+            bar,
+            open=bar.open / factor,
+            high=bar.high / factor,
+            low=bar.low / factor,
+            close=bar.close / factor,
+            volume=bar.volume * factor,
+            source="capital-split-feature-assumption-v2",
+        )
+        for value in (feature.open, feature.high, feature.low, feature.close, feature.volume):
+            require_bounded_decimal(value, "feature value", nonnegative=True)
+        return feature

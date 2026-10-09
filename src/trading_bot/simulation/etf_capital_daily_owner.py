@@ -1,14 +1,20 @@
 """Owned original-event daily assumptions; no broker or economic authority."""
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, localcontext
 from typing import Literal
 from zoneinfo import ZoneInfo
 
 from trading_bot.config import LoadedConfig
 from trading_bot.domain import Instrument, OrderPurpose, Side, require_bounded_decimal
-from trading_bot.market_data.etf_capital_features import CapitalFeatureProjection
+from trading_bot.market_data.etf_calendar import EtfCalendarArchive
+from trading_bot.market_data.etf_capital_actions import CapitalSplit
+from trading_bot.market_data.etf_capital_features import _CONTEXT as _FEATURE_CONTEXT
+from trading_bot.market_data.etf_capital_features import (
+    CapitalFeatureProjection,
+    _capital_split_bar,
+)
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_daily_policy import (
     CapitalDailyPolicy,
@@ -92,6 +98,7 @@ class CapitalDailyOwnerRequest(_Offline):
     entry_fee: Decimal
     exit_fee: Decimal
     roundtrip_friction_pct: Decimal
+    calendar: EtfCalendarArchive
     entry_outcome: _Outcome = "filled"
     entry_fill_fraction: Decimal = Decimal(1)
     exit_outcome: _Outcome = "filled"
@@ -144,7 +151,8 @@ def _feature_continuity(
     facts: tuple[CapitalDailyOriginalFact, ...],
     events: tuple[_Event, ...],
     initial_cash: Decimal,
-) -> None:
+    prior_splits: tuple[CapitalSplit, ...],
+) -> tuple[CapitalSplit, ...]:
     """Allow only original position-bound split rebasing, not revised prices."""
     _check(
         (prior.archive_hash, prior.action_hash, prior.calendar_hash)
@@ -158,7 +166,7 @@ def _feature_continuity(
         )
     )
     seen = {event.event_id for event in events if type(event) is CapitalSplitApplied}
-    ratio = Decimal(1)
+    splits = list(prior_splits)
     for index, fact in enumerate(facts):
         _check(type(fact) is CapitalDailyOriginalFact)
         event = fact.event
@@ -173,24 +181,10 @@ def _feature_continuity(
                 # symbol when consumed. A terminal unfilled BUY is not a held
                 # position and cannot authorize feature-history rebasing.
                 _check(account_before.quantity > 0)
-                ratio *= event.ratio
-                require_bounded_decimal(ratio, "feature split ratio", positive=True)
+                splits.append(CapitalSplit(current.as_of_session, event.ratio, event.record_hash))
             seen.add(event.event_id)
-    for before, after in zip(prior.feature_bars, current.feature_bars[:-1], strict=True):
-        # The established feature builder regenerates data_hash at each as-of.
-        # All economic fields and non-price metadata remain exact; the full
-        # supplied hashes are still bound by the owner input identity.
-        expected = replace(before, data_hash=after.data_hash)
-        if ratio != 1:
-            expected = replace(
-                expected,
-                open=before.open / ratio,
-                high=before.high / ratio,
-                low=before.low / ratio,
-                close=before.close / ratio,
-                volume=before.volume * ratio,
-            )
-        _check(expected == after)
+    _check(len({split.effective_date for split in splits}) == len(splits))
+    return tuple(splits)
 
 
 def _validate(request: CapitalDailyOwnerRequest) -> None:
@@ -199,6 +193,21 @@ def _validate(request: CapitalDailyOwnerRequest) -> None:
     _check(request.execution_enabled is False and request.economic_admitted is False)
     _check(request.evidence_promotable is False)
     _config(request.loaded)
+    _check(type(request.calendar) is EtfCalendarArchive)
+    request.calendar.__post_init__()
+    calendar_defaults = EtfCalendarArchive(request.calendar.source_hash, request.calendar.sessions)
+    _check(
+        type(request.calendar.source_kind) is str
+        and request.calendar.source_kind == calendar_defaults.source_kind
+        and type(request.calendar.limitations) is tuple
+        and all(type(item) is str for item in request.calendar.limitations)
+        and request.calendar.limitations == calendar_defaults.limitations
+    )
+    _check(
+        request.calendar.source_qualified is False and request.calendar.evidence_promotable is False
+    )
+    for session in request.calendar.sessions:
+        _check(session.opens_at.tzinfo is UTC and session.closes_at.tzinfo is UTC)
     _check(type(request.frames) is tuple and 0 < len(request.frames) <= 2048)
     for fee in (request.entry_fee, request.exit_fee):
         require_bounded_decimal(fee, "side fee", nonnegative=True)
@@ -229,6 +238,8 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
         points: list[CapitalDailyOwnerPoint] = []
         bindings: dict[str, CapitalDailyPolicy] = {}
         prior_projections: tuple[CapitalFeatureProjection, ...] = ()
+        basis_splits: dict[str, tuple[CapitalSplit, ...]] = {}
+        calendar_hash = request.calendar.archive_hash
         pending: CapitalDailyPolicy | None = None
         account = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
 
@@ -281,23 +292,27 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             fill = min(fills, key=lambda e: e.cursor.sequence)
             if instruction.stop_distance is None:
                 raise ValueError("capital_daily_owner_invalid")
-            split_ratio = Decimal(1)
-            seen_splits: set[str] = set()
-            for event in events:
-                if (
-                    isinstance(event, CapitalSplitApplied)
-                    and event.opening_order_id == buy.request.order.id
-                    and event.event_id not in seen_splits
-                ):
-                    split_ratio *= event.ratio
-                    seen_splits.add(event.event_id)
-            opening = CapitalOpeningPolicy(
-                instruction.candidate,
-                buy.symbol,
-                fill.cursor.occurred_at.astimezone(_ZONE).date(),
-                instruction.stop_distance / split_ratio,
-            )
-            return opening, fill.fill.price / split_ratio
+            with localcontext(_FEATURE_CONTEXT):
+                split_ratio = Decimal(1)
+                seen_splits: set[str] = set()
+                for event in events:
+                    if (
+                        isinstance(event, CapitalSplitApplied)
+                        and event.opening_order_id == buy.request.order.id
+                        and event.event_id not in seen_splits
+                    ):
+                        split_ratio *= event.ratio
+                        require_bounded_decimal(
+                            split_ratio, "cumulative split factor", positive=True
+                        )
+                        seen_splits.add(event.event_id)
+                opening = CapitalOpeningPolicy(
+                    instruction.candidate,
+                    buy.symbol,
+                    fill.cursor.occurred_at.astimezone(_ZONE).date(),
+                    instruction.stop_distance / split_ratio,
+                )
+                return opening, fill.fill.price / split_ratio
 
         for frame in request.frames:
             _check(type(frame) is CapitalDailyFrame)
@@ -311,19 +326,37 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             for projection in frame.projections:
                 _check(type(projection) is CapitalFeatureProjection)
                 projection.__post_init__()
+                _check(projection.calendar_hash == calendar_hash)
+                expected_sessions = tuple(
+                    (row.opens_at, row.closes_at)
+                    for row in request.calendar.sessions
+                    if row.session_date <= projection.as_of_session
+                )
+                _check(
+                    tuple((bar.starts_at, bar.ends_at) for bar in projection.raw_bars)
+                    == expected_sessions
+                )
                 symbol = str(projection.raw_bars[-1].instrument_id)
                 if prior_projections:
                     _check(symbol in prior_raw)
                     previous = prior_raw[symbol]
                     _check(len(projection.raw_bars) == len(previous) + 1)
                     _check(projection.raw_bars[:-1] == previous)
-                    _feature_continuity(
+                    basis_splits[symbol] = _feature_continuity(
                         prior_features[symbol],
                         projection,
                         frame.original_facts,
                         events,
                         request.initial_cash,
+                        basis_splits.get(symbol, ()),
                     )
+                for raw, feature in zip(projection.raw_bars, projection.feature_bars, strict=True):
+                    expected = _capital_split_bar(
+                        raw,
+                        splits=basis_splits.get(symbol, ()),
+                        as_of_session=projection.as_of_session,
+                    )
+                    _check(replace(expected, data_hash=feature.data_hash) == feature)
             prior_projections = frame.projections
             bars = tuple(p.raw_bars[-1] for p in frame.projections)
             opened, closed = bars[0].starts_at, bars[0].ends_at
@@ -569,8 +602,9 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             ),
             content_hash(
                 (
-                    "capital-daily-owner-v4",
+                    "capital-daily-owner-v5",
                     request.loaded.config_hash,
+                    calendar_hash,
                     request.initial_cash,
                     tuple(
                         content_hash(("capital-daily-owner-frame-v1", frame))

@@ -1,8 +1,9 @@
 """Owned daily instructions through shared reducers; fabricated prices only."""
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal as D
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -12,12 +13,48 @@ from trading_bot.domain import InstrumentId
 from trading_bot.research.etf_capital_signals import CapitalCandidate
 
 
+def calendar():
+    from trading_bot.market_data.etf_calendar import EtfCalendarArchive, EtfCalendarSession
+
+    zone = ZoneInfo("America/New_York")
+    day = date(2019, 1, 1)
+    sessions = []
+    while len(sessions) < 220:
+        if day.weekday() < 5:
+            sessions.append(
+                EtfCalendarSession(
+                    day,
+                    datetime.combine(day, time(9, 30), zone).astimezone(UTC),
+                    datetime.combine(day, time(16), zone).astimezone(UTC),
+                )
+            )
+        day += timedelta(days=1)
+    return EtfCalendarArchive("c" * 64, tuple(sessions))
+
+
 def frames(count=4, *, hold=2):
     from trading_bot.simulation.etf_capital_daily_owner import CapitalDailyFrame
 
     result = []
+    declared = calendar()
     for index in range(count):
         records = projections(tuple(D(100 + i) for i in range(200 + index)))
+        records = tuple(
+            replace(
+                p,
+                as_of_session=declared.sessions[199 + index].session_date,
+                calendar_hash=declared.archive_hash,
+                raw_bars=tuple(
+                    replace(b, starts_at=s.opens_at, ends_at=s.closes_at)
+                    for b, s in zip(p.raw_bars, declared.sessions, strict=False)
+                ),
+                feature_bars=tuple(
+                    replace(b, starts_at=s.opens_at, ends_at=s.closes_at)
+                    for b, s in zip(p.feature_bars, declared.sessions, strict=False)
+                ),
+            )
+            for p in records
+        )
         terms = tuple(
             instrument(
                 id=InstrumentId("fixture-" + str(p.raw_bars[-1].instrument_id)),
@@ -46,7 +83,14 @@ def run(count=4, *, records=None, **changes):
     )
 
     value = CapitalDailyOwnerRequest(
-        loaded(), D("100"), records or frames(count), D(".10"), D(".01"), D(".02"), D(".10")
+        loaded(),
+        D("100"),
+        records or frames(count),
+        D(".10"),
+        D(".01"),
+        D(".02"),
+        D(".10"),
+        calendar(),
     )
     return replay_capital_daily_owner(replace(value, **changes))
 
@@ -207,7 +251,7 @@ def test_no_trade_owner_materializes_only_final_complete_risk_identity(monkeypat
     )
 
 
-def test_v4_owner_binds_ordered_complete_frames_without_aliasing_v3():
+def test_v5_owner_binds_calendar_and_ordered_complete_frames_without_aliasing_v3():
     from trading_bot.market_data.recording import content_hash
     from trading_bot.simulation.etf_capital_daily_owner import (
         CapitalDailyOwnerRequest,
@@ -215,13 +259,14 @@ def test_v4_owner_binds_ordered_complete_frames_without_aliasing_v3():
     )
 
     request = CapitalDailyOwnerRequest(
-        loaded(), D(100), frames(1), D(".10"), D(".01"), D(".02"), D(".10")
+        loaded(), D(100), frames(1), D(".10"), D(".01"), D(".02"), D(".10"), calendar()
     )
     value = replay_capital_daily_owner(request)
     assert value.input_hash == content_hash(
         (
-            "capital-daily-owner-v4",
+            "capital-daily-owner-v5",
             request.loaded.config_hash,
+            request.calendar.archive_hash,
             D(100),
             tuple(content_hash(("capital-daily-owner-frame-v1", f)) for f in request.frames),
             D(".10"),
@@ -323,7 +368,14 @@ def test_outside_submission_cannot_supply_owner_preapproved_entry():
 def test_completed_range_uses_adverse_stop_first_not_optimistic_target():
     records = frames(2)
     altered = tuple(
-        replace(p, raw_bars=(*p.raw_bars[:-1], replace(p.raw_bars[-1], high=D(310), low=D(295))))
+        replace(
+            p,
+            raw_bars=(*p.raw_bars[:-1], replace(p.raw_bars[-1], high=D(310), low=D(295))),
+            feature_bars=(
+                *p.feature_bars[:-1],
+                replace(p.feature_bars[-1], high=D(310), low=D(295)),
+            ),
+        )
         for p in records[-1].projections
     )
     records = (records[0], replace(records[-1], projections=altered))
@@ -336,7 +388,14 @@ def test_completed_range_uses_adverse_stop_first_not_optimistic_target():
 def test_adverse_opening_stop_gap_precedes_scheduled_strategy_exit():
     records = frames(4)
     altered = tuple(
-        replace(p, raw_bars=(*p.raw_bars[:-1], replace(p.raw_bars[-1], open=D(290), low=D(289))))
+        replace(
+            p,
+            raw_bars=(*p.raw_bars[:-1], replace(p.raw_bars[-1], open=D(290), low=D(289))),
+            feature_bars=(
+                *p.feature_bars[:-1],
+                replace(p.feature_bars[-1], open=D(290), low=D(289)),
+            ),
+        )
         for p in records[-1].projections
     )
     records = (*records[:-1], replace(records[-1], projections=altered))
@@ -386,9 +445,16 @@ def action_records(kind, *, duplicate=False):
     projected = tuple(
         replace(
             p,
-            raw_bars=(*p.raw_bars[:-1], adjusted(p.raw_bars[-1])),
-            feature_bars=tuple(replace(adjusted(b), volume=b.volume * 2) for b in p.feature_bars)
+            raw_bars=(*p.raw_bars[:-1], adjusted(p.raw_bars[-1]))
+            if str(p.raw_bars[-1].instrument_id) == "IEF"
+            else p.raw_bars,
+            feature_bars=(
+                *tuple(replace(adjusted(b), volume=b.volume * 2) for b in p.feature_bars[:-1]),
+                adjusted(p.feature_bars[-1]),
+            )
             if kind == "split" and str(p.raw_bars[-1].instrument_id) == "IEF"
+            else (*p.feature_bars[:-1], adjusted(p.feature_bars[-1]))
+            if str(p.raw_bars[-1].instrument_id) == "IEF"
             else p.feature_bars,
         )
         for p in records[-1].projections
@@ -488,7 +554,7 @@ def test_owner_never_accepts_promotable_request_flags(field, value):
     )
 
     request = CapitalDailyOwnerRequest(
-        loaded(), D(100), frames(1), D(".1"), D(".01"), D(".02"), D(".10")
+        loaded(), D(100), frames(1), D(".1"), D(".01"), D(".02"), D(".10"), calendar()
     )
     object.__setattr__(request, field, value)
     with pytest.raises(ValueError):

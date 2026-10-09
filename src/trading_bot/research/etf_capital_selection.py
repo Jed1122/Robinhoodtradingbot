@@ -4,7 +4,7 @@ The evaluator must derive every declaration from owned original-event runs.
 This pure ranking neither authenticates results nor supplies account permission.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
@@ -73,6 +73,7 @@ def select_capital_training(
     best: CapitalCandidate | None = None
     best_profit = Decimal(0)
     excluded: list[CapitalCandidate] = []
+    normalized: list[CapitalTrainingOutcome] = []
     for outcome, candidate in zip(outcomes, capital_candidates(), strict=True):
         if (
             type(outcome) is not CapitalTrainingOutcome
@@ -80,6 +81,8 @@ def select_capital_training(
         ):
             raise ValueError("capital_training_invalid")
         outcome.candidate.__post_init__()
+        outcome = replace(outcome, last_outcome_at=require_utc(outcome.last_outcome_at))
+        normalized.append(outcome)
         _require_sha256_hex(outcome.input_hash, "original training run")
         require_bounded_decimal(outcome.roundtrip_friction_pct, "training friction", positive=True)
         if (
@@ -110,7 +113,7 @@ def select_capital_training(
                 training_cutoff,
                 selection_at,
                 Decimal(".40"),
-                outcomes,
+                tuple(normalized),
             )
         ),
     )

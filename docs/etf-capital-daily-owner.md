@@ -32,11 +32,25 @@ Synthetic raw-bar boundaries supply opening/closing clocks. Acceptance at +1s,
 fill at +2s and final observation at +3s are explicit daily assumptions, not
 measured broker latency, executable quotes or authenticated data availability.
 Each supplied frame carries five declared projections and instrument terms.
+Owner v5 additionally requires the original declared `EtfCalendarArchive` with
+canonical UTC clocks and unchanged unqualified metadata. Every projection binds
+that archive hash; every raw prefix must exactly match its declared session
+opens/closes through as-of. Date gaps are allowed only when the original calendar
+declares no session, never by inventing or omitting a bar. This is declared
+calendar consistency, not independent exchange-calendar qualification.
 Later projections must retain the complete owned raw history and append exactly
 one session. Missing, rewritten or skipped original sessions fail closed;
 Feature history cannot change economically without new, matching position-bound
 split facts for that same symbol. Those facts justify only exact reciprocal
-OHLC/volume rebasing; old or duplicate facts do not compound. Feature data hashes
+OHLC/volume rebasing; old or duplicate facts do not compound. Feature rebases
+are recomputed from original raw bars and ordered cumulative original ratios
+under the feature builder's shared64-digit-half-even arithmetic. Successive
+splits do not divide already rounded prior features. Bound opening protection
+and original fill reference use that same bounded64-digit convention after the
+cumulative ratio; the account reducer's exact cash/quantity/basis rules remain
+unchanged. This is not a guaranteed stop-loss bound. Unknown initial adjusted
+feature bases and unheld split rebases are unsupported rather than inferred.
+Feature data hashes
 may regenerate with the declared as-of date, but economic fields and original
 archive/action/calendar identities remain constrained and every supplied hash
 remains input-bound. Unheld overnight split rebases are unsupported in this
@@ -58,13 +72,13 @@ Fixed complete-original input may be replayed through the existing private joint
 account/risk checkpoint. Tests cover reconstruction and exact retry of that shared
 state. They do not establish durable owner-frame/pending-policy storage, growing
 live append, process-worker recovery or selected deployed-runtime recovery.
-Owner identity v4 includes the canonical config hash and all original frame
+Owner identity v5 includes the canonical config hash, original calendar hash and all original frame
 and cost/outcome declarations. Each full frame is committed with
 `capital-daily-owner-frame-v1`; the root binds those digests in supplied order.
 No sorting, deduplication, output-only commitment or caller-provided frame digest
-is accepted. V1/v2/v3 historical artifacts remain immutable at their source
+is accepted. V1/v2/v3/v4 historical artifacts remain immutable at their source
 identities; there is no automatic digest alias, rewriting or storage migration.
-Obtaining a v4 identity requires replaying the complete original request.
+Obtaining a v5 identity requires replaying the complete original request.
 No saved balances or approvals are adopted.
 
 The same shared risk-point loop reconstructs originals at every boundary.

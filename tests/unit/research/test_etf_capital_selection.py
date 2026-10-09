@@ -25,9 +25,7 @@ def panel():
 def select(records=None, **changes):
     from trading_bot.research.etf_capital_selection import select_capital_training
 
-    args = dict(
-        loaded=loaded(), capital=D(100), training_cutoff=CUTOFF, selection_at=SELECTION
-    )
+    args = dict(loaded=loaded(), capital=D(100), training_cutoff=CUTOFF, selection_at=SELECTION)
     return select_capital_training(records if records is not None else panel(), **(args | changes))
 
 
@@ -147,3 +145,26 @@ def test_unsupported_capital_and_nonresearch_config_are_not_authority():
                 {},
             )
         )
+
+
+@pytest.mark.parametrize("copy_raises", (False, True))
+def test_outcome_hash_uses_the_normalized_utc_instant_not_a_timezone_copy_hook(copy_raises):
+    from datetime import timezone, tzinfo
+
+    class DeclaredUtc(tzinfo):
+        def utcoffset(self, dt):
+            return timedelta(0)
+
+        def dst(self, dt):
+            return timedelta(0)
+
+        def __deepcopy__(self, memo):
+            if copy_raises:
+                raise TypeError("timezone-copy-must-not-run")
+            return timezone(timedelta(hours=1))
+
+    records = panel()
+    changed = tuple(
+        replace(row, last_outcome_at=CUTOFF.replace(tzinfo=DeclaredUtc())) for row in records
+    )
+    assert select(changed) == select(records)
