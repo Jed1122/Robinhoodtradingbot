@@ -1,5 +1,23 @@
 # Parallel Orchestration Transition Report
 
+## Prefix released; bounded daily entry increment under verification — 2026-10-09
+
+PR32 merged at `aaf9df0da5b8c981ad6fd9730a48166dc2a0fde2`, tree
+`b88d1056fc79280e6e1ff67d4616e3d565e29e21`, matching its reviewed candidate.
+All14 current required checks passed and no substantive findings remained.
+PR33 risk/joint recovery and PR34 signal/fold contracts remain pending releases.
+This is software integration, not deployment or economic acceptance.
+
+The next main-owned increment is only a synthetic next-open entry adapter. It
+uses existing original-state account/risk/sizing engines, adverse price/tick
+assumptions and explicit rejected/unfilled/partial outcomes. Shared lifecycle
+ordering remains strict; declared clocks are not measured execution timings.
+Its full-source review and release verification are pending. See
+`docs/etf-capital-daily-entry.md` for its boundaries. It is not the complete
+strategy executor, exit scheduler, train-only selection or economic evaluator.
+No source prices, customer records, credentials, provider/broker calls, study,
+deployment or risk changes occurred. Earlier sections are retained history.
+
 ## Strategy/fold contracts locally certified; economic runner unfinished — 2026-10-09
 
 Executable source `82c6457f42321806d08535f3e3ec6976c24340ef` passed9,822 full
