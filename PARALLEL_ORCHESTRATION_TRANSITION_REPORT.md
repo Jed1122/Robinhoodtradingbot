@@ -1,5 +1,42 @@
 # Parallel Orchestration Transition Report
 
+## Action-aware risk and joint recovery locally certified — 2026-10-09
+
+Source `0a4ff8d1ba91fcfac65f8d062548da688e5020f5` completed9,804 full tests,
+33 optional skips/one existing warning,20 actual native tests,92.10% combined
+coverage and unchanged80overall/90critical gates. Ruff/Mypy372/Bandit, frozen
+locks, SBOM reproducibility and actual shell/Compose manifest checks passed.
+Dependency graphs are unchanged from the retained clean package-only advisory
+audits; these are not new network audits. Independent integrated risk/recovery
+review found no Critical/Important defects;83 independent tests passed.
+
+The shared v3 risk path includes distribution receivables once, requires each
+consumed action valuation at its original frontier, and preserves loss latches
+through equal-time events, duplicates and restart reconstruction. Joint storage
+recomputes supplied original events/marks/resets, never adopts saved balances or
+latches. CAS, private ownership/modes, bounded input/occupancy and verified-but-
+never-adopted staging remain. Two local synthetic SIGKILL controls and bounded
+100–3,000-event performance cases passed; these do not prove deployed recovery,
+linear complexity, executable authentication or a continuously growing owner.
+
+PR31 is merged at678f3d2. PR32 remains pending at exact20ff20e with10of14 hosted
+jobs successful and four still running at this checkpoint. This risk/recovery
+increment has not been merged or deployed. Its documentation publication retains
+the source certification above, not a new full-suite run of changed human docs.
+
+The separate82c6457 strategy/fold component has corrected two reviewed input
+defects and291 passing focused regressions; its full suite is still running.
+Signals/fold records do not implement execution, hold/ATR enforcement, train-only
+selection, policy carryover, uncertainty or economic reports. No executable study
+freeze or development study has run. Next: reviewed green releases, account-gated
+daily evaluator, frozen selection/cost/statistical protocol and fixture validation
+before one development study. Qualified five-symbol inputs, genuine costs,
+accepted economics, trusted paper/shadow and deployed recovery remain independent
+unfinished prerequisites. All source/cost/execution/economic/promotion/live flags
+remain false; production limits and private originals are unchanged.
+
+The sections below retain prior checkpoints, not current release status.
+
 ## Action-account released; original-prefix composition in progress — 2026-10-09
 
 PR31 merged at `678f3d2f51a752a8d08c36e20c97379fed84e324`, exact reviewed
