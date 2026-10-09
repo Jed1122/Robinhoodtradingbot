@@ -12,11 +12,18 @@ observations. Four reproductions were watched RED;54owner and203 related tests
 pass. Fresh corrected-source full/native/current hosted gates remain required.
 
 Separate c650 selection/statistics primitives have independent review READY,
-189 independent tests, and a full suite in progress in the other worktree.
+189 independent tests,10,003 full passes/20 native passes,92.21% combined coverage
+and unchanged80overall/90critical gates in the other worktree.
 They do not derive genuine training P&L or own complete fold carryover. The
 2088-column statistics workload passed, but750-session owner replay exceeded
 its frozen120second budget. Canonical serialization is a measured hotspot;
-no full-grid workload certification or executable economic freeze exists.
+No full-grid workload certification or executable economic freeze exists.
+Current corrective performance candidate extracts the same shared risk-point
+loop, defers only discarded intermediate result hashing, and explicitly uses
+owner-v4 ordered full-frame commitments without rewriting old owner digests.
+Narrow96 tests pass; current global review/full/native gates remain pending.
+The750-frame probe still failed120s (315,015,168bytes observed), so bounded
+incremental derived-data/original-state composition remains a critical path.
 Qualified five-symbol/action/source/cost inputs, accepted economics, broker/
 paper/shadow and selected-runtime recovery remain separate unfinished gates.
 All eligibility flags and production limits remain unchanged. Earlier status

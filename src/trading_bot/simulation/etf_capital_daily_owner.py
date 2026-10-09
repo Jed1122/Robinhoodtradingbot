@@ -17,6 +17,7 @@ from trading_bot.research.etf_capital_daily_policy import (
 )
 from trading_bot.research.etf_capital_feasibility import _config
 from trading_bot.research.etf_capital_signals import CapitalCandidate
+from trading_bot.simulation import etf_capital_risk
 from trading_bot.simulation.etf_capital_account import (
     CapitalAccountEvent,
     CapitalAccountSubmission,
@@ -44,8 +45,9 @@ from trading_bot.simulation.etf_capital_daily_exit import (
 )
 from trading_bot.simulation.etf_capital_risk import (
     CapitalRiskObservation,
+    CapitalRiskPoint,
     CapitalRiskReplay,
-    replay_capital_action_risk,
+    _replay_risk_points,
 )
 from trading_bot.simulation.events import EventCursor
 from trading_bot.simulation.lifecycle import replay_order_lifecycle
@@ -233,13 +235,14 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                 CapitalRiskObservation(EventCursor(sequence, at), len(events), mark, daily, weekly),
             )
 
-        def risk(purpose: OrderPurpose = OrderPurpose.ENTRY) -> CapitalRiskReplay:
-            return replay_capital_action_risk(
+        def risk(purpose: OrderPurpose = OrderPurpose.ENTRY) -> tuple[CapitalRiskPoint, ...]:
+            return _replay_risk_points(
                 loaded=request.loaded,
                 initial_cash=request.initial_cash,
                 events=events,
                 observations=observations,
                 purpose=purpose,
+                actions=True,
             )
 
         def owned_opening() -> tuple[CapitalOpeningPolicy | None, Decimal | None]:
@@ -379,7 +382,7 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                 instrument: Instrument,
             ) -> None:
                 nonlocal events, observations, account
-                if _active(events) or not risk(purpose).points[-1].decision.allowed:
+                if _active(events) or not risk(purpose)[-1].decision.allowed:
                     return
                 sequence = observations[-1].cursor.sequence + 1
                 cursors: tuple[EventCursor, ...] = (
@@ -534,20 +537,25 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                     ),
                 )
             points.append(
-                CapitalDailyOwnerPoint(at, final_risk.points[-1].equity, account, pending, opening)
+                CapitalDailyOwnerPoint(at, final_risk[-1].equity, account, pending, opening)
             )
         return CapitalDailyOwnerResult(
             events,
             observations,
             tuple(points),
             account,
-            final_risk,
+            etf_capital_risk._risk_result(
+                request.loaded, request.initial_cash, OrderPurpose.ENTRY, final_risk, actions=True
+            ),
             content_hash(
                 (
-                    "capital-daily-owner-v3",
+                    "capital-daily-owner-v4",
                     request.loaded.config_hash,
                     request.initial_cash,
-                    request.frames,
+                    tuple(
+                        content_hash(("capital-daily-owner-frame-v1", frame))
+                        for frame in request.frames
+                    ),
                     request.episode_fee_bound,
                     request.entry_fee,
                     request.exit_fee,

@@ -185,6 +185,86 @@ def test_owned_replay_is_deterministic_and_permanently_non_promotable():
     )
 
 
+def test_no_trade_owner_materializes_only_final_complete_risk_identity(monkeypatch):
+    from trading_bot.simulation import etf_capital_risk
+
+    original = etf_capital_risk._risk_result
+    observations_hashed = []
+
+    def record(*args, **kwargs):
+        observations_hashed.append(len(args[3]))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(etf_capital_risk, "_risk_result", record)
+    records = tuple(replace(f, entry_decision_allowed=False) for f in frames(3))
+    value = run(records=records)
+    assert value.events == ()
+    assert observations_hashed == [6]
+    # Expectation comes from the independent public reconstruction of originals,
+    # not an owner-supplied account or latch snapshot.
+    assert value.risk == etf_capital_risk.replay_capital_action_risk(
+        loaded=loaded(), initial_cash=D(100), events=value.events, observations=value.observations
+    )
+
+
+def test_v4_owner_binds_ordered_complete_frames_without_aliasing_v3():
+    from trading_bot.market_data.recording import content_hash
+    from trading_bot.simulation.etf_capital_daily_owner import (
+        CapitalDailyOwnerRequest,
+        replay_capital_daily_owner,
+    )
+
+    request = CapitalDailyOwnerRequest(
+        loaded(), D(100), frames(1), D(".10"), D(".01"), D(".02"), D(".10")
+    )
+    value = replay_capital_daily_owner(request)
+    assert value.input_hash == content_hash(
+        (
+            "capital-daily-owner-v4",
+            request.loaded.config_hash,
+            D(100),
+            tuple(content_hash(("capital-daily-owner-frame-v1", f)) for f in request.frames),
+            D(".10"),
+            D(".01"),
+            D(".02"),
+            D(".10"),
+            "filled",
+            D(1),
+            "filled",
+            D(1),
+        )
+    )
+    assert value.input_hash != "daa7634397798cdf8f2fac637dae1c30a930bf84f4b46adc19b4511ed1794183"
+
+
+@pytest.mark.parametrize(
+    "change",
+    ("bar_hash", "instrument_metadata", "projection_order", "instrument_order", "reset", "denial"),
+)
+def test_no_economic_effect_original_fields_remain_identity_bound(change):
+    frame = frames(1)[0]
+    baseline = run(records=(frame,))
+    if change == "bar_hash":
+        projection = frame.projections[0]
+        feature = replace(projection.feature_bars[0], data_hash="b" * 64)
+        changed = replace(projection, feature_bars=(feature, *projection.feature_bars[1:]))
+        frame = replace(frame, projections=(changed, *frame.projections[1:]))
+    elif change == "instrument_metadata":
+        instrument = replace(frame.instruments[0], provider_status="different-assumption")
+        frame = replace(frame, instruments=(instrument, *frame.instruments[1:]))
+    elif change == "projection_order":
+        frame = replace(frame, projections=tuple(reversed(frame.projections)))
+    elif change == "instrument_order":
+        frame = replace(frame, instruments=tuple(reversed(frame.instruments)))
+    elif change == "reset":
+        frame = replace(frame, daily_reset_reconciled=False)
+    else:
+        frame = replace(frame, entry_submission_allowed=False)
+    changed_result = run(records=(frame,))
+    assert changed_result.account == baseline.account
+    assert changed_result.input_hash != baseline.input_hash
+
+
 def test_reversed_session_input_denies_instead_of_replaying_future_signal():
     with pytest.raises(ValueError):
         run(records=tuple(reversed(frames(2))))

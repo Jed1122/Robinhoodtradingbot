@@ -51,8 +51,30 @@ Fixed complete-original input may be replayed through the existing private joint
 account/risk checkpoint. Tests cover reconstruction and exact retry of that shared
 state. They do not establish durable owner-frame/pending-policy storage, growing
 live append, process-worker recovery or selected deployed-runtime recovery.
-Owner identity v3 includes the canonical config hash and all original frame
-and cost/outcome declarations. No saved balances or approvals are adopted.
+Owner identity v4 includes the canonical config hash and all original frame
+and cost/outcome declarations. Each full frame is committed with
+`capital-daily-owner-frame-v1`; the root binds those digests in supplied order.
+No sorting, deduplication, output-only commitment or caller-provided frame digest
+is accepted. V1/v2/v3 historical artifacts remain immutable at their source
+identities; there is no automatic digest alias, rewriting or storage migration.
+Obtaining a v4 identity requires replaying the complete original request.
+No saved balances or approvals are adopted.
+
+The same shared risk-point loop reconstructs originals at every boundary.
+Only discarded intermediate complete-result hash serialization is deferred;
+the final risk result retains the original public risk preimage. Entry/exit
+adapters retain their fresh public admission paths. Canonical serialization
+uses a restricted plain immutable-record path and the legacy `asdict` fallback
+for unsupported Python copy semantics; original account/risk hashes must remain
+unchanged under the full compatibility gates.
+
+The fabricated750-frame probe still exceeds its120-second time budget, although
+the v4 frame commitments prevent the prior giant final-allocation failure.
+The most recent observed bound was120.084s/315,015,168bytes before owned-worker
+termination. This is NOT complete workload validation or economic freeze.
+Total growing-history validation/hashing remains quadratic. Before economics,
+the owning evaluator needs bounded local derived-data reuse/shared original-state
+composition and full28-candidate/six-capital/four-cost/five-fold validation.
 
 Inputs remain bounded by existing account/risk limits as well as the owner's
 2,048-frame admission ceiling. That ceiling does not promise that every maximum
