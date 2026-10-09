@@ -1,12 +1,43 @@
 # Capital research account boundary
 
-Status: funding, strict account and v2 synthetic checkpoint/marked-risk/prefix
-composition released through PR29/PR30. Separate opt-in v3 corporate-action
-accounting has a reviewed mark-preservation correction awaiting fresh local and
-hosted certification; prior source certification is historical. See
-[Action-account boundary](etf-capital-actions.md). Action-aware risk/admission,
-joint risk/account/action recovery and the economic evaluator are **not
-implemented**. No operational readiness is asserted.
+Status: funding and v2 composition released through PR29/PR30; opt-in v3
+corporate-action accounting released through PR31. The v3 prefix release is
+PR32, pending hosted checks. Action-aware risk/admission and joint original-input
+restart reconstruction completed independent integrated review and local9,804
+full/20 native tests,92.10% combined coverage and unchanged80/90 gates at0a4ff8d.
+Hosted release certification remains pending. The strategy/fold
+economic evaluator and executable economic freeze are not implemented.
+See [Action-account boundary](etf-capital-actions.md). No operational readiness
+or accepted economic result is asserted.
+
+## Action-aware risk and joint recovery
+
+`replay_capital_action_risk` and `evaluate_capital_action_entry` reuse the shared
+account-prefix reducer, canonical loss evaluation and sizing. Distribution
+receivables contribute once to NAV, never to spendable cash. Each consumed
+unique split/ex-entitlement valuation requires its original-frontier observation;
+a later recovered mark cannot hide an intermediate loss. Equal-time observations
+require increasing original event frontiers. Later held marks must be explicit;
+retained action marks are not evidence of fresh market quotes.
+
+`advance_capital_joint_checkpoint` reconstructs original events, observations,
+marks and reset declarations rather than adopting serialized balances or latches.
+The shared private publisher retains CAS, exact retries, permissions, fencing,
+bounded occupancy and verified-but-never-adopted staging semantics. Its separate
+`capital-joint-checkpoints-v3` namespace leaves v2 stores untouched. Local actual
+SIGKILL controls are synthetic publication-boundary tests, not deployed recovery.
+
+The original complete input identity is fixed for this offline checkpoint owner;
+it does not append a growing live tape across invocations. Historical v1 stored
+checkpoints remain unsupported and preserved; explicit v1 event replay remains
+available, but no automatic v1/v2 migration or adoption is performed.
+
+Representative synthetic tapes of 100/500/1000/3000 events passed preregistered
+combined replay/publication budgets of 2/10/30/120 seconds on this Mac. The largest
+case took about 7.36 seconds and peaked near 132 MB RSS. This is bounded fixture
+performance, not linear complexity, maximum-input or production-runtime proof.
+Every execution/promotion flag remains false. Genuine source, cost and broker
+evidence are independent prerequisites.
 
 `simulation.etf_capital_funding.capital_order_reservation` validates original
 broker-neutral LIMIT order records and explicit bounded whole-episode fee facts.

@@ -1,5 +1,13 @@
 # Capital research action accounting — partial implementation
 
+Current follow-on: shared v3 prefixes await PR32 release. Action-aware risk and
+fixed-original-input joint checkpoint reconstruction passed independent review,
+9,804 full/20 native tests and92.10% combined coverage at0a4ff8d, including the
+unchanged80overall/90critical gates. This follow-on is locally certified, not
+merged/deployed. Representative replay and local SIGKILL checks are synthetic;
+economic execution/evaluation and genuine source/cost evidence remain unfinished.
+Older remaining-work paragraphs below describe prior source increments only.
+
 PR31 is released at678f3d2f51a752a8d08c36e20c97379fed84e324 after9,763 full
 tests,20 native tests,92.07% combined coverage, unchanged80overall/90critical
 gates and all14 current hosted jobs. Both implemented findings were resolved.

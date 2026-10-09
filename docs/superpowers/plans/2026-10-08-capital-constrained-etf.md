@@ -104,6 +104,24 @@
 
 ## Execution status
 
+October9 latest: action-aware risk and fixed-original-input joint restart source
+0a4ff8d completed9,804 full/20 native tests,92.10% combined coverage and unchanged
+80overall/90critical gates. Independent integrated review found no Critical or
+Important defect;83 independent controls passed. Static/lock/SBOM/manifests pass;
+same unchanged dependency-graph clean advisory evidence is retained. This is
+local synthetic software certification, not hosted release or deployed recovery.
+PR31 is merged; PR32 remains pending. Risk/joint release is being prepared.
+Representative100/500/1000/3000-event replay/publication checks passed; no maximum-
+input or linear-complexity claim. V1 stored checkpoints remain unsupported and
+preserved, with no automatic migration; existing v2 API remains unchanged.
+
+Separate strategy/fold source82c6457 has291 focused passes after two reviewed
+input-boundary fixes; full verification remains running. Task5 still needs the
+account-gated daily execution adapter, hold/protection enforcement, train-only
+selection/policy carryover, dependent statistics and capital-specific reports.
+No executable economic freeze or study has run; source/cost/operational/live
+qualification remains independently unfinished. The following is prior history.
+
 October9 subsequent PR31 review: six watched RED regressions confirmed non-fill
 controls wrongly discarded declared action marks. The scoped correction clears
 marks only on fills; partial fills remain unknown even after later controls.
