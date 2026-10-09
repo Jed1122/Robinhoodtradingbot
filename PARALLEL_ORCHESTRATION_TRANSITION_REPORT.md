@@ -1,5 +1,71 @@
 # Parallel Orchestration Transition Report
 
+## Account finality correction; certification reset — 2026-10-09
+
+New PR29 review found missing bounds on optional submission identifiers and
+unbound fee-final records. Six adversarial controls were watched RED before
+fixing both. Current account replay uses versioned v2 identities and requires
+finality to match the account and its unique opening order. Unbound historical
+records remain readable only through the explicit v1 historical reader, preserving
+valid original hashes; they cannot release reserves in current replay.
+
+The old account9637/checkpoint9661 certifications belong to earlier source.
+Unfinished risk/prefix full runs were interrupted before correcting this inherited
+contract; their partial logs are not certification. Current source needs fresh
+full/native/static/release checks. Descendant checkpoint/risk/prefix owners must
+be recomposed against strict v2 finality before their release can proceed.
+No source, cost, economic, broker, paper/shadow, runtime or live qualification
+is established. No data acquisition, credentials, orders or deployment occurred.
+
+Next: complete this fix's exact-source gates and current PR29 review/checks,
+then recompose descendants; corporate actions, joint-state recovery and economics
+remain unfinished. The following snapshots are retained historical context.
+
+## Account release preparation; intake merged — 2026-10-09
+
+PR28 intake is merged at `2bcc6a2d27f13f71849de216faeff8be2abc496c`,
+tree `b2f1c4dfef743e60676d27c350c66fa37d9c3f98`, equal to reviewed `3de47aa`.
+All14 required exact-head hosted jobs passed. This is software integration,
+not source qualification, economic evidence or deployment.
+
+The account parent `df58f033693ba83a52a734176e2d1a6dad5fe170` completed
+9,637 full tests (33 optional skips and one existing warning),20 native tests,
+91.99% combined coverage and unchanged80%overall/90%critical gates. Ruff,
+Mypy369,Bandit, locked graphs, advisory audits, SBOM and manifests passed.
+Account review findings were fixed with RED/GREEN controls. Its push CI passed;
+the account PR's current hosted jobs and merge remain unfinished. This candidate
+resolves only this handoff's conflict with the merged intake; executable, config,
+test and lock bytes remain identical to that locally certified account parent.
+
+Checkpoint and marked-risk descendants are separate reviewed offline increments
+with their own release gates, not part of this account candidate. Corporate
+actions, joint risk/account recovery, replay performance and strategy economics
+remain unfinished. No new study, credentials, data acquisition, broker call,
+trade, deployment or production-risk change occurred.
+
+Next: finish exact account integration gates, release checkpoints/risk, complete
+corporate-action and joint-state composition, then freeze and implement the
+approved walk-forward economic study. No accepted edge or live eligibility exists.
+
+The following sections are retained historical checkpoints, not current status.
+
+## Synthetic capital account reconstruction implemented; release pending — 2026-10-09
+
+The first account reducer reconstructs cash, holdings, reservations, whole-episode
+fees and sale settlement from bounded ordered original records using shared
+lifecycle accounting.36 synthetic controls pass, including literal cash values,
+duplicate/conflict checks, cross-symbol episode ownership and separate-process
+prefix reconstruction. No partial record is adopted as a restored account.
+See [precise scope and unfinished composition](docs/etf-capital-account.md).
+
+This is not canonical entry admission, corporate-action/loss-latch composition,
+durable checkpoint recovery, complete strategy economics or genuine execution.
+Current exact-source review/full/native/hosted release gates remain pending.
+Earlier funding/full intake results do not certify this changed source. No actual
+data study, broker/provider call, credentials, trade, deployment or risk change.
+Next: finish release gates; integrate account risk/actions/checkpoints; implement
+the approved strategy families and frozen after-cost development evaluator.
+
 ## Intake calendar provenance correction; current certification pending — 2026-10-09
 
 New hosted PR28 review found that copying a calendar reset fixed metadata
@@ -11,6 +77,23 @@ Earlier278735a local certification is historical, not certification of this
 source correction. Current full/native/hosted gates must finish before merge.
 No strategy study or real data outcome was run or reinterpreted. Funding,
 account/restart replay and strategy economics remain unfinished; live is blocked.
+
+## Capital replay funding primitive started — 2026-10-08
+
+PR27 foundation is merged; PR28 bounded offline intake is awaiting its current
+hosted checks after complete local full/native verification. The next owner
+increment starts with strict single-order cash/episode-fee reservations and
+explicit unsettled-proceeds subtraction.27 focused tests and140 shared funding/
+life-cycle/sizing/coverage regressions passed; the new primitive has100% statement
+and branch coverage. Integrated review/full verification remain pending.
+See [exact limitations and remaining account work](docs/etf-capital-account.md).
+
+This is not the complete account, strategy runner, settlement provenance,
+restart service, paper/shadow wiring or economic evaluator. No source, actual
+cost, economic or execution qualification is established. No provider/broker
+calls, orders, purchases, credentials, deployment or production-risk changes.
+Next: verified versioned account/lifecycle integration, then strategy families
+and walk-forward testing. Keep every live/promotion gate blocked meanwhile.
 
 ## Capital foundation merged; bounded multi-ETF intake verified locally — 2026-10-08
 

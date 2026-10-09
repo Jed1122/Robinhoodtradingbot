@@ -60,8 +60,8 @@
 
 - [x] RED CLI tests for six exact tiers, realistic recurring-cost sensitivity and unchanged production/admission flags; output unknown customer costs as unknown.
 - [x] Implement CLI from Task1/2 contracts; document actual capabilities and remaining stages.
-- [ ] Full exact-head suite/native coverage/80+90 gates, Ruff/Mypy/Bandit/locks/SBOM/manifests and independent whole-candidate review. Preserve partial/failed runs as non-certification.
-- [ ] Review findings RED→GREEN, commit, integrate only after all exact-head required checks pass under standing merge authority.
+- [x] Full exact-head suite/native coverage/80+90 gates, Ruff/Mypy/Bandit/locks/SBOM/manifests and independent whole-candidate review. Preserve partial/failed runs as non-certification.
+- [x] Review findings RED→GREEN, commit, integrate only after all exact-head required checks pass under standing merge authority. PR27 merged9af63ab, reviewed treea3dc760.
 
 ### Task 4: Multi-symbol daily intake
 
@@ -103,6 +103,15 @@
 - [ ] Produce capital-specific separate economic/data/broker/operations/authority verdicts, artifact identities, limitations and next steps. No survivor => cash/passive consideration; live remains separately authorized.
 
 ## Execution status
+
+Updated checkpoint: Tasks1–3 released byPR27; all14 hosted jobs passed, full9482
+and native20,91.87% combined coverage. Task4 offline intake source passed9564
+and native20,91.93% coverage; PR28 release checks pending. Actual source/access
+qualification remains unverified. Task5 begins with the separate informational
+funding primitive in docs/etf-capital-account.md; complete account/replay and
+economic evaluation are unfinished. No new market study or live activation.
+
+The following is retained initial implementation history:
 
 Task1 completed at1d57688:14focused/534regression/9447full passes,33optional
 skips. Task2/3 tests were watched RED before their implementations;42combined

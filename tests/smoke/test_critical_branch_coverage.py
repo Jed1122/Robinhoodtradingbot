@@ -10,6 +10,16 @@ ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "check_critical_branch_coverage.py"
 
 
+def test_capital_account_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/simulation/etf_capital_account.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 def _load_checker():
     spec = importlib.util.spec_from_file_location("critical_branch_coverage", SCRIPT)
     assert spec is not None and spec.loader is not None
@@ -68,6 +78,15 @@ def test_fails_when_a_discovered_critical_file_is_missing_from_report(tmp_path: 
     errors = _load_checker().check_critical_branch_coverage(report, root)
 
     assert errors == ["missing branch coverage for src/trading_bot/risk/missing.py"]
+
+
+def test_requires_capital_order_funding_branch_report(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    _source(root, "src/trading_bot/simulation/etf_capital_funding.py")
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        "missing branch coverage for src/trading_bot/simulation/etf_capital_funding.py"
+    ]
 
 
 def test_requires_options_trial_history_and_execution_lease_branches(tmp_path: Path) -> None:
