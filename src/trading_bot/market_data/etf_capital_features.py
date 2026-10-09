@@ -115,7 +115,7 @@ def capital_split_feature_bars(
     ):
         raise ValueError("capital_feature_projection_invalid")
     archive.__post_init__()
-    replace(calendar)
+    calendar.__post_init__()
     actions.__post_init__()
     if (
         actions.symbol != archive.request.symbol

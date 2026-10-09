@@ -1,6 +1,6 @@
 """Bounded supplied-input inventory, never dataset or execution acceptance."""
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -119,8 +119,21 @@ def capital_daily_inventory(
         or not date(2016, 1, 1) <= start < end <= date(2026, 1, 1)
     ):
         raise ValueError("capital_daily_inventory_invalid")
-    replace(calendar)
-    if calendar.source_qualified is not False or calendar.evidence_promotable is not False:
+    calendar.__post_init__()
+    if (
+        type(calendar.source_kind) is not str
+        or calendar.source_kind != "alpaca-connector-v2-calendar-v1"
+        or type(calendar.limitations) is not tuple
+        or any(type(value) is not str for value in calendar.limitations)
+        or calendar.limitations
+        != (
+            "connector_payload_not_native_http_receipt",
+            "legacy_v2_new_york_timezone_projection",
+            "calendar_does_not_prove_quote_control_or_action_coverage",
+        )
+        or calendar.source_qualified is not False
+        or calendar.evidence_promotable is not False
+    ):
         raise ValueError("capital_daily_inventory_invalid")
     expected = {row.session_date for row in calendar.sessions if start <= row.session_date < end}
     if not expected:

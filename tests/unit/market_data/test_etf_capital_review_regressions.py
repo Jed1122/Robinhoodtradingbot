@@ -91,3 +91,54 @@ def test_inventory_hash_rejects_malformed_eligibility(flag):
     object.__setattr__(result, "source_qualified", flag)
     with pytest.raises(ValueError):
         _ = result.inventory_hash
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("source_kind", "authenticated-calendar-v99"),
+        ("limitations", ()),
+    ],
+)
+@pytest.mark.parametrize("consumer", ["inventory", "features"])
+def test_original_calendar_provenance_is_validated_before_projection(field, value, consumer):
+    from trading_bot.market_data.etf_capital_inventory import capital_daily_inventory
+
+    captured, action = inputs()
+    supplied = calendar()
+    object.__setattr__(supplied, field, value)
+    with pytest.raises(ValueError):
+        if consumer == "inventory":
+            capital_daily_inventory(
+                (captured,), supplied, start=date(2023, 1, 3), end=date(2023, 1, 6)
+            )
+        else:
+            capital_split_feature_bars(captured, supplied, action, as_of_session=date(2023, 1, 4))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("source_kind", "authenticated-calendar-v99"),
+        ("limitations", ()),
+    ],
+)
+def test_dataset_builder_rejects_original_calendar_provenance(field, value):
+    from dataclasses import replace
+
+    from tests.unit.config.test_capital_research import capital_loaded
+    from trading_bot.market_data.etf_capital_dataset import build_capital_dataset
+
+    captured, facts = sources()
+    supplied = calendar()
+    supplied = replace(supplied, sessions=supplied.sessions[:2])
+    object.__setattr__(supplied, field, value)
+    with pytest.raises(ValueError):
+        build_capital_dataset(
+            loaded=capital_loaded(),
+            archives=captured,
+            actions=facts,
+            calendar=supplied,
+            start=date(2023, 1, 3),
+            end=date(2023, 1, 6),
+        )
