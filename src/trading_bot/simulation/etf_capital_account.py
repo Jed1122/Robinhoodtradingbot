@@ -169,8 +169,29 @@ def replay_capital_account_v1(
         _deny()
 
 
+def replay_capital_account_prefixes(
+    *, initial_cash: Decimal, events: tuple[CapitalAccountEvent, ...]
+) -> tuple[CapitalAccountReplay, ...]:
+    """Reconstruct all original prefixes through the same validated reducer.
+
+    The complete source is validated before returning anything. The owned tuple
+    includes genesis and one result per supplied event, including exact duplicate
+    delivery. Historical v1 identities and monetary semantics are unchanged.
+    """
+    try:
+        with localcontext(_CONTEXT):
+            prefixes: list[CapitalAccountReplay] = []
+            _replay(initial_cash, events, prefixes)
+            return tuple(prefixes)
+    except (ValueError, TypeError, DecimalException):
+        _deny()
+
+
 def _replay(
-    initial: Decimal, events: tuple[CapitalAccountEvent, ...], *, legacy: bool = False
+    initial: Decimal,
+    events: tuple[CapitalAccountEvent, ...],
+    prefixes: list[CapitalAccountReplay] | None = None,
+    *, legacy: bool = False,
 ) -> CapitalAccountReplay:
     require_bounded_decimal(initial, "initial_cash", positive=True)
     if initial not in _TIERS or type(events) is not tuple or len(events) > 4096:
@@ -193,6 +214,37 @@ def _replay(
     fills: set[str] = set()
     settlements: dict[str, Decimal] = {}
     digests: list[DataHash] = []
+
+    def snapshot() -> CapitalAccountReplay:
+        unsettled = sum(settlements.values(), _ZERO)
+        available = cash
+        if current is not None:
+            reservation = capital_order_reservation(
+                order=current.snapshot.order,
+                episode_fee_bound=fee_bound,
+                episode_fees=episode_fees,
+                episode_fees_final=final,
+                held_quantity=quantity,
+            )
+            available = capital_available_cash(cash, unsettled, reservation)
+        return CapitalAccountReplay(
+            cash,
+            available,
+            quantity,
+            fees,
+            unsettled,
+            final and quantity == 0 and not settlements,
+            content_hash(
+                {
+                    "namespace": "capital-account-replay-v1" if legacy else "capital-account-replay-v2",
+                    "initial": initial,
+                    "applied": tuple(digests),
+                }
+            ),
+        )
+
+    if prefixes is not None:
+        prefixes.append(snapshot())
     for event in events:
         if type(event) not in (
             CapitalAccountSubmission,
@@ -235,6 +287,8 @@ def _replay(
         if event_id in seen:
             if seen[event_id] != digest:
                 _deny()
+            if prefixes is not None:
+                prefixes.append(prefixes[-1])
             continue
         if previous_cursor is not None and (
             cursor.sequence <= previous_cursor.sequence
@@ -328,29 +382,6 @@ def _replay(
         seen[event_id] = digest
         previous_cursor = cursor
         digests.append(digest)
-    unsettled = sum(settlements.values(), _ZERO)
-    available = cash
-    if current is not None:
-        reservation = capital_order_reservation(
-            order=current.snapshot.order,
-            episode_fee_bound=fee_bound,
-            episode_fees=episode_fees,
-            episode_fees_final=final,
-            held_quantity=quantity,
-        )
-        available = capital_available_cash(cash, unsettled, reservation)
-    return CapitalAccountReplay(
-        cash,
-        available,
-        quantity,
-        fees,
-        unsettled,
-        final and quantity == 0 and not settlements,
-        content_hash(
-            {
-                "namespace": "capital-account-replay-v1" if legacy else "capital-account-replay-v2",
-                "initial": initial,
-                "applied": tuple(digests),
-            }
-        ),
-    )
+        if prefixes is not None:
+            prefixes.append(snapshot())
+    return snapshot() if prefixes is None else prefixes[-1]

@@ -18,7 +18,7 @@ from trading_bot.simulation.etf_capital_account import (
     CapitalAccountEvent,
     CapitalAccountReplay,
     CapitalAccountSubmission,
-    replay_capital_account,
+    replay_capital_account_prefixes,
 )
 from trading_bot.simulation.events import EventCursor
 
@@ -99,12 +99,12 @@ def replay_capital_risk(
     try:
         with localcontext(_CONTEXT):
             config = _config(loaded)
-            replay_capital_account(initial_cash=initial_cash, events=events)
+            accounts = replay_capital_account_prefixes(initial_cash=initial_cash, events=events)
             _check(type(observations) is tuple and 0 < len(observations) <= 4096)
             _check(type(purpose) is OrderPurpose)
             points: list[CapitalRiskPoint] = []
             prior: CapitalRiskObservation | None = None
-            prior_account = replay_capital_account(initial_cash=initial_cash, events=())
+            prior_account = accounts[0]
             consumed = 0
             prior_equity = daily_base = weekly_base = peak = episode_base = initial_cash
             daily_max = weekly_max = drawdown_max = _ZERO
@@ -131,9 +131,7 @@ def replay_capital_risk(
                 if count < len(events):
                     _check(_cursor(events[count]).occurred_at >= at)
                 for prefix in range(consumed + 1, count + 1):
-                    account = replay_capital_account(
-                        initial_cash=initial_cash, events=events[:prefix]
-                    )
+                    account = accounts[prefix]
                     if prior_account.complete and not account.complete:
                         episode_base = prior_account.cash
                     if not prior_account.complete and account.complete:

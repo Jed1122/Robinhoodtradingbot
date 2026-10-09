@@ -29,7 +29,7 @@ from trading_bot.research.etf_capital_feasibility import _config
 from trading_bot.simulation.etf_capital_account import (
     CapitalAccountEvent,
     CapitalAccountReplay,
-    replay_capital_account,
+    replay_capital_account_prefixes,
 )
 
 _MAX_BYTES = 8 * 1048576
@@ -140,7 +140,7 @@ def advance_capital_account_checkpoint(
         if expected_head is not None:
             _require_sha256_hex(expected_head, "checkpoint head")
         _require(type(through_count) is int and 0 < through_count <= len(events))
-        replay_capital_account(initial_cash=initial_cash, events=events)
+        accounts = replay_capital_account_prefixes(initial_cash=initial_cash, events=events)
         source = canonical_json(
             (
                 "capital-account-input-v1",
@@ -152,7 +152,7 @@ def advance_capital_account_checkpoint(
         ).encode()
         _require(len(source) <= _MAX_BYTES)
         request_hash = content_hash(("capital-account-input-v1", source.decode()))
-        result = replay_capital_account(initial_cash=initial_cash, events=events[:through_count])
+        result = accounts[through_count]
         # Bound the complete input/envelope pair before any publication.
         _require(
             len(source) + len(_body(request_hash, 4096, _GENESIS, through_count, result))
@@ -205,7 +205,7 @@ def advance_capital_account_checkpoint(
             if type(count) is not int:
                 raise ValueError("capital_account_checkpoint_invalid")
             _require(prior_count < count <= len(events))
-            restored = replay_capital_account(initial_cash=initial_cash, events=events[:count])
+            restored = accounts[count]
             _require(encoded == _body(request_hash, sequence, previous, count, restored))
             previous = hashlib.sha256(encoded).hexdigest()
             prior_count = count
@@ -226,9 +226,7 @@ def advance_capital_account_checkpoint(
                 1 <= stage_sequence <= len(files) + 1
                 and counts[stage_sequence - 1] < stage_count <= len(events)
             )
-            reconstructed = replay_capital_account(
-                initial_cash=initial_cash, events=events[:stage_count]
-            )
+            reconstructed = accounts[stage_count]
             _require(
                 staging
                 == _body(

@@ -138,3 +138,19 @@ durable joint risk/account recovery, representative replay performance and
 economic evaluator integration are unfinished. Marks, resets and source coverage
 remain unqualified assumptions. No production consumer or broker capability is
 added; execution and promotion remain permanently false.
+
+## Shared original-prefix reconstruction
+
+`replay_capital_account_prefixes` uses the same account transition reducer once
+for the complete original tape. It returns genesis and one immutable result per
+supplied event, including identical results for exact duplicate delivery. Invalid
+late inputs fail the entire call; no valid partial tuple escapes. The old final
+replay API and v1 hash preimages remain unchanged.
+
+Marked risk and checkpoint reconstruction consume this internally reconstructed
+tuple instead of replaying every complete account prefix. Stored envelopes,
+source clocks, exact retry rules, alias admission and private-publication bounds
+remain unchanged. This is not incremental adoption of caller or persisted state.
+Current-order lifecycle prefixes and prefix hashing still have superlinear cost;
+the change removes an additional nested replay layer, not all performance work.
+Representative synthetic timing is not runtime or economic qualification.
