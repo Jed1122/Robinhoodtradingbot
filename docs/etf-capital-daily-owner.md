@@ -34,7 +34,16 @@ measured broker latency, executable quotes or authenticated data availability.
 Each supplied frame carries five declared projections and instrument terms.
 Later projections must retain the complete owned raw history and append exactly
 one session. Missing, rewritten or skipped original sessions fail closed;
-split-adjusted feature-price rebasing is permitted without rewriting raw bars.
+Feature history cannot change economically without new, matching position-bound
+split facts for that same symbol. Those facts justify only exact reciprocal
+OHLC/volume rebasing; old or duplicate facts do not compound. Feature data hashes
+may regenerate with the declared as-of date, but economic fields and original
+archive/action/calendar identities remain constrained and every supplied hash
+remains input-bound. Unheld overnight split rebases are unsupported in this
+version and fail closed before an old entry instruction can be admitted.
+Opening-time facts retain every unique action frontier; a compatible last
+same-source observation absorbs opening mark/reset declarations rather than
+creating a duplicate clock. Conflicting marks still deny.
 The caller must supply reset/settlement/finality facts explicitly; there is no
 implicit market-calendar, settlement or fee-completeness assertion.
 
@@ -42,7 +51,7 @@ Fixed complete-original input may be replayed through the existing private joint
 account/risk checkpoint. Tests cover reconstruction and exact retry of that shared
 state. They do not establish durable owner-frame/pending-policy storage, growing
 live append, process-worker recovery or selected deployed-runtime recovery.
-Full request identity includes the canonical config hash and all original frame
+Owner identity v3 includes the canonical config hash and all original frame
 and cost/outcome declarations. No saved balances or approvals are adopted.
 
 Inputs remain bounded by existing account/risk limits as well as the owner's

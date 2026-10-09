@@ -136,6 +136,45 @@ def _active(events: tuple[_Event, ...]) -> bool:
     return not replay_order_lifecycle(replace(current.request, events=controls)).order_terminal
 
 
+def _feature_continuity(
+    prior: CapitalFeatureProjection,
+    current: CapitalFeatureProjection,
+    facts: tuple[CapitalDailyOriginalFact, ...],
+    events: tuple[_Event, ...],
+) -> None:
+    """Allow only original position-bound split rebasing, not revised prices."""
+    _check(
+        (prior.archive_hash, prior.action_hash, prior.calendar_hash)
+        == (current.archive_hash, current.action_hash, current.calendar_hash)
+    )
+    seen = {event.event_id for event in events if type(event) is CapitalSplitApplied}
+    ratio = Decimal(1)
+    for fact in facts:
+        _check(type(fact) is CapitalDailyOriginalFact)
+        event = fact.event
+        if type(event) is CapitalSplitApplied and event.event_id not in seen:
+            event.__post_init__()
+            if event.symbol == str(current.raw_bars[-1].instrument_id):
+                ratio *= event.ratio
+                require_bounded_decimal(ratio, "feature split ratio", positive=True)
+            seen.add(event.event_id)
+    for before, after in zip(prior.feature_bars, current.feature_bars[:-1], strict=True):
+        # The established feature builder regenerates data_hash at each as-of.
+        # All economic fields and non-price metadata remain exact; the full
+        # supplied hashes are still bound by the owner input identity.
+        expected = replace(before, data_hash=after.data_hash)
+        if ratio != 1:
+            expected = replace(
+                expected,
+                open=before.open / ratio,
+                high=before.high / ratio,
+                low=before.low / ratio,
+                close=before.close / ratio,
+                volume=before.volume * ratio,
+            )
+        _check(expected == after)
+
+
 def _validate(request: CapitalDailyOwnerRequest) -> None:
     _check(type(request) is CapitalDailyOwnerRequest)
     _check(request.source_qualified is False and request.cost_qualified is False)
@@ -249,6 +288,7 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             _check(type(frame.instruments) is tuple and len(frame.instruments) == 5)
             _check(type(frame.original_facts) is tuple)
             prior_raw = {str(p.raw_bars[-1].instrument_id): p.raw_bars for p in prior_projections}
+            prior_features = {str(p.raw_bars[-1].instrument_id): p for p in prior_projections}
             for projection in frame.projections:
                 _check(type(projection) is CapitalFeatureProjection)
                 projection.__post_init__()
@@ -258,6 +298,9 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                     previous = prior_raw[symbol]
                     _check(len(projection.raw_bars) == len(previous) + 1)
                     _check(projection.raw_bars[:-1] == previous)
+                    _feature_continuity(
+                        prior_features[symbol], projection, frame.original_facts, events
+                    )
             prior_projections = frame.projections
             bars = tuple(p.raw_bars[-1] for p in frame.projections)
             opened, closed = bars[0].starts_at, bars[0].ends_at
@@ -301,7 +344,30 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                     )
             opening, fill_price = owned_opening()
             mark = prices[opening.symbol].open if opening else None
-            observe(opened, mark, frame.daily_reset_reconciled, frame.weekly_reset_reviewed)
+            if (
+                observations
+                and observations[-1].cursor.occurred_at == opened
+                and observations[-1].source_count == len(events)
+            ):
+                prior_observation = observations[-1]
+                _check(
+                    prior_observation.mark is None or mark is None or prior_observation.mark == mark
+                )
+                observations = (
+                    *observations[:-1],
+                    replace(
+                        prior_observation,
+                        mark=mark if mark is not None else prior_observation.mark,
+                        daily_reset_reconciled=(
+                            prior_observation.daily_reset_reconciled or frame.daily_reset_reconciled
+                        ),
+                        weekly_reset_reviewed=(
+                            prior_observation.weekly_reset_reviewed or frame.weekly_reset_reviewed
+                        ),
+                    ),
+                )
+            else:
+                observe(opened, mark, frame.daily_reset_reconciled, frame.weekly_reset_reviewed)
             risk()
 
             def exit_at(
@@ -478,7 +544,7 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             final_risk,
             content_hash(
                 (
-                    "capital-daily-owner-v2",
+                    "capital-daily-owner-v3",
                     request.loaded.config_hash,
                     request.initial_cash,
                     request.frames,

@@ -6,7 +6,7 @@ capability, paper/shadow operation or deployed recovery.
 
 ## Purge and tail entry gates
 
-The daily owner v2 accepts two exact-bool, denial-only frame controls:
+The daily owner accepts two exact-bool, denial-only frame controls:
 `entry_decision_allowed` and `entry_submission_allowed`. Both default true for
 existing fabricated trajectories. A disabled close cannot schedule an entry;
 a disabled opening cannot submit one. A suppressed prior instruction is not

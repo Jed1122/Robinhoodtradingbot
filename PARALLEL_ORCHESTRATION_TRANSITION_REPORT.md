@@ -1,5 +1,27 @@
 # Parallel Orchestration Transition Report
 
+## Current Task5 continuation — 2026-10-09
+
+PR35 is merged atdeee82e; PR36 is merged at8302f9a with reviewed tree4b300e68
+after all14 current jobs passed. Neither merge is deployment. Owner PR37 is
+published at71928bc; its retained ce71 source certification is9,952full/20native,
+92.20% and unchanged80overall/90critical. Three NEW substantive hosted findings
+prevent that head's release. Current correction rejects undeclared feature
+rewrites/unsupported flat split rebases and coalesces compatible opening-time
+observations. Four reproductions were watched RED;54owner and203 related tests
+pass. Fresh corrected-source full/native/current hosted gates remain required.
+
+Separate c650 selection/statistics primitives have independent review READY,
+189 independent tests, and a full suite in progress in the other worktree.
+They do not derive genuine training P&L or own complete fold carryover. The
+2088-column statistics workload passed, but750-session owner replay exceeded
+its frozen120second budget. Canonical serialization is a measured hotspot;
+no full-grid workload certification or executable economic freeze exists.
+Qualified five-symbol/action/source/cost inputs, accepted economics, broker/
+paper/shadow and selected-runtime recovery remain separate unfinished gates.
+All eligibility flags and production limits remain unchanged. Earlier status
+sections below are retained historical checkpoints, not current release claims.
+
 ## Pure prior-close policy locally certified; owner unfinished — 2026-10-09
 
 PR34 merged at f1326c901a12430abcbae25ede7401c62f22ea55, reviewed tree

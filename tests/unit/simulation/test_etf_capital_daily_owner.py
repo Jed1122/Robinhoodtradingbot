@@ -304,7 +304,13 @@ def action_records(kind, *, duplicate=False):
             )
 
     projected = tuple(
-        replace(p, raw_bars=(*p.raw_bars[:-1], adjusted(p.raw_bars[-1])))
+        replace(
+            p,
+            raw_bars=(*p.raw_bars[:-1], adjusted(p.raw_bars[-1])),
+            feature_bars=tuple(replace(adjusted(b), volume=b.volume * 2) for b in p.feature_bars)
+            if kind == "split" and str(p.raw_bars[-1].instrument_id) == "IEF"
+            else p.feature_bars,
+        )
         for p in records[-1].projections
     )
     fact = CapitalDailyOriginalFact(event, mark)
@@ -510,19 +516,90 @@ def test_owner_cannot_skip_unprocessed_session_ranges():
 
 def test_raw_history_continuity_allows_declared_split_feature_rebasing():
     records = action_records("split")
-    projected = tuple(
+    value = run(records=records)
+    assert value.account.quantity == D(".132")
+    assert value.points[-1].opening.stop_distance == D(2)
+    assert value.points[-1].equity == D("100.0461")
+
+
+@pytest.mark.parametrize("symbol", ("IEF", "SPY"))
+def test_split_does_not_authorize_wrong_factor_or_unrelated_symbol_rewrite(symbol):
+    records = action_records("split")
+    changed = tuple(
+        replace(p, feature_bars=(replace(p.feature_bars[0], volume=D(3000)), *p.feature_bars[1:]))
+        if str(p.raw_bars[-1].instrument_id) == symbol
+        else p
+        for p in records[-1].projections
+    )
+    with pytest.raises(ValueError):
+        run(records=(*records[:-1], replace(records[-1], projections=changed)))
+
+
+def test_undeclared_feature_history_rewrite_denies_before_following_signal():
+    records = frames(2)
+    changed = tuple(
+        replace(p, feature_bars=(replace(p.feature_bars[0], close=D(99)), *p.feature_bars[1:]))
+        for p in records[-1].projections
+    )
+    with pytest.raises(ValueError):
+        run(records=(records[0], replace(records[-1], projections=changed)))
+
+
+def test_flat_overnight_split_rebase_cannot_use_pending_pre_split_stop():
+    records = frames(2)
+    changed = tuple(
         replace(
             p,
             feature_bars=tuple(
                 replace(
-                    bar, open=bar.open / 2, high=bar.high / 2, low=bar.low / 2, close=bar.close / 2
+                    b,
+                    open=b.open / 2,
+                    high=b.high / 2,
+                    low=b.low / 2,
+                    close=b.close / 2,
+                    volume=b.volume * 2,
                 )
-                for bar in p.feature_bars
+                for b in p.feature_bars
             ),
         )
         for p in records[-1].projections
     )
-    value = run(records=(*records[:-1], replace(records[-1], projections=projected)))
-    assert value.account.quantity == D(".132")
-    assert value.points[-1].opening.stop_distance == D(2)
+    with pytest.raises(ValueError):
+        run(records=(records[0], replace(records[-1], projections=changed)))
+
+
+def test_as_of_feature_hash_regeneration_does_not_rewrite_economic_history():
+    from trading_bot.domain import DataHash
+
+    records = frames(2)
+    changed = tuple(
+        replace(
+            p, feature_bars=tuple(replace(b, data_hash=DataHash("f" * 64)) for b in p.feature_bars)
+        )
+        for p in records[-1].projections
+    )
+    value = run(records=(records[0], replace(records[-1], projections=changed)))
+    assert value.account.quantity == D(".066")
+    assert value.account.cash == D("80.1801")
+
+
+@pytest.mark.parametrize("kind", ("split", "distribution"))
+def test_original_action_exactly_at_open_coalesces_its_mark_and_resets(kind):
+    records = action_records(kind)
+    frame = records[-1]
+    fact = frame.original_facts[0]
+    fact = replace(
+        fact,
+        event=replace(
+            fact.event,
+            cursor=replace(
+                fact.event.cursor, occurred_at=frame.projections[0].raw_bars[-1].starts_at
+            ),
+        ),
+    )
+    value = run(records=(*records[:-1], replace(frame, original_facts=(fact,))))
     assert value.points[-1].equity == D("100.0461")
+    assert value.account.cash == D("80.1801")
+    assert value.account.quantity == (D(".132") if kind == "split" else D(".066"))
+    at = fact.event.cursor.occurred_at
+    assert len([o for o in value.observations if o.cursor.occurred_at == at]) == 1
