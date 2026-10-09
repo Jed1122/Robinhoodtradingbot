@@ -11,6 +11,11 @@ from typing import Annotated, Any, cast, get_args, get_origin
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from trading_bot.config.capital_research import (
+    CapitalResearchAppConfig,
+    CapitalResearchSafetyEnvelope,
+    enforce_capital_research_envelope,
+)
 from trading_bot.config.hashing import hash_loaded_config
 from trading_bot.config.models import AppConfig, SafetyEnvelope
 from trading_bot.domain import ConfigHash, ExecutionMode
@@ -73,9 +78,17 @@ def restore_loaded_config(canonical_json: bytes, expected_hash: ConfigHash) -> L
         row = json.loads(canonical_json)
         if type(row) is not dict or set(row) != {"config", "safety_envelope"}:
             raise ConfigLoadError("canonical configuration invalid")
-        config = AppConfig.model_validate(_restore_canonical_value(row["config"], AppConfig))
-        envelope = SafetyEnvelope.model_validate(
-            _restore_canonical_value(row["safety_envelope"], SafetyEnvelope)
+        config_body, envelope_body = row["config"], row["safety_envelope"]
+        if type(config_body) is not dict or type(envelope_body) is not dict:
+            raise ConfigLoadError("canonical configuration invalid")
+        research = "capital_research" in config_body
+        if research != ("capital_research" in envelope_body):
+            raise ConfigLoadError("canonical configuration invalid")
+        config_model = CapitalResearchAppConfig if research else AppConfig
+        envelope_model = CapitalResearchSafetyEnvelope if research else SafetyEnvelope
+        config = config_model.model_validate(_restore_canonical_value(config_body, config_model))
+        envelope = envelope_model.model_validate(
+            _restore_canonical_value(envelope_body, envelope_model)
         )
         enforce_safety_envelope(config, envelope)
         canonical, digest = hash_loaded_config(config, envelope)
@@ -309,6 +322,19 @@ def _require_not_enabled(name: str, actual: bool, permitted: bool) -> None:
 
 def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None:
     """Reject every resolved value that weakens release-level safety."""
+
+    if isinstance(config, CapitalResearchAppConfig) or isinstance(
+        envelope, CapitalResearchSafetyEnvelope
+    ):
+        if (
+            type(config) is not CapitalResearchAppConfig
+            or type(envelope) is not CapitalResearchSafetyEnvelope
+        ):
+            raise UnsafeConfiguration("capital research configuration/envelope mismatch")
+        try:
+            enforce_capital_research_envelope(config, envelope)
+        except ValueError:
+            raise UnsafeConfiguration("capital research release identity mismatch") from None
 
     if config.mode not in envelope.allowed_modes:
         raise UnsafeConfiguration(f"mode {config.mode.value} is not release-allowed")
@@ -840,9 +866,15 @@ def load_config(
     mode_path: Path,
     safety_path: Path,
     environ: Mapping[str, str],
+    *,
+    research_policy_path: Path | None = None,
 ) -> LoadedConfig:
     """Load base, one named mode, environment, and immutable safety envelope."""
 
+    if research_policy_path is not None and any(
+        key.startswith(ENV_PREFIX) or key in ENV_ALIASES for key in environ
+    ):
+        raise ConfigLoadError("capital research rejects configuration environment overrides")
     base = _load_yaml(base_path)
     mode = _load_yaml(mode_path)
     selected_mode = mode_path.stem.replace("-", "_")
@@ -856,8 +888,16 @@ def load_config(
         raise ConfigLoadError("environment cannot select a mode different from the overlay")
 
     try:
-        config = AppConfig.model_validate(merged)
-        envelope = SafetyEnvelope.model_validate(_load_yaml(safety_path))
+        envelope_body = _load_yaml(safety_path)
+        if research_policy_path is None:
+            config = AppConfig.model_validate(merged)
+            envelope = SafetyEnvelope.model_validate(envelope_body)
+        else:
+            policy = _load_yaml(research_policy_path)
+            merged["capital_research"] = policy
+            envelope_body["capital_research"] = policy
+            config = CapitalResearchAppConfig.model_validate(merged)
+            envelope = CapitalResearchSafetyEnvelope.model_validate(envelope_body)
     except ValidationError as exc:
         error_types = sorted(
             {

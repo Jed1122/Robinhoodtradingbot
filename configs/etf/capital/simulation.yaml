@@ -1,0 +1,9 @@
+mode: simulation
+live_trading_enabled: false
+runtime:
+  start_paused: true
+crypto:
+  enabled: false
+prediction_markets:
+  simulation_enabled: false
+  live_enabled: false
