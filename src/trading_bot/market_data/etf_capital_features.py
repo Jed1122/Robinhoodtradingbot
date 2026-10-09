@@ -1,5 +1,6 @@
 """Declared daily split-basis research projection, never execution evidence."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
@@ -8,8 +9,11 @@ from zoneinfo import ZoneInfo
 
 from trading_bot.domain import Bar, BarInterval, DataHash, InstrumentId
 from trading_bot.domain.decimal_utils import _require_sha256_hex, require_bounded_decimal
-from trading_bot.market_data.alpaca_capital_native import assess_capital_daily_pages
-from trading_bot.market_data.etf_calendar import EtfCalendarArchive
+from trading_bot.market_data.alpaca_capital_native import (
+    CapitalDailyBar,
+    assess_capital_daily_pages,
+)
+from trading_bot.market_data.etf_calendar import EtfCalendarArchive, EtfCalendarSession
 from trading_bot.market_data.etf_capital_actions import CapitalActionArchive, CapitalDistribution
 from trading_bot.market_data.etf_capital_archive import CapitalDailyArchive
 from trading_bot.market_data.etf_capital_inventory import capital_daily_inventory
@@ -128,6 +132,7 @@ class _CapitalFeatureSource:
     archive_hash: str
     action_hash: str
     calendar_hash: str
+    raw_rows: tuple[tuple[date, Bar], ...] | None = None
 
 
 def _capital_feature_source(
@@ -172,6 +177,56 @@ def _capital_feature_source(
     )
 
 
+def _capital_raw_bar(
+    record: CapitalDailyBar, session: EtfCalendarSession, calendar_hash: str
+) -> Bar:
+    native = record.bar
+    bar = Bar(
+        InstrumentId(record.symbol),
+        BarInterval.ONE_DAY,
+        session.opens_at,
+        session.closes_at,
+        native.open,
+        native.high,
+        native.low,
+        native.close,
+        Decimal(native.volume),
+        "alpaca-supplied-daily-session-assumption-v1",
+        DataHash(record.record_hash),
+    )
+    return replace(
+        bar,
+        data_hash=DataHash(
+            content_hash(("capital-raw-session-bar-v1", record.record_hash, calendar_hash, bar))
+        ),
+    )
+
+
+def _capital_raw_rows(
+    source: _CapitalFeatureSource, *, as_of_session: date
+) -> Iterator[tuple[date, Bar]]:
+    if source.raw_rows is not None:
+        for day, bar in source.raw_rows:
+            if day <= as_of_session:
+                yield day, bar
+        return
+    sessions = {row.session_date: row for row in source.calendar.sessions}
+    for page in source.archive.pages:
+        for record in page.records:
+            day = _ceil_time(record.bar.timestamp_ns).astimezone(_ZONE).date()
+            # Public earlier-as-of calls must not construct a future raw Bar.
+            if day <= as_of_session:
+                yield day, _capital_raw_bar(record, sessions[day], source.calendar_hash)
+
+
+def _capital_owned_raw_source(source: _CapitalFeatureSource) -> _CapitalFeatureSource:
+    """Private reuse AFTER independent ownership and terminal raw validation."""
+    with localcontext(_CONTEXT):
+        return replace(
+            source, raw_rows=tuple(_capital_raw_rows(source, as_of_session=source.actions.end))
+        )
+
+
 def _capital_features_at(
     source: _CapitalFeatureSource, *, as_of_session: date
 ) -> CapitalFeatureProjection:
@@ -180,7 +235,7 @@ def _capital_features_at(
         source.actions.start <= as_of_session < source.actions.end
     ):
         raise ValueError("capital_feature_projection_invalid")
-    archive, calendar, actions = source.archive, source.calendar, source.actions
+    calendar, actions = source.calendar, source.actions
     archive_hash, action_hash, calendar_hash = (
         source.archive_hash,
         source.action_hash,
@@ -199,79 +254,47 @@ def _capital_features_at(
     adjusted: list[Bar] = []
     observed: set[date] = set()
     with localcontext(_CONTEXT):
-        for page in archive.pages:
-            for record in page.records:
-                day = _ceil_time(record.bar.timestamp_ns).astimezone(_ZONE).date()
-                if day > as_of_session:
-                    continue
-                session = sessions[day]
-                native = record.bar
-                bar = Bar(
-                    InstrumentId(record.symbol),
-                    BarInterval.ONE_DAY,
-                    session.opens_at,
-                    session.closes_at,
-                    native.open,
-                    native.high,
-                    native.low,
-                    native.close,
-                    Decimal(native.volume),
-                    "alpaca-supplied-daily-session-assumption-v1",
-                    DataHash(record.record_hash),
-                )
-                bar = replace(
-                    bar,
-                    data_hash=DataHash(
-                        content_hash(
-                            (
-                                "capital-raw-session-bar-v1",
-                                record.record_hash,
-                                calendar_hash,
-                                bar,
-                            )
+        for day, bar in _capital_raw_rows(source, as_of_session=as_of_session):
+            factor = Decimal("1")
+            for split in actions.splits:
+                if day < split.effective_date <= as_of_session:
+                    factor *= split.new_shares_per_old_share
+                    require_bounded_decimal(factor, "cumulative split factor", positive=True)
+            feature = replace(
+                bar,
+                open=bar.open / factor,
+                high=bar.high / factor,
+                low=bar.low / factor,
+                close=bar.close / factor,
+                volume=bar.volume * factor,
+                source="capital-split-feature-assumption-v2",
+            )
+            for value in (
+                feature.open,
+                feature.high,
+                feature.low,
+                feature.close,
+                feature.volume,
+            ):
+                require_bounded_decimal(value, "feature value", nonnegative=True)
+            feature = replace(
+                feature,
+                data_hash=DataHash(
+                    content_hash(
+                        (
+                            "capital-split-feature-bar-v2",
+                            archive_hash,
+                            action_hash,
+                            calendar_hash,
+                            as_of_session,
+                            feature,
                         )
-                    ),
-                )
-                factor = Decimal("1")
-                for split in actions.splits:
-                    if day < split.effective_date <= as_of_session:
-                        factor *= split.new_shares_per_old_share
-                        require_bounded_decimal(factor, "cumulative split factor", positive=True)
-                feature = replace(
-                    bar,
-                    open=bar.open / factor,
-                    high=bar.high / factor,
-                    low=bar.low / factor,
-                    close=bar.close / factor,
-                    volume=bar.volume * factor,
-                    source="capital-split-feature-assumption-v2",
-                )
-                for value in (
-                    feature.open,
-                    feature.high,
-                    feature.low,
-                    feature.close,
-                    feature.volume,
-                ):
-                    require_bounded_decimal(value, "feature value", nonnegative=True)
-                feature = replace(
-                    feature,
-                    data_hash=DataHash(
-                        content_hash(
-                            (
-                                "capital-split-feature-bar-v2",
-                                archive_hash,
-                                action_hash,
-                                calendar_hash,
-                                as_of_session,
-                                feature,
-                            )
-                        )
-                    ),
-                )
-                raw.append(bar)
-                adjusted.append(feature)
-                observed.add(day)
+                    )
+                ),
+            )
+            raw.append(bar)
+            adjusted.append(feature)
+            observed.add(day)
     if observed != set(sessions):
         raise ValueError("capital_feature_projection_invalid")
     return CapitalFeatureProjection(

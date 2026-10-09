@@ -13,6 +13,12 @@ source digest, cached approval, account balance or held policy is accepted.
 Within each owned invocation, five private source records share the original
 archive/calendar/action validation and original source hashes. Public projection
 calls still validate their originals on every call; no caller cache is accepted.
+After independent ownership and terminal raw validation, original raw rows and
+their unchanged hashes are privately constructed once per symbol. Public early
+as-of calls continue to skip future native rows before domain-Bar construction;
+a future zero-price row does not newly invalidate an earlier public projection.
+Only original raw work is reused: every as-of still recomputes its full split
+basis, every derived bound and full feature/projection hashes.
 Every requested date uses the same complete as-of projection arithmetic, bounds
 and original full hashes, followed by full signal validation/digests. The same numerical kernel then consumes only its
 last200 local raw/feature bars while retaining those original full source hashes.

@@ -11,6 +11,7 @@ from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
 from trading_bot.market_data.etf_capital_features import (
     _capital_feature_source,
     _capital_features_at,
+    _capital_owned_raw_source,
 )
 from trading_bot.market_data.etf_capital_owned import _own_capital_source
 from trading_bot.market_data.recording import content_hash
@@ -81,8 +82,10 @@ def _prepare_capital_days(
             if any(day not in ordinals for day in sessions):
                 raise ValueError("capital_prepared_input_invalid")
             feature_sources = tuple(
-                _capital_feature_source(
-                    archive, source.calendar, actions, as_of_session=sessions[0]
+                _capital_owned_raw_source(
+                    _capital_feature_source(
+                        archive, source.calendar, actions, as_of_session=sessions[0]
+                    )
                 )
                 for archive, actions in zip(source.archives, source.actions, strict=True)
             )
