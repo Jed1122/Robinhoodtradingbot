@@ -157,6 +157,16 @@ def _capital_strategy_signals(
 def _validate_capital_signal_projections(
     projections: tuple[CapitalFeatureProjection, ...], config_hash: ConfigHash, as_of: datetime
 ) -> tuple[datetime, tuple[tuple[str, str], ...]]:
+    clock = _validate_capital_projection_structure(projections, config_hash, as_of)
+    return clock, tuple(
+        sorted((str(p.raw_bars[-1].instrument_id), p.projection_hash) for p in projections)
+    )
+
+
+def _validate_capital_projection_structure(
+    projections: tuple[CapitalFeatureProjection, ...], config_hash: ConfigHash, as_of: datetime
+) -> datetime:
+    """One complete admission kernel; public callers retain original hashing."""
     if type(projections) is not tuple or len(projections) != 5:
         raise ValueError("capital_signal_invalid")
     as_of = require_utc(as_of)
@@ -190,9 +200,7 @@ def _validate_capital_signal_projections(
         symbols.append(str(projection.raw_bars[-1].instrument_id))
     if tuple(sorted(symbols)) != _SYMBOLS:
         raise ValueError("capital_signal_invalid")
-    return as_of, tuple(
-        sorted((str(p.raw_bars[-1].instrument_id), p.projection_hash) for p in projections)
-    )
+    return as_of
 
 
 def _calculate_capital_signal(

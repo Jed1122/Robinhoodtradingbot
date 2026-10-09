@@ -14,13 +14,14 @@ from trading_bot.market_data.etf_capital_features import (
     _capital_owned_raw_source,
 )
 from trading_bot.market_data.etf_capital_owned import _own_capital_source
-from trading_bot.market_data.recording import content_hash
+from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_capital_daily_policy import _capital_entry_distance
 from trading_bot.research.etf_capital_feasibility import _CONTEXT, _config
+from trading_bot.research.etf_capital_projection_preimage import _capital_projection_digest
 from trading_bot.research.etf_capital_signals import (
     CapitalSignal,
     _calculate_capital_signal,
-    _validate_capital_signal_projections,
+    _validate_capital_projection_structure,
     capital_candidates,
 )
 
@@ -89,13 +90,29 @@ def _prepare_capital_days(
                 )
                 for archive, actions in zip(source.archives, source.actions, strict=True)
             )
+            raw_json = []
+            for item in feature_sources:
+                if item.raw_rows is None:
+                    raise ValueError("capital_prepared_input_invalid")
+                raw_json.append(tuple(canonical_json(bar).encode() for _, bar in item.raw_rows))
             result = []
             for day in sessions:
                 full = tuple(
                     _capital_features_at(item, as_of_session=day) for item in feature_sources
                 )
-                as_of, hashes = _validate_capital_signal_projections(
+                as_of = _validate_capital_projection_structure(
                     full, source.config_hash, full[0].raw_bars[-1].ends_at
+                )
+                hashes = tuple(
+                    sorted(
+                        (
+                            str(projection.raw_bars[-1].instrument_id),
+                            _capital_projection_digest(
+                                projection, raw_json=encoded[: len(projection.raw_bars)]
+                            ),
+                        )
+                        for projection, encoded in zip(full, raw_json, strict=True)
+                    )
                 )
                 compact = tuple(
                     replace(p, raw_bars=p.raw_bars[-200:], feature_bars=p.feature_bars[-200:])
