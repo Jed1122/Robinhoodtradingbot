@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime
-from decimal import Decimal, localcontext
+from decimal import Decimal, Rounded, localcontext
 from pathlib import Path
 
 import pytest
@@ -95,6 +95,25 @@ def test_current_equity_not_reference_equity_controls_research():
     assert loaded().config.activity.max_order_notional_usd == D("15")
 
 
+def test_tighter_correlation_policy_is_an_admission_cap(tmp_path):
+    original = (CONFIGS / "etf/capital/policy.yaml").read_text()
+    policy_path = tmp_path / "policy.yaml"
+    policy_path.write_text(
+        original.replace(
+            "max_correlated_group_exposure_pct: 20", "max_correlated_group_exposure_pct: 0"
+        )
+    )
+    config = load_config(
+        CONFIGS / "base.yaml",
+        CONFIGS / "etf/capital/simulation.yaml",
+        CONFIGS / "safety-envelope.yaml",
+        {},
+        research_policy_path=policy_path,
+    )
+    assert capital_budgets(config, D("100")).max_notional == D("0")
+    assert size(loaded=config).allowed is False
+
+
 def test_settled_cash_and_cash_floor_are_independent_caps():
     value = size(settled_cash=D("12"))
     assert value.quantity == D("1.19")
@@ -164,6 +183,19 @@ def test_caller_decimal_context_cannot_change_outcome():
     with localcontext() as context:
         context.prec = 2
         assert size(entry_price=D("13.37"), stop_distance=D(".333")) == expected
+
+
+@pytest.mark.parametrize("restriction", ["exponent", "rounded_trap"])
+def test_config_restore_is_also_isolated_from_caller_decimal_context(restriction):
+    config = loaded()
+    expected = capital_budgets(config, D("100"))
+    with localcontext() as context:
+        if restriction == "exponent":
+            context.Emax = 1
+        else:
+            context.prec = 2
+            context.traps[Rounded] = True
+        assert capital_budgets(config, D("100")) == expected
 
 
 def test_mutated_config_graph_cannot_borrow_old_canonical_identity():

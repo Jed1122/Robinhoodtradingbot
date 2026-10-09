@@ -35,6 +35,7 @@ Sizing reuses `SizingRequest` and `size_position`, then reserves a whole-episode
 fee bound inside planned risk and cash. Missing fees deny admission. Quantities
 round down to declared increments and must satisfy quantity/notional minimums,
 maximum quantity, settled cash and the one-position/daily-breaker restrictions.
+Any tighter correlated-group ceiling also reduces the single-position budget.
 Stop risk is planned risk only: gaps can produce larger realized losses.
 Cash-floor sizing assumes unallocated equity remains cash; the forthcoming replay
 must account for unsettled proceeds and other obligations separately.

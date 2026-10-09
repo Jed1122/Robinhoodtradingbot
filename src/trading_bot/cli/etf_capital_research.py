@@ -43,7 +43,7 @@ def capital_plan(
         )
         if len(payload.encode("utf-8")) > 65536:
             raise ValueError("capital report size exceeds bound")
-    except (OSError, ValueError, TypeError, ArithmeticError):
+    except (OSError, ValueError, TypeError, ArithmeticError, RecursionError):
         typer.echo(canonical_json({"reason": "capital_research_input_invalid"}))
         raise typer.Exit(1) from None
     typer.echo(payload)

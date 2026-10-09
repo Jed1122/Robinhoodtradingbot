@@ -23,6 +23,11 @@ _CONTEXT = Context(prec=2048, rounding=ROUND_DOWN)
 
 
 def _config(loaded: LoadedConfig) -> CapitalResearchAppConfig:
+    with localcontext(_CONTEXT):
+        return _restore_config(loaded)
+
+
+def _restore_config(loaded: LoadedConfig) -> CapitalResearchAppConfig:
     if type(loaded) is not LoadedConfig:
         raise DomainValidationError("capital research requires canonical LoadedConfig")
     if type(loaded.config) is not CapitalResearchAppConfig:
@@ -55,7 +60,12 @@ def capital_budgets(loaded: LoadedConfig, equity: Decimal) -> CapitalBudget:
     with localcontext(_CONTEXT):
         return CapitalBudget(
             equity,
-            equity * policy.position_risk.max_position_notional_pct / _HUNDRED,
+            equity
+            * min(
+                policy.position_risk.max_position_notional_pct,
+                policy.position_risk.max_correlated_group_exposure_pct,
+            )
+            / _HUNDRED,
             equity * policy.position_risk.max_risk_per_trade_pct / _HUNDRED,
             equity * policy.min_cash_reserve_pct / _HUNDRED,
             equity * policy.loss_limits.max_daily_loss_pct / _HUNDRED,

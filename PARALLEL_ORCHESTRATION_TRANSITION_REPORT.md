@@ -1,5 +1,39 @@
 # Parallel Orchestration Transition Report
 
+## Capital-constrained research foundation implemented; release gates pending — 2026-10-08
+
+The operator's new capital-constrained ETF override supersedes the old fixed-SPY
+research scope, not its historical evidence or production permissions. The
+[approved design](docs/superpowers/specs/2026-10-08-capital-constrained-etf-design.md)
+and [implementation plan](docs/superpowers/plans/2026-10-08-capital-constrained-etf.md)
+are saved. Tasks1–3 implement an opt-in offline canonical policy, six current-equity
+budget tiers, shared sizing with fee/cash/correlation/instrument guards, and a
+bounded credential-free `capital-plan` command. See
+[current capabilities and next stages](docs/etf-capital-research.md).
+
+Legacy canonical hashes and production $15/$5 order caps, $100 risk reference,
+$50 trial ceiling and $1,000 live ceiling are unchanged. Research20%position,
+0.5%planned risk,1%daily breaker and40%cash floor do not enlarge live authority.
+The profile cannot construct paper/shadow/live execution. Unknown actual costs,
+fractional brokerage support, free historical SIP and fresh quotes stay unknown.
+
+Task1 full verification passed9,447tests/33optional skips. New foundation tests
+passed46after watched fixes for tighter correlation limits, caller Decimal
+contexts and recursive-YAML sanitization. Final exact-candidate integrated
+coverage/release checks remain pending; an interrupted older run is not
+certification. No new market outcome study or authenticated integration ran.
+
+Next: finish foundation release verification, then versioned multi-symbol Alpaca
+daily intake, three independent strategy families and purged walk-forward
+economics. Used/uncertain historical holdouts are not untouched. Prospective
+final126eligible sessions, trusted paper/shadow and selected-runtime recovery
+remain future conditional tasks. All source/cost/execution/economic/promotion/
+live flags remain false. No acquisition, billing, credentials, orders, deployment
+or production-risk change occurred. Previous candidates remain stopped and
+their original reports/captures preserved; old automation remains paused.
+The project is incomplete and profitability is not promised. Older checkpoints
+below are historical, superseded only as current work status by this section.
+
 ## Monthly development study complete; candidate stopped — 2026-10-08
 
 The approved monthly-SMA10 implementation, integrated verification, executable
