@@ -74,7 +74,13 @@ Current account replay uses the explicit `capital-account-event-v2` and
 fees to the account and its unique opening order; equal amounts from another
 account or earlier episode cannot release this episode's reserve. Both optional
 submission identifiers (`intent_id`, `client_order_id`) use the same256-character
-bound before serialization/hashing; absent identifiers remain absent.
+bound before serialization/hashing in current replay; absent identifiers remain
+absent. The submission record retains the historical construction shape. The
+explicit v1-only reader preserves previously valid longer optional identifiers
+and their original hashes; no current owner accepts that compatibility path.
+Standalone funding validates all six order identifiers before hashing. Its
+private legacy arithmetic seam is used only by explicit historical replay, not
+exposed as a permissive option on the public funding API.
 
 Historical `CapitalFeesFinal` records and their dataclass shape remain intact.
 Only the explicitly historical `replay_capital_account_v1` reader accepts them

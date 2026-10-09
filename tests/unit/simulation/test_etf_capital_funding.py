@@ -72,6 +72,29 @@ def test_pending_entry_reserves_full_notional_and_episode_fee():
     assert result.evidence_promotable is False
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["id", "broker_order_id", "account_id", "instrument_id", "intent_id", "client_order_id"],
+)
+def test_standalone_funding_bounds_identifiers_before_hashing(field, monkeypatch):
+    import trading_bot.simulation.etf_capital_funding as funding
+
+    def forbidden_hash(*args, **kwargs):
+        pytest.fail("oversized identifier reached hashing")
+
+    monkeypatch.setattr(funding, "content_hash", forbidden_hash)
+    with pytest.raises(ValueError):
+        reserve(order(**{field: "x" * 257}))
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["id", "broker_order_id", "account_id", "instrument_id", "intent_id", "client_order_id"],
+)
+def test_standalone_funding_accepts_exact_identifier_boundary(field):
+    assert reserve(order(**{field: "x" * 256})).total_reservation == D("20.10")
+
+
 def test_partial_fill_retains_remaining_limit_notional_and_unused_episode_fees():
     result = reserve(
         order(OrderState.PARTIALLY_FILLED, ".1"), episode_fees=D(".04"), held_quantity=D(".1")

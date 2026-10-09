@@ -12,8 +12,8 @@ from typing import NoReturn
 from trading_bot.domain import AssetClass, DataHash, Side, require_bounded_decimal
 from trading_bot.market_data.recording import content_hash
 from trading_bot.simulation.etf_capital_funding import (
+    _capital_order_reservation,
     capital_available_cash,
-    capital_order_reservation,
 )
 from trading_bot.simulation.events import EventCursor
 from trading_bot.simulation.lifecycle import replay_order_lifecycle
@@ -60,9 +60,6 @@ class CapitalAccountSubmission:
             self.request.order.instrument_id,
         ):
             _identifier(value)
-        for optional_id in (self.request.order.intent_id, self.request.order.client_order_id):
-            if optional_id is not None:
-                _identifier(optional_id)
         require_bounded_decimal(self.episode_fee_bound, "fee_bound", nonnegative=True)
         if (
             self.request.events
@@ -219,12 +216,13 @@ def _replay(
         unsettled = sum(settlements.values(), _ZERO)
         available = cash
         if current is not None:
-            reservation = capital_order_reservation(
+            reservation = _capital_order_reservation(
                 order=current.snapshot.order,
                 episode_fee_bound=fee_bound,
                 episode_fees=episode_fees,
                 episode_fees_final=final,
                 held_quantity=quantity,
+                legacy_identifiers=legacy,
             )
             available = capital_available_cash(cash, unsettled, reservation)
         return CapitalAccountReplay(
@@ -263,6 +261,13 @@ def _replay(
             _deny()
         event.__post_init__()
         if isinstance(event, CapitalAccountSubmission):
+            if not legacy:
+                for optional_id in (
+                    event.request.order.intent_id,
+                    event.request.order.client_order_id,
+                ):
+                    if optional_id is not None:
+                        _identifier(optional_id)
             cursor = event.request.submitted
             event_id = "submission:" + event.request.order.id
         else:
@@ -373,12 +378,13 @@ def _replay(
         # Recompute authoritative capacity after every unique event. Never adopt
         # an externally supplied reservation or release it on end-of-input.
         if current is not None:
-            reservation = capital_order_reservation(
+            reservation = _capital_order_reservation(
                 order=current.snapshot.order,
                 episode_fee_bound=fee_bound,
                 episode_fees=episode_fees,
                 episode_fees_final=final,
                 held_quantity=quantity,
+                legacy_identifiers=legacy,
             )
             capital_available_cash(cash, sum(settlements.values(), _ZERO), reservation)
         seen[event_id] = digest

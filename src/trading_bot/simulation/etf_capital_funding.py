@@ -70,6 +70,25 @@ def capital_order_reservation(
     episode_fees_final: bool,
     held_quantity: Decimal,
 ) -> CapitalOrderReservation:
+    """Bound current identifiers before hashing; never authorize an entry."""
+    return _capital_order_reservation(
+        order=order,
+        episode_fee_bound=episode_fee_bound,
+        episode_fees=episode_fees,
+        episode_fees_final=episode_fees_final,
+        held_quantity=held_quantity,
+    )
+
+
+def _capital_order_reservation(
+    *,
+    order: BrokerOrder,
+    episode_fee_bound: Decimal,
+    episode_fees: Decimal,
+    episode_fees_final: bool,
+    held_quantity: Decimal,
+    legacy_identifiers: bool = False,
+) -> CapitalOrderReservation:
     """Keep unfilled limit notional and unused whole-episode fees unavailable.
 
     Inputs are supplied research observations, not broker-authenticated facts.
@@ -82,6 +101,19 @@ def capital_order_reservation(
         if type(order) is not BrokerOrder or type(episode_fees_final) is not bool:
             _deny()
         order.__post_init__()
+        if not legacy_identifiers:
+            for identifier in (
+                order.id,
+                order.broker_order_id,
+                order.account_id,
+                order.instrument_id,
+                order.intent_id,
+                order.client_order_id,
+            ):
+                if identifier is not None and (
+                    not isinstance(identifier, str) or not 0 < len(identifier) <= 256
+                ):
+                    _deny()
         for value in (episode_fee_bound, episode_fees, held_quantity):
             require_bounded_decimal(value, "episode_value", nonnegative=True)
         if order.order_type is not OrderType.LIMIT or order.limit_price is None:
