@@ -52,7 +52,21 @@ describes access to data older than15minutes; this is documentation, not verifie
 access for this account or a fresh execution quote. Do not change subscriptions,
 silently substitute IEX, or use delayed history as current SIP/NBBO evidence.
 
-Next are symbol/session/calendar/split/distribution/availability dataset controls
+## Session inventory
+
+`capital_daily_inventory` binds supplied archives to the fixed five-symbol
+universe, exact request window and declared calendar. It rejects duplicate
+symbols, unexpected sessions and non-midnight New York daily stamps. Output
+distinguishes an absent archive (unknown counts) from a supplied empty response
+(zero observed rows). Pagination and missing-session counts remain separate.
+The hash is independent of archive input ordering.
+
+Split and distribution counts remain unknown because this API receives neither
+kind of evidence. Calendar counts never establish source acceptance; strategy
+projection, qualification and promotion remain false. This is an inventory,
+not an accepted dataset or feature normalizer.
+
+Next are split/distribution/availability dataset controls
 and a separately authorized bounded capture composition. These must be verified
 and frozen before the walk-forward
 strategy study. No genuine economic result, qualifying paper/shadow behavior or
