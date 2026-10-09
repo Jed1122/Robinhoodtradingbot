@@ -121,6 +121,7 @@ def _validate(request: CapitalDailyEntryRequest) -> None:
     _check(type(request.decision_at) is datetime)
     validate_cursor(EventCursor(0, request.decision_at))
     _check(request.decision_at < request.opened.occurred_at)
+    _check(request.decision_at.date() < request.opened.occurred_at.date())
     _check(type(request.instrument) is Instrument)
     request.instrument.__post_init__()
     _check(request.instrument.observed_at <= request.opened.occurred_at)

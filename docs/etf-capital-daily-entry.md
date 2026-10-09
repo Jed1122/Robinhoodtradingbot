@@ -13,7 +13,9 @@ reserved; entry fees are charged once. Rejected, unfilled and partial outcomes
 are explicit. No implicit cancellation, settlement, fee finality or terminal
 sale is manufactured. Incomplete existing obligations deny another entry.
 
-The declared decision must precede the open; the last original-state observation
+The declared decision must precede the open on an earlier UTC date. This
+conservative boundary rejects same-date decisions; it does not prove a completed
+exchange session or authenticate the decision's source. The last original-state observation
 must bind the current input frontier at that open. The shared lifecycle requires
 strictly ordered timestamps, so acceptance/fill cursors are supplied explicitly,
 strictly increasing and on the same declared UTC date. They are synthetic

@@ -50,6 +50,12 @@ def run(**changes):
     return simulate_capital_daily_entry(request(**changes))
 
 
+@pytest.mark.parametrize("seconds_before_open", [1, 3600])
+def test_same_utc_date_decision_cannot_create_daily_entry(seconds_before_open):
+    with pytest.raises(ValueError):
+        run(decision_at=OPEN - timedelta(seconds=seconds_before_open))
+
+
 def test_literal_full_fill_uses_adverse_price_shared_sizing_and_cash():
     result = run()
     assert result.assumed_price == D("100.05")
