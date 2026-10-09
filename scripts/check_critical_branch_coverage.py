@@ -95,6 +95,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.extend(research_directory.glob("etf_costs.py"))
         modules.extend(research_directory.glob("etf_capital_feasibility.py"))
         modules.extend(research_directory.glob("etf_capital_daily_policy.py"))
+        modules.extend(research_directory.glob("etf_capital_prepared.py"))
         modules.extend(research_directory.glob("etf_daily_*.py"))
         modules.extend(research_directory.glob("etf_monthly_*.py"))
         modules.extend(research_directory.glob("etf_exploratory_economics.py"))

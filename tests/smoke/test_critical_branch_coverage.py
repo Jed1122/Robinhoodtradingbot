@@ -10,6 +10,16 @@ ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "check_critical_branch_coverage.py"
 
 
+def test_capital_prepared_days_require_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/research/etf_capital_prepared.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 def test_capital_owned_source_requires_critical_branch_coverage(tmp_path):
     root = tmp_path / "project"
     relative = "src/trading_bot/market_data/etf_capital_owned.py"
