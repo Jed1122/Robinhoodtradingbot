@@ -71,3 +71,26 @@ and a separately authorized bounded capture composition. These must be verified
 and frozen before the walk-forward
 strategy study. No genuine economic result, qualifying paper/shadow behavior or
 broker/runtime readiness follows from this parser.
+
+## Supplied action facts and feature basis
+
+The new `CapitalActionArchive` preserves per-symbol supplied split and cash
+distribution observations, exact windows, source hashes and declared receipt
+times. `None` is unknown; an empty tuple is zero observed rows, not complete
+coverage. Ex-date entitlement, record date and payment date are separate. Unknown
+announcement/correction timestamps remain unknown. These contracts are not an
+authenticated Alpaca corporate-action parser or a verified reconciliation.
+
+`capital_split_feature_bars` creates a separately hashed research projection of
+completed declared sessions. It requires explicit action inputs, consistent
+windows, completed pagination and every prior session. Split effectivity and
+distribution ex-dates must have declared calendar sessions. Split factors apply
+only through the as-of session; raw assumed execution OHLC remain separate and
+captured bytes unchanged. Dividend cash is not subtracted from feature prices
+or automatically reinvested. Account entitlement/settlement and total-return
+rotation remain future composition work.
+
+Session-close availability and latest-vintage action completeness are research
+assumptions, not original publication evidence. All qualification, promotion and
+execution flags remain false. No actual source capture or economic evaluation
+has been performed by these fixtures.
