@@ -1,5 +1,38 @@
 # Parallel Orchestration Transition Report
 
+## Strict account and v2 descendant local verification — 2026-10-09
+
+The corrected account candidate `cdd4c40` passed9,663 full tests (33 optional
+skips and one existing warning),20 actual native-backend tests and92.00%
+combined coverage. Its current PR29 hosted snapshot has12/14 required jobs
+passing and two Python quality jobs pending; it is not merged at this checkpoint.
+Current v2 bounds identifiers before hashing and binds fee finality to the
+account/opening order. The explicit v1 reader preserves original long optional
+identifiers and literal historical hashes; public funding has no legacy bypass.
+
+The separate recomposed descendant source `97ac1fe` passed9,720 full tests,
+20 native tests and92.05% combined coverage. Both retained the unchanged80%
+overall and90%critical gates. Ruff/Mypy/Bandit, both frozen locks, SBOM,
+package-only advisory audits and shell/Compose manifests passed. Reviews and
+RED/GREEN controls cover strict finality, checkpoint CAS/staging, v2 namespace
+separation, original-prefix reuse and duplicate-aware risk clocks. Old duplicate
+delivery cannot backdate future account state; distinct equal-time events retain
+their causal boundary. This publication adds only human-document status updates
+to that certified source, not a fresh full-source rerun at the documentation head.
+
+All output remains synthetic, execution-disabled and non-promotable. Current
+checkpoint storage never adopts or modifies legacy v1 directories; a persisted
+v1 checkpoint reader is explicitly not implemented. No corporate-action/joint
+risk-account restart or accepted economic result is established by these tests.
+No private inputs, provider/broker calls, trades or deployment occurred.
+
+Next: complete exact-head hosted integration, then split-basis/distribution
+accounting, joint original-state recovery and representative replay performance.
+Only after those increments are verified may the strategy/fold/cost protocol be
+frozen and the approved development study run. Source qualification, genuine
+costs, paper/shadow, runtime recovery and live authority remain independent.
+Earlier snapshots below are retained history, not current certification.
+
 ## Account finality correction; certification reset — 2026-10-09
 
 New PR29 review found missing bounds on optional submission identifiers and

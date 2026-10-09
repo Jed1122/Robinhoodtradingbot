@@ -1,8 +1,9 @@
 # Capital research account boundary
 
-Status: funding primitive and bounded synthetic account reconstruction implemented;
-integrated review/release pending. The complete risk/corporate-action/recovery
-composition and economic evaluator are **not implemented**.
+Status: funding, strict account, synthetic checkpoint and marked-risk/prefix
+composition implemented and locally verified; exact-head hosted release pending.
+Corporate-action accounting, joint risk/account recovery and the economic
+evaluator are **not implemented**. No operational readiness is asserted.
 
 `simulation.etf_capital_funding.capital_order_reservation` validates original
 broker-neutral LIMIT order records and explicit bounded whole-episode fee facts.

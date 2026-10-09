@@ -104,6 +104,18 @@
 
 ## Execution status
 
+October9 current checkpoint: PR28 offline intake is merged at2bcc6a2; actual
+source/access qualification remains unverified. Corrected accountcdd4c40 has
+9,663full/20native/92.00% combined; PR29 current12/14 hosted jobs passed and two
+remain pending. Re-composed v2 checkpoint/risk/prefix source97ac1fe has
+9,720full/20native/92.05% combined; unchanged80overall/90critical gates passed.
+Independent reviews and watched regressions cover current corrections. This
+documentation publication does not claim a fresh full rerun at its own head.
+Task5 still lacks corporate actions, joint-state restart, representative
+performance and strategy/fold/economic composition. No study/freeze has run.
+
+The following is retained earlier execution history:
+
 Updated checkpoint: Tasks1–3 released byPR27; all14 hosted jobs passed, full9482
 and native20,91.87% combined coverage. Task4 offline intake source passed9564
 and native20,91.93% coverage; PR28 release checks pending. Actual source/access
