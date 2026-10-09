@@ -270,3 +270,19 @@ def test_flat_action_observation_never_invents_shares_or_income(kind):
 def test_missing_or_invalid_payment_date_is_not_assumed(date_value):
     with pytest.raises(ValueError):
         replay((*script()[:5], action(pay_date=date_value)))
+
+
+@pytest.mark.parametrize("clear_mark", [False, True])
+def test_aggregate_receivable_is_bounded_even_after_mark_becomes_unknown(clear_mark):
+    distributions = tuple(
+        action(n=5 + index, action_id=f"dividend-{index}", amount_per_share=D("9e511"))
+        for index in range(12)
+    )
+    sell = opening(17, Side.SELL, "90.06", ".1")
+    suffix = (
+        (sell, observation(sell, control("accepted-unmarked", 18, OrderEvent.BROKER_ACCEPTED)))
+        if clear_mark
+        else ()
+    )
+    with pytest.raises(ValueError):
+        replay((*script()[:5], *distributions, *suffix))

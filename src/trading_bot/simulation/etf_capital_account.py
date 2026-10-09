@@ -257,6 +257,11 @@ def _replay(
     adjusted = False
     version = "v1" if legacy else "v3" if actions else "v2"
 
+    def receivable_total() -> Decimal:
+        total = sum((row[0] for row in entitlements.values()), _ZERO)
+        require_bounded_decimal(total, "distribution_receivable", nonnegative=True)
+        return total
+
     def snapshot() -> CapitalAccountReplay:
         unsettled = sum(settlements.values(), _ZERO)
         available = cash
@@ -270,7 +275,7 @@ def _replay(
                 legacy_identifiers=legacy,
             )
             available = capital_available_cash(cash, unsettled, reservation)
-        receivable = sum((row[0] for row in entitlements.values()), _ZERO)
+        receivable = receivable_total()
         base = CapitalAccountReplay(
             cash,
             available,
@@ -506,6 +511,8 @@ def _replay(
             final = True
         # Recompute authoritative capacity after every unique event. Never adopt
         # an externally supplied reservation or release it on end-of-input.
+        if actions:
+            receivable_total()
         if current is not None:
             reservation = _capital_order_reservation(
                 order=current.snapshot.order,
