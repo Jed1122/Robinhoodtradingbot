@@ -35,6 +35,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         "etf_history_store.py",
         "etf_strategy_checkpoint.py",
         "etf_native_checkpoint.py",
+        "etf_capital_checkpoint.py",
         "paper_cycle_journal.py",
         "etf_forward_paper.py",
         "owned_order_journal.py",
@@ -73,6 +74,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.extend(simulation_directory.glob("etf_account.py"))
         modules.extend(simulation_directory.glob("etf_capital_funding.py"))
         modules.extend(simulation_directory.glob("etf_capital_account.py"))
+        modules.extend(simulation_directory.glob("etf_capital_risk.py"))
         modules.extend(simulation_directory.glob("etf_fixture_execution.py"))
         modules.extend(simulation_directory.glob("etf_strategy.py"))
         modules.extend(simulation_directory.glob("etf_native_history.py"))
