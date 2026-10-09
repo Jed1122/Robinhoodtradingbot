@@ -1,5 +1,22 @@
 # Parallel Orchestration Transition Report
 
+## Capital replay funding primitive started — 2026-10-08
+
+PR27 foundation is merged; PR28 bounded offline intake is awaiting its current
+hosted checks after complete local full/native verification. The next owner
+increment starts with strict single-order cash/episode-fee reservations and
+explicit unsettled-proceeds subtraction.27 focused tests and140 shared funding/
+life-cycle/sizing/coverage regressions passed; the new primitive has100% statement
+and branch coverage. Integrated review/full verification remain pending.
+See [exact limitations and remaining account work](docs/etf-capital-account.md).
+
+This is not the complete account, strategy runner, settlement provenance,
+restart service, paper/shadow wiring or economic evaluator. No source, actual
+cost, economic or execution qualification is established. No provider/broker
+calls, orders, purchases, credentials, deployment or production-risk changes.
+Next: verified versioned account/lifecycle integration, then strategy families
+and walk-forward testing. Keep every live/promotion gate blocked meanwhile.
+
 ## Capital foundation merged; bounded multi-ETF intake verified locally — 2026-10-08
 
 PR27 integrated the reviewed capital foundation at
