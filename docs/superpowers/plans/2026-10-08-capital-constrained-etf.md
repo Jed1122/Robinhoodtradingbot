@@ -38,8 +38,8 @@
 - [x] Write behavior tests for six-tier equity-scaled limits, clean legacy hashes, canonical restore and denial of non-offline/live/unpaused/unsafe configuration.
 - [x] Run tests RED: absent research extension/profile.
 - [x] Implement strict frozen policy using existing configuration parsing/enforcement/hashing; no production YAML changes.
-- [ ] Run config/property/legacy monthly golden regressions, Ruff/Mypy; full baseline before completion.
-- [ ] Commit scoped files and record exact result.
+- [x] Run config/property/legacy monthly golden regressions, Ruff/Mypy; full baseline before completion.
+- [x] Commit scoped files and record exact result.
 
 ### Task 2: Capital feasibility and fee-aware sizing
 
@@ -48,9 +48,9 @@
 **Interfaces:** capital_budgets(loaded,equity) -> immutable CapitalBudget; size_capital_entry(loaded,instrument,equity,settled_cash,entry_price,stop_distance,fee_bound,position_open,daily_loss) -> immutable research-only decision; capital_feasibility(loaded) -> six-tier report.
 
 - [x] Literal RED tests:20/.50/40 budgets at100,200/5/400 at1000; fee/cash/increment/minimum/position/daily-loss denies and net notional/risk bounds.
-- [ ] Reuse SizingRequest/size_position with declared research instrument terms; explicit fee/cash final guards; no broker/execution factories.
-- [ ] Test ambient Decimal context independence, altered nested records and unknown costs/routes.
-- [ ] Run relevant sizing/config/economic suites and commit.
+- [x] Reuse SizingRequest/size_position with declared research instrument terms; explicit fee/cash final guards; no broker/execution factories.
+- [x] Test ambient Decimal context independence, altered nested records and unknown costs/routes.
+- [x] Run relevant sizing/config/economic suites and commit.
 
 ### Task 3: Executable capital-plan and reviewed foundation release
 
@@ -58,8 +58,8 @@
 
 **Interfaces:** python -m trading_bot.cli.etf_capital_research capital-plan prints bounded, sanitized canonical report. No capture, credentials or write transport.
 
-- [ ] RED CLI tests for six exact tiers, realistic recurring-cost sensitivity and unchanged production/admission flags; output unknown customer costs as unknown.
-- [ ] Implement CLI from Task1/2 contracts; document actual capabilities and remaining stages.
+- [x] RED CLI tests for six exact tiers, realistic recurring-cost sensitivity and unchanged production/admission flags; output unknown customer costs as unknown.
+- [x] Implement CLI from Task1/2 contracts; document actual capabilities and remaining stages.
 - [ ] Full exact-head suite/native coverage/80+90 gates, Ruff/Mypy/Bandit/locks/SBOM/manifests and independent whole-candidate review. Preserve partial/failed runs as non-certification.
 - [ ] Review findings RED→GREEN, commit, integrate only after all exact-head required checks pass under standing merge authority.
 
@@ -104,8 +104,9 @@
 
 ## Execution status
 
-Approved conversational plan materialized without another approval round. Task1
-profile has14focused and534regression passes; its full suite is still running.
-Task2 contract tests were watched RED for the absent module, without changing
-product source during Task1 verification. No economic result or authenticated
-integration is established. Tasks4–8 remain planned and conditional.
+Task1 completed at1d57688:14focused/534regression/9447full passes,33optional
+skips. Task2/3 tests were watched RED before their implementations;42combined
+foundation tests and569config/sizing/economic regressions passed. Ruffall and
+Mypy361modules passed. Final integrated source verification and review remain
+pending. No economic result or authenticated integration is established.
+Tasks4–8 remain planned and conditional.
