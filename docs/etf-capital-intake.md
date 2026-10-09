@@ -1,7 +1,8 @@
 # Capital-research daily intake
 
-Task4 is in progress. Its first credential-free component is a separately
-versioned request/page parser for SPY, QQQ, IWM, SHY and IEF. It is not a capture
+Task4 is in progress. Credential-free components now include a separately
+versioned request/page parser for SPY, QQQ, IWM, SHY and IEF, and private supplied-
+byte archive publication/verification. Neither is an authenticated capture
 transport, complete historical dataset or economic-qualification factory.
 
 `CapitalDailyRequest` uses a symbol-bound single-stock daily-bars path. Query
@@ -24,6 +25,24 @@ publication time. All source/promotion flags remain false. Zero observations
 and incomplete pagination stay explicit. This component uses fabricated fixtures
 only and adds no credentials, network access or acquisitions.
 
+## Private raw archives
+
+`write_capital_daily_archive` validates all supplied bodies and declared receipt
+times before publishing anything. It reuses the existing descriptor-relative,
+no-follow, current-owner0700directory/0600file primitives outside the repository.
+Original bodies are content-addressed and never replaced; the canonical new
+manifest is published only after the raw bodies. Exact retries verify existing
+bytes and directory durability. Failure can leave complete original blobs but
+never reports successful publication or deletes originals to hide uncertainty.
+
+`read_capital_daily_archive` checks private modes, manifest/body hashes, exact
+schema and request identity, then reparses the originals and reconstructs the
+canonical manifest. Symlinks, changed bytes, impossible receipt clocks and
+qualification flags deny. Receipt timestamps are **supplied declarations**, not
+authenticated collection clocks, original publication times or order timings.
+There is no credential field or production-ledger access. Incomplete captures
+are retained as incomplete, without becoming qualified datasets.
+
 ## API references and outstanding checks
 
 [Alpaca historical bars](https://docs.alpaca.markets/us/reference/stockbars)
@@ -33,8 +52,8 @@ describes access to data older than15minutes; this is documentation, not verifie
 access for this account or a fresh execution quote. Do not change subscriptions,
 silently substitute IEX, or use delayed history as current SIP/NBBO evidence.
 
-Next are descriptor-bound raw capture/archive manifests using the existing private
-storage primitives, then symbol/session/calendar/split/distribution/availability
-dataset controls. These must be verified and frozen before the walk-forward
+Next are symbol/session/calendar/split/distribution/availability dataset controls
+and a separately authorized bounded capture composition. These must be verified
+and frozen before the walk-forward
 strategy study. No genuine economic result, qualifying paper/shadow behavior or
 broker/runtime readiness follows from this parser.
