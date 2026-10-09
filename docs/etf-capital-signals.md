@@ -5,6 +5,13 @@ executable study freeze or accepted economic result. Source, economic,
 execution and promotion flags remain permanently false. No broker interface
 or risk/order factory is exposed.
 
+Exact executable source82c6457 passed9,822 full tests,20 native tests and92.11%
+combined coverage, with unchanged80overall/90critical gates. Ruff/Mypy373/
+Bandit, frozen locks, SBOM and shell/Compose checks passed. Independent review
+identified duplicate distributions and non-daily/interpolated input admission;
+watched failing fixtures and the corrected full suite cover both fixes. These
+are local software checks, not hosted release or market-data qualification.
+
 `capital_candidates()` returns exactly28 immutable candidates: three momentum
 pairs, two RSI thresholds and two rotation lookbacks, each with2/5/10/20-session
 maximum-hold policy labels. The labels do not themselves implement exits.
