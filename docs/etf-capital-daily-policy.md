@@ -16,6 +16,9 @@ original BUY/fill; caller declarations alone do not establish ownership. A new
 fold candidate never changes the existing position's policy. Entry session counts
 as1 toward maximum holding2/5/10/20; a completed-close exit instruction belongs
 to the next eligible session, not a retrospective same-close fill.
+Known maximum-holding deadlines are evaluated before signal warmup: missing
+feature history cannot extend an already-due position. Unavailable regime
+signals and entries remain unavailable, without invented replacement values.
 
 Momentum exits on original-candidate invalidation, mean reversion on RSI>=50 or
 price at/below SMA200, and rotation when its original candidate selects another

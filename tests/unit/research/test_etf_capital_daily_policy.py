@@ -105,6 +105,17 @@ def test_missing_warmup_does_not_invent_entry_or_regime_exit():
     assert (value.action, value.reason) == ("wait", "insufficient_history")
 
 
+@pytest.mark.parametrize("hold", [2, 5, 10, 20])
+def test_known_holding_deadline_does_not_require_feature_warmup(hold):
+    records = projections(tuple(D(100 + i) for i in range(199)))
+    opening = replace(
+        held(hold=hold),
+        entry_session=records[0].as_of_session - timedelta(days=hold - 1),
+    )
+    value = decide(records=records, opening=opening)
+    assert (value.action, value.reason) == ("exit", "maximum_hold")
+
+
 def test_ambient_decimal_precision_does_not_change_policy():
     expected = decide()
     with localcontext() as ctx:

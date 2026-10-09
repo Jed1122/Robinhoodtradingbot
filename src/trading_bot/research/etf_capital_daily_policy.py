@@ -81,6 +81,7 @@ def capital_daily_policy(
     distance = opening.stop_distance if opening else None
     action: Literal["wait", "entry", "hold", "exit"] = "wait"
     reason = "no_entry_signal"
+    elapsed = 0
     target = next((p for p in projections if str(p.raw_bars[-1].instrument_id) == symbol), None)
     if opening:
         if target is None:
@@ -88,13 +89,15 @@ def capital_daily_policy(
         dates = tuple(b.ends_at.astimezone(_ZONE).date() for b in target.raw_bars)
         if opening.entry_session not in dates:
             raise ValueError("capital_daily_policy_invalid")
+        elapsed = sum(day >= opening.entry_session for day in dates)
     with localcontext(_CONTEXT):
-        if any(len(p.feature_bars) < 200 for p in projections):
+        if opening and elapsed >= effective.hold_sessions:
+            action, reason = "exit", "maximum_hold"
+        elif any(len(p.feature_bars) < 200 for p in projections):
             reason = "insufficient_history"
         elif opening:
             action, reason = "hold", "opening_policy_retained"
             target = cast(CapitalFeatureProjection, target)
-            elapsed = sum(day >= opening.entry_session for day in dates)
             closes = tuple(b.close for b in target.feature_bars[-200:])
             invalidated = (
                 (effective.family == "momentum" and symbol not in signal.eligible_symbols)
@@ -106,9 +109,7 @@ def capital_daily_policy(
                 )
                 or (effective.family == "rotation" and signal.entry_symbol != symbol)
             )
-            if elapsed >= effective.hold_sessions:
-                action, reason = "exit", "maximum_hold"
-            elif cfg.equity_strategies.exit_on_regime_change and invalidated:
+            if cfg.equity_strategies.exit_on_regime_change and invalidated:
                 action, reason = "exit", "regime_exit"
         elif target is not None:
             bars = target.feature_bars[-100:]
