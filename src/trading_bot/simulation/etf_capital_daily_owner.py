@@ -169,6 +169,7 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
         observations: tuple[CapitalRiskObservation, ...] = ()
         points: list[CapitalDailyOwnerPoint] = []
         bindings: dict[str, CapitalDailyPolicy] = {}
+        prior_projections: tuple[CapitalFeatureProjection, ...] = ()
         pending: CapitalDailyPolicy | None = None
         account = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
 
@@ -243,6 +244,17 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             _check(type(frame.projections) is tuple and len(frame.projections) == 5)
             _check(type(frame.instruments) is tuple and len(frame.instruments) == 5)
             _check(type(frame.original_facts) is tuple)
+            prior_raw = {str(p.raw_bars[-1].instrument_id): p.raw_bars for p in prior_projections}
+            for projection in frame.projections:
+                _check(type(projection) is CapitalFeatureProjection)
+                projection.__post_init__()
+                symbol = str(projection.raw_bars[-1].instrument_id)
+                if prior_projections:
+                    _check(symbol in prior_raw)
+                    previous = prior_raw[symbol]
+                    _check(len(projection.raw_bars) == len(previous) + 1)
+                    _check(projection.raw_bars[:-1] == previous)
+            prior_projections = frame.projections
             bars = tuple(p.raw_bars[-1] for p in frame.projections)
             opened, closed = bars[0].starts_at, bars[0].ends_at
             _check(all(b.starts_at == opened and b.ends_at == closed for b in bars))

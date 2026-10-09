@@ -413,3 +413,62 @@ def test_unfilled_exit_cannot_be_resubmitted_while_pending():
     assert value.account.cash == D("80.1801")
     assert len(value.events) == 5
     assert not value.account.complete
+
+
+def test_later_history_cannot_erase_owned_session_and_extend_holding_limit():
+    records = frames(7, hold=5)
+    altered = tuple(
+        replace(
+            frame,
+            projections=tuple(
+                replace(
+                    p,
+                    raw_bars=(*p.raw_bars[:201], *p.raw_bars[202:]),
+                    feature_bars=(*p.feature_bars[:201], *p.feature_bars[202:]),
+                )
+                for p in frame.projections
+            ),
+        )
+        if index >= 3
+        else frame
+        for index, frame in enumerate(records)
+    )
+    with pytest.raises(ValueError):
+        run(records=altered)
+
+
+def test_later_projection_cannot_rewrite_owned_raw_execution_history():
+    records = frames(3)
+    altered = tuple(
+        replace(p, raw_bars=(replace(p.raw_bars[0], volume=D(2000)), *p.raw_bars[1:]))
+        for p in records[-1].projections
+    )
+    records = (*records[:-1], replace(records[-1], projections=altered))
+    with pytest.raises(ValueError):
+        run(records=records)
+
+
+def test_owner_cannot_skip_unprocessed_session_ranges():
+    records = frames(4, hold=20)
+    with pytest.raises(ValueError):
+        run(records=(records[0], records[1], records[3]))
+
+
+def test_raw_history_continuity_allows_declared_split_feature_rebasing():
+    records = action_records("split")
+    projected = tuple(
+        replace(
+            p,
+            feature_bars=tuple(
+                replace(
+                    bar, open=bar.open / 2, high=bar.high / 2, low=bar.low / 2, close=bar.close / 2
+                )
+                for bar in p.feature_bars
+            ),
+        )
+        for p in records[-1].projections
+    )
+    value = run(records=(*records[:-1], replace(records[-1], projections=projected)))
+    assert value.account.quantity == D(".132")
+    assert value.points[-1].opening.stop_distance == D(2)
+    assert value.points[-1].equity == D("100.0461")

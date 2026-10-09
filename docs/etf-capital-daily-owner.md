@@ -32,6 +32,9 @@ Synthetic raw-bar boundaries supply opening/closing clocks. Acceptance at +1s,
 fill at +2s and final observation at +3s are explicit daily assumptions, not
 measured broker latency, executable quotes or authenticated data availability.
 Each supplied frame carries five declared projections and instrument terms.
+Later projections must retain the complete owned raw history and append exactly
+one session. Missing, rewritten or skipped original sessions fail closed;
+split-adjusted feature-price rebasing is permitted without rewriting raw bars.
 The caller must supply reset/settlement/finality facts explicitly; there is no
 implicit market-calendar, settlement or fee-completeness assertion.
 
