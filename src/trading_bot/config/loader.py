@@ -872,7 +872,7 @@ def load_config(
     """Load base, one named mode, environment, and immutable safety envelope."""
 
     if research_policy_path is not None and any(
-        key.startswith(ENV_PREFIX) or key in ENV_ALIASES for key in environ
+        key.upper().startswith(ENV_PREFIX) or key.upper() in ENV_ALIASES for key in environ
     ):
         raise ConfigLoadError("capital research rejects configuration environment overrides")
     base = _load_yaml(base_path)

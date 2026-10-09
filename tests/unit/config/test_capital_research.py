@@ -68,6 +68,19 @@ def test_research_profile_rejects_environment_overrides(environ):
         capital_loaded(environ=environ)
 
 
+@pytest.mark.parametrize(
+    "environ",
+    [
+        {"trading_bot__activity__max_order_notional_usd": "10"},
+        {"TrAdInG_BoT__AcTiViTy__MaX_OrDeR_NoTiOnAl_UsD": "10"},
+        {"live_trading_enabled": "false"},
+    ],
+)
+def test_research_profile_rejects_case_normalized_overrides(environ):
+    with pytest.raises(ConfigLoadError, match="rejects configuration environment overrides"):
+        capital_loaded(environ=environ)
+
+
 def test_policy_cannot_expand_risk_or_enable_execution(tmp_path):
     original = (CONFIGS / "etf/capital/policy.yaml").read_text()
     for before, after in [
