@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_CEILING, Decimal, localcontext
+from typing import cast
 
 from trading_bot.config import LoadedConfig
 from trading_bot.domain import AccountId, Instrument, OrderPurpose, require_bounded_decimal
@@ -18,9 +19,17 @@ from trading_bot.simulation.etf_capital_account import (
     CapitalAccountEvent,
     CapitalAccountReplay,
     CapitalAccountSubmission,
+    CapitalActionAccountReplay,
     replay_capital_account_prefixes,
+    replay_capital_action_account_prefixes,
+)
+from trading_bot.simulation.etf_capital_action_events import (
+    CapitalActionEvent,
+    CapitalDistributionEntitled,
+    CapitalSplitApplied,
 )
 from trading_bot.simulation.events import EventCursor
+from trading_bot.simulation.lifecycle_models import LifecycleFillEvent
 
 _ZERO = Decimal("0")
 _HUNDRED = Decimal("100")
@@ -67,7 +76,7 @@ class CapitalRiskReplay:
     evidence_promotable: bool = field(default=False, init=False)
 
 
-def _cursor(event: CapitalAccountEvent) -> EventCursor:
+def _cursor(event: CapitalAccountEvent | CapitalActionEvent) -> EventCursor:
     return event.request.submitted if isinstance(event, CapitalAccountSubmission) else event.cursor
 
 
@@ -96,25 +105,81 @@ def replay_capital_risk(
     latch only on a newly observed reviewed week. Drawdown cannot reset here.
     Missing observations/actions/source coverage remain independent limitations.
     """
+    return _replay_risk(
+        loaded=loaded,
+        initial_cash=initial_cash,
+        events=events,
+        observations=observations,
+        purpose=purpose,
+        actions=False,
+    )
+
+
+def replay_capital_action_risk(
+    *,
+    loaded: LoadedConfig,
+    initial_cash: Decimal,
+    events: tuple[CapitalAccountEvent | CapitalActionEvent, ...],
+    observations: tuple[CapitalRiskObservation, ...],
+    purpose: OrderPurpose = OrderPurpose.ENTRY,
+) -> CapitalRiskReplay:
+    """Opt-in v3 marked risk from originals; receivables are not buying power."""
+    return _replay_risk(
+        loaded=loaded,
+        initial_cash=initial_cash,
+        events=events,
+        observations=observations,
+        purpose=purpose,
+        actions=True,
+    )
+
+
+def _replay_risk(
+    *,
+    loaded: LoadedConfig,
+    initial_cash: Decimal,
+    events: tuple[CapitalAccountEvent | CapitalActionEvent, ...],
+    observations: tuple[CapitalRiskObservation, ...],
+    purpose: OrderPurpose,
+    actions: bool,
+) -> CapitalRiskReplay:
     try:
         with localcontext(_CONTEXT):
             config = _config(loaded)
-            accounts = replay_capital_account_prefixes(initial_cash=initial_cash, events=events)
+            accounts: tuple[CapitalAccountReplay, ...]
+            if actions:
+                accounts = replay_capital_action_account_prefixes(
+                    initial_cash=initial_cash, events=events
+                )
+            else:
+                # Public v2 remains strict; its reducer rejects action types even
+                # if a caller violates the annotated input contract.
+                accounts = replay_capital_account_prefixes(
+                    initial_cash=initial_cash, events=cast(tuple[CapitalAccountEvent, ...], events)
+                )
             # Raw deliveries can repeat old cursors. Only newly applied original
             # events advance the effective account clock or future boundary.
             frontiers: list[datetime | None] = [None]
+            atomic_marks: list[Decimal | None] = [None]
             applied: list[bool] = []
             for index, event in enumerate(events):
                 changed = accounts[index + 1].economic_hash != accounts[index].economic_hash
                 applied.append(changed)
                 frontiers.append(_cursor(event).occurred_at if changed else frontiers[-1])
+                atomic = atomic_marks[-1]
+                if changed:
+                    if frontiers[-1] != frontiers[-2] or isinstance(event, LifecycleFillEvent):
+                        atomic = None
+                    if actions and isinstance(
+                        event, (CapitalSplitApplied, CapitalDistributionEntitled)
+                    ):
+                        value = accounts[index + 1]
+                        _check(type(value) is CapitalActionAccountReplay)
+                        atomic = cast(CapitalActionAccountReplay, value).mark
+                atomic_marks.append(atomic)
             following: list[datetime | None] = [None] * (len(events) + 1)
             for index in range(len(events) - 1, -1, -1):
-                following[index] = (
-                    frontiers[index + 1]
-                    if applied[index]
-                    else following[index + 1]
-                )
+                following[index] = frontiers[index + 1] if applied[index] else following[index + 1]
             _check(type(observations) is tuple and 0 < len(observations) <= 4096)
             _check(type(purpose) is OrderPurpose)
             points: list[CapitalRiskPoint] = []
@@ -160,9 +225,18 @@ def replay_capital_risk(
                     prior_account = account
                 consumed = count
                 account = prior_account
+                mark = observation.mark
+                receivable = _ZERO
+                if actions:
+                    _check(type(account) is CapitalActionAccountReplay)
+                    receivable = cast(CapitalActionAccountReplay, account).distribution_receivable
+                    atomic = atomic_marks[count] if at == frontier else None
+                    if atomic is not None and account.quantity:
+                        _check(mark is None or mark == atomic)
+                        mark = atomic
                 if account.quantity:
-                    _check(observation.mark is not None)
-                equity = account.cash + account.quantity * (observation.mark or _ZERO)
+                    _check(mark is not None)
+                equity = account.cash + receivable + account.quantity * (mark or _ZERO)
                 require_bounded_decimal(equity, "assumed equity", positive=True)
                 day = _boundary(at)
                 week = day - timedelta(days=day.weekday())
@@ -205,7 +279,7 @@ def replay_capital_risk(
                 tuple(points),
                 content_hash(
                     (
-                        "capital-risk-replay-v2",
+                        "capital-risk-replay-v3" if actions else "capital-risk-replay-v2",
                         loaded.config_hash,
                         initial_cash,
                         purpose,
@@ -232,6 +306,35 @@ def evaluate_capital_entry(
     result = replay_capital_risk(
         loaded=loaded, initial_cash=initial_cash, events=events, observations=observations
     )
+    return _entry(loaded, result, instrument, entry_price, stop_distance, fee_bound)
+
+
+def evaluate_capital_action_entry(
+    *,
+    loaded: LoadedConfig,
+    initial_cash: Decimal,
+    events: tuple[CapitalAccountEvent | CapitalActionEvent, ...],
+    observations: tuple[CapitalRiskObservation, ...],
+    instrument: Instrument,
+    entry_price: Decimal,
+    stop_distance: Decimal,
+    fee_bound: Decimal | None,
+) -> CapitalEntryDecision:
+    """Reconstruct action-aware losses before the shared entry/sizing gate."""
+    result = replay_capital_action_risk(
+        loaded=loaded, initial_cash=initial_cash, events=events, observations=observations
+    )
+    return _entry(loaded, result, instrument, entry_price, stop_distance, fee_bound)
+
+
+def _entry(
+    loaded: LoadedConfig,
+    result: CapitalRiskReplay,
+    instrument: Instrument,
+    entry_price: Decimal,
+    stop_distance: Decimal,
+    fee_bound: Decimal | None,
+) -> CapitalEntryDecision:
     current = result.points[-1]
     if not current.decision.new_entries_allowed:
         return CapitalEntryDecision(
