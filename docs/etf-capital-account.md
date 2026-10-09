@@ -3,8 +3,9 @@
 Status: funding and v2 composition released through PR29/PR30; opt-in v3
 corporate-action accounting released through PR31. The v3 prefix release is
 PR32, pending hosted checks. Action-aware risk/admission and joint original-input
-restart reconstruction are implemented locally with focused synthetic tests;
-integrated review and release certification remain pending. The strategy/fold
+restart reconstruction completed independent integrated review and local9,804
+full/20 native tests,92.10% combined coverage and unchanged80/90 gates at0a4ff8d.
+Hosted release certification remains pending. The strategy/fold
 economic evaluator and executable economic freeze are not implemented.
 See [Action-account boundary](etf-capital-actions.md). No operational readiness
 or accepted economic result is asserted.
