@@ -1,5 +1,36 @@
 # Parallel Orchestration Transition Report
 
+## Action-account local certification; joint composition unfinished — 2026-10-09
+
+PR29 and PR30 are merged, respectively at `85a33043b6577b3b369a8632db681fa2da0d5fd6`
+and `e1d949b4429ea15d3859c21f9f6e89ba668c509a`, with reviewed trees and all14
+required current hosted jobs passing. Those releases are not deployment.
+
+The separate corrected action-account source `01c51ad3c57dca29206ebc95c79d03f01c69966d`
+passed9,754 full tests (33 optional skips and one existing warning),20 actual
+native tests and92.07% combined coverage. Unchanged80%overall/90%critical gates
+passed, including the new action-input module. Ruff/Mypy372/Bandit, frozen
+locks, SBOM, package-only advisory audits and shell/Compose checks passed.
+Fresh independent review found one Important aggregate-receivable bound defect;
+watched RED/GREEN controls and the corrected full suite cover its fix. No
+deferred minors. Hosted release of this new increment remains pending.
+
+Opt-in v3 reuses the same account reducer for declared splits, atomic ex-mark
+entitlements and exact payments. Receivables are not spendable; incomplete
+payment/settlement/final-fee obligations remain incomplete. Historical v1/v2
+event readers and hashes remain separate and unchanged. Actions during active
+orders and unsupported split rounding deny. Dates and marks are assumptions,
+not qualified source/calendar facts. All eligibility flags remain false.
+
+Next: finish exact-head hosted integration, then compose v3 original prefixes,
+marked risk/admission and durable joint original-state recovery; decide the
+historical persisted-reader policy and verify representative replay performance.
+The strategy/fold/cost executable freeze and development economics follow those
+prerequisites. No current economic result, customer-cost calibration, trusted
+paper/shadow, deployed recovery or live readiness is established.
+
+Earlier sections below are retained historical checkpoints, not current status.
+
 ## Strict account and v2 descendant local verification — 2026-10-09
 
 The corrected account candidate `cdd4c40` passed9,663 full tests (33 optional

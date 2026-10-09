@@ -44,8 +44,15 @@ execution and promotion flags remain permanently false.
 
 ## Remaining work
 
-This increment has focused fictional controls only until exact-source integrated
-review and release checks finish. V3 original-prefix and shared marked-risk
+Corrected source `01c51ad3c57dca29206ebc95c79d03f01c69966d` passed9,754 full
+tests (33 optional skips and one existing warning),20 native tests and92.07%
+combined coverage; unchanged80%overall/90%critical gates passed. Independent
+review's aggregate-receivable bound finding was fixed with watched RED/GREEN
+controls before the corrected full run. Static, lock, SBOM, advisory and manifest
+checks passed. Hosted release remains pending; these are synthetic software
+checks, not data qualification or deployed recovery.
+
+V3 original-prefix and shared marked-risk
 composition, durable joint account/action/risk checkpoint restoration and
 representative performance are not implemented here. Existing v2 risk and
 checkpoint owners reject action events. Existing persisted directories remain

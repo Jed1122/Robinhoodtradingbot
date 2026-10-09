@@ -1,9 +1,11 @@
 # Capital research account boundary
 
-Status: funding, strict account, synthetic checkpoint and marked-risk/prefix
-composition implemented and locally verified; exact-head hosted release pending.
-Corporate-action accounting, joint risk/account recovery and the economic
-evaluator are **not implemented**. No operational readiness is asserted.
+Status: funding, strict account and v2 synthetic checkpoint/marked-risk/prefix
+composition released through PR29/PR30. Separate opt-in v3 corporate-action
+accounting is locally certified; its hosted release remains pending. See
+[Action-account boundary](etf-capital-actions.md). Action-aware risk/admission,
+joint risk/account/action recovery and the economic evaluator are **not
+implemented**. No operational readiness is asserted.
 
 `simulation.etf_capital_funding.capital_order_reservation` validates original
 broker-neutral LIMIT order records and explicit bounded whole-episode fee facts.
