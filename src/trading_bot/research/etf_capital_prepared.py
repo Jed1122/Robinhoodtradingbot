@@ -7,9 +7,10 @@ from typing import Literal
 
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Bar
-from trading_bot.market_data.etf_capital_dataset import (
-    CapitalResearchDataset,
-    capital_dataset_features,
+from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
+from trading_bot.market_data.etf_capital_features import (
+    _capital_feature_source,
+    _capital_features_at,
 )
 from trading_bot.market_data.etf_capital_owned import _own_capital_source
 from trading_bot.market_data.recording import content_hash
@@ -79,9 +80,17 @@ def _prepare_capital_days(
             ordinals = {day: index for index, day in enumerate(dates)}
             if any(day not in ordinals for day in sessions):
                 raise ValueError("capital_prepared_input_invalid")
+            feature_sources = tuple(
+                _capital_feature_source(
+                    archive, source.calendar, actions, as_of_session=sessions[0]
+                )
+                for archive, actions in zip(source.archives, source.actions, strict=True)
+            )
             result = []
             for day in sessions:
-                full = capital_dataset_features(source, as_of_session=day)
+                full = tuple(
+                    _capital_features_at(item, as_of_session=day) for item in feature_sources
+                )
                 as_of, hashes = _validate_capital_signal_projections(
                     full, source.config_hash, full[0].raw_bars[-1].ends_at
                 )

@@ -114,6 +114,37 @@ def capital_split_feature_bars(
         or type(as_of_session) is not date
     ):
         raise ValueError("capital_feature_projection_invalid")
+    return _capital_features_at(
+        _capital_feature_source(archive, calendar, actions, as_of_session=as_of_session),
+        as_of_session=as_of_session,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _CapitalFeatureSource:
+    archive: CapitalDailyArchive
+    calendar: EtfCalendarArchive
+    actions: CapitalActionArchive
+    archive_hash: str
+    action_hash: str
+    calendar_hash: str
+
+
+def _capital_feature_source(
+    archive: CapitalDailyArchive,
+    calendar: EtfCalendarArchive,
+    actions: CapitalActionArchive,
+    *,
+    as_of_session: date,
+) -> _CapitalFeatureSource:
+    """Shared original validation; private callers must own their input graph."""
+    if (
+        type(archive) is not CapitalDailyArchive
+        or type(calendar) is not EtfCalendarArchive
+        or type(actions) is not CapitalActionArchive
+        or type(as_of_session) is not date
+    ):
+        raise ValueError("capital_feature_projection_invalid")
     archive.__post_init__()
     calendar.__post_init__()
     actions.__post_init__()
@@ -131,9 +162,32 @@ def capital_split_feature_bars(
         row.ex_date not in all_sessions for row in actions.distributions
     ):
         raise ValueError("capital_feature_projection_invalid")
-    archive_hash = archive.archive_hash
-    action_hash = actions.archive_hash
-    calendar_hash = calendar.archive_hash
+    return _CapitalFeatureSource(
+        archive,
+        calendar,
+        actions,
+        archive.archive_hash,
+        actions.archive_hash,
+        calendar.archive_hash,
+    )
+
+
+def _capital_features_at(
+    source: _CapitalFeatureSource, *, as_of_session: date
+) -> CapitalFeatureProjection:
+    """Build and validate the complete requested basis, not a terminal slice."""
+    if type(as_of_session) is not date or not (
+        source.actions.start <= as_of_session < source.actions.end
+    ):
+        raise ValueError("capital_feature_projection_invalid")
+    archive, calendar, actions = source.archive, source.calendar, source.actions
+    archive_hash, action_hash, calendar_hash = (
+        source.archive_hash,
+        source.action_hash,
+        source.calendar_hash,
+    )
+    if actions.splits is None or actions.distributions is None:
+        raise ValueError("capital_feature_projection_invalid")
     sessions = {
         row.session_date: row
         for row in calendar.sessions

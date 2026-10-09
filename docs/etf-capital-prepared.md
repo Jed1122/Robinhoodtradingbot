@@ -10,8 +10,11 @@ it creates an independent owned snapshot internally. An exact ordered, unique
 date schedule must refer to original declared sessions. No caller-prepared token,
 source digest, cached approval, account balance or held policy is accepted.
 
-Every requested date first uses the existing full as-of projection and full
-signal validation/digests. The same numerical kernel then consumes only its
+Within each owned invocation, five private source records share the original
+archive/calendar/action validation and original source hashes. Public projection
+calls still validate their originals on every call; no caller cache is accepted.
+Every requested date uses the same complete as-of projection arithmetic, bounds
+and original full hashes, followed by full signal validation/digests. The same numerical kernel then consumes only its
 last200 local raw/feature bars while retaining those original full source hashes.
 RSI restarts at the prescribed200-bar boundary. Entry distances use the same
 public policy's100-bar ATR arithmetic, canonical multiplier and raw/feature basis
@@ -40,6 +43,9 @@ public policy identity, raw stop distance8, zero ATR, invalid schedules, source
 mutation, new-invocation validation and the intermediate ancient split failure.
 Focused checks do not replace global/native/critical release gates or the
 unchanged120-second/512MiB training-window and full28×6×4×5 workload gates.
+The shared-source extraction also failed the750-session guard at120.062s with
+79,462,400-byte peak RSS. It is a bounded refactoring, not a passing performance
+result. Full growing-prefix calculation and hashing still require further work.
 
 Still required: original-event account/action/settlement scheduling, fresh risk
 admission, immutable held policy across selection boundaries, genuine train-run
