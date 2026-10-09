@@ -1,5 +1,22 @@
 # Parallel Orchestration Transition Report
 
+## PR34 frontier corrections pending certification — 2026-10-09
+
+PR32 merged aaf9df0da5b8c981ad6fd9730a48166dc2a0fde2; PR33 merged
+93c0f2e23e21578d3225f261bdecbab2fc7f91c0 after all14 current hosted jobs passed
+and no substantive unresolved findings. Neither release is deployment.
+PR34 remains unmerged: three new hosted findings reproduced four RED controls.
+Current corrections require latest Eastern session/as-of equality, one daily bar
+per Eastern date, and a complete original action-tape frontier before entry
+admission. Historical-prefix risk replay remains informational. Earlier82c6457
+full/native results below are historical after these source changes; fresh
+full/native/hosted certification is required. No new study or economic freeze.
+MAIN's entry-only15d1 source passed9,854 full tests before inheriting these
+corrections; that is now historical, not corrected-source certification. No old
+native append or release is claimed. Entry adapter is not a full daily owner or
+economic evaluator. All qualification/live boundaries remain. Earlier sections
+below preserve prior checkpoints only.
+
 ## Prefix released; bounded daily entry increment under verification — 2026-10-09
 
 PR32 merged at `aaf9df0da5b8c981ad6fd9730a48166dc2a0fde2`, tree

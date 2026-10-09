@@ -55,6 +55,42 @@ def signal(candidate: CapitalCandidate, values: tuple[Decimal, ...]):
     )
 
 
+def test_declared_as_of_without_that_sessions_bar_denies() -> None:
+    records = projections(tuple(Decimal(100 + i) for i in range(200)))
+    stale = tuple(replace(p, as_of_session=p.as_of_session + timedelta(days=1)) for p in records)
+    with pytest.raises(ValueError):
+        capital_strategy_signal(
+            capital_candidates()[0],
+            stale,
+            config_hash=ConfigHash("d" * 64),
+            as_of=records[0].raw_bars[-1].ends_at + timedelta(days=1),
+        )
+
+
+def test_two_bars_for_one_eastern_session_cannot_count_as_two_days() -> None:
+    records = projections(tuple(Decimal(100 + i) for i in range(200)))
+    malformed = []
+    for p in records:
+        extra_raw = replace(
+            p.raw_bars[-1],
+            starts_at=p.raw_bars[-1].starts_at + timedelta(minutes=1),
+            ends_at=p.raw_bars[-1].ends_at + timedelta(minutes=1),
+        )
+        extra_feature = replace(extra_raw, source="capital-split-feature-assumption-v2")
+        malformed.append(
+            replace(
+                p, raw_bars=(*p.raw_bars, extra_raw), feature_bars=(*p.feature_bars, extra_feature)
+            )
+        )
+    with pytest.raises(ValueError):
+        capital_strategy_signal(
+            capital_candidates()[0],
+            tuple(malformed),
+            config_hash=ConfigHash("d" * 64),
+            as_of=malformed[0].raw_bars[-1].ends_at,
+        )
+
+
 def test_grid_is_exact_unique_and_not_mutable() -> None:
     result = capital_candidates()
     assert len(result) == len(set(result)) == 28
