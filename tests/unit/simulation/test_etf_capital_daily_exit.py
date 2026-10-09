@@ -120,6 +120,76 @@ def test_daily_entry_halt_does_not_block_shared_authorized_protective_purpose():
     assert result.risk.points[-1].decision.allowed
 
 
+def test_old_duplicate_buy_cannot_replace_current_episode_fee_bound():
+    from trading_bot.simulation.etf_capital_account import (
+        CapitalEpisodeFeesFinal,
+        CapitalSaleSettlement,
+    )
+    from trading_bot.simulation.etf_capital_daily_exit import simulate_capital_daily_exit
+
+    first = exit_run()
+    tape = (
+        *first.events,
+        CapitalSaleSettlement(
+            "settle", EventCursor(10, AT + timedelta(seconds=3)), first.events[-1].fill.id
+        ),
+        CapitalEpisodeFeesFinal(
+            "final",
+            EventCursor(11, AT + timedelta(seconds=4)),
+            D(".03"),
+            first.events[0].request.order.account_id,
+            first.events[0].request.order.id,
+        ),
+    )
+    tomorrow = OPEN + timedelta(days=1)
+    second = run(
+        events=tape,
+        observations=(
+            *first.observations,
+            CapitalRiskObservation(EventCursor(12, tomorrow), len(tape), None, True, False),
+        ),
+        instrument=replace(request().instrument, observed_at=tomorrow),
+        decision_at=OPEN,
+        opened=EventCursor(13, tomorrow),
+        lifecycle_cursors=(
+            EventCursor(14, tomorrow + timedelta(seconds=1)),
+            EventCursor(15, tomorrow + timedelta(seconds=2)),
+        ),
+        episode_fee_bound=D(".20"),
+    )
+    submitted = tomorrow + timedelta(seconds=10)
+    value = exit_request(
+        events=second.events,
+        observations=(
+            *second.observations,
+            CapitalRiskObservation(
+                EventCursor(17, submitted), len(second.events), D("100"), False, False
+            ),
+        ),
+        instrument=replace(request().instrument, observed_at=tomorrow),
+        submitted=EventCursor(18, submitted),
+        lifecycle_cursors=(
+            EventCursor(19, submitted + timedelta(seconds=1)),
+            EventCursor(20, submitted + timedelta(seconds=2)),
+        ),
+    )
+    normal = simulate_capital_daily_exit(value)
+    duplicate = replace(
+        value,
+        events=(*value.events, first.events[0]),
+        observations=(
+            *value.observations[:-1],
+            replace(value.observations[-1], source_count=len(value.events) + 1),
+        ),
+    )
+    repeated = simulate_capital_daily_exit(duplicate)
+    assert repeated.account.cash == normal.account.cash
+    assert repeated.account.fees == normal.account.fees
+    assert repeated.account.available_cash == normal.account.available_cash
+    assert repeated.account.unsettled_proceeds == normal.account.unsettled_proceeds
+    assert repeated.account.quantity == 0
+
+
 def test_split_adjusted_original_quantity_and_basis_feed_exit_without_history_rewrite():
     from trading_bot.simulation.etf_capital_account import CapitalSplitApplied
 

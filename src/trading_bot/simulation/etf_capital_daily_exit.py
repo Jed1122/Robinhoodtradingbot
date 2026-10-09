@@ -208,7 +208,11 @@ def simulate_capital_daily_exit(request: CapitalDailyExitRequest) -> CapitalDail
                 else event.cursor
             )
             _check(cursor.sequence < request.submitted.sequence)
-            if type(event) is CapitalAccountSubmission and event.request.order.side is Side.BUY:
+            if (
+                type(event) is CapitalAccountSubmission
+                and event.request.order.side is Side.BUY
+                and (opening is None or cursor.sequence > opening.request.submitted.sequence)
+            ):
                 opening = event
         _check(opening is not None)
         if opening is None:
