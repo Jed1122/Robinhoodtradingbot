@@ -189,12 +189,11 @@ def advance_capital_account_checkpoint(
             _require(
                 len(names) + 4 <= 8196 and occupancy + len(owner) + len(first_body) <= 64 * 1048576
             )
-            _publish(child, "owner.json", owner)
-            occupancy += len(owner)
-            names.add("owner.json")
         previous = _GENESIS
         prior_count = 0
         checkpoint = None
+        heads = [_GENESIS]
+        counts = [0]
         files = sorted(n for n in names if _NAME.fullmatch(n))
         for sequence, name in enumerate(files, 1):
             _require(name == f"{sequence:08d}.capital-account-checkpoint.json")
@@ -211,13 +210,47 @@ def advance_capital_account_checkpoint(
             previous = hashlib.sha256(encoded).hexdigest()
             prior_count = count
             checkpoint = CapitalAccountCheckpoint(sequence, request_hash, previous, restored)
-        _require(expected_head is None or expected_head == previous)
+            heads.append(previous)
+            counts.append(count)
+        for name in sorted(n for n in names if _TEMP.fullmatch(n)):
+            staging = _single_file(child, name, _MAX_BYTES)
+            if staging == owner:
+                continue
+            row = _json(staging, max_bytes=_MAX_BYTES, limits=_LIMITS)
+            if not isinstance(row, dict):
+                raise ValueError("capital_account_checkpoint_invalid")
+            stage_sequence, stage_count = row.get("sequence"), row.get("source_count")
+            if type(stage_sequence) is not int or type(stage_count) is not int:
+                raise ValueError("capital_account_checkpoint_invalid")
+            _require(
+                1 <= stage_sequence <= len(files) + 1
+                and counts[stage_sequence - 1] < stage_count <= len(events)
+            )
+            reconstructed = replay_capital_account(
+                initial_cash=initial_cash, events=events[:stage_count]
+            )
+            _require(
+                staging
+                == _body(
+                    request_hash,
+                    stage_sequence,
+                    heads[stage_sequence - 1],
+                    stage_count,
+                    reconstructed,
+                )
+            )
+        exact_retry = through_count == prior_count and len(heads) > 1 and expected_head == heads[-2]
+        _require(expected_head is None or expected_head == previous or exact_retry)
         _require(through_count >= prior_count)
         os.fsync(child)
         if through_count == prior_count:
-            _require(checkpoint is not None)
-            assert checkpoint is not None
+            if checkpoint is None:
+                raise ValueError("capital_account_checkpoint_invalid")
             return checkpoint
+        if "owner.json" not in names:
+            _publish(child, "owner.json", owner)
+            occupancy += len(owner)
+            names.add("owner.json")
         sequence = len(files) + 1
         encoded = _body(request_hash, sequence, previous, through_count, result)
         _require(len(names) + 2 <= 8196 and occupancy + len(encoded) <= 64 * 1048576)

@@ -64,6 +64,46 @@ def test_old_head_and_backward_count_cannot_advance(private_root):
             advance(private_root, count, head)
 
 
+def test_exact_retry_accepts_original_compare_and_swap_head(private_root):
+    first = advance(private_root, 3)
+    second = advance(private_root, 8, first.head_hash)
+    assert advance(private_root, 8, first.head_hash) == second
+
+
+@pytest.mark.parametrize(
+    "payload", [b"not a verified publication", b"[]", b'{"sequence":true,"source_count":8}']
+)
+def test_unverified_internal_staging_bytes_deny_without_adoption(private_root, payload):
+    first = advance(private_root, 3)
+    directory = next(private_root.iterdir())
+    descriptor = os.open(
+        directory / (".tmp-" + "e" * 32), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+    )
+    try:
+        os.write(descriptor, payload)
+    finally:
+        os.close(descriptor)
+    with pytest.raises(ValueError):
+        advance(private_root, 8, first.head_hash)
+    assert len(tuple(directory.glob("*.capital-account-checkpoint.json"))) == 1
+
+
+def test_verified_owner_staging_is_retained_without_becoming_state(private_root):
+    first = advance(private_root, 3)
+    directory = next(private_root.iterdir())
+    owner = (directory / "owner.json").read_bytes()
+    staging = directory / (".tmp-" + "e" * 32)
+    descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(descriptor, owner)
+    finally:
+        os.close(descriptor)
+    second = advance(private_root, 8, first.head_hash)
+    assert second.sequence == 2
+    assert staging.read_bytes() == owner
+    assert advance(private_root, 8, first.head_hash) == second
+
+
 def test_source_code_and_capital_identity_cannot_change_after_publication(private_root):
     first = advance(private_root, 3)
     events = script()
@@ -135,13 +175,17 @@ def test_invalid_persisted_structure_is_not_reconstructed(private_root, payload)
 
 
 def test_initial_owner_and_checkpoint_capacity_reserved_before_either_write(private_root):
+    seed = private_root.parent / "seed"
+    seed.mkdir(mode=0o700)
+    advance(seed, 3)
+    owner = next(seed.rglob("owner.json")).read_bytes()
     directory = private_root / "capital-account-checkpoints-v1"
     directory.mkdir(mode=0o700)
-    for index in range(8):
+    for index in range(8193):
         path = directory / f".tmp-{index:032x}"
         descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
         try:
-            os.ftruncate(descriptor, 8 * 1048576 - (500 if index == 7 else 0))
+            os.write(descriptor, owner)
         finally:
             os.close(descriptor)
     with pytest.raises(ValueError):
