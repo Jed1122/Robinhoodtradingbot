@@ -1,5 +1,17 @@
 # Parallel Orchestration Transition Report
 
+## Intake calendar provenance correction; current certification pending — 2026-10-09
+
+New hosted PR28 review found that copying a calendar reset fixed metadata
+instead of validating the supplied original. Four inventory/feature controls
+were watched RED, then fixed by original validation and strict canonical
+calendar source-kind/limitation checks. Dataset controls also exercise the
+shared guard. Legacy calendar schemas and valid hash preimages are unchanged.
+Earlier278735a local certification is historical, not certification of this
+source correction. Current full/native/hosted gates must finish before merge.
+No strategy study or real data outcome was run or reinterpreted. Funding,
+account/restart replay and strategy economics remain unfinished; live is blocked.
+
 ## Capital foundation merged; bounded multi-ETF intake verified locally — 2026-10-08
 
 PR27 integrated the reviewed capital foundation at
