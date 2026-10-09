@@ -1,5 +1,70 @@
 # Parallel Orchestration Transition Report
 
+## Intermediate action valuation correction; release pending — 2026-10-09
+
+PR31 received another substantive review finding: an oversized intermediate
+marked equity could be hidden by a later action or fill. Two synthetic cases
+were watched RED before the correction. The same valuation helper now checks
+marked equity after every unique v3 event and at snapshot; unknown held marks
+remain unknown. Focused account/risk/architecture checks passed356 tests.
+
+The preceding mark-preservation source `da76de0` completed9,761 full tests,
+20 native tests,92.07% combined coverage and unchanged80overall/90critical gates;
+all14 hosted jobs passed. Those results are historical after this new source
+change, not certification of the intermediate-valuation correction. PR31 remains
+unmerged with substantive threads open pending fresh global verification.
+No study, data acquisition, account access, deployment or risk changes occurred.
+
+Next: complete this exact source's release gates, then action-aware risk and
+joint original-state recovery before executable strategy/economic freeze.
+
+## Action-mark review correction; current certification pending — 2026-10-09
+
+New PR31 review identified that non-fill exit controls discarded explicit action
+marks despite unchanged holdings. Six split/distribution accepted/cancel-pending/
+cancel-confirmed controls reproduced RED. The reducer now invalidates the mark
+only on a fill; a partial fill followed by cancellation still leaves held NAV
+unknown rather than inventing a fresh mark. This does not qualify freshness.
+Focused account/action/finality/risk checks passed115 tests before the final
+aggregate-bound fixture refinement. Source changed, so the earlier9,754/20
+certification below is historical, not current. Fresh full/native and exact-head
+hosted checks are required; PR31 remains unmerged and the review thread remains
+open pending complete verification. No study, deployment or risk change occurred.
+
+Next: finish corrected exact-source release gates, then v3 shared risk and joint
+original-state recovery before strategy economics. All readiness flags stay false.
+
+## Action-account local certification; joint composition unfinished — 2026-10-09
+
+PR29 and PR30 are merged, respectively at `85a33043b6577b3b369a8632db681fa2da0d5fd6`
+and `e1d949b4429ea15d3859c21f9f6e89ba668c509a`, with reviewed trees and all14
+required current hosted jobs passing. Those releases are not deployment.
+
+The separate corrected action-account source `01c51ad3c57dca29206ebc95c79d03f01c69966d`
+passed9,754 full tests (33 optional skips and one existing warning),20 actual
+native tests and92.07% combined coverage. Unchanged80%overall/90%critical gates
+passed, including the new action-input module. Ruff/Mypy372/Bandit, frozen
+locks, SBOM, package-only advisory audits and shell/Compose checks passed.
+Fresh independent review found one Important aggregate-receivable bound defect;
+watched RED/GREEN controls and the corrected full suite cover its fix. No
+deferred minors. Hosted release of this new increment remains pending.
+
+Opt-in v3 reuses the same account reducer for declared splits, atomic ex-mark
+entitlements and exact payments. Receivables are not spendable; incomplete
+payment/settlement/final-fee obligations remain incomplete. Historical v1/v2
+event readers and hashes remain separate and unchanged. Actions during active
+orders and unsupported split rounding deny. Dates and marks are assumptions,
+not qualified source/calendar facts. All eligibility flags remain false.
+
+Next: finish exact-head hosted integration, then compose v3 original prefixes,
+marked risk/admission and durable joint original-state recovery; decide the
+historical persisted-reader policy and verify representative replay performance.
+The strategy/fold/cost executable freeze and development economics follow those
+prerequisites. No current economic result, customer-cost calibration, trusted
+paper/shadow, deployed recovery or live readiness is established.
+
+Earlier sections below are retained historical checkpoints, not current status.
+
 ## Strict account and v2 descendant local verification — 2026-10-09
 
 The corrected account candidate `cdd4c40` passed9,663 full tests (33 optional

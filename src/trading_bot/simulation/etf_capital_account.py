@@ -1,16 +1,30 @@
 """Bounded synthetic account reconstruction; no risk or execution authority.
 
 Recompute from original event prefixes rather than adopting caller snapshots.
-This layer owns cash/holdings/fees/settlement only. Canonical entry admission,
-corporate actions, loss latches and durable publication are separate composition.
+This layer owns cash/holdings/fees/settlement and opt-in v3 declared actions.
+Canonical entry admission, joint loss latches and durable publication remain
+separate composition; none of these records grants execution authority.
 """
 
 from dataclasses import dataclass, field, replace
 from decimal import Context, Decimal, DecimalException, localcontext
+from fractions import Fraction
 from typing import NoReturn
 
 from trading_bot.domain import AssetClass, DataHash, Side, require_bounded_decimal
 from trading_bot.market_data.recording import content_hash
+from trading_bot.simulation.etf_capital_action_events import (
+    CapitalActionEvent,
+)
+from trading_bot.simulation.etf_capital_action_events import (
+    CapitalDistributionEntitled as CapitalDistributionEntitled,
+)
+from trading_bot.simulation.etf_capital_action_events import (
+    CapitalDistributionPaid as CapitalDistributionPaid,
+)
+from trading_bot.simulation.etf_capital_action_events import (
+    CapitalSplitApplied as CapitalSplitApplied,
+)
 from trading_bot.simulation.etf_capital_funding import (
     _capital_order_reservation,
     capital_available_cash,
@@ -138,6 +152,29 @@ class CapitalAccountReplay:
     evidence_promotable: bool = field(default=False, init=False)
 
 
+@dataclass(frozen=True, slots=True)
+class CapitalActionAccountReplay(CapitalAccountReplay):
+    average_price: Decimal | None
+    distribution_receivable: Decimal
+    mark: Decimal | None
+    marked_equity: Decimal | None
+    source_qualified: bool = field(default=False, init=False)
+
+
+def replay_capital_action_account(
+    *, initial_cash: Decimal, events: tuple[CapitalAccountEvent | CapitalActionEvent, ...]
+) -> CapitalActionAccountReplay:
+    """Opt-in v3 action replay through the original account reducer, offline only."""
+    try:
+        with localcontext(_CONTEXT):
+            result = _replay(initial_cash, events, actions=True)
+            if type(result) is not CapitalActionAccountReplay:
+                _deny()
+            return result
+    except (ValueError, TypeError, DecimalException):
+        _deny()
+
+
 def replay_capital_account(
     *, initial_cash: Decimal, events: tuple[CapitalAccountEvent, ...]
 ) -> CapitalAccountReplay:
@@ -186,9 +223,11 @@ def replay_capital_account_prefixes(
 
 def _replay(
     initial: Decimal,
-    events: tuple[CapitalAccountEvent, ...],
+    events: tuple[CapitalAccountEvent | CapitalActionEvent, ...],
     prefixes: list[CapitalAccountReplay] | None = None,
-    *, legacy: bool = False,
+    *,
+    legacy: bool = False,
+    actions: bool = False,
 ) -> CapitalAccountReplay:
     require_bounded_decimal(initial, "initial_cash", positive=True)
     if initial not in _TIERS or type(events) is not tuple or len(events) > 4096:
@@ -211,6 +250,27 @@ def _replay(
     fills: set[str] = set()
     settlements: dict[str, Decimal] = {}
     digests: list[DataHash] = []
+    average_price: Decimal | None = None
+    mark: Decimal | None = None
+    entitlements: dict[str, tuple[Decimal, CapitalDistributionEntitled]] = {}
+    action_ids: set[str] = set()
+    adjusted = False
+    version = "v1" if legacy else "v3" if actions else "v2"
+
+    def receivable_total() -> Decimal:
+        total = sum((row[0] for row in entitlements.values()), _ZERO)
+        require_bounded_decimal(total, "distribution_receivable", nonnegative=True)
+        return total
+
+    def action_equity(receivable: Decimal) -> Decimal | None:
+        equity = (
+            cash + receivable
+            if quantity == 0
+            else (None if mark is None else cash + receivable + quantity * mark)
+        )
+        if equity is not None:
+            require_bounded_decimal(equity, "marked_equity", nonnegative=True)
+        return equity
 
     def snapshot() -> CapitalAccountReplay:
         unsettled = sum(settlements.values(), _ZERO)
@@ -225,22 +285,37 @@ def _replay(
                 legacy_identifiers=legacy,
             )
             available = capital_available_cash(cash, unsettled, reservation)
-        return CapitalAccountReplay(
+        receivable = receivable_total()
+        base = CapitalAccountReplay(
             cash,
             available,
             quantity,
             fees,
             unsettled,
-            final and quantity == 0 and not settlements,
+            final and quantity == 0 and not settlements and not entitlements,
             content_hash(
                 {
-                    "namespace": (
-                        "capital-account-replay-v1" if legacy else "capital-account-replay-v2"
-                    ),
+                    "namespace": "capital-account-replay-" + version,
                     "initial": initial,
                     "applied": tuple(digests),
                 }
             ),
+        )
+        if not actions:
+            return base
+        equity = action_equity(receivable)
+        return CapitalActionAccountReplay(
+            base.cash,
+            base.available_cash,
+            base.quantity,
+            base.fees,
+            base.unsettled_proceeds,
+            base.complete,
+            base.economic_hash,
+            average_price,
+            receivable,
+            mark,
+            equity,
         )
 
     if prefixes is not None:
@@ -253,6 +328,15 @@ def _replay(
             CapitalSaleSettlement,
             CapitalFeesFinal,
             CapitalEpisodeFeesFinal,
+            CapitalSplitApplied,
+            CapitalDistributionEntitled,
+            CapitalDistributionPaid,
+        ):
+            _deny()
+        if not actions and type(event) in (
+            CapitalSplitApplied,
+            CapitalDistributionEntitled,
+            CapitalDistributionPaid,
         ):
             _deny()
         if (isinstance(event, CapitalFeesFinal) and not legacy) or (
@@ -287,7 +371,7 @@ def _replay(
                     _identifier(value)
         digest = content_hash(
             {
-                "namespace": "capital-account-event-v1" if legacy else "capital-account-event-v2",
+                "namespace": "capital-account-event-" + version,
                 "event": event,
             }
         )
@@ -314,12 +398,13 @@ def _replay(
                 _deny()
             if quantity != 0 and (
                 current is None
-                or proposed.position.average_price != current.snapshot.position.average_price
+                or proposed.position.average_price
+                != (average_price if actions else current.snapshot.position.average_price)
                 or event.symbol != symbol
             ):
                 _deny()
             if proposed.order.side is Side.BUY:
-                if quantity != 0 or not final or settlements:
+                if quantity != 0 or not final or settlements or entitlements:
                     _deny()
                 episode_fees = _ZERO
                 fee_bound = event.episode_fee_bound
@@ -338,8 +423,9 @@ def _replay(
             order_fees_before = episode_fees
             account_id = proposed.order.account_id
             orders.add(proposed.order.broker_order_id)
+            adjusted = False
         elif isinstance(event, (LifecycleControlEvent, LifecycleFillEvent)):
-            if request is None or current is None or final:
+            if request is None or current is None or final or adjusted:
                 _deny()
             if isinstance(event, LifecycleFillEvent):
                 if event.fill.id in fills:
@@ -351,6 +437,11 @@ def _replay(
             episode_fees = order_fees_before + updated.snapshot.fees
             cash = updated.snapshot.cash
             quantity = updated.snapshot.position.quantity
+            average_price = updated.snapshot.position.average_price if quantity else None
+            # A fill changes the held quantity/price; an old mark is not a new
+            # executable observation. Flat equity needs no inferred mark.
+            if isinstance(event, LifecycleFillEvent):
+                mark = None
             current = updated
             if isinstance(event, LifecycleFillEvent) and event.fill.side is Side.SELL:
                 proceeds = event.fill.quantity * event.fill.price - event.fill.fee
@@ -360,6 +451,53 @@ def _replay(
             if event.fill_id not in settlements:
                 _deny()
             del settlements[event.fill_id]
+        elif isinstance(
+            event, (CapitalSplitApplied, CapitalDistributionEntitled, CapitalDistributionPaid)
+        ):
+            if (
+                current is None
+                or not current.order_terminal
+                or event.account_id != account_id
+                or event.opening_order_id != opening_order_id
+                or event.symbol != symbol
+            ):
+                _deny()
+            if isinstance(event, CapitalDistributionPaid):
+                if event.entitlement_id not in entitlements:
+                    _deny()
+                amount, original = entitlements[event.entitlement_id]
+                if event.amount != amount or event.cursor.occurred_at.date() < original.pay_date:
+                    _deny()
+                cash += amount
+                require_bounded_decimal(cash, "cash", nonnegative=True)
+                del entitlements[event.entitlement_id]
+            else:
+                if event.action_id in action_ids:
+                    _deny()
+                action_ids.add(event.action_id)
+                if isinstance(event, CapitalSplitApplied):
+                    if quantity:
+                        if average_price is None:
+                            _deny()
+                        exact = Fraction(average_price) / Fraction(event.ratio)
+                        denominator = exact.denominator
+                        for factor in (2, 5):
+                            while denominator % factor == 0:
+                                denominator //= factor
+                        if denominator != 1:
+                            _deny()
+                        quantity *= event.ratio
+                        average_price /= event.ratio
+                        require_bounded_decimal(quantity, "quantity", positive=True)
+                        require_bounded_decimal(average_price, "average_price", positive=True)
+                    mark = event.post_action_mark
+                    adjusted = True
+                else:
+                    amount = quantity * event.amount_per_share
+                    require_bounded_decimal(amount, "distribution_receivable", nonnegative=True)
+                    if quantity:
+                        entitlements[event.action_id] = (amount, event)
+                    mark = event.ex_mark
         else:
             if isinstance(event, CapitalEpisodeFeesFinal) and (
                 event.account_id != account_id or event.opening_order_id != opening_order_id
@@ -371,12 +509,15 @@ def _replay(
                 or not current.order_terminal
                 or quantity != 0
                 or settlements
+                or entitlements
                 or event.total_fees != episode_fees
             ):
                 _deny()
             final = True
         # Recompute authoritative capacity after every unique event. Never adopt
         # an externally supplied reservation or release it on end-of-input.
+        if actions:
+            action_equity(receivable_total())
         if current is not None:
             reservation = _capital_order_reservation(
                 order=current.snapshot.order,

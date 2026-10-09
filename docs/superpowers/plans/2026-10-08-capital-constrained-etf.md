@@ -104,6 +104,27 @@
 
 ## Execution status
 
+October9 subsequent PR31 review: six watched RED regressions confirmed non-fill
+controls wrongly discarded declared action marks. The scoped correction clears
+marks only on fills; partial fills remain unknown even after later controls.
+Fresh exact-source full/native/hosted gates remain necessary. Earlier local
+certification below belongs to01c51ad and is not current-code certification.
+PR31 remains unmerged. All economic/operational prerequisites remain unchanged.
+
+October9 updated checkpoint: PR29 merged85a3304 and PR30 mergede1d949b after
+all14 current hosted jobs passed for each reviewed candidate. The separate
+corrected action-account source01c51ad passed9,754full/20native/92.07% combined
+coverage and unchanged80overall/90critical gates. Independent review's aggregate
+receivable defect was fixed RED/GREEN before full certification. Static/security,
+locks, SBOM and manifests passed; this increment's hosted release is pending.
+Actions are declared synthetic inputs, not qualified source facts. V3 shared
+prefix/risk/admission, joint original-state recovery, historical persisted-reader
+policy, representative performance and strategies/folds/economics remain
+unfinished. No study or executable freeze has run. This human-document update
+does not claim a fresh full-source rerun at its own publication head.
+
+The following is retained prior execution history:
+
 October9 current checkpoint: PR28 offline intake is merged at2bcc6a2; actual
 source/access qualification remains unverified. Corrected accountcdd4c40 has
 9,663full/20native/92.00% combined; PR29 current12/14 hosted jobs passed and two

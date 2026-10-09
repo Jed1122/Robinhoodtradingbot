@@ -20,6 +20,16 @@ def test_capital_account_requires_critical_branch_coverage(tmp_path):
     ]
 
 
+def test_capital_action_inputs_require_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/simulation/etf_capital_action_events.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 def test_capital_checkpoint_requires_critical_branch_coverage(tmp_path):
     root = tmp_path / "project"
     relative = "src/trading_bot/persistence/etf_capital_checkpoint.py"
