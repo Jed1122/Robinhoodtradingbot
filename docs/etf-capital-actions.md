@@ -1,5 +1,19 @@
 # Capital research action accounting — partial implementation
 
+PR31 is released at678f3d2f51a752a8d08c36e20c97379fed84e324 after9,763 full
+tests,20 native tests,92.07% combined coverage, unchanged80overall/90critical
+gates and all14 current hosted jobs. Both implemented findings were resolved.
+Earlier release-pending paragraphs below are retained historical checkpoints.
+
+The separate `replay_capital_action_account_prefixes` API reconstructs genesis
+plus one immutable v3 result per original delivery, including duplicate-aligned
+snapshots, through the same reducer once. Whole-tape validation finishes before
+the tuple returns; an invalid late event denies the entire call. It accepts no
+saved account state. Existing v1/v2 APIs and hash preimages remain unchanged.
+This increment is under verification, not yet released or consumable by a trusted
+risk/checkpoint owner. Prefix hashing/order-local replay still has superlinear
+cost; no linear-performance or operational recovery claim is made.
+
 The opt-in `replay_capital_action_account` API uses the same original-event
 account reducer as strict v2 replay, with distinct v3 event/replay identities.
 Existing v1/v2 readers, outputs and hash preimages remain unchanged. They reject
