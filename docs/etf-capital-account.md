@@ -157,6 +157,11 @@ Current-order lifecycle prefixes and prefix hashing still have superlinear cost;
 the change removes an additional nested replay layer, not all performance work.
 Representative synthetic timing is not runtime or economic qualification.
 
+Risk observation boundaries use effective unique-event clocks reconstructed from
+the validated account prefixes, not raw delivery adjacency. Repeated old events
+cannot backdate future state or falsely deny a current observation. Distinct
+events at the same timestamp still form a real chronology boundary.
+
 ## V2 descendant storage separation
 
 Current checkpoint inputs, owner and envelope schemas use v2 namespaces and the

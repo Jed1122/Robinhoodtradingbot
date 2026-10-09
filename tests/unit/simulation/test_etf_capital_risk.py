@@ -55,6 +55,37 @@ def test_current_risk_cannot_consume_unbound_historical_fee_finality():
         run(old_script(), (point(0, 0), point(1, 10)))
 
 
+def test_old_duplicate_cannot_backdate_future_completed_account_state():
+    events = (*script(), script()[0])
+    early = replace(point(1, 11), cursor=EventCursor(1, ORIGIN + timedelta(seconds=1)))
+    with pytest.raises(ValueError):
+        run(events, (point(0, 0), early))
+
+
+def test_next_old_duplicate_does_not_deny_causally_complete_observation():
+    events = (*script(), script()[0])
+    current = replace(point(1, 10), cursor=EventCursor(1, ORIGIN + timedelta(seconds=10)))
+    result = run(events, (point(0, 0), current)).points[-1]
+    assert result.equity == D("100.11")
+    assert result.account.complete
+
+
+def test_interior_duplicate_cannot_hide_future_partial_fill_clock():
+    events = (*script()[:3], script()[0], *script()[3:])
+    early = replace(point(1, 4, "99"), cursor=EventCursor(1, ORIGIN + timedelta(seconds=1)))
+    with pytest.raises(ValueError):
+        run(events, (point(0, 0), early))
+
+
+def test_distinct_equal_time_event_is_not_treated_as_duplicate_delivery():
+    events = script()
+    accepted = replace(events[1], cursor=EventCursor(1, ORIGIN))
+    events = (events[0], accepted, *events[2:])
+    late = replace(point(1, 1), cursor=EventCursor(1, ORIGIN + timedelta(seconds=1)))
+    with pytest.raises(ValueError):
+        run(events, (point(0, 0), late))
+
+
 def test_partial_fill_mark_loss_blocks_entry_and_preserves_exit_purpose():
     events = script()[:3]
     points = (point(0, 0), point(1, 3, "89"))

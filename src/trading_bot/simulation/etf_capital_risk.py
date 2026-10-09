@@ -100,6 +100,21 @@ def replay_capital_risk(
         with localcontext(_CONTEXT):
             config = _config(loaded)
             accounts = replay_capital_account_prefixes(initial_cash=initial_cash, events=events)
+            # Raw deliveries can repeat old cursors. Only newly applied original
+            # events advance the effective account clock or future boundary.
+            frontiers: list[datetime | None] = [None]
+            applied: list[bool] = []
+            for index, event in enumerate(events):
+                changed = accounts[index + 1].economic_hash != accounts[index].economic_hash
+                applied.append(changed)
+                frontiers.append(_cursor(event).occurred_at if changed else frontiers[-1])
+            following: list[datetime | None] = [None] * (len(events) + 1)
+            for index in range(len(events) - 1, -1, -1):
+                following[index] = (
+                    frontiers[index + 1]
+                    if applied[index]
+                    else following[index + 1]
+                )
             _check(type(observations) is tuple and 0 < len(observations) <= 4096)
             _check(type(purpose) is OrderPurpose)
             points: list[CapitalRiskPoint] = []
@@ -126,10 +141,11 @@ def replay_capital_risk(
                         and at > prior.cursor.occurred_at
                         and count >= prior.source_count
                     )
-                if count:
-                    _check(_cursor(events[count - 1]).occurred_at <= at)
-                if count < len(events):
-                    _check(_cursor(events[count]).occurred_at >= at)
+                frontier, next_event = frontiers[count], following[count]
+                if frontier is not None:
+                    _check(frontier <= at)
+                if next_event is not None:
+                    _check(next_event >= at)
                 for prefix in range(consumed + 1, count + 1):
                     account = accounts[prefix]
                     if prior_account.complete and not account.complete:
