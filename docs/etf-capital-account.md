@@ -83,3 +83,30 @@ legacy completion, and the historical reader rejects v2 completion. Neither
 reader grants execution, promotion, authenticated account evidence or a broker
 final-fee completeness claim. Checkpoint/risk descendants must be re-composed
 against this new strict contract before their old certification can apply.
+
+## Synthetic account checkpoints
+
+The separate `advance_capital_account_checkpoint` API binds canonical research
+configuration, declared code identity, initial capital and the complete original
+typed event tape. It reconstructs every committed prefix before comparing the
+stored envelope byte-for-byte; saved balances never become authority. Exact
+retries are idempotent. Earlier cursors, stale expected heads, altered owners,
+corruption and unknown filesystem entries deny.
+
+Storage uses the existing private descriptor-bound no-overwrite publisher,
+current-user ownership, 0700 directories and 0600 files outside the repository.
+A non-waiting local writer lock covers reconstruction and publication. Input
+and envelope admission is jointly bounded to 8 MiB; directory occupancy is
+bounded to 64 MiB and 8196 names, including retained internal staging aliases.
+Projected initial owner and checkpoint publication must fit before either write.
+Recognized staging files are verified and retained, never deleted or adopted.
+External hardlinks and unresolved aliases deny. Two real local SIGKILL controls
+cover immediately before and after checkpoint linking; they do not establish
+deployed recovery, multi-host fencing, alerts or backups.
+
+This increment is synthetic and offline. Caller-declared code hashes are not
+executable authentication. Original inputs must be resupplied on restart; the
+store is not a market-data archive, authenticated observation reader or forward
+paper owner. Source, costs, execution and promotion remain unqualified. Complete
+critical review and release verification before composing risk/actions and
+strategy economics with these checkpoints.
