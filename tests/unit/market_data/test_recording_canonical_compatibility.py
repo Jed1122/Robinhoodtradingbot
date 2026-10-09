@@ -1,7 +1,7 @@
 """Literal legacy preimages and unusual deepcopy/denial boundaries."""
 
 from collections import namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from decimal import Decimal
 from enum import Enum
@@ -119,3 +119,43 @@ def test_sorted_field_validation_precedence_is_preserved():
 
     with pytest.raises(TypeError):
         canonical_json(TwoFields(Decimal("NaN"), 1.5))
+
+
+@pytest.mark.parametrize("metadata", ["missing", "none", "custom"])
+def test_dataclass_metadata_does_not_change_legacy_encoding(metadata):
+    @dataclass(frozen=True, slots=True)
+    class LocalRecord:
+        value: object
+
+    class RefusingMetadata:
+        @property
+        def frozen(self):
+            raise RuntimeError("metadata-read")
+
+    if metadata == "missing":
+        delattr(LocalRecord, "__dataclass_params__")
+    else:
+        LocalRecord.__dataclass_params__ = None if metadata == "none" else RefusingMetadata()
+    assert canonical_json(LocalRecord(7)) == '{"value":7}'
+
+
+def test_dynamic_dataclass_field_is_read_once_even_with_deepcopy_leaf():
+    reads = []
+
+    class Copied:
+        def __deepcopy__(self, memo):
+            return "copied"
+
+    @dataclass(frozen=True, slots=True)
+    class DynamicRecord:
+        first: object = field(init=False)
+        second: object
+
+        def __getattr__(self, name):
+            if name == "first":
+                reads.append(name)
+                return len(reads)
+            raise AttributeError(name)
+
+    assert canonical_json(DynamicRecord(Copied())) == '{"first":1,"second":"copied"}'
+    assert reads == ["first"]

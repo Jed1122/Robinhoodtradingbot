@@ -64,9 +64,12 @@ The same shared risk-point loop reconstructs originals at every boundary.
 Only discarded intermediate complete-result hash serialization is deferred;
 the final risk result retains the original public risk preimage. Entry/exit
 adapters retain their fresh public admission paths. Canonical serialization
-uses a restricted plain immutable-record path and the legacy `asdict` fallback
-for unsupported Python copy semantics; original account/risk hashes must remain
-unchanged under the full compatibility gates.
+retains the original `asdict` implementation. The experimental plain-record
+path was removed after independent review reproduced metadata and repeated-field
+read incompatibilities. Public risk result construction retains the original
+fixed Decimal context and normalized denial boundary, including copy-hook
+failures. Original account/risk hashes must remain unchanged under the full
+compatibility gates.
 
 The fabricated750-frame probe still exceeds its120-second time budget, although
 the v4 frame commitments prevent the prior giant final-allocation failure.

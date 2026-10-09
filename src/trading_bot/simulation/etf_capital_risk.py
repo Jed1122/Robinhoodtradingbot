@@ -143,15 +143,19 @@ def _replay_risk(
     purpose: OrderPurpose,
     actions: bool,
 ) -> CapitalRiskReplay:
-    points = _replay_risk_points(
-        loaded=loaded,
-        initial_cash=initial_cash,
-        events=events,
-        observations=observations,
-        purpose=purpose,
-        actions=actions,
-    )
-    return _risk_result(loaded, initial_cash, purpose, points, actions=actions)
+    try:
+        with localcontext(_CONTEXT):
+            points = _replay_risk_points(
+                loaded=loaded,
+                initial_cash=initial_cash,
+                events=events,
+                observations=observations,
+                purpose=purpose,
+                actions=actions,
+            )
+            return _risk_result(loaded, initial_cash, purpose, points, actions=actions)
+    except (ValueError, TypeError, ArithmeticError, AttributeError):
+        raise ValueError("capital_risk_invalid") from None
 
 
 def _replay_risk_points(

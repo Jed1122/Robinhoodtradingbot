@@ -21,7 +21,10 @@ No full-grid workload certification or executable economic freeze exists.
 Current corrective performance candidate extracts the same shared risk-point
 loop, defers only discarded intermediate result hashing, and explicitly uses
 owner-v4 ordered full-frame commitments without rewriting old owner digests.
-Narrow96 tests pass; current global review/full/native gates remain pending.
+Independent review found three compatibility regressions in the experimental
+serializer/risk extraction. Eight reproductions were watched RED, then the plain
+serializer was removed and public risk's original context/error boundary restored;
+59 targeted controls pass. Fresh full/native certification is still required.
 The750-frame probe still failed120s (315,015,168bytes observed), so bounded
 incremental derived-data/original-state composition remains a critical path.
 Qualified five-symbol/action/source/cost inputs, accepted economics, broker/
