@@ -77,6 +77,8 @@ class CapitalDailyFrame:
     original_facts: tuple[CapitalDailyOriginalFact, ...] = ()
     daily_reset_reconciled: bool = False
     weekly_reset_reviewed: bool = False
+    entry_decision_allowed: bool = True
+    entry_submission_allowed: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +243,8 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
 
         for frame in request.frames:
             _check(type(frame) is CapitalDailyFrame)
+            _check(type(frame.entry_decision_allowed) is bool)
+            _check(type(frame.entry_submission_allowed) is bool)
             _check(type(frame.projections) is tuple and len(frame.projections) == 5)
             _check(type(frame.instruments) is tuple and len(frame.instruments) == 5)
             _check(type(frame.original_facts) is tuple)
@@ -365,7 +369,12 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                         opening,
                         terms[opening.symbol],
                     )
-            elif pending and pending.action == "entry" and not _active(events):
+            elif (
+                pending
+                and pending.action == "entry"
+                and frame.entry_submission_allowed
+                and not _active(events)
+            ):
                 if pending.symbol is None or pending.stop_distance is None:
                     raise ValueError("capital_daily_owner_invalid")
                 sequence = observations[-1].cursor.sequence + 1
@@ -447,6 +456,17 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                 as_of=at,
                 opening=opening,
             )
+            if pending.action == "entry" and not frame.entry_decision_allowed:
+                pending = replace(
+                    pending,
+                    action="wait",
+                    symbol=None,
+                    stop_distance=None,
+                    reason="entry_decision_disabled",
+                    policy_hash=content_hash(
+                        ("capital-owner-entry-disabled-v2", pending.policy_hash)
+                    ),
+                )
             points.append(
                 CapitalDailyOwnerPoint(at, final_risk.points[-1].equity, account, pending, opening)
             )
@@ -458,7 +478,7 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             final_risk,
             content_hash(
                 (
-                    "capital-daily-owner-v1",
+                    "capital-daily-owner-v2",
                     request.loaded.config_hash,
                     request.initial_cash,
                     request.frames,

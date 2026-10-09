@@ -59,6 +59,60 @@ def test_first_close_instruction_cannot_trade_at_its_own_open():
     assert value.points[0].opening is None
 
 
+def test_purged_close_cannot_schedule_a_new_entry():
+    records = frames(2)
+    records = tuple(replace(f, entry_decision_allowed=False) for f in records)
+    value = run(records=records)
+    assert value.events == ()
+    assert value.points[0].policy.action == "wait"
+    assert value.points[0].policy.reason == "entry_decision_disabled"
+
+
+def test_last_valid_training_decision_can_fill_in_exit_only_decision_tail():
+    records = frames(2)
+    value = run(records=(records[0], replace(records[1], entry_decision_allowed=False)))
+    assert value.account.quantity == D(".066")
+    assert value.points[-1].opening is not None
+
+
+def test_disabled_submission_does_not_delay_old_instruction_to_later_open():
+    records = frames(3)
+    value = run(
+        records=(
+            records[0],
+            replace(records[1], entry_submission_allowed=False, entry_decision_allowed=False),
+            replace(records[2], entry_decision_allowed=False),
+        )
+    )
+    assert value.events == ()
+    assert value.account.cash == D(100)
+
+
+def test_exit_only_tail_keeps_holding_deadline_and_next_open_exit_active():
+    records = frames(4)
+    value = run(
+        records=(
+            *records[:2],
+            *(
+                replace(f, entry_submission_allowed=False, entry_decision_allowed=False)
+                for f in records[2:]
+            ),
+        )
+    )
+    assert value.points[2].policy.reason == "maximum_hold"
+    assert value.account.quantity == 0
+    assert value.account.cash == D("100.082134")
+    assert not value.account.complete
+
+
+@pytest.mark.parametrize("field", ("entry_decision_allowed", "entry_submission_allowed"))
+@pytest.mark.parametrize("invalid", (None, 0, 1, D(1), "true"))
+def test_entry_cutoffs_require_real_bools(field, invalid):
+    records = frames(1)
+    with pytest.raises(ValueError):
+        run(records=(replace(records[0], **{field: invalid}),))
+
+
 def test_next_open_owns_literal_sizing_fees_cash_and_opening_policy():
     value = run(2)
     assert value.account.quantity == D(".066")
