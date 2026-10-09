@@ -2,12 +2,12 @@
 
 from dataclasses import dataclass, field, replace
 from datetime import date
-from decimal import ROUND_DOWN, Context, Decimal, localcontext
+from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from typing import Literal
 from zoneinfo import ZoneInfo
 
 from trading_bot.domain import Bar, BarInterval, DataHash, InstrumentId
-from trading_bot.domain.decimal_utils import require_bounded_decimal
+from trading_bot.domain.decimal_utils import _require_sha256_hex, require_bounded_decimal
 from trading_bot.market_data.alpaca_capital_native import assess_capital_daily_pages
 from trading_bot.market_data.etf_calendar import EtfCalendarArchive
 from trading_bot.market_data.etf_capital_actions import CapitalActionArchive, CapitalDistribution
@@ -16,8 +16,17 @@ from trading_bot.market_data.etf_capital_inventory import capital_daily_inventor
 from trading_bot.market_data.etf_source import _ceil_time
 from trading_bot.market_data.recording import content_hash
 
-_CONTEXT = Context(prec=2048, rounding=ROUND_DOWN)
+_CONTEXT = Context(prec=64, rounding=ROUND_HALF_EVEN)
 _ZONE = ZoneInfo("America/New_York")
+_LIMITATIONS = (
+    "supplied_latest_vintage_not_authenticated",
+    "announcement_and_correction_chronology_unknown",
+    "calendar_session_close_is_assumed_bar_availability",
+    "raw_daily_ohlc_are_not_executable_quotes",
+    "split_only_features_dividend_cash_accounted_separately",
+    "declared_action_rows_do_not_establish_complete_coverage",
+    "split_features_64_significant_digits_half_even_v2",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,24 +38,60 @@ class CapitalFeatureProjection:
     raw_bars: tuple[Bar, ...]
     feature_bars: tuple[Bar, ...]
     distributions: tuple[CapitalDistribution, ...]
-    limitations: tuple[str, ...] = field(
-        default=(
-            "supplied_latest_vintage_not_authenticated",
-            "announcement_and_correction_chronology_unknown",
-            "calendar_session_close_is_assumed_bar_availability",
-            "raw_daily_ohlc_are_not_executable_quotes",
-            "split_only_features_dividend_cash_accounted_separately",
-            "declared_action_rows_do_not_establish_complete_coverage",
-        ),
-        init=False,
-    )
+    limitations: tuple[str, ...] = field(default=_LIMITATIONS, init=False)
     source_qualified: Literal[False] = field(default=False, init=False)
     evidence_promotable: Literal[False] = field(default=False, init=False)
     execution_enabled: Literal[False] = field(default=False, init=False)
 
+    def __post_init__(self) -> None:
+        for digest in (self.archive_hash, self.action_hash, self.calendar_hash):
+            _require_sha256_hex(digest, "feature source")
+        if (
+            type(self.as_of_session) is not date
+            or type(self.raw_bars) is not tuple
+            or type(self.feature_bars) is not tuple
+            or not 0 < len(self.raw_bars) == len(self.feature_bars) <= 4000
+            or type(self.distributions) is not tuple
+            or len(self.distributions) > 200
+            or type(self.limitations) is not tuple
+            or any(type(value) is not str for value in self.limitations)
+            or self.limitations != _LIMITATIONS
+            or self.source_qualified is not False
+            or self.evidence_promotable is not False
+            or self.execution_enabled is not False
+        ):
+            raise ValueError("capital_feature_projection_invalid")
+        previous = None
+        symbol = None
+        for raw, feature in zip(self.raw_bars, self.feature_bars, strict=True):
+            if type(raw) is not Bar or type(feature) is not Bar:
+                raise ValueError("capital_feature_projection_invalid")
+            raw.__post_init__()
+            feature.__post_init__()
+            if (
+                raw.instrument_id != feature.instrument_id
+                or raw.starts_at != feature.starts_at
+                or raw.ends_at != feature.ends_at
+                or raw.source != "alpaca-supplied-daily-session-assumption-v1"
+                or feature.source != "capital-split-feature-assumption-v2"
+                or raw.ends_at.astimezone(_ZONE).date() > self.as_of_session
+                or (previous is not None and raw.ends_at <= previous)
+                or (symbol is not None and raw.instrument_id != symbol)
+            ):
+                raise ValueError("capital_feature_projection_invalid")
+            previous = raw.ends_at
+            symbol = raw.instrument_id
+        for distribution in self.distributions:
+            if type(distribution) is not CapitalDistribution:
+                raise ValueError("capital_feature_projection_invalid")
+            distribution.__post_init__()
+            if distribution.ex_date > self.as_of_session:
+                raise ValueError("capital_feature_projection_invalid")
+
     @property
     def projection_hash(self) -> str:
-        return content_hash(("capital-split-feature-projection-v1", self))
+        self.__post_init__()
+        return content_hash(("capital-split-feature-projection-v2", self))
 
 
 def capital_split_feature_bars(
@@ -69,9 +114,9 @@ def capital_split_feature_bars(
         or type(as_of_session) is not date
     ):
         raise ValueError("capital_feature_projection_invalid")
-    replace(archive)
+    archive.__post_init__()
     replace(calendar)
-    replace(actions)
+    actions.__post_init__()
     if (
         actions.symbol != archive.request.symbol
         or actions.splits is None
@@ -145,7 +190,7 @@ def capital_split_feature_bars(
                     low=bar.low / factor,
                     close=bar.close / factor,
                     volume=bar.volume * factor,
-                    source="capital-split-feature-assumption-v1",
+                    source="capital-split-feature-assumption-v2",
                 )
                 for value in (
                     feature.open,
@@ -160,7 +205,7 @@ def capital_split_feature_bars(
                     data_hash=DataHash(
                         content_hash(
                             (
-                                "capital-split-feature-bar-v1",
+                                "capital-split-feature-bar-v2",
                                 archive_hash,
                                 action_hash,
                                 calendar_hash,

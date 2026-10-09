@@ -69,6 +69,10 @@ class CapitalActionArchive:
 
     def __post_init__(self) -> None:
         _check(type(self.symbol) is str and self.symbol in ("SPY", "QQQ", "IWM", "SHY", "IEF"))
+        _check(
+            type(self.source_kind) is str
+            and self.source_kind == "supplied-latest-vintage-actions-v1"
+        )
         _require_sha256_hex(self.source_hash, "action source")
         _date(self.start)
         _date(self.end)
@@ -98,15 +102,15 @@ class CapitalActionArchive:
 
     @property
     def split_count(self) -> int | None:
-        replace(self)
+        self.__post_init__()
         return None if self.splits is None else len(self.splits)
 
     @property
     def distribution_count(self) -> int | None:
-        replace(self)
+        self.__post_init__()
         return None if self.distributions is None else len(self.distributions)
 
     @property
     def archive_hash(self) -> str:
-        replace(self)
+        self.__post_init__()
         return content_hash(("capital-action-archive-v1", self))

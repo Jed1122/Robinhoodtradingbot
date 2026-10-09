@@ -182,7 +182,7 @@ def assess_capital_daily_pages(pages: tuple[CapitalDailyPage, ...]) -> AlpacaArc
     count = 0
     for index, page in enumerate(pages):
         _check(type(page) is CapitalDailyPage)
-        replace(page)
+        page.__post_init__()
         if request_hash is None:
             request_hash = page.request.request_hash
         _check(page.request.request_hash == request_hash and page.page_index == index)

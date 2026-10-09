@@ -19,6 +19,7 @@ from trading_bot.market_data.alpaca_native import MAX_PAGE_BYTES, MAX_PAGES
 from trading_bot.market_data.bundle_codec import _array, _json, _mapping
 from trading_bot.market_data.bundle_models import BundleLimits
 from trading_bot.market_data.bundle_store import _open_root, _publish, _read
+from trading_bot.market_data.etf_source import _ns
 from trading_bot.market_data.recording import canonical_json, content_hash
 
 _LIMITS = BundleLimits(1048576, 1048576, 1048576, 1000, 16)
@@ -51,13 +52,14 @@ class CapitalDailyArchive:
             _check(page.request == self.request)
             _check(type(instant) is datetime)
             require_utc(instant)
+            _check(all(record.bar.timestamp_ns <= _ns(instant) for record in page.records))
             _check(previous is None or instant >= previous)
             previous = instant
         _check(self.source_qualified is False and self.evidence_promotable is False)
 
     @property
     def archive_hash(self) -> str:
-        replace(self)
+        self.__post_init__()
         return content_hash({"schema": "capital-daily-archive-v1", "archive": self})
 
 

@@ -116,3 +116,20 @@ sessions deny rather than being clipped. Raw OHLC quality is checked during
 construction. No forward fill, execution quote, original publication time or
 automatic cash settlement is invented. Strategy/account/total-return composition
 and actual-source acquisition remain unfinished.
+
+## Reviewed integrity and finite feature precision
+
+The v2 split-feature basis uses64significant decimal digits with half-even
+rounding, independent of the caller's context. This permits ordinary3:1 and3:2
+split factors with repeating normalized prices. It is a declared signal-feature
+approximation, not execution-price, cash, share-entitlement or fee rounding.
+Original supplied native observations remain exact. Feature bar/projection
+namespaces and the limitation record bind this changed convention.
+
+Inventory/projection hash boundaries validate original nested records and fixed
+flags rather than copying malformed flags back to their defaults. Contradictory
+eligibility or provenance labels deny; no hash establishes source authenticity.
+
+Receipt chronology rejects declarations earlier than any contained native bar
+timestamp. This is a minimum logical lower bound, not authentication or proof
+that the complete daily bar was published by its declared calendar close.
