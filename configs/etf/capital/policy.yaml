@@ -1,0 +1,22 @@
+policy_id: capital-constrained-etf-research-v1
+capital_tiers: [100, 250, 500, 1000, 5000, 10000]
+universe: [SPY, QQQ, IWM, SHY, IEF]
+maximum_holding_sessions: [2, 5, 10, 20]
+round_trip_friction_pct: [0.05, 0.10, 0.20, 0.40]
+position_risk:
+  max_risk_per_trade_pct: 0.50
+  max_position_notional_pct: 20
+  max_correlated_group_exposure_pct: 20
+  minimum_reward_to_initial_risk: 2.0
+  averaging_down_allowed: false
+  pyramiding_allowed: false
+loss_limits:
+  max_daily_loss_pct: 1
+  max_weekly_loss_pct: 5
+  max_peak_to_trough_drawdown_pct: 10
+  consecutive_loss_pause_count: 3
+  consecutive_loss_pause_minutes: 240
+min_cash_reserve_pct: 40
+max_open_positions: 1
+execution_enabled: false
+evidence_promotable: false
