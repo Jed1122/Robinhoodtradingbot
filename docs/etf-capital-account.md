@@ -46,13 +46,18 @@ unsupported symbols. Explicit sale-fill settlement and matching whole-episode
 fee finality are necessary to release obligations. Pending, partial and terminal
 incomplete histories remain incomplete; input end never forces a fill.
 
-Thirty-six synthetic controls include independent cash expectations and a
+Thirty-eight synthetic controls include independent cash expectations and a
 separate-process reconstruction of partial, sold-unsettled and completed prefixes.
 This is not durable checkpoint restoration or deployed recovery: those controls
 reconstruct supplied fixtures, not a production store or broker observations.
 The reducer has no canonical entry-approval or cost/source-qualified verdict.
 It is not directly consumable by an execution service. Hashes are structural,
 not authentication. All execution/promotion flags remain permanently false.
+Accepted identifiers are bounded consistently to256characters, including sale
+fill references, so every admitted sale can be explicitly settled. The reducer
+replays each current-order prefix; this deliberate reuse has superlinear cost.
+A representative performance gate and incremental shared seam remain deferred
+before economic-evaluator integration, not a deployed-runtime performance claim.
 
 Finish exact-source integrated verification/review. Then compose canonical sizing,
 current-equity loss latches, explicit marks, split basis/distribution entitlements

@@ -256,6 +256,22 @@ def test_second_sale_fill_id_cannot_reuse_prior_execution_identity():
         replay((*events[:7], changed))
 
 
+@pytest.mark.parametrize("length", [256, 257])
+def test_sale_identifier_is_settleable_at_the_admitted_boundary(length):
+    events = script()
+    identity = "s" * length
+    sale = replace(events[7], fill=replace(events[7].fill, id=identity))
+    prefix = (*events[:7], sale)
+    if length == 257:
+        with pytest.raises(ValueError):
+            replay(prefix)
+    else:
+        settlement = replace(events[8], fill_id=identity)
+        result = replay((*prefix, settlement, events[9]))
+        assert result.cash == D("100.11")
+        assert result.complete
+
+
 def test_fee_overrun_and_negative_available_cash_deny_entire_prefix():
     events = script()
     changed = replace(events[2], fill=replace(events[2].fill, fee=D(".11")))

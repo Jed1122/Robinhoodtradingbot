@@ -35,6 +35,11 @@ def _deny() -> NoReturn:
     raise ValueError("capital_account_invalid") from None
 
 
+def _identifier(value: str) -> None:
+    if type(value) is not str or not value.strip() or not 0 < len(value) <= 256:
+        _deny()
+
+
 @dataclass(frozen=True, slots=True)
 class CapitalAccountSubmission:
     symbol: str
@@ -48,6 +53,13 @@ class CapitalAccountSubmission:
         if type(self.request) is not LifecycleRequest:
             _deny()
         self.request.__post_init__()
+        for value in (
+            self.request.order.id,
+            self.request.order.broker_order_id,
+            self.request.order.account_id,
+            self.request.order.instrument_id,
+        ):
+            _identifier(value)
         require_bounded_decimal(self.episode_fee_bound, "fee_bound", nonnegative=True)
         if (
             self.request.events
@@ -162,6 +174,18 @@ def _replay(initial: Decimal, events: tuple[CapitalAccountEvent, ...]) -> Capita
         else:
             cursor = event.cursor
             event_id = "event:" + event.event_id
+            _identifier(event.event_id)
+            if isinstance(event, LifecycleFillEvent):
+                for value in (
+                    event.fill.id,
+                    event.fill.account_id,
+                    event.fill.instrument_id,
+                    event.fill.broker_order_id,
+                ):
+                    _identifier(value)
+            elif isinstance(event, LifecycleControlEvent):
+                for value in (event.account_id, event.instrument_id, event.broker_order_id):
+                    _identifier(value)
         digest = content_hash({"namespace": "capital-account-event-v1", "event": event})
         if event_id in seen:
             if seen[event_id] != digest:
