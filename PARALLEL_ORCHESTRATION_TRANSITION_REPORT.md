@@ -1,5 +1,33 @@
 # Parallel Orchestration Transition Report
 
+## Account release preparation; intake merged — 2026-10-09
+
+PR28 intake is merged at `2bcc6a2d27f13f71849de216faeff8be2abc496c`,
+tree `b2f1c4dfef743e60676d27c350c66fa37d9c3f98`, equal to reviewed `3de47aa`.
+All14 required exact-head hosted jobs passed. This is software integration,
+not source qualification, economic evidence or deployment.
+
+The account parent `df58f033693ba83a52a734176e2d1a6dad5fe170` completed
+9,637 full tests (33 optional skips and one existing warning),20 native tests,
+91.99% combined coverage and unchanged80%overall/90%critical gates. Ruff,
+Mypy369,Bandit, locked graphs, advisory audits, SBOM and manifests passed.
+Account review findings were fixed with RED/GREEN controls. Its push CI passed;
+the account PR's current hosted jobs and merge remain unfinished. This candidate
+resolves only this handoff's conflict with the merged intake; executable, config,
+test and lock bytes remain identical to that locally certified account parent.
+
+Checkpoint and marked-risk descendants are separate reviewed offline increments
+with their own release gates, not part of this account candidate. Corporate
+actions, joint risk/account recovery, replay performance and strategy economics
+remain unfinished. No new study, credentials, data acquisition, broker call,
+trade, deployment or production-risk change occurred.
+
+Next: finish exact account integration gates, release checkpoints/risk, complete
+corporate-action and joint-state composition, then freeze and implement the
+approved walk-forward economic study. No accepted edge or live eligibility exists.
+
+The following sections are retained historical checkpoints, not current status.
+
 ## Synthetic capital account reconstruction implemented; release pending — 2026-10-09
 
 The first account reducer reconstructs cash, holdings, reservations, whole-episode
