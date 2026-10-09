@@ -280,9 +280,67 @@ def test_aggregate_receivable_is_bounded_even_after_mark_becomes_unknown(clear_m
     )
     sell = opening(17, Side.SELL, "90.06", ".1")
     suffix = (
-        (sell, observation(sell, control("accepted-unmarked", 18, OrderEvent.BROKER_ACCEPTED)))
+        (
+            sell,
+            observation(sell, control("accepted-unmarked", 18, OrderEvent.BROKER_ACCEPTED)),
+            observation(
+                sell,
+                execution("partial-unmarked", 19, ".05", price="101", fee=".01", side=Side.SELL),
+            ),
+        )
         if clear_mark
         else ()
     )
     with pytest.raises(ValueError):
         replay((*script()[:5], *distributions, *suffix))
+
+
+@pytest.mark.parametrize(
+    "kind,quantity,price", [("split", ".2", "49.5"), ("distribution", ".1", "98")]
+)
+@pytest.mark.parametrize("controls", [1, 2, 3])
+def test_nonfill_exit_controls_preserve_explicit_action_mark(kind, quantity, price, controls):
+    sell = opening(6, Side.SELL, "90.06", quantity)
+    sell = replace(
+        sell,
+        request=replace(
+            sell.request,
+            order=replace(sell.request.order, limit_price=D(price)),
+            position=replace(
+                sell.request.position, average_price=D("49.5" if kind == "split" else "99")
+            ),
+        ),
+    )
+    events = tuple(
+        observation(sell, control(f"exit-control-{index}", 7 + index, event))
+        for index, event in enumerate(
+            (OrderEvent.BROKER_ACCEPTED, OrderEvent.REQUEST_CANCEL, OrderEvent.CANCEL_CONFIRMED)[
+                :controls
+            ]
+        )
+    )
+    result = replay((*script()[:5], action(kind), sell, *events))
+    assert result.mark == D(price)
+    assert result.marked_equity == D("99.96")
+    assert result.quantity == D(quantity) and result.cash == D("90.06")
+
+
+def test_partial_fill_invalidates_action_mark_even_if_later_control_arrives():
+    sell = opening(6, Side.SELL, "90.06", ".1")
+    sell = replace(
+        sell, request=replace(sell.request, order=replace(sell.request.order, limit_price=D("98")))
+    )
+    result = replay(
+        (
+            *script()[:5],
+            action(),
+            sell,
+            observation(sell, control("accepted-mark", 7, OrderEvent.BROKER_ACCEPTED)),
+            observation(
+                sell, execution("partial-mark", 8, ".05", price="98", fee=".01", side=Side.SELL)
+            ),
+            observation(sell, control("cancel-after-fill", 9, OrderEvent.REQUEST_CANCEL)),
+        )
+    )
+    assert result.quantity == D(".05")
+    assert result.mark is None and result.marked_equity is None

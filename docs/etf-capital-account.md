@@ -2,7 +2,8 @@
 
 Status: funding, strict account and v2 synthetic checkpoint/marked-risk/prefix
 composition released through PR29/PR30. Separate opt-in v3 corporate-action
-accounting is locally certified; its hosted release remains pending. See
+accounting has a reviewed mark-preservation correction awaiting fresh local and
+hosted certification; prior source certification is historical. See
 [Action-account boundary](etf-capital-actions.md). Action-aware risk/admission,
 joint risk/account/action recovery and the economic evaluator are **not
 implemented**. No operational readiness is asserted.

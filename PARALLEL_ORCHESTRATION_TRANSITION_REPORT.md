@@ -1,5 +1,21 @@
 # Parallel Orchestration Transition Report
 
+## Action-mark review correction; current certification pending — 2026-10-09
+
+New PR31 review identified that non-fill exit controls discarded explicit action
+marks despite unchanged holdings. Six split/distribution accepted/cancel-pending/
+cancel-confirmed controls reproduced RED. The reducer now invalidates the mark
+only on a fill; a partial fill followed by cancellation still leaves held NAV
+unknown rather than inventing a fresh mark. This does not qualify freshness.
+Focused account/action/finality/risk checks passed115 tests before the final
+aggregate-bound fixture refinement. Source changed, so the earlier9,754/20
+certification below is historical, not current. Fresh full/native and exact-head
+hosted checks are required; PR31 remains unmerged and the review thread remains
+open pending complete verification. No study, deployment or risk change occurred.
+
+Next: finish corrected exact-source release gates, then v3 shared risk and joint
+original-state recovery before strategy economics. All readiness flags stay false.
+
 ## Action-account local certification; joint composition unfinished — 2026-10-09
 
 PR29 and PR30 are merged, respectively at `85a33043b6577b3b369a8632db681fa2da0d5fd6`

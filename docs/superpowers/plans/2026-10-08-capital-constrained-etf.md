@@ -104,6 +104,13 @@
 
 ## Execution status
 
+October9 subsequent PR31 review: six watched RED regressions confirmed non-fill
+controls wrongly discarded declared action marks. The scoped correction clears
+marks only on fills; partial fills remain unknown even after later controls.
+Fresh exact-source full/native/hosted gates remain necessary. Earlier local
+certification below belongs to01c51ad and is not current-code certification.
+PR31 remains unmerged. All economic/operational prerequisites remain unchanged.
+
 October9 updated checkpoint: PR29 merged85a3304 and PR30 mergede1d949b after
 all14 current hosted jobs passed for each reviewed candidate. The separate
 corrected action-account source01c51ad passed9,754full/20native/92.07% combined

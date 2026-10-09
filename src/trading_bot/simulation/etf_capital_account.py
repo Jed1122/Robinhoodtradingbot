@@ -436,7 +436,8 @@ def _replay(
             average_price = updated.snapshot.position.average_price if quantity else None
             # A fill changes the held quantity/price; an old mark is not a new
             # executable observation. Flat equity needs no inferred mark.
-            mark = None
+            if isinstance(event, LifecycleFillEvent):
+                mark = None
             current = updated
             if isinstance(event, LifecycleFillEvent) and event.fill.side is Side.SELL:
                 proceeds = event.fill.quantity * event.fill.price - event.fill.fee

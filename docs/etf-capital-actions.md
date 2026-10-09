@@ -44,6 +44,13 @@ execution and promotion flags remain permanently false.
 
 ## Remaining work
 
+PR31's subsequent review reproduced six failures: accepted/cancel controls
+incorrectly discarded explicit action marks while holdings were unchanged. The
+correction retains those declared marks across non-fill controls, but every
+fill still invalidates them; this is not fresh-quote evidence. Source changed,
+so current full/native/hosted certification must be completed anew. The following
+counts belong to the earlier source, not the corrected candidate.
+
 Corrected source `01c51ad3c57dca29206ebc95c79d03f01c69966d` passed9,754 full
 tests (33 optional skips and one existing warning),20 native tests and92.07%
 combined coverage; unchanged80%overall/90%critical gates passed. Independent
