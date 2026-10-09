@@ -118,12 +118,25 @@ def test_flat_unpaid_receivable_survives_sale_until_true_completion_clock():
             "fees-ex", cursor(11), D(".09"), opening().request.order.account_id, "order-0"
         ),
     )
-    values = run(tape, (point(0, 0), point(1, 10), point(2, 12))).points
-    assert values[1].equity == D("99.91") and not values[1].account.complete
-    assert values[1].snapshot.consecutive_loss_count == 0
-    assert values[2].equity == D("99.91") and values[2].account.complete
-    assert values[2].snapshot.consecutive_loss_count == 1
-    assert values[2].snapshot.last_loss_at == ORIGIN + timedelta(seconds=11)
+    values = run(tape, (point(0, 0), point(1, 6), point(2, 10), point(3, 12))).points
+    assert values[2].equity == D("99.91") and not values[2].account.complete
+    assert values[2].snapshot.consecutive_loss_count == 0
+    assert values[3].equity == D("99.91") and values[3].account.complete
+    assert values[3].snapshot.consecutive_loss_count == 1
+    assert values[3].snapshot.last_loss_at == ORIGIN + timedelta(seconds=11)
+
+
+def test_distinct_equal_time_actions_each_have_their_own_original_mark_observation():
+    second = action(
+        n=6,
+        action_id="distribution-2",
+        amount_per_share=D("0"),
+        cursor=EventCursor(6, ORIGIN + timedelta(seconds=5)),
+    )
+    events = (*script()[:5], action(ex_mark=D("80")), second)
+    last = replace(point(2, 7), cursor=EventCursor(2, ORIGIN + timedelta(seconds=5)))
+    result = run(events, (point(0, 0), point(1, 6), last)).points[-1]
+    assert result.equity == D("99.96") and result.snapshot.daily_loss_pct == D("1.84")
 
 
 def test_shared_entry_allows_only_admissible_genesis_size_and_risk_denies_loss():
@@ -165,3 +178,17 @@ def test_legacy_v2_hashes_match_exact_prechange_source():
     assert legacy(script(), (point(0, 0), point(1, 10))).result_hash == (
         "716e50c7e70c06e5bcb508a91eb0026dfa23a5f15ac81dcded72793c6ee40a51"
     )
+
+
+def test_observation_jump_cannot_hide_intermediate_action_loss():
+    events = (
+        *script()[:5],
+        action(ex_mark=D("80")),
+        action(n=6, action_id="distribution-2", amount_per_share=D("0")),
+    )
+    with pytest.raises(ValueError, match="capital_risk_invalid"):
+        run(events, (point(0, 0), point(1, 7)))
+    result = run(events, (point(0, 0), point(1, 6), point(2, 7))).points[-1]
+    assert result.equity == D("99.96")
+    assert result.snapshot.daily_loss_pct == D("1.84")
+    assert not result.decision.new_entries_allowed

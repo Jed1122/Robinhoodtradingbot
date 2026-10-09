@@ -161,22 +161,29 @@ def _replay_risk(
             # events advance the effective account clock or future boundary.
             frontiers: list[datetime | None] = [None]
             atomic_marks: list[Decimal | None] = [None]
+            atomic_sources = [0]
+            required_actions: set[int] = set()
             applied: list[bool] = []
             for index, event in enumerate(events):
                 changed = accounts[index + 1].economic_hash != accounts[index].economic_hash
                 applied.append(changed)
                 frontiers.append(_cursor(event).occurred_at if changed else frontiers[-1])
                 atomic = atomic_marks[-1]
+                atomic_source = atomic_sources[-1]
                 if changed:
                     if frontiers[-1] != frontiers[-2] or isinstance(event, LifecycleFillEvent):
                         atomic = None
+                        atomic_source = 0
                     if actions and isinstance(
                         event, (CapitalSplitApplied, CapitalDistributionEntitled)
                     ):
                         value = accounts[index + 1]
                         _check(type(value) is CapitalActionAccountReplay)
                         atomic = cast(CapitalActionAccountReplay, value).mark
+                        atomic_source = index + 1
+                        required_actions.add(atomic_source)
                 atomic_marks.append(atomic)
+                atomic_sources.append(atomic_source)
             following: list[datetime | None] = [None] * (len(events) + 1)
             for index in range(len(events) - 1, -1, -1):
                 following[index] = frontiers[index + 1] if applied[index] else following[index + 1]
@@ -193,6 +200,7 @@ def _replay_risk(
             daily_start: datetime | None = None
             weekly_start: datetime | None = None
             daily_ok = weekly_ok = False
+            covered_actions: set[int] = set()
             for observation in observations:
                 _check(type(observation) is CapitalRiskObservation)
                 observation.__post_init__()
@@ -203,7 +211,14 @@ def _replay_risk(
                 else:
                     _check(
                         observation.cursor.sequence > prior.cursor.sequence
-                        and at > prior.cursor.occurred_at
+                        and (
+                            at > prior.cursor.occurred_at
+                            or (
+                                actions
+                                and at == prior.cursor.occurred_at
+                                and count > prior.source_count
+                            )
+                        )
                         and count >= prior.source_count
                     )
                 frontier, next_event = frontiers[count], following[count]
@@ -231,6 +246,8 @@ def _replay_risk(
                     _check(type(account) is CapitalActionAccountReplay)
                     receivable = cast(CapitalActionAccountReplay, account).distribution_receivable
                     atomic = atomic_marks[count] if at == frontier else None
+                    if at == frontier and atomic_sources[count]:
+                        covered_actions.add(atomic_sources[count])
                     if atomic is not None and account.quantity:
                         _check(mark is None or mark == atomic)
                         mark = atomic
@@ -275,20 +292,33 @@ def _replay_risk(
                 )
                 points.append(CapitalRiskPoint(observation, account, equity, snapshot, decision))
                 prior, prior_equity = observation, equity
-            return CapitalRiskReplay(
-                tuple(points),
-                content_hash(
-                    (
-                        "capital-risk-replay-v3" if actions else "capital-risk-replay-v2",
-                        loaded.config_hash,
-                        initial_cash,
-                        purpose,
-                        tuple(points),
-                    )
-                ),
-            )
+            _check({count for count in required_actions if count <= consumed} <= covered_actions)
+            return _risk_result(loaded, initial_cash, purpose, tuple(points), actions=actions)
     except (ValueError, TypeError, ArithmeticError, AttributeError):
         raise ValueError("capital_risk_invalid") from None
+
+
+def _risk_result(
+    loaded: LoadedConfig,
+    initial_cash: Decimal,
+    purpose: OrderPurpose,
+    points: tuple[CapitalRiskPoint, ...],
+    *,
+    actions: bool,
+) -> CapitalRiskReplay:
+    """Canonical result from internally reconstructed points, never external state."""
+    return CapitalRiskReplay(
+        points,
+        content_hash(
+            (
+                "capital-risk-replay-v3" if actions else "capital-risk-replay-v2",
+                loaded.config_hash,
+                initial_cash,
+                purpose,
+                points,
+            )
+        ),
+    )
 
 
 def evaluate_capital_entry(
