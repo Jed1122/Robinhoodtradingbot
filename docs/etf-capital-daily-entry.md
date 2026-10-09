@@ -28,7 +28,11 @@ hashes bind declarations, not authenticated strategy or provider evidence.
 Source/cost/execution/economic/promotion markers remain false. No credential,
 transport, live OrderIntent factory or production risk change is included.
 
-Next: integrate reviewed exact-source verification, then compose actual candidate
+Executable `e814a29` completed9,896 full tests,20 actual native tests,92.16%
+combined coverage and unchanged80overall/90critical gates. This is local release
+evidence; hosted exact-head checks and reviewed integration remain required.
+
+Next: integrate the reviewed adapters, then compose actual candidate
 signals/ATR protection/exits and original actions/settlements in the daily owner.
 Train-only selection, policy carryover, complete-grid performance, uncertainty,
 executable study freeze and genuine economic evaluation remain unfinished.

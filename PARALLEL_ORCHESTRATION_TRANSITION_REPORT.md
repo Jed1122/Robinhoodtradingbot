@@ -1,5 +1,28 @@
 # Parallel Orchestration Transition Report
 
+## Entry/exit adapters locally certified; daily owner unfinished — 2026-10-09
+
+Current adapter executable `e814a29dd1cc0c356aa29623bc015807695631dd`
+passed9,896 full tests (33 optional skips/one existing warning),20 actual native
+tests and92.16% combined coverage. Unchanged80overall/90critical gates passed,
+as did Ruff/Mypy375/Bandit, both frozen locks, SBOM and shell/Compose checks.
+Clean advisory evidence is retained for identical dependency graphs, not a new
+network audit. Independent review's duplicate-BUY selection defect was watched
+RED, fixed against validated unique-event cursors, and covered by these runs.
+
+PR32/PR33 are merged. PR34's corrected signal/frontier source `f889808` has
+separate completed9,826full/20native/92.11% certification; hosted checks and
+review-thread disposition remain pending. The adapters are not yet integrated,
+and no merge is deployment. Earlier status sections below are retained history.
+
+Next: finish exact-head release gates, compose the original-event daily owner,
+train-only selection and policy carryover, then verify statistics and the full
+28x6x4x5 workload before freezing executable study identities. The separate
+pure-policy increment is still under verification. No new economic freeze or
+study, qualified five-symbol inputs, genuine customer cost calibration, broker
+operation or deployed recovery is established. All source/cost/execution/
+economic/promotion/live flags remain false; production limits are unchanged.
+
 ## PR34 frontier corrections pending certification — 2026-10-09
 
 PR32 merged aaf9df0da5b8c981ad6fd9730a48166dc2a0fde2; PR33 merged
