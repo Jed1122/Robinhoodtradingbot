@@ -44,8 +44,11 @@ from trading_bot.simulation.etf_capital_account import (
 from trading_bot.simulation.etf_capital_action_events import CapitalActionEvent
 from trading_bot.simulation.etf_capital_risk import (
     CapitalRiskObservation,
+    CapitalRiskPoint,
     CapitalRiskReplay,
-    evaluate_capital_action_entry,
+    _entry_point,
+    _replay_risk_points,
+    _RiskProgress,
     replay_capital_action_risk,
 )
 from trading_bot.simulation.events import EventCursor
@@ -103,6 +106,16 @@ class CapitalDailyEntryResult(_Offline):
     observations: tuple[CapitalRiskObservation, ...]
     account: CapitalActionAccountReplay
     risk: CapitalRiskReplay
+    input_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class _CapitalDailyEntryFacts(_Offline):
+    admission: CapitalEntryDecision
+    assumed_price: Decimal
+    events: tuple[CapitalAccountEvent | CapitalActionEvent, ...]
+    observations: tuple[CapitalRiskObservation, ...]
+    account: CapitalActionAccountReplay
     input_hash: str
 
 
@@ -175,14 +188,7 @@ def _validate(request: CapitalDailyEntryRequest) -> None:
     _check(request.opened.sequence > last.cursor.sequence)
 
 
-def simulate_capital_daily_entry(request: CapitalDailyEntryRequest) -> CapitalDailyEntryResult:
-    """One bounded declared entry attempt; pending obligations never disappear.
-
-    Input decisions, source IDs, order type and fill proportions are unverified
-    assumptions. All safety/account facts come from original reducers, not caller
-    account snapshots. No real order or executable brokerage claim is produced.
-    """
-    _validate(request)
+def _entry_price(request: CapitalDailyEntryRequest) -> Decimal:
     with localcontext(_CONTEXT):
         price = request.raw_open * (1 + request.roundtrip_friction_pct / Decimal("200"))
         increment = request.instrument.price_increment
@@ -190,20 +196,24 @@ def simulate_capital_daily_entry(request: CapitalDailyEntryRequest) -> CapitalDa
         price = (price / increment).to_integral_value(rounding=ROUND_CEILING) * increment
         require_bounded_decimal(price, "assumed price", positive=True)
         _check(request.stop_distance < price)
-        # Admission reconstructs originals through the existing risk/account path.
-        admission = evaluate_capital_action_entry(
-            loaded=request.loaded,
-            initial_cash=request.initial_cash,
-            events=request.events,
-            observations=request.observations,
-            instrument=request.instrument,
-            entry_price=price,
-            stop_distance=request.stop_distance,
-            fee_bound=request.episode_fee_bound,
+        return price
+
+
+def _generate_capital_daily_entry(
+    request: CapitalDailyEntryRequest, current: CapitalRiskPoint, price: Decimal
+) -> _CapitalDailyEntryFacts:
+    """One emission kernel; terminal facts come only from fresh original replay."""
+    with localcontext(_CONTEXT):
+        admission = _entry_point(
+            request.loaded,
+            current,
+            request.instrument,
+            price,
+            request.stop_distance,
+            request.episode_fee_bound,
         )
-        original = replay_capital_action_account(
-            initial_cash=request.initial_cash, events=request.events
-        )
+        original = current.account
+        _check(type(original) is CapitalActionAccountReplay)
         digest = content_hash(
             (
                 "capital-daily-entry-assumption-v1",
@@ -328,10 +338,63 @@ def simulate_capital_daily_entry(request: CapitalDailyEntryRequest) -> CapitalDa
                 ),
             )
         state = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
-        risk = replay_capital_action_risk(
-            loaded=request.loaded,
-            initial_cash=request.initial_cash,
-            events=events,
-            observations=observations,
-        )
-        return CapitalDailyEntryResult(admission, price, events, observations, state, risk, digest)
+        return _CapitalDailyEntryFacts(admission, price, events, observations, state, digest)
+
+
+def simulate_capital_daily_entry(request: CapitalDailyEntryRequest) -> CapitalDailyEntryResult:
+    """Declared original-state entry; no real order or brokerage claim."""
+    _validate(request)
+    price = _entry_price(request)
+    original = replay_capital_action_risk(
+        loaded=request.loaded,
+        initial_cash=request.initial_cash,
+        events=request.events,
+        observations=request.observations,
+    )
+    facts = _generate_capital_daily_entry(request, original.points[-1], price)
+    risk = replay_capital_action_risk(
+        loaded=request.loaded,
+        initial_cash=request.initial_cash,
+        events=facts.events,
+        observations=facts.observations,
+    )
+    return CapitalDailyEntryResult(
+        facts.admission,
+        facts.assumed_price,
+        facts.events,
+        facts.observations,
+        facts.account,
+        risk,
+        facts.input_hash,
+    )
+
+
+def _simulate_owned_capital_daily_entry(
+    request: CapitalDailyEntryRequest, *, progress: _RiskProgress
+) -> _CapitalDailyEntryFacts:
+    """Invocation-local facts; original and generated tapes are both validated."""
+    _validate(request)
+    _check(type(progress) is _RiskProgress)
+    price = _entry_price(request)
+    original = _replay_risk_points(
+        loaded=request.loaded,
+        initial_cash=request.initial_cash,
+        events=request.events,
+        observations=request.observations,
+        purpose=OrderPurpose.ENTRY,
+        actions=True,
+        _progress=progress,
+        _last_only=True,
+    )
+    facts = _generate_capital_daily_entry(request, original[-1], price)
+    _replay_risk_points(
+        loaded=request.loaded,
+        initial_cash=request.initial_cash,
+        events=facts.events,
+        observations=facts.observations,
+        purpose=OrderPurpose.ENTRY,
+        actions=True,
+        _progress=progress,
+        _last_only=True,
+    )
+    return facts

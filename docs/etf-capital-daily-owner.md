@@ -3,7 +3,18 @@
 This bounded offline increment composes the existing prior-close policy,
 daily entry/exit adapters, v3 account/risk reducers and lifecycle replay.
 It is not a broker worker, economic study, promotion path or live service.
-Release verification and independent review remain pending.
+Exact491cda9 independent review and local full/native/critical verification
+passed:10,571full/20native tests,92.47% combined coverage, unchanged80overall/
+90critical gates. Hosted adapter integration remains separate. A later human-
+document head does not represent a fresh executable full rerun.
+
+The same source still timed out the unchanged first750 training-path120-second
+guard at120.010034333s. Three failed bounded fixes require an architecture
+discussion before a fourth implementation. The same-reducer invocation-owned
+original-prefix continuation proposal is not a frozen API or implemented fix.
+Full-grid performance, compact source-owned panel/statistics/report composition,
+immutable economic freeze and one qualified authorized DEVELOPMENT study remain
+unfinished. Older performance snapshots below are historical, not acceptance.
 
 `replay_capital_daily_owner` starts with cash and immutable original frames.
 The first completed close may create an instruction but cannot trade its own

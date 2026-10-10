@@ -562,7 +562,20 @@ def _entry(
     stop_distance: Decimal,
     fee_bound: Decimal | None,
 ) -> CapitalEntryDecision:
-    current = result.points[-1]
+    return _entry_point(
+        loaded, result.points[-1], instrument, entry_price, stop_distance, fee_bound
+    )
+
+
+def _entry_point(
+    loaded: LoadedConfig,
+    current: CapitalRiskPoint,
+    instrument: Instrument,
+    entry_price: Decimal,
+    stop_distance: Decimal,
+    fee_bound: Decimal | None,
+) -> CapitalEntryDecision:
+    """One shared gate over an internally reconstructed terminal risk point."""
     if not current.decision.new_entries_allowed:
         return CapitalEntryDecision(
             False, _ZERO, _ZERO, _ZERO, _ZERO, current.decision.reason_code, loaded.config_hash

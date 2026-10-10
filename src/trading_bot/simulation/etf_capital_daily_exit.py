@@ -38,7 +38,10 @@ from trading_bot.simulation.etf_capital_action_events import CapitalActionEvent
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
 from trading_bot.simulation.etf_capital_risk import (
     CapitalRiskObservation,
+    CapitalRiskPoint,
     CapitalRiskReplay,
+    _replay_risk_points,
+    _RiskProgress,
     replay_capital_action_risk,
 )
 from trading_bot.simulation.events import EventCursor
@@ -122,6 +125,15 @@ class CapitalDailyExitResult(_Offline):
     input_hash: str
 
 
+@dataclass(frozen=True, slots=True)
+class _CapitalDailyExitFacts(_Offline):
+    assumed_price: Decimal
+    events: tuple[CapitalAccountEvent | CapitalActionEvent, ...]
+    observations: tuple[CapitalRiskObservation, ...]
+    account: CapitalActionAccountReplay
+    input_hash: str
+
+
 def _validate(request: CapitalDailyExitRequest) -> None:
     _check(type(request) is CapitalDailyExitRequest)
     _check(
@@ -184,21 +196,15 @@ def _validate(request: CapitalDailyExitRequest) -> None:
     _check(last.cursor.sequence < request.submitted.sequence)
 
 
-def simulate_capital_daily_exit(request: CapitalDailyExitRequest) -> CapitalDailyExitResult:
-    """Reconstruct originals and emit one explicit risk-reducing assumption."""
-    _validate(request)
+def _generate_capital_daily_exit(
+    request: CapitalDailyExitRequest, point: CapitalRiskPoint
+) -> _CapitalDailyExitFacts:
+    """Single emission kernel; wrappers freshly reconstruct the input point."""
     with localcontext(_CONTEXT):
-        risk = replay_capital_action_risk(
-            loaded=request.loaded,
-            initial_cash=request.initial_cash,
-            events=request.events,
-            observations=request.observations,
-            purpose=request.purpose,
-        )
-        _check(risk.points[-1].decision.allowed)
-        original = replay_capital_action_account(
-            initial_cash=request.initial_cash, events=request.events
-        )
+        _check(point.decision.allowed)
+        original = point.account
+        if type(original) is not CapitalActionAccountReplay:
+            raise ValueError("capital_daily_exit_invalid")
         _check(original.quantity > 0 and original.average_price is not None)
         opening = None
         for event in request.events:
@@ -336,11 +342,64 @@ def simulate_capital_daily_exit(request: CapitalDailyExitRequest) -> CapitalDail
                 False,
             ),
         )
-        risk = replay_capital_action_risk(
+        return _CapitalDailyExitFacts(price, events, observations, state, digest)
+
+
+def simulate_capital_daily_exit(request: CapitalDailyExitRequest) -> CapitalDailyExitResult:
+    """Reconstruct originals and emit the unchanged full public risk report."""
+    _validate(request)
+    with localcontext(_CONTEXT):
+        before = replay_capital_action_risk(
             loaded=request.loaded,
             initial_cash=request.initial_cash,
-            events=events,
-            observations=observations,
+            events=request.events,
+            observations=request.observations,
             purpose=request.purpose,
         )
-        return CapitalDailyExitResult(price, events, observations, state, risk, digest)
+        facts = _generate_capital_daily_exit(request, before.points[-1])
+        after = replay_capital_action_risk(
+            loaded=request.loaded,
+            initial_cash=request.initial_cash,
+            events=facts.events,
+            observations=facts.observations,
+            purpose=request.purpose,
+        )
+        return CapitalDailyExitResult(
+            facts.assumed_price,
+            facts.events,
+            facts.observations,
+            facts.account,
+            after,
+            facts.input_hash,
+        )
+
+
+def _simulate_owned_capital_daily_exit(
+    request: CapitalDailyExitRequest, *, progress: _RiskProgress
+) -> _CapitalDailyExitFacts:
+    """Owner-local facts, with complete original and generated-suffix validation."""
+    _validate(request)
+    _check(type(progress) is _RiskProgress)
+    with localcontext(_CONTEXT):
+        before = _replay_risk_points(
+            loaded=request.loaded,
+            initial_cash=request.initial_cash,
+            events=request.events,
+            observations=request.observations,
+            purpose=request.purpose,
+            actions=True,
+            _progress=progress,
+            _last_only=True,
+        )
+        facts = _generate_capital_daily_exit(request, before[-1])
+        _replay_risk_points(
+            loaded=request.loaded,
+            initial_cash=request.initial_cash,
+            events=facts.events,
+            observations=facts.observations,
+            purpose=request.purpose,
+            actions=True,
+            _progress=progress,
+            _last_only=True,
+        )
+        return facts

@@ -1,5 +1,117 @@
 # Parallel Orchestration Transition Report
 
+## Current verified adapter release checkpoint — 2026-10-10
+
+PR41 merged2026-10-10T10:06:57Z at
+5fd6a2dae3889405df812de4978f1f8592139880 after all14 exact-head hosted jobs
+passed and fresh review/preview checks found no unresolved substantive findings.
+The merge tree18027f6739ab46ea223eb10d1d120cf0dfe874fb equals reviewedaf392968.
+It is integration only, not deployment. Do not resume or remerge PR17–41.
+
+Separate reviewed adapter executable491cda915974292be17861025c369f6d23e0f075
+completed10,571full tests (33optional skips/one existing warning),20actual native
+tests and92.47% combined coverage with unchanged80overall/90critical gates.
+Ruff/Mypy392/Bandit, frozen locks, SBOM and shell/Compose checks passed; unchanged-
+graph advisory evidence is retained, not a fresh network audit. These are local
+source-bound correctness checks, not current adapter hosted integration or a
+performance pass. Human-document publication is not a fresh executable rerun.
+
+The same source still failed the unchanged first750 training path120-second
+guard at120.010034333s, with178,470,912-byte peakRSS. After three failed bounded
+fixes, the systematic-debugging architecture discussion remains open. Distinguish
+the two continuation layers:
+
+- The already implemented invocation-owned `_RiskProgress` reuses validated
+  loss-point calculations. The owner-private entry/exit adapters use it before
+  and after event generation. Their shared `_replay_risk_points` still reconstructs
+  complete original account prefixes on every call; it is not an account cursor.
+- The proposed original-account transition continuation is not implemented or
+  API-frozen. It would extract one canonical initialization/transition/snapshot
+  kernel shared by public batch replay and private invocation-owned account state.
+  That is the distinct fourth performance approach under discussion, not a claim
+  that existing risk continuation or the private adapters are missing.
+
+Do not weaken guards or replace canonical serialization globally. Neither the
+implemented risk continuation nor source correctness resolves the workload gap.
+
+Next: finish exact-head adapter release; resolve and freeze that architecture
+before fixture-first implementation; finish compact source-owned aligned panel/
+statistics/reports and actual full28x6x4x5 workload verification. Only then freeze
+all executable/config/source/calendar/actions/terms/cost/selection/statistics/
+criteria identities and evaluate one qualified authorized DEVELOPMENT study.
+No current economic result or profitability/live-readiness claim is established.
+Retained five-symbol source/actions/access are unverified, not known absent;
+the chronology waiver remains disclosed and genuine fills are not required for
+declared assumed-cost screening. All readiness flags remain false, production
+limits unchanged, and no private/provider/broker/spending/deployment activity
+occurred. All older checkpoints below are source-bound historical snapshots.
+
+## Current owner-private entry composition — 2026-10-10
+
+PR41 original-account comparison sourceaf392968 completed10,523full/20native
+tests,92.47% combined and unchanged80overall/90critical; four hosted3.12/3.13
+jobs still pending at last snapshot. It is not merged or economic evidence.
+
+Separate owner-private exit source2cde564 passed independent integrated review
+with no Critical/Important/Minor and full parent-result differentials, but its
+actual750 training path again timed out120.010040s. No guard is relaxed.
+The next bounded increment shares the existing entry terminal-point gate and
+entry emission kernel, preserving public hashes and full risk reports while
+private owner calls avoid discarded graphs. Both original and generated tapes
+still receive complete prefix/clock validation. No caller account is adopted.
+Fresh review/global/native/critical/workload gates remain required for this new
+source. No executable economic freeze or study is established. Source/cost/
+execution/economic/promotion/live flags remain false and production limits intact.
+Historical checkpoints below are retained, not current-source certification.
+
+## Current owner-private exit composition — 2026-10-10
+
+The bounded local replay correction6599d61 still timed out the actual first750
+training path at120.010s, setup125.147s/peak178503680bytes. It is not sufficient
+workload evidence. Neither the guard nor original-input validation is relaxed.
+No complete workload, economic freeze or study is established.
+
+A second fixture-first increment factors ONE shared exit emission kernel. The
+public adapter retains complete risk/result/hash output; the owner-private path
+returns only facts the owner consumes and uses existing last-point continuation
+before AND after generation. Both phases still reconstruct all original account
+prefixes and validate source clocks. No caller state or duplicate engine is used.
+Twelve missing/private-route controls were watched RED;133focused tests now pass,
+including original/generated invalidity, four full owner hashes, full public exit
+hashes, unpaid distributions, mutations and fresh final batch-risk equality.
+Fresh integrated review, broader/global/native/critical and actual performance
+verification remain required. The following older checkpoints remain history.
+
+## Current local exit replay checkpoint — 2026-10-10
+
+PR41 is published ataf392968 with reviewed original-account comparison windows;
+its current full/native/critical and hosted release gates remain pending.
+The separate owned-comparison sourcec198f36 completed10,504full/20native tests,
+92.46625530273815% combined coverage and unchanged80overall/90critical gates.
+This retained certification does not certify subsequent source changes.
+
+The bounded next increment reuses only the terminal original account from the
+immediately local, fresh pre-exit risk reconstruction. It removes one redundant
+pre-exit reduction, retaining output-event account/risk replay and every public
+input check. Watched redundant-call RED now passes;306related tests preserve
+six complete parent result hashes, precision independence, original conflicts,
+split/receivable/pending-order/purpose controls. Independent increment review
+and fresh full/native/critical verification are still required.
+
+The prior actual750-session training path timed out at120.006seconds. This is
+still a failed workload check, not a full-grid pass. No speedup is presumed.
+Source-owned aligned panel/statistics/reports and full workload verification
+remain unfinished. No executable economic freeze or new study has occurred.
+Retained five-symbol source/actions/access are unverified, not known absent;
+chronology-waiver limitations remain disclosed. Assumed-cost DEVELOPMENT does
+not require genuine customer fill calibration. Qualification, operational and
+live gates remain separate, false/unverified and production limits unchanged.
+
+Next: finish reviewed exact-candidate release checks, measure the bounded replay
+change without increasing guards, complete aligned comparisons/statistics and
+workload validation, freeze all executable/input/selection/cost/protocol identities,
+then qualify authorized inputs before one economic evaluation.
+
 ## Current comparison-window release checkpoint — 2026-10-10
 
 PR39 and PR40 are merged; integration base is
