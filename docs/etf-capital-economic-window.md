@@ -12,6 +12,14 @@ exit-only tail, not additional test observations. A future source-owned panel
 must enforce the frozen630-session study window. This private generic assembler
 also accepts smaller windows for independent literal fixtures.
 
+The shared original-risk clock admission checks all observations against both
+their last applied event and next unique event, including tail observations.
+Reordered observations or coordinated future-prefix/account substitutions deny.
+Every point must be the exact record type with a canonical UTC datetime and
+bounded exact-Decimal equity. All account financial fields and completion/flags
+are strictly typed before comparison with reconstructed prefixes; Python numeric
+equality cannot make integers/booleans canonical financial evidence.
+
 Cash, fees, distributions, reservations and settlement status come from the
 account at the cutoff—not from the later final account. An episode settled or
 fee-finalized only in the tail remains incomplete at cutoff. Completed episode
@@ -33,6 +41,10 @@ ratios explicitly undefined, not a fabricated zero or truncated prefix. These
 returns are not the fixed-initial-capital paired increments used by resampling.
 Legacy Sortino is not labeled a standard target-downside-deviation estimate.
 Independent opportunity support and measured spread/slippage remain unknown.
+
+Independent whole review found two cutoff/UTC-type validation defects, reproduced
+by17 failing regressions. The corrective shared-clock/exact-type increment passed
+119 focused tests; its integrated review and global checks remain separate.
 
 Next: independently review and globally verify this bounded increment; compose
 the original-source-owned four-reference aligned panel and conditional dependent

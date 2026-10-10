@@ -1,6 +1,7 @@
 """Literal cutoff economics from real fabricated original-event owner output."""
 
 from dataclasses import replace
+from datetime import timedelta, timezone
 from decimal import Decimal as D
 from decimal import localcontext
 
@@ -263,3 +264,94 @@ def test_shifted_window_cannot_silently_move_baseline(original):
             recurring_usd_per_day=D(0),
             sunk_research_usd=D(0),
         )
+
+
+def test_coordinated_future_finality_cannot_finalize_an_earlier_cutoff(original):
+    at = original.points[3].at
+    assert original.points[3].account.unsettled_proceeds == D("15.07245")
+    assert len(original.events) == 8
+    observations = tuple(
+        replace(row, source_count=8) if row.cursor.occurred_at == at else row
+        for row in original.observations
+    )
+    points = tuple(
+        replace(point, account=original.account) if point.at == at else point
+        for point in original.points
+    )
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        run(replace(original, observations=observations, points=points), count=3)
+
+
+def test_equal_instant_non_utc_points_cannot_shift_calendar_expense(original):
+    zone = timezone(timedelta(hours=14))
+    points = tuple(
+        replace(point, at=point.at.astimezone(zone)) if index >= 3 else point
+        for index, point in enumerate(original.points)
+    )
+    # Python datetime equality does not distinguish this calendar-date alias.
+    assert points[3].at == original.points[3].at
+    assert str(points[3].at.date()) == "2020-10-13"
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        run(replace(original, points=points), count=3)
+
+
+def test_integer_equity_cannot_alias_a_decimal_baseline(original):
+    points = (replace(original.points[0], equity=100), *original.points[1:])
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        run(replace(original, points=points))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"complete": D(1)},
+        {"quantity": False},
+        {"cash": 100},
+        {"available_cash": 100},
+        {"fees": 0},
+        {"unsettled_proceeds": False},
+        {"distribution_receivable": 0},
+        {"execution_enabled": 0},
+        {"evidence_promotable": 0},
+        {"source_qualified": 0},
+    ),
+)
+def test_equality_equivalent_account_types_are_not_canonical(original, changes):
+    account = replace(original.points[0].account)
+    for name, value in changes.items():
+        object.__setattr__(account, name, value)
+    assert account == original.points[0].account
+    points = (replace(original.points[0], account=account), *original.points[1:])
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        run(replace(original, points=points))
+
+
+def test_invalid_final_account_type_cannot_hide_beyond_cutoff(original):
+    account = replace(original.account, complete=D(1))
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        run(replace(original, account=account), count=3)
+
+
+def test_invalid_tail_account_type_cannot_hide_beyond_cutoff(original):
+    tail = original.points[-1]
+    points = (*original.points[:-1], replace(tail, account=replace(tail.account, quantity=False)))
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        run(replace(original, points=points), count=3)
+
+
+def test_point_subclass_cannot_supply_an_unvalidated_record(original):
+    from trading_bot.simulation.etf_capital_trajectory import CapitalTrajectoryPoint
+
+    class DerivedPoint(CapitalTrajectoryPoint):
+        pass
+
+    point = original.points[0]
+    alias = DerivedPoint(point.at, point.equity, point.account, point.policy, point.opening)
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        run(replace(original, points=(alias, *original.points[1:])))
+
+
+def test_observation_reordering_cannot_hide_in_timestamp_lookup(original):
+    observations = (*original.observations[:-2], *reversed(original.observations[-2:]))
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        run(replace(original, observations=observations), count=3)

@@ -5,10 +5,11 @@ Final settlement in a later exit-only tail cannot finalize the test cutoff.
 """
 
 from dataclasses import astuple, dataclass, field, replace
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal, localcontext
 from itertools import pairwise
 
+from trading_bot.clock import require_utc
 from trading_bot.domain import Side, require_bounded_decimal
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_path_economics import (
@@ -24,17 +25,42 @@ from trading_bot.research.metrics import (
 )
 from trading_bot.simulation.etf_capital_account import (
     CapitalAccountSubmission,
+    CapitalActionAccountReplay,
     replay_capital_action_account_prefixes,
 )
 from trading_bot.simulation.etf_capital_action_events import CapitalDistributionPaid
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
-from trading_bot.simulation.etf_capital_trajectory import CapitalTrajectoryResult
+from trading_bot.simulation.etf_capital_risk import _capital_risk_source_frontiers
+from trading_bot.simulation.etf_capital_trajectory import (
+    CapitalTrajectoryPoint,
+    CapitalTrajectoryResult,
+)
 from trading_bot.simulation.lifecycle_models import LifecycleFillEvent
 
 
 def _check(value: bool) -> None:
     if not value:
         raise ValueError("capital_economic_window_invalid")
+
+
+def _strict_account(account: CapitalActionAccountReplay) -> None:
+    """Validate exact record types before equality with recomputed originals."""
+    _check(type(account) is CapitalActionAccountReplay)
+    for amount in (
+        account.cash,
+        account.available_cash,
+        account.quantity,
+        account.fees,
+        account.unsettled_proceeds,
+        account.distribution_receivable,
+    ):
+        require_bounded_decimal(amount, "original account value")
+    for optional in (account.average_price, account.mark, account.marked_equity):
+        if optional is not None:
+            require_bounded_decimal(optional, "optional original account value")
+    _check(type(account.complete) is bool and type(account.economic_hash) is str)
+    _check(account.execution_enabled is False and account.evidence_promotable is False)
+    _check(account.source_qualified is False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +191,13 @@ def _capital_economic_window(
             _check(all(type(day) is date for day in test_sessions))
             points = trajectory.points
             _check(type(points) is tuple and 1 < len(points) <= 2048)
+            _strict_account(trajectory.account)
+            for point in points:
+                _check(type(point) is CapitalTrajectoryPoint)
+                require_utc(point.at)
+                _check(point.at.tzinfo is UTC)
+                require_bounded_decimal(point.equity, "original point equity", positive=True)
+                _strict_account(point.account)
             dates = tuple(point.at.date() for point in points)
             _check(all(a < b for a, b in pairwise(dates)))
             count = len(test_sessions)
@@ -172,11 +205,15 @@ def _capital_economic_window(
             prefixes = replay_capital_action_account_prefixes(
                 initial_cash=initial_cash, events=trajectory.events
             )
+            _capital_risk_source_frontiers(
+                events=trajectory.events,
+                accounts=prefixes,
+                observations=trajectory.observations,
+                actions=True,
+            )
             _check(prefixes[-1] == trajectory.account)
             exposures = _capital_close_exposures(trajectory, prefixes)
             observations = {row.cursor.occurred_at: row for row in trajectory.observations}
-            for row in trajectory.observations:
-                row.__post_init__()
             baseline_count = observations[points[0].at].source_count
             cutoff_count = observations[points[count].at].source_count
             _check(baseline_count <= cutoff_count)
