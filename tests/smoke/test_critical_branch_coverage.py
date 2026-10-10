@@ -11,7 +11,10 @@ SCRIPT = ROOT / "scripts" / "check_critical_branch_coverage.py"
 
 
 @pytest.mark.parametrize(
-    "filename", ("etf_capital_feature_epoch.py", "etf_capital_projection_preimage.py")
+    "filename", (
+        "etf_capital_feature_epoch.py", "etf_capital_projection_preimage.py",
+        "etf_capital_prepared_policy.py",
+    )
 )
 def test_capital_owned_preimage_helpers_require_critical_branch_coverage(tmp_path, filename):
     root = tmp_path / "project"

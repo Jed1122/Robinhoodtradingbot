@@ -30,7 +30,7 @@ def prepare(source, sessions):
     return _prepare_capital_days(source, sessions=sessions)
 
 
-def long_source(count=301, *, ancient=False, flat=False):
+def long_source(count=301, *, ancient=False, flat=False, last_close=None):
     source = dataset()
     days = []
     day = date(2020, 1, 2)
@@ -74,6 +74,11 @@ def long_source(count=301, *, ancient=False, flat=False):
         ]
         if ancient:
             wire["bars"][0].update(o=1e200, h=1e200, l=1e200, c=1e200, vw=1e200)
+        if last_close is not None:
+            wire["bars"][-1].update(
+                o=last_close, h=last_close + 2, l=last_close - 2,
+                c=last_close, vw=last_close,
+            )
         raw = json.dumps(wire).encode()
         page = parse_capital_daily_page(
             raw, request=request, expected_sha256=hashlib.sha256(raw).hexdigest()
@@ -104,7 +109,7 @@ def test_two_days_keep_only_current_raw_and_bind_full_original_provenance():
         hashes = tuple(sorted((str(p.raw_bars[-1].instrument_id), p.projection_hash) for p in full))
         assert day.input_hash == content_hash(
             (
-                "capital-prepared-day-v1",
+                "capital-prepared-day-v2",
                 value.source_hash,
                 source.config_hash,
                 day.session,
@@ -114,6 +119,8 @@ def test_two_days_keep_only_current_raw_and_bind_full_original_provenance():
                 day.raw_bars,
                 day.signals,
                 day.stop_distances,
+                day.history_ready,
+                day.below_sma200,
             )
         )
         assert (
@@ -121,8 +128,10 @@ def test_two_days_keep_only_current_raw_and_bind_full_original_provenance():
         )
     assert value.input_hash == content_hash(
         (
-            "capital-prepared-input-v1",
+            "capital-prepared-input-v2",
             value.source_hash,
+            source.config_hash,
+            tuple(row.session_date for row in source.calendar.sessions),
             tuple(day.input_hash for day in value.days),
         )
     )

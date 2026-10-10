@@ -11,7 +11,11 @@ from trading_bot.domain import DataHash, require_bounded_decimal
 from trading_bot.market_data.etf_capital_features import CapitalFeatureProjection
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_feasibility import _config
-from trading_bot.research.etf_capital_signals import CapitalCandidate, capital_strategy_signal
+from trading_bot.research.etf_capital_signals import (
+    CapitalCandidate,
+    CapitalSignal,
+    capital_strategy_signal,
+)
 from trading_bot.strategies.features import FeaturePipeline
 from trading_bot.strategies.protocol import HistoricalSlice
 
@@ -79,6 +83,15 @@ def _capital_entry_distance(
         return distance
 
 
+def _capital_below_sma200(projection: CapitalFeatureProjection) -> bool | None:
+    """Shared regime fact under the policy's frozen64-digit arithmetic."""
+    if len(projection.feature_bars) < 200:
+        return None
+    with localcontext(_CONTEXT):
+        closes = tuple(b.close for b in projection.feature_bars[-200:])
+        return closes[-1] <= sum(closes, Decimal(0)) / 200
+
+
 def capital_daily_policy(
     *,
     loaded: LoadedConfig,
@@ -101,9 +114,6 @@ def capital_daily_policy(
         effective, projections, config_hash=loaded.config_hash, as_of=as_of
     )
     symbol = opening.symbol if opening else signal.entry_symbol
-    distance = opening.stop_distance if opening else None
-    action: Literal["wait", "entry", "hold", "exit"] = "wait"
-    reason = "no_entry_signal"
     elapsed = 0
     target = next((p for p in projections if str(p.raw_bars[-1].instrument_id) == symbol), None)
     if opening:
@@ -113,35 +123,77 @@ def capital_daily_policy(
         if opening.entry_session not in dates:
             raise ValueError("capital_daily_policy_invalid")
         elapsed = sum(day >= opening.entry_session for day in dates)
+    history_ready = all(len(p.feature_bars) >= 200 for p in projections)
+    below_sma200 = None
+    entry_distance = None
     with localcontext(_CONTEXT):
-        if opening and elapsed >= effective.hold_sessions:
-            action, reason = "exit", "maximum_hold"
-        elif any(len(p.feature_bars) < 200 for p in projections):
-            reason = "insufficient_history"
-        elif opening:
-            action, reason = "hold", "opening_policy_retained"
+        if (
+            opening
+            and elapsed < effective.hold_sessions
+            and history_ready
+            and effective.family == "mean_reversion"
+        ):
             target = cast(CapitalFeatureProjection, target)
-            closes = tuple(b.close for b in target.feature_bars[-200:])
-            invalidated = (
-                (effective.family == "momentum" and symbol not in signal.eligible_symbols)
-                or (
-                    effective.family == "mean_reversion"
-                    and (
-                        symbol in signal.exit_symbols or closes[-1] <= sum(closes, Decimal(0)) / 200
-                    )
-                )
-                or (effective.family == "rotation" and signal.entry_symbol != symbol)
-            )
-            if cfg.equity_strategies.exit_on_regime_change and invalidated:
-                action, reason = "exit", "regime_exit"
-        elif target is not None:
-            distance = _capital_entry_distance(
+            below_sma200 = _capital_below_sma200(target)
+        elif not opening and history_ready and target is not None:
+            entry_distance = _capital_entry_distance(
                 target,
                 as_of=as_of,
                 multiplier=cfg.equity_strategies.stop_loss_atr_multiplier,
                 signal_hash=signal.input_hash,
             )
-            if distance > 0:
+    return _capital_policy_from_facts(
+        loaded=loaded,
+        candidate=candidate,
+        signal=signal,
+        opening=opening,
+        elapsed=elapsed,
+        history_ready=history_ready,
+        below_sma200=below_sma200,
+        entry_distance=entry_distance,
+    )
+
+
+def _capital_policy_from_facts(
+    *,
+    loaded: LoadedConfig,
+    candidate: CapitalCandidate,
+    signal: CapitalSignal,
+    opening: CapitalOpeningPolicy | None,
+    elapsed: int,
+    history_ready: bool,
+    below_sma200: bool | None,
+    entry_distance: Decimal | None,
+) -> CapitalDailyPolicy:
+    """One instruction kernel for internally validated facts, never admission."""
+    cfg = _config(loaded)
+    effective = opening.candidate if opening else candidate
+    symbol = opening.symbol if opening else signal.entry_symbol
+    distance = opening.stop_distance if opening else None
+    action: Literal["wait", "entry", "hold", "exit"] = "wait"
+    reason = "no_entry_signal"
+    with localcontext(_CONTEXT):
+        if opening and elapsed >= effective.hold_sessions:
+            action, reason = "exit", "maximum_hold"
+        elif not history_ready:
+            reason = "insufficient_history"
+        elif opening:
+            action, reason = "hold", "opening_policy_retained"
+            if effective.family == "mean_reversion" and below_sma200 is None:
+                raise ValueError("capital_daily_policy_invalid")
+            invalidated = (
+                (effective.family == "momentum" and symbol not in signal.eligible_symbols)
+                or (
+                    effective.family == "mean_reversion"
+                    and (symbol in signal.exit_symbols or below_sma200 is True)
+                )
+                or (effective.family == "rotation" and signal.entry_symbol != symbol)
+            )
+            if cfg.equity_strategies.exit_on_regime_change and invalidated:
+                action, reason = "exit", "regime_exit"
+        elif symbol is not None:
+            distance = entry_distance
+            if distance is not None and distance > 0:
                 action, reason = "entry", "prior_close_signal"
             else:
                 distance, reason = None, "zero_atr"

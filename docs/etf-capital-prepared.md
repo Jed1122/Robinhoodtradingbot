@@ -49,7 +49,7 @@ provenance. Growing full/compact projection graphs are discarded. Full original
 calendar/session membership remains necessary for future holding-clock policy;
 the recent numerical window cannot replace it.
 
-New `capital-prepared-day-v1` and `capital-prepared-input-v1` identities bind full
+New `capital-prepared-day-v2` and `capital-prepared-input-v2` identities bind full
 owned source/config, requested date/clock/ordinal, original full projection
 digests, current bars, signals and distances. They do not alias public owner identities, qualify
 sources or replace original public signal identities. Future public evaluators

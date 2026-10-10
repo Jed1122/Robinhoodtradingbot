@@ -6,7 +6,7 @@ from decimal import Decimal, localcontext
 from typing import Literal
 
 from trading_bot.config.loader import restore_loaded_config
-from trading_bot.domain import Bar
+from trading_bot.domain import Bar, ConfigHash
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
 from trading_bot.market_data.etf_capital_features import (
     _capital_feature_source,
@@ -14,7 +14,10 @@ from trading_bot.market_data.etf_capital_features import (
 )
 from trading_bot.market_data.etf_capital_owned import _own_capital_source
 from trading_bot.market_data.recording import canonical_json, content_hash
-from trading_bot.research.etf_capital_daily_policy import _capital_entry_distance
+from trading_bot.research.etf_capital_daily_policy import (
+    _capital_below_sma200,
+    _capital_entry_distance,
+)
 from trading_bot.research.etf_capital_feasibility import _CONTEXT, _config
 from trading_bot.research.etf_capital_feature_epoch import (
     _capital_features_epoch_at,
@@ -46,12 +49,16 @@ class _PreparedCapitalDay(_PreparationOnly):
     raw_bars: tuple[Bar, ...]
     signals: tuple[CapitalSignal, ...]
     stop_distances: tuple[tuple[str, Decimal | None], ...]
+    history_ready: bool
+    below_sma200: tuple[tuple[str, bool | None], ...]
     input_hash: str
 
 
 @dataclass(frozen=True, slots=True)
 class _PreparedCapitalInput(_PreparationOnly):
     source_hash: str
+    config_hash: ConfigHash
+    session_dates: tuple[date, ...]
     days: tuple[_PreparedCapitalDay, ...]
     input_hash: str
 
@@ -148,10 +155,18 @@ def _prepare_capital_days(
                         distance = calculated if calculated > 0 else None
                     distances.append((symbol, distance))
                 stops = tuple(distances)
+                history_ready = all(len(p.feature_bars) >= 200 for p in compact)
+                below_sma200 = tuple(
+                    (
+                        str(p.raw_bars[-1].instrument_id),
+                        _capital_below_sma200(p),
+                    )
+                    for p in compact
+                )
                 raw = tuple(p.raw_bars[-1] for p in compact)
                 identity = content_hash(
                     (
-                        "capital-prepared-day-v1",
+                        "capital-prepared-day-v2",
                         owned.source_hash,
                         source.config_hash,
                         day,
@@ -161,19 +176,28 @@ def _prepare_capital_days(
                         raw,
                         signals,
                         stops,
+                        history_ready,
+                        below_sma200,
                     )
                 )
                 result.append(
-                    _PreparedCapitalDay(day, as_of, ordinals[day], raw, signals, stops, identity)
+                    _PreparedCapitalDay(
+                        day, as_of, ordinals[day], raw, signals, stops,
+                        history_ready, below_sma200, identity,
+                    )
                 )
             days = tuple(result)
             return _PreparedCapitalInput(
                 owned.source_hash,
+                source.config_hash,
+                dates,
                 days,
                 content_hash(
                     (
-                        "capital-prepared-input-v1",
+                        "capital-prepared-input-v2",
                         owned.source_hash,
+                        source.config_hash,
+                        dates,
                         tuple(d.input_hash for d in days),
                     )
                 ),
