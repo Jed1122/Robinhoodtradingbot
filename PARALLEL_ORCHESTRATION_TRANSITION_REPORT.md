@@ -1,6 +1,45 @@
 # Parallel Orchestration Transition Report
 
-## Current capital research composition — 2026-10-10
+## Current constrained-reference checkpoint — 2026-10-10
+
+The distinct policy-managed SPY reference reuses the same original-event account,
+risk, sizing and execution owner. Fixed20-session holding, ATR protection,
+adverse next-open admission, split rebasing, partial/unfilled obligations and
+no forced terminal sale remain separate from full mathematical SPY allocation.
+It is not a disguised momentum candidate, broker route or complete comparison
+panel. Independent whole-increment review found no Critical/Important/Minor
+defect;99 focused and484 related tests passed before global verification.
+
+Exact executable2108c8269573f7b9134380aeaf51c34c2aefb231 completed10,345 full
+tests (33 optional skips/one existing warning),20 actual native tests and
+92.39316905801621% combined coverage. Unchanged80overall/90critical gates passed.
+Ruff/Mypy389/Bandit, both frozen locks, SBOM and four shell/root Compose checks
+passed. Unchanged-graph advisory/native-version evidence is retained, not a fresh
+network audit. Optional backups do not establish selected-runtime recovery.
+This later human-document refresh is not a new full rerun.
+
+Retained SHA-256 full/native/coverage/critical, respectively:
+`5d78108d9abda2102e4ec60f43bda7434cdf30faeaed500834fe1b4bb01e8d0e`,
+`c2564cdeddcada43fa2bf06803bf8c967b51626b5ac5e4c7828bcfcd676a8547`,
+`1aa4f88893aa6f263aae23a6c33bbe5f9e00ad103486f864def83aa8ad6bb830`,
+`b8238d4bc11d1be71fc02bf514990cafb63c15a4b34bcc149e4dfbd19a397adb`.
+
+PR39 at03ff and passive-reference PR40 at7245961 remain pending current hosted
+integration gates. Passive executable2c157 completed10,349 full/20 native tests,
+92.389605314576% and unchanged80/90; later publication differs only in reviewed
+human docs/ancestry. These results do not certify subsequently changed matching
+source. Its whole review identified an Important zero-exposure/fee boundary;
+the coordinator reproduced two RED controls and corrected them without waiving
+funded purchase affordability. Corrected regression/global gates remain pending.
+
+Task5 still needs complete source-owned four-reference statistics/report
+composition, full28x6x4x5 workload validation, capital executable freeze and one
+qualified authorized study. Five-symbol retained coverage/actions/access remain
+UNVERIFIED, not known absent; existing chronology waiver remains disclosed.
+No private inputs were inspected or study performed. All source/cost/execution/
+economic/promotion/live flags remain false; production limits unchanged.
+
+## Historical capital research composition — 2026-10-10
 
 PR37 and PR38 are integrated; PR38 merged at
 a940103b04e83b4065eb0d47bd878ba77ad131fd with reviewed tree

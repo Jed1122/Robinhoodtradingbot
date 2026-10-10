@@ -22,9 +22,16 @@ Their combined executable d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c completed
 10,314full/20native/92.37%, unchanged80overall/90critical plus static/lock/SBOM/
 manifest checks. Current hosted/compatible integration gates remain required;
 human-document/ancestry-only publication does not claim a fresh full rerun.
-Separate mathematical SPY adapter is independently reviewed/377central tests
-passed, but its own global gates remain pending. No full strategy workload,
-capital economic executable freeze or genuine study is complete.
+Separate mathematical SPY executable2c157 completed10,349full/20native tests,
+92.389605314576% and unchanged80/90; reviewed publication is pending as PR40.
+Distinct constrained-SPY executable2108c826 completed99focused/484related,
+10,345full/20native tests,92.39316905801621% combined coverage and unchanged
+80overall/90critical gates. Independent whole-increment review found no
+Critical/Important/Minor defect. Hosted publication/integration remains separate.
+Corrected zero-exposure matching regression/global gates are pending; retained
+passive certification does not certify that changed source. No full strategy
+workload, capital economic executable freeze or genuine study is complete.
+This human-doc-only refresh is not a fresh executable full rerun.
 
 Task5 still needs source-owned four-reference benchmarks, complete aligned
 comparison/statistics/reports, full28x6x4x5 workload/resource verification and
