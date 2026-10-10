@@ -1,5 +1,40 @@
 # Parallel Orchestration Transition Report
 
+## Current verified adapter release checkpoint — 2026-10-10
+
+PR41 merged2026-10-10T10:06:57Z at
+5fd6a2dae3889405df812de4978f1f8592139880 after all14 exact-head hosted jobs
+passed and fresh review/preview checks found no unresolved substantive findings.
+The merge tree18027f6739ab46ea223eb10d1d120cf0dfe874fb equals reviewedaf392968.
+It is integration only, not deployment. Do not resume or remerge PR17–41.
+
+Separate reviewed adapter executable491cda915974292be17861025c369f6d23e0f075
+completed10,571full tests (33optional skips/one existing warning),20actual native
+tests and92.47% combined coverage with unchanged80overall/90critical gates.
+Ruff/Mypy392/Bandit, frozen locks, SBOM and shell/Compose checks passed; unchanged-
+graph advisory evidence is retained, not a fresh network audit. These are local
+source-bound correctness checks, not current adapter hosted integration or a
+performance pass. Human-document publication is not a fresh executable rerun.
+
+The same source still failed the unchanged first750 training path120-second
+guard at120.010034333s, with178,470,912-byte peakRSS. After three failed bounded
+fixes, the systematic-debugging architecture discussion remains open. The
+same-reducer invocation-owned original-prefix continuation proposal is not a
+frozen API or implemented fourth fix. Do not weaken guards or replace canonical
+serialization globally. Source correctness does not resolve this workload gap.
+
+Next: finish exact-head adapter release; resolve and freeze that architecture
+before fixture-first implementation; finish compact source-owned aligned panel/
+statistics/reports and actual full28x6x4x5 workload verification. Only then freeze
+all executable/config/source/calendar/actions/terms/cost/selection/statistics/
+criteria identities and evaluate one qualified authorized DEVELOPMENT study.
+No current economic result or profitability/live-readiness claim is established.
+Retained five-symbol source/actions/access are unverified, not known absent;
+the chronology waiver remains disclosed and genuine fills are not required for
+declared assumed-cost screening. All readiness flags remain false, production
+limits unchanged, and no private/provider/broker/spending/deployment activity
+occurred. All older checkpoints below are source-bound historical snapshots.
+
 ## Current owner-private entry composition — 2026-10-10
 
 PR41 original-account comparison sourceaf392968 completed10,523full/20native

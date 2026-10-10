@@ -12,6 +12,31 @@
 
 ## Current Task5 checkpoint — 2026-10-10
 
+Latest verified checkpoint supersedes all older current/running paragraphs below.
+PR41 merged5fd6a2dae3889405df812de4978f1f8592139880 after all14 exactaf392968
+hosted jobs passed, fresh reviews had no substantive findings, and actual merge
+tree18027f6739ab46ea223eb10d1d120cf0dfe874fb matched the reviewed candidate.
+Never resume or remerge PR17–41; integration is not deployment.
+
+Separate reviewed adapter executable491cda915974292be17861025c369f6d23e0f075
+completed10,571full/20native tests,92.47% combined coverage and unchanged80overall/
+90critical gates. Static/locked-dependency/SBOM/manifest checks passed; retained
+same-graph advisory evidence is not a fresh network audit. These source-bound
+checks are not a fresh full rerun for later human-doc publication, a hosted
+adapter release, or performance acceptance. The unchanged first750 training
+path still timed out120.010034333s. After three bounded failed fixes, resolve
+the same-reducer continuation architecture discussion and freeze its precise
+private API before another implementation. No guard increase or validation bypass.
+
+Next: exact-head adapter release; architecture resolution/fixture-first shared
+continuation; compact original-source panel/statistics/report composition and
+actual full28x6x4x5 workload; immutable executable/input/protocol/selection/criteria
+freeze; one qualified authorized DEVELOPMENT evaluation. Retained five-symbol
+inputs/actions/access remain unverified, not absent. The chronology waiver stays
+disclosed; genuine fills are not required for declared assumed-cost screening.
+No current economics, promotion or live readiness is established. All flagsfalse
+and production limits unchanged. Earlier paragraphs retain historical snapshots.
+
 Latest comparison-window checkpoint supersedes the historical paragraphs below.
 PR39/40 are already merged at integrationbasef628f1a. Corrected private window
 source2d0b7a1 completed10,490full/20native/92.45301242056057% and unchanged80/90

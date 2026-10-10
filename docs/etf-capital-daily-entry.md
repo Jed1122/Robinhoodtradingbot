@@ -9,13 +9,16 @@ facts it consumes, without constructing discarded full risk reports. It uses
 invocation-local continuation before and after generation; both calls still
 reconstruct complete original account prefixes and validate all source clocks.
 No saved balance, preapproval or caller progress is admitted. The final owner
-canonical risk remains a fresh complete report. Historical certification below
-does not certify this source delta; current review/global/workload gates remain.
+canonical risk remains a fresh complete report. Exact491cda9 independent review
+and local full/native/critical verification passed; hosted adapter integration
+and actual workload acceptance remain separate, unfinished gates.
 
-The preceding private-exit change timed out the actual first750 training path
-at120.010040seconds. The unchanged guard has not passed and no full-grid or
+The current private-entry source timed out the actual first750 training path
+at120.010034333seconds. The unchanged guard has not passed and no full-grid or
 economic result is established. Remaining panel/statistics/report composition,
-full workload and qualified-input study gates remain separate.
+full workload and qualified-input study gates remain separate. After three
+failed bounded fixes, architecture discussion precedes a fourth implementation;
+the same-reducer original-prefix continuation proposal is not a frozen API.
 
 `simulate_capital_daily_entry` is a bounded research-assumption adapter, not the
 full daily strategy/economic runner. It consumes canonical research config,
@@ -45,11 +48,15 @@ hashes bind declarations, not authenticated strategy or provider evidence.
 Source/cost/execution/economic/promotion markers remain false. No credential,
 transport, live OrderIntent factory or production risk change is included.
 
-Executable `e814a29` completed9,896 full tests,20 actual native tests,92.16%
-combined coverage and unchanged80overall/90critical gates. This is local release
-evidence; hosted exact-head checks and reviewed integration remain required.
+Executable `491cda915974292be17861025c369f6d23e0f075` completed10,571 full tests
+(33optional skips/one existing warning),20actual native tests,92.47% combined
+coverage and unchanged80overall/90critical gates. Ruff/Mypy392/Bandit, frozen
+locks, SBOM and shell/Compose checks passed. Retained clean same-graph advisory
+evidence is not a fresh network audit. This is local correctness evidence, not
+a fresh rerun on a later human-doc head or hosted integration/performance proof.
 
-Next: integrate the reviewed adapters, then compose actual candidate
-signals/ATR protection/exits and original actions/settlements in the daily owner.
-Train-only selection, policy carryover, complete-grid performance, uncertainty,
-executable study freeze and genuine economic evaluation remain unfinished.
+Next: finish exact-head adapter integration, resolve/freeze the shared account-
+replay performance architecture, then complete aligned walk-forward/statistics/
+report composition and full-grid workload validation. The existing original-
+event owner and train-only kernels are not the complete economic evaluator.
+Executable study freeze and qualified-input economic evaluation remain unfinished.
