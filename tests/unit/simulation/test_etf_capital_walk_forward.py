@@ -96,7 +96,7 @@ def orchestration_probe(monkeypatch, owned_originals):
             input_hash=(str(len(paths) % 10) * 64),
         )
 
-    monkeypatch.setattr(module, "_prepare_capital_days", prepare)
+    monkeypatch.setattr(module, "_prepare_owned_capital_days", prepare)
     monkeypatch.setattr(module, "_replay_prepared_capital_trajectory", replay)
     # The real immutable source snapshot is made once for these orchestration-
     # only probes. Public ownership validation is separately exercised without
@@ -300,3 +300,61 @@ def test_real_kernel_old_opening_fills_and_held_policy_survives_new_close(short_
     assert value.points[2].policy.reason == "maximum_hold"
     assert value.points[2].opening.candidate.hold_sessions == 2
     assert value.account.cash == D("100.05495") and value.account.complete
+
+
+def test_walker_owns_originals_once_with_real_one_day_preparation_boundary(
+    originals, orchestration_probe, monkeypatch
+):
+    """Real source/kernel, bounded schedule; doubled paths are not workload proof."""
+    from trading_bot.market_data import etf_capital_owned as ownership
+    from trading_bot.research import etf_capital_prepared as preparation
+    from trading_bot.simulation import etf_capital_walk_forward as module
+
+    validate = ownership._validate_originals
+    validated = []
+    prepared_days = []
+
+    def record(original):
+        validated.append(original)
+        return validate(original)
+
+    def original_one_day(source, *, sessions):
+        value = preparation._prepare_capital_days(source, sessions=sessions[:1])
+        prepared_days.append(value.days[0])
+        return value
+
+    def owned_one_day(source, *, sessions):
+        value = preparation._prepare_owned_capital_days(source, sessions=sessions[:1])
+        prepared_days.append(value.days[0])
+        return value
+
+    monkeypatch.setattr(ownership, "_validate_originals", record)
+    monkeypatch.setattr(module, "_own_capital_source", ownership._own_capital_source)
+    monkeypatch.setattr(module, "_prepare_capital_days", original_one_day, raising=False)
+    monkeypatch.setattr(module, "_prepare_owned_capital_days", owned_one_day, raising=False)
+    result = run(request(originals))
+    assert len(result.folds) == 5 and len(result.fixed) == 28
+    assert all(f.selection.selected is None for f in result.folds)
+    assert len(prepared_days) == 1
+    assert prepared_days[0].session_ordinal == 0
+    assert tuple(b.close for b in prepared_days[0].raw_bars) == (D(100),) * 5
+    assert all(s.entry_symbol is None for s in prepared_days[0].signals)
+    assert len(validated) == 2
+    assert validated[0] is originals and validated[1] is not originals
+
+
+@pytest.mark.parametrize("token", ("owned", "prepared"))
+def test_public_walker_rejects_internal_intermediate_source_tokens(short_originals, token):
+    from trading_bot.market_data.etf_capital_owned import _own_capital_source
+    from trading_bot.research.etf_capital_prepared import _prepare_capital_days
+
+    value = request(short_originals)
+    invalid = (
+        _own_capital_source(short_originals)
+        if token == "owned"
+        else _prepare_capital_days(
+            short_originals, sessions=(short_originals.calendar.sessions[0].session_date,)
+        )
+    )
+    with pytest.raises(ValueError, match="capital_walk_forward_invalid"):
+        run(replace(value, dataset=invalid))

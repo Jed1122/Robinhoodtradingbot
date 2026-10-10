@@ -10,7 +10,7 @@ from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
 from trading_bot.market_data.etf_capital_owned import _own_capital_source
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_feasibility import _config
-from trading_bot.research.etf_capital_prepared import _prepare_capital_days
+from trading_bot.research.etf_capital_prepared import _prepare_owned_capital_days
 from trading_bot.research.etf_capital_selection import (
     CapitalTrainingOutcome,
     CapitalTrainingSelection,
@@ -140,7 +140,7 @@ def replay_capital_walk_forward(request: CapitalWalkForwardRequest) -> CapitalWa
             )
             _validate_owner_terms(terms)
             used = dates[:1423]
-            prepared = _prepare_capital_days(source, sessions=used)
+            prepared = _prepare_owned_capital_days(owned, sessions=used)
             _check(prepared.source_hash == owned.source_hash)
             sessions_by_date = {s.session_date: s for s in source.calendar.sessions}
 

@@ -228,3 +228,43 @@ def test_owned_decimal_context_does_not_depend_on_ambient_precision(source):
     with localcontext() as ctx:
         ctx.prec = 3
         assert run(value) == expected
+
+
+def test_public_trajectory_validates_original_and_owned_copy_once_each(source, monkeypatch):
+    from trading_bot.market_data import etf_capital_owned as module
+
+    validate = module._validate_originals
+    validated = []
+
+    def record(original):
+        validated.append(original)
+        return validate(original)
+
+    monkeypatch.setattr(module, "_validate_originals", record)
+    result = run(request(source))
+    assert result.account.cash == D("100.05495") and result.account.complete
+    assert result.account.fees == D(".03")
+    assert result.input_hash == "180d459ed3d3abddf44d6fa172c665b07a0f7d6687668844f58928e0bc6478a9"
+    assert (
+        result.account.economic_hash
+        == "eb52ddad23b2ab35c99fe68473cfadb56299b0b5d5fea1b60c541cb21eb8e55a"
+    )
+    assert len(validated) == 2
+    assert validated[0] is source and validated[1] is not source
+    assert not result.source_qualified and not result.cost_qualified
+    assert not result.execution_enabled and not result.evidence_promotable
+
+
+@pytest.mark.parametrize("token", ("owned", "prepared"))
+def test_public_trajectory_rejects_private_intermediate_source_tokens(source, token):
+    from trading_bot.market_data.etf_capital_owned import _own_capital_source
+    from trading_bot.research.etf_capital_prepared import _prepare_capital_days
+
+    value = request(source, count=1)
+    invalid = (
+        _own_capital_source(source)
+        if token == "owned"
+        else _prepare_capital_days(source, sessions=(value.days[0].session,))
+    )
+    with pytest.raises(ValueError, match="capital_trajectory_invalid"):
+        run(replace(value, dataset=invalid))

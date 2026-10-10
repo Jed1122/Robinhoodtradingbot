@@ -11,7 +11,10 @@ from trading_bot.market_data.etf_capital_owned import _own_capital_source
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_daily_policy import CapitalDailyPolicy, CapitalOpeningPolicy
 from trading_bot.research.etf_capital_feasibility import _config
-from trading_bot.research.etf_capital_prepared import _prepare_capital_days, _PreparedCapitalInput
+from trading_bot.research.etf_capital_prepared import (
+    _prepare_owned_capital_days,
+    _PreparedCapitalInput,
+)
 from trading_bot.research.etf_capital_prepared_policy import _capital_prepared_policy
 from trading_bot.research.etf_capital_signals import CapitalCandidate
 from trading_bot.simulation.etf_capital_account import CapitalActionAccountReplay
@@ -144,7 +147,7 @@ def replay_capital_trajectory(request: CapitalTrajectoryRequest) -> CapitalTraje
                 request.exit_fill_fraction,
             )
             _validate_owner_terms(terms)
-            prepared = _prepare_capital_days(source, sessions=sessions)
+            prepared = _prepare_owned_capital_days(owned, sessions=sessions)
             _check(prepared.source_hash == owned.source_hash)
 
             return _replay_prepared_capital_trajectory(
