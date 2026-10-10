@@ -51,8 +51,8 @@ from trading_bot.simulation.etf_capital_daily_entry import (
 )
 from trading_bot.simulation.etf_capital_daily_exit import (
     CapitalDailyExitRequest,
+    _simulate_owned_capital_daily_exit,
     select_capital_protection,
-    simulate_capital_daily_exit,
 )
 from trading_bot.simulation.etf_capital_risk import (
     CapitalRiskObservation,
@@ -625,7 +625,7 @@ def _replay_capital_owner(
                 )
                 if request.exit_fill_fraction:
                     cursors = (*cursors, EventCursor(sequence + 2, at + timedelta(seconds=2)))
-                value = simulate_capital_daily_exit(
+                value = _simulate_owned_capital_daily_exit(
                     CapitalDailyExitRequest(
                         request.loaded,
                         request.initial_cash,
@@ -642,7 +642,8 @@ def _replay_capital_owner(
                         request.roundtrip_friction_pct,
                         request.exit_outcome,
                         request.exit_fill_fraction,
-                    )
+                    ),
+                    progress=risk_progress,
                 )
                 events, observations, account = value.events, value.observations, value.account
 

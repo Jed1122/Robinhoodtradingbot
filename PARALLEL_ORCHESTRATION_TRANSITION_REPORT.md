@@ -1,5 +1,23 @@
 # Parallel Orchestration Transition Report
 
+## Current owner-private exit composition — 2026-10-10
+
+The bounded local replay correction6599d61 still timed out the actual first750
+training path at120.010s, setup125.147s/peak178503680bytes. It is not sufficient
+workload evidence. Neither the guard nor original-input validation is relaxed.
+No complete workload, economic freeze or study is established.
+
+A second fixture-first increment factors ONE shared exit emission kernel. The
+public adapter retains complete risk/result/hash output; the owner-private path
+returns only facts the owner consumes and uses existing last-point continuation
+before AND after generation. Both phases still reconstruct all original account
+prefixes and validate source clocks. No caller state or duplicate engine is used.
+Twelve missing/private-route controls were watched RED;133focused tests now pass,
+including original/generated invalidity, four full owner hashes, full public exit
+hashes, unpaid distributions, mutations and fresh final batch-risk equality.
+Fresh integrated review, broader/global/native/critical and actual performance
+verification remain required. The following older checkpoints remain history.
+
 ## Current local exit replay checkpoint — 2026-10-10
 
 PR41 is published ataf392968 with reviewed original-account comparison windows;

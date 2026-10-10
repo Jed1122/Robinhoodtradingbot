@@ -8,6 +8,13 @@ action-risk result, with exact action-account type admission. Output events and
 their account/risk results are still independently reconstructed. No caller
 state, cache or new account arithmetic is accepted; legacy result hashes remain
 unchanged. Removing this redundant reduction is not a workload-performance pass.
+The original-event owner's private exit path uses the same emission kernel,
+validating complete original account prefixes and the generated suffix through
+the same purpose-separated risk continuation. It returns only generated facts
+the owner consumes, without constructing discarded public risk-report graphs.
+The public adapter still renders its complete risk report; the owner still
+reconstructs its final complete ENTRY risk/report. This is not a public token,
+saved-balance input, second execution engine or permission to skip validation.
 Purpose-aware canonical loss decisions permit compatible risk-reducing exits
 without granting entry permission. Drawdown/kill and unknown-state denials are
 not bypassed; unresolved active orders still deny a second order.
