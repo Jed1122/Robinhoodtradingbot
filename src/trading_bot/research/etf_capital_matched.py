@@ -57,6 +57,14 @@ class CapitalMatchedReference(_Offline):
     limitations: tuple[str, ...] = field(default=_LIMITATIONS, init=False)
 
 
+@dataclass(frozen=True, slots=True)
+class _CapitalMatchedTerms:
+    initial_cash: Decimal
+    roundtrip_friction_pct: Decimal
+    entry_fee: Decimal
+    exit_fee: Decimal
+
+
 def run_capital_matched_reference(request: CapitalMatchedRequest) -> CapitalMatchedReference:
     """Never accept supplied exposures, account balances or precomputed results."""
     try:
@@ -89,13 +97,37 @@ def _capital_matched_reference(
     test_sessions: tuple[date, ...],
 ) -> CapitalMatchedReference:
     """Private invocation-owned path seam for later source-owned panel composition."""
+    return _capital_matched_values(
+        owned,
+        _CapitalMatchedTerms(
+            original.initial_cash,
+            original.roundtrip_friction_pct,
+            original.entry_fee,
+            original.exit_fee,
+        ),
+        trajectory,
+        test_sessions,
+    )
+
+
+def _capital_matched_values(
+    owned: _OwnedCapitalSource,
+    terms: _CapitalMatchedTerms,
+    trajectory: CapitalTrajectoryResult,
+    test_sessions: tuple[date, ...],
+) -> CapitalMatchedReference:
+    """Original terms only; no counterfeit public request for selected paths."""
     with localcontext(_CONTEXT):
+        _check(type(owned) is _OwnedCapitalSource and type(terms) is _CapitalMatchedTerms)
+        require_bounded_decimal(terms.initial_cash, "initial capital", positive=True)
+        for value in (terms.roundtrip_friction_pct, terms.entry_fee, terms.exit_fee):
+            require_bounded_decimal(value, "declared cost", nonnegative=True)
         _check(type(test_sessions) is tuple and 0 < len(test_sessions) <= 2047)
         _check(all(type(day) is date for day in test_sessions))
         dates = tuple(point.at.date() for point in trajectory.points)
         _check(dates[1 : 1 + len(test_sessions)] == test_sessions)
         prefixes = replay_capital_action_account_prefixes(
-            initial_cash=original.initial_cash, events=trajectory.events
+            initial_cash=terms.initial_cash, events=trajectory.events
         )
         _check(prefixes[-1] == trajectory.account)
         all_exposures = _capital_close_exposures(trajectory, prefixes)
@@ -107,18 +139,16 @@ def _capital_matched_reference(
             require_bounded_decimal(exposure, "exposure", nonnegative=True)
             _check(exposure <= 1)
         with localcontext(_money_context()):
-            notional = (
-                Decimal(0) if mean == 0 else (original.initial_cash - original.entry_fee) * mean
-            )
+            notional = Decimal(0) if mean == 0 else (terms.initial_cash - terms.entry_fee) * mean
         kernel, quantities, baseline = _capital_passive_values(
             owned,
             CapitalPassiveRequest(
                 owned.dataset,
-                original.initial_cash,
+                terms.initial_cash,
                 test_sessions,
-                original.roundtrip_friction_pct,
-                original.entry_fee,
-                original.exit_fee,
+                terms.roundtrip_friction_pct,
+                terms.entry_fee,
+                terms.exit_fee,
             ),
             entry_notional=notional,
         )
@@ -132,13 +162,13 @@ def _capital_matched_reference(
                 trajectory.input_hash,
                 dates[0],
                 test_sessions,
-                original.initial_cash,
+                terms.initial_cash,
                 exposures,
                 mean,
                 notional,
-                original.roundtrip_friction_pct,
-                original.entry_fee,
-                original.exit_fee,
+                terms.roundtrip_friction_pct,
+                terms.entry_fee,
+                terms.exit_fee,
                 "gross_close_ratio64_mean64_net_fee_fundable_exact_notional_no_DRIP",
                 kernel.input_hash,
                 cash,

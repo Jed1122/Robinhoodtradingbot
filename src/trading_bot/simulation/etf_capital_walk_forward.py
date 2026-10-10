@@ -7,10 +7,14 @@ from decimal import Decimal, localcontext
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Instrument, require_bounded_decimal
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
-from trading_bot.market_data.etf_capital_owned import _own_capital_source
+from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_feasibility import _config
-from trading_bot.research.etf_capital_prepared import _prepare_owned_capital_days
+from trading_bot.research.etf_capital_prepared import (
+    _prepare_owned_capital_days,
+    _PreparedCapitalInput,
+    _validate_owned_capital_days,
+)
 from trading_bot.research.etf_capital_selection import (
     CapitalTrainingOutcome,
     CapitalTrainingSelection,
@@ -88,7 +92,82 @@ class CapitalWalkForwardResult(_Offline):
     input_hash: str
 
 
+def _walk_forward_inputs(
+    request: CapitalWalkForwardRequest, owned: _OwnedCapitalSource
+) -> tuple[
+    _CapitalOwnerTerms,
+    tuple[Instrument, ...],
+    tuple[date, ...],
+    tuple[CapitalWalkForwardFold, ...],
+    tuple[date, ...],
+]:
+    _check(type(request) is CapitalWalkForwardRequest)
+    _check(request.source_qualified is False and request.cost_qualified is False)
+    _check(request.execution_enabled is False and request.economic_admitted is False)
+    _check(request.evidence_promotable is False)
+    _check(type(owned) is _OwnedCapitalSource and request.dataset == owned.dataset)
+    source = owned.dataset
+    loaded = restore_loaded_config(source.canonical_config, source.config_hash)
+    cfg = _config(loaded)
+    require_bounded_decimal(request.initial_cash, "research capital", positive=True)
+    _check(request.initial_cash in cfg.capital_research.capital_tiers)
+    dates = tuple(
+        s.session_date
+        for s in source.calendar.sessions
+        if source.start <= s.session_date < source.end
+    )
+    folds = capital_walk_forward_folds(dates)
+    _check(type(request.weekly_review_sessions) is tuple)
+    reviews = request.weekly_review_sessions
+    _check(all(type(day) is date for day in reviews))
+    _check(reviews == tuple(sorted(set(reviews))) and set(reviews) <= set(dates))
+    _check(type(request.instruments) is tuple and len(request.instruments) == 5)
+    for item in request.instruments:
+        _check(type(item) is Instrument)
+        item.__post_init__()
+        _check(item.observed_at.tzinfo is UTC)
+        _check(item.observed_at <= source.calendar.sessions[0].opens_at)
+    instruments = tuple(replace(item) for item in request.instruments)
+    _check(tuple(i.symbol for i in instruments) == cfg.capital_research.universe)
+    terms = _CapitalOwnerTerms(
+        loaded,
+        request.initial_cash,
+        request.episode_fee_bound,
+        request.entry_fee,
+        request.exit_fee,
+        request.roundtrip_friction_pct,
+        source.calendar,
+        request.entry_outcome,
+        request.entry_fill_fraction,
+        request.exit_outcome,
+        request.exit_fill_fraction,
+    )
+    _validate_owner_terms(terms)
+    return terms, instruments, dates, folds, reviews
+
+
 def replay_capital_walk_forward(request: CapitalWalkForwardRequest) -> CapitalWalkForwardResult:
+    """Freshly own original public inputs, never accept prepared state."""
+    try:
+        with localcontext(_CONTEXT):
+            _check(type(request) is CapitalWalkForwardRequest)
+            _check(request.source_qualified is False and request.cost_qualified is False)
+            _check(request.execution_enabled is False and request.economic_admitted is False)
+            _check(request.evidence_promotable is False)
+            owned = _own_capital_source(request.dataset)
+            _, _, dates, _, _ = _walk_forward_inputs(request, owned)
+            prepared = _prepare_owned_capital_days(owned, sessions=dates[:1423])
+            return _replay_owned_capital_walk_forward(request, owned=owned, prepared=prepared)
+    except (ValueError, TypeError, AttributeError, ArithmeticError, StopIteration, KeyError):
+        raise ValueError("capital_walk_forward_invalid") from None
+
+
+def _replay_owned_capital_walk_forward(
+    request: CapitalWalkForwardRequest,
+    *,
+    owned: _OwnedCapitalSource,
+    prepared: _PreparedCapitalInput,
+) -> CapitalWalkForwardResult:
     """Derive all training scores internally, then carry complete test accounts.
 
     Later rolling training may use already elapsed earlier-fold dates. Current
@@ -97,52 +176,11 @@ def replay_capital_walk_forward(request: CapitalWalkForwardRequest) -> CapitalWa
     """
     try:
         with localcontext(_CONTEXT):
-            _check(type(request) is CapitalWalkForwardRequest)
-            _check(request.source_qualified is False and request.cost_qualified is False)
-            _check(request.execution_enabled is False and request.economic_admitted is False)
-            _check(request.evidence_promotable is False)
-            owned = _own_capital_source(request.dataset)
+            terms, instruments, dates, folds, reviews = _walk_forward_inputs(request, owned)
             source = owned.dataset
-            loaded = restore_loaded_config(source.canonical_config, source.config_hash)
-            cfg = _config(loaded)
-            require_bounded_decimal(request.initial_cash, "research capital", positive=True)
-            _check(request.initial_cash in cfg.capital_research.capital_tiers)
-            dates = tuple(
-                s.session_date
-                for s in source.calendar.sessions
-                if source.start <= s.session_date < source.end
-            )
-            folds = capital_walk_forward_folds(dates)
-            _check(type(request.weekly_review_sessions) is tuple)
-            reviews = request.weekly_review_sessions
-            _check(all(type(day) is date for day in reviews))
-            _check(reviews == tuple(sorted(set(reviews))) and set(reviews) <= set(dates))
-            _check(type(request.instruments) is tuple and len(request.instruments) == 5)
-            for item in request.instruments:
-                _check(type(item) is Instrument)
-                item.__post_init__()
-                _check(item.observed_at.tzinfo is UTC)
-                _check(item.observed_at <= source.calendar.sessions[0].opens_at)
-            instruments = tuple(replace(item) for item in request.instruments)
-            _check(tuple(i.symbol for i in instruments) == cfg.capital_research.universe)
-            terms = _CapitalOwnerTerms(
-                loaded,
-                request.initial_cash,
-                request.episode_fee_bound,
-                request.entry_fee,
-                request.exit_fee,
-                request.roundtrip_friction_pct,
-                source.calendar,
-                request.entry_outcome,
-                request.entry_fill_fraction,
-                request.exit_outcome,
-                request.exit_fill_fraction,
-            )
-            _validate_owner_terms(terms)
             used = dates[:1423]
-            prepared = _prepare_owned_capital_days(owned, sessions=used)
-            _check(prepared.source_hash == owned.source_hash)
             sessions_by_date = {s.session_date: s for s in source.calendar.sessions}
+            _validate_owned_capital_days(owned, prepared, required_sessions=used, exact=True)
 
             def trajectory(
                 schedule: tuple[CapitalTrajectoryDay, ...],
@@ -192,7 +230,7 @@ def replay_capital_walk_forward(request: CapitalWalkForwardRequest) -> CapitalWa
                 outcomes = tuple(a.outcome for a in training_attempts)
                 selection = select_capital_training(
                     outcomes,
-                    loaded=loaded,
+                    loaded=terms.loaded,
                     capital=terms.initial_cash,
                     training_cutoff=cutoff,
                     selection_at=selection_at,

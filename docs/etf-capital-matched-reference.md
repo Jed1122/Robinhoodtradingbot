@@ -33,3 +33,11 @@ reported assumptions/unknowns, not debits that authorize borrowing. All source,
 cost, execution, economic-admission and promotion flags stay false. This adapter
 does not establish the complete four-role statistical panel, qualified history,
 customer execution calibration, workload feasibility or an economic edge.
+
+Private composition now separates four original monetary terms from the public
+single-candidate trajectory request. `_capital_matched_values` uses those terms
+with an internally generated path; the existing public wrapper and matched
+identity remain unchanged. A selected walk-forward path must not be disguised
+as a public single-candidate request. This private seam is not saved-result
+admission: its owning comparison must validate original source and window
+frontiers before use.

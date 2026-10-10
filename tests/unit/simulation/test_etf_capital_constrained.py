@@ -83,6 +83,56 @@ def run(value):
     return replay_capital_constrained(value)
 
 
+def test_private_constrained_common_preparation_preserves_original_accounts(original, monkeypatch):
+    from trading_bot.market_data.etf_capital_owned import _own_capital_source
+    from trading_bot.research.etf_capital_prepared import _prepare_owned_capital_days
+    from trading_bot.simulation import etf_capital_constrained as module
+
+    private = module._replay_owned_capital_constrained
+    value = request(original, count=4)
+    public = run(value)
+    owned = _own_capital_source(original)
+    schedule = tuple(d.session for d in value.days)
+    prepared = _prepare_owned_capital_days(owned, sessions=schedule)
+    superset = _prepare_owned_capital_days(
+        owned, sessions=tuple(s.session_date for s in original.calendar.sessions[197:205])
+    )
+
+    def deny(*args, **kwargs):
+        pytest.fail("private constrained replay repeated ownership or preparation")
+
+    monkeypatch.setattr(module, "_own_capital_source", deny)
+    monkeypatch.setattr(module, "_prepare_owned_capital_days", deny)
+    assert private(value, owned=owned, prepared=prepared) == public
+    wider = private(value, owned=owned, prepared=superset)
+    assert wider.account == public.account and wider.events == public.events
+    assert wider.points == public.points and wider.risk == public.risk
+    assert wider.input_hash != public.input_hash
+    assert wider.execution_enabled is False and wider.evidence_promotable is False
+
+
+def test_private_constrained_mismatched_preparation_denies_before_owner(original, monkeypatch):
+    from trading_bot.market_data.etf_capital_owned import _own_capital_source
+    from trading_bot.research.etf_capital_prepared import _prepare_owned_capital_days
+    from trading_bot.simulation import etf_capital_constrained as module
+
+    private = module._replay_owned_capital_constrained
+    value = request(original)
+    owned = _own_capital_source(original)
+    prepared = _prepare_owned_capital_days(owned, sessions=tuple(d.session for d in value.days))
+
+    def deny(*args, **kwargs):
+        pytest.fail("invalid market identity reached execution owner")
+
+    monkeypatch.setattr(module, "_replay_capital_owner", deny)
+    for invalid in (
+        replace(prepared, source_hash="c" * 64),
+        replace(prepared, days=prepared.days[:1]),
+    ):
+        with pytest.raises(ValueError, match="capital_constrained_invalid"):
+            private(value, owned=owned, prepared=invalid)
+
+
 def test_first_close_is_only_instruction_and_next_open_sizes_literal_spy(original):
     first = run(request(original, count=1))
     assert first.events == () and first.account.cash == 100

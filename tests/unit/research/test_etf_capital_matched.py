@@ -31,6 +31,27 @@ def run(value):
     return run_capital_matched_reference(value)
 
 
+def test_private_matched_terms_do_not_require_counterfeit_public_trajectory_request(source):
+    from trading_bot.market_data.etf_capital_owned import _own_capital_source
+    from trading_bot.research import etf_capital_matched as module
+    from trading_bot.simulation.etf_capital_trajectory import replay_capital_trajectory
+
+    private = module._capital_matched_values
+    terms_type = module._CapitalMatchedTerms
+    original = request(source)
+    owned = _own_capital_source(source)
+    path = replay_capital_trajectory(original.trajectory)
+    terms = terms_type(
+        original.trajectory.initial_cash,
+        original.trajectory.roundtrip_friction_pct,
+        original.trajectory.entry_fee,
+        original.trajectory.exit_fee,
+    )
+    assert private(owned, terms, path, original.test_sessions) == module._capital_matched_reference(
+        owned, original.trajectory, path, original.test_sessions
+    )
+
+
 def test_original_gross_close_exposure_scales_passive_without_expense_denominator(source):
     value = run(request(source))
     with localcontext() as context:
@@ -119,9 +140,12 @@ def test_cash_only_comparison_remains_cash_when_declared_purchase_fee_is_unaffor
     assert value.kernel_result.estimated_terminal_liquidation_cost == 0
     assert tuple(p.close_midpoint_nav for p in value.kernel_result.points) == (D(100),) * 5
     assert value.cash_nav == (D(100),) * 5
-    assert value.input_hash != run(
-        replace(original, trajectory=replace(path, entry_fee=D(0), episode_fee_bound=D(0)))
-    ).input_hash
+    assert (
+        value.input_hash
+        != run(
+            replace(original, trajectory=replace(path, entry_fee=D(0), episode_fee_bound=D(0)))
+        ).input_hash
+    )
     with pytest.raises(ValueError, match=r"^capital_passive_reference_invalid$"):
         passive_run(passive_request(source, entry_fee=fee))
 
