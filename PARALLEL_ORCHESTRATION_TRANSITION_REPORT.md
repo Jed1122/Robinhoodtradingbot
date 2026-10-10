@@ -1,6 +1,50 @@
 # Parallel Orchestration Transition Report
 
-## Current reviewed owner-v5 release — 2026-10-09
+## Current capital research composition — 2026-10-10
+
+PR37 and PR38 are integrated; PR38 merged at
+a940103b04e83b4065eb0d47bd878ba77ad131fd with reviewed tree
+aed4d6d4dcb55557a23ea16a5946ad25114ddd74 after all14 exact-head jobs passed.
+A merge is not deployment. All original evidence and linked branches are retained.
+
+Original-input walk-forward composition derives its140 training runs and29
+continuous comparison paths internally, preserving original held policy across
+fold boundaries. Its exactd2a0252 source passed10,255 full and20 native tests,
+92.21% combined coverage and unchanged80overall/90critical gates. Descriptive
+path economics source263cad8 passed10,276 full and20 native tests,92.37% and
+unchanged80/90 gates. These are source-bound software results, not certification
+of later changed source or genuine economics. Conventional Sortino remains
+explicitly unavailable rather than mislabeled from the shared legacy formula.
+
+The bounded invocation-owned preparation optimization preserves public original
+and copied-source validation, canonical preimages and the same accounting/risk
+engines. Six watched RED controls then103 focused tests passed; independent whole
+review found no Critical/Important/Minor defect. The same six-session fabricated
+profile measured6.99s versus10.23s before, not universal or full-grid performance.
+The separately reviewed four-role statistics wrapper supports2784 aligned math
+columns over the unchanged shared kernel; legacy2088 admission remains intact.
+Its fabricated math-only workload ran two complete repeats in24–25s with about
+243MiB peakRSS. These bounded changes still require current exact-source global
+and hosted release gates; prior suites are not current-candidate certification.
+
+Task5 remains unfinished: source-owned compatible four-role benchmarks, complete
+comparison-family/statistics/report composition, actual full strategy workload,
+capital-specific executable preregistration and one authorized development study.
+Actual retained five-symbol coverage is UNVERIFIED, not known absent. Empty
+action tuples or hashes cannot establish completeness or licensing. Waived
+publication/correction chronology remains a disclosed latest-vintage limitation,
+not an invented timestamp or renewed initial research prerequisite.
+
+Source/cost/execution/economic/promotion/live flags remain false; production
+limits unchanged. Genuine customer cost calibration, broker/paper/shadow and
+actual selected-runtime recovery remain independent unverified prerequisites.
+No private input inspection, real study, acquisition, broker order or deployment
+is established by this software snapshot. Next: complete exact candidate gates,
+source-owned benchmark/report composition and full workload validation, then
+freeze code/config/input/calendar/actions/cost/selection/protocol identities
+before outcomes using qualified authorized inputs. Earlier sections are history.
+
+## Historical reviewed owner-v5 release — 2026-10-09
 
 PR37 remains unmerged. Exact executable source c7de7fc83d88ff758e2a8655845e283f7ecc0d6a
 completed10,058 full tests (33 optional skips/one existing warning),20 actual

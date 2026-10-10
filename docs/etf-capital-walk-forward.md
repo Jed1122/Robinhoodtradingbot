@@ -72,8 +72,12 @@ bands. Defaults are1,000 draws and20/100-session blocks. These are model-depende
 bootstrap bands, not guaranteed coverage or an independent-opportunity estimate.
 
 The report adapter still must bind the complete29-path/six-capital/four-cost/
-three-reference family (2,088 columns), exact dates, identities and all attempted
-paths. Numeric length validation alone authenticates neither labels nor family
+four-reference family (2,784 columns), exact dates, identities and all attempted
+paths. References are full mathematical SPY, constrained policy-managed SPY,
+retrospective exposure-matched SPY and zero-yield cash. They are not interchangeable
+or automatically executable. The separately versioned capital math entrypoint
+provides capacity over the same kernel; the legacy API retains2,088 columns.
+Numeric length validation alone authenticates neither labels nor family
 completeness. Draw counts and completed episodes never become independent support.
 
 Statistics, compatible benchmarks, complete workload/resource verification and

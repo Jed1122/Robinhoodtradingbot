@@ -10,18 +10,25 @@
 
 **Spec:** docs/superpowers/specs/2026-10-08-capital-constrained-etf-design.md
 
-## Current Task5 checkpoint — 2026-10-09
+## Current Task5 checkpoint — 2026-10-10
 
-PR29–PR34 are integrated; corrected signal/frontier PR34 merged atf1326c9.
-Entry/exit executable e814a29 completed9,896full/20native/92.16% and unchanged
-80overall/90critical gates with independent review's duplicate-BUY correction
-covered RED-to-GREEN; PR35's hosted integration remains pending. Pure policy
-executableb2dc8f8 completed9,918full/20native/92.17% and unchanged80/90 gates,
-with reviewed holding-deadline correction covered RED-to-GREEN. This does not
-complete Task5. Policy release, the original-event daily owner, train-only selection/account-policy carryover,
-dependent statistics/reports and full-workload verification remain. No executable
-economic freeze or study has run; qualified authorized inputs remain necessary.
-Retain earlier checkpoints as history, not current release or readiness claims.
+PR29–PR38 are integrated; PR38 mergeda940103 after all14 exact-head checks.
+Original-input walk-forward sourced2a0252 passed10,255full/20native/92.21%;
+corrected descriptive path economics source263cad8 passed10,276full/20native/
+92.37%. Both passed unchanged80overall/90critical gates. These retained source-
+bound results do not certify later changes. Bounded invocation-owned preparation
+reuse and four-role2784-column statistics capacity are independently reviewed;
+their current combined-source release gates remain required. No full strategy
+workload, capital economic executable freeze or genuine study is complete.
+
+Task5 still needs source-owned four-reference benchmarks, complete aligned
+comparison/statistics/reports, full28x6x4x5 workload/resource verification and
+capital-specific immutable preregistration before one authorized evaluation.
+Actual retained five-symbol inputs/actions/access are UNVERIFIED, not known
+absent. Latest-vintage/publication limitations remain disclosed under the waiver;
+missing costs/support/coverage never become zeros or qualification. All readiness
+flags remain false and production limits unchanged. Preserve earlier execution
+checkpoints as history, not current release or project-completion claims.
 
 ## Global Constraints
 
