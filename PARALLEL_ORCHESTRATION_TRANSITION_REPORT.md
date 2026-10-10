@@ -2,6 +2,14 @@
 
 ## Current owned-risk performance checkpoint — 2026-10-10
 
+Latest guard correction: the independent last-point delta review passed139tests
+and135 differential controls, finding no additional loss-logic defect. Required
+BanditB101 was corrected with an explicit None denial. Durable reset/episode/
+failure-retry/mode/public-keyword controls are now committed with328related tests
+passing; Ruff/Mypy391/Bandit/both frozen locks/SBOM pass.455broader tests passed
+on the preceding assertion source; final-source full/native/critical remain
+required. Source review and narrow checks do not constitute global release.
+
 Latest correction: the first independent risk-progress review found one
 Important old-observation alias defect. Five watched RED controls now pass;
 derived records are detached and returned points use current original accounts

@@ -12,6 +12,13 @@
 
 ## Current Task5 checkpoint — 2026-10-10
 
+Current guard correction: independent last-point delta review139tests/135queries
+found no additional loss-logic defect. Required redundant-assert Bandit issue
+fixed with explicit None denial; suggested durable state/mode/public-input
+controls implemented.328related tests/Ruff/Mypy391/Bandit/locks/SBOM pass.455
+broader tests passed on preceding source; exact final full/native/critical gates
+remain. No complete workload/economic freeze or genuine study yet.
+
 Latest corrective source: independent review found one Important continuation
 alias defect; five watched RED controls are fixed. Private latest-point output
 for intermediate decisions avoids repeated allocation, but the final canonical

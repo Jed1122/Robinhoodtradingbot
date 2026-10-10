@@ -42,7 +42,15 @@ full original-event accounting, UTC reset/gap-loss baselines, weekly/drawdown
 latches, episode-completion clocks, reservations and settlement/fee obligations
 remain in force. Research capital does not change production limits.
 
-Remaining: independent corrective-delta review, exact-source full/native/critical
+The independent corrective-delta review passed139 tests and135 synthetic
+differential queries without another loss-logic defect. Its required Bandit
+finding (a redundant assertion) is corrected with explicit fail-closed denial;
+its durable last-only reset/episode/failure-retry/mode/public-input suggestions
+are implemented.328 related tests and Ruff/Mypy391/Bandit/frozen locks/SBOM pass.
+The earlier455-test broad run belongs to the immediately preceding assertion
+source; it does not substitute for final-source global certification.
+
+Remaining: exact-source full/native/critical
 verification, complete measured study workload, aligned four-role economics,
 immutable executable/input/cost freeze, then one authorized evaluation with
 qualified inputs. All source/cost/execution/economic/promotion/live flags remain

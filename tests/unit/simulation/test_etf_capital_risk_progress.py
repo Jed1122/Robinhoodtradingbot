@@ -187,7 +187,8 @@ def test_shortened_and_changed_capital_inputs_reconstruct_from_genesis():
     assert current[0].snapshot.daily_loss_pct == D(0)
 
 
-def test_public_risk_frontends_have_no_progress_or_saved_state_input():
+@pytest.mark.parametrize("keyword", ("_progress", "_last_only"))
+def test_public_risk_frontends_have_no_progress_or_saved_state_input(keyword):
     import trading_bot.simulation.etf_capital_risk as module
 
     with pytest.raises(TypeError):
@@ -196,7 +197,7 @@ def test_public_risk_frontends_have_no_progress_or_saved_state_input():
             initial_cash=D(100),
             events=(),
             observations=(point(0, 0),),
-            _progress=module._RiskProgress(),
+            **{keyword: module._RiskProgress() if keyword == "_progress" else True},
         )
 
 
@@ -363,3 +364,45 @@ def test_private_last_only_mode_requires_exact_bool():
             actions=True,
             _last_only=1,
         )
+
+
+@pytest.mark.parametrize("purpose", tuple(OrderPurpose))
+def test_last_only_episode_resets_failure_retry_and_full_mode_are_durable(purpose):
+    import trading_bot.simulation.etf_capital_risk as module
+
+    progress = module._RiskProgress()
+    events = losing_episodes(3)
+    observations = (point(0, 0), point(1, 30), point(2, 30, day=7))
+    arguments = dict(
+        loaded=loaded(),
+        initial_cash=D(100),
+        events=events,
+        observations=observations[:2],
+        purpose=purpose,
+        actions=True,
+    )
+    last = module._replay_risk_points(**arguments, _progress=progress, _last_only=True)
+    assert last[-1].snapshot.consecutive_loss_count == 3
+    saved = dict(progress.states)
+    invalid = replace(observations[-1])
+    object.__setattr__(invalid, "daily_reset_reconciled", 1)
+    with pytest.raises(ValueError, match="capital_risk_invalid"):
+        module._replay_risk_points(
+            **dict(arguments, observations=(*observations[:2], invalid)),
+            _progress=progress,
+            _last_only=True,
+        )
+    assert progress.states == saved
+    arguments["observations"] = observations
+    expected = module._replay_risk_points(**arguments)
+    assert (
+        module._replay_risk_points(**arguments, _progress=progress, _last_only=True)
+        == expected[-1:]
+    )
+    assert module._replay_risk_points(**arguments, _progress=progress) == expected
+    assert (
+        module._replay_risk_points(**arguments, _progress=progress, _last_only=True)
+        == expected[-1:]
+    )
+    assert expected[-1].snapshot.weekly_loss_pct == D(0)
+    assert expected[-1].snapshot.consecutive_loss_count == 3

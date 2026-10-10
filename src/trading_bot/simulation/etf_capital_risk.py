@@ -428,8 +428,8 @@ def _replay_risk_points(
             _check({count for count in required_actions if count <= consumed} <= covered_actions)
             new_points = points if _last_only else points[start:]
             if _last_only and not points:
-                _check(continuation is not None)
-                assert continuation is not None
+                if continuation is None:
+                    raise ValueError("capital_risk_invalid")
                 values = continuation.points[-1]
                 observation = observations[-1]
                 points = [
