@@ -29,6 +29,10 @@ from trading_bot.simulation.etf_capital_account import (
     replay_capital_action_account_prefixes,
 )
 from trading_bot.simulation.etf_capital_action_events import CapitalDistributionPaid
+from trading_bot.simulation.etf_capital_constrained import (
+    CapitalConstrainedPoint,
+    CapitalConstrainedResult,
+)
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
 from trading_bot.simulation.etf_capital_risk import _capital_risk_source_frontiers
 from trading_bot.simulation.etf_capital_trajectory import (
@@ -169,7 +173,7 @@ def _window_metrics(
 
 
 def _capital_economic_window(
-    trajectory: CapitalTrajectoryResult,
+    trajectory: CapitalTrajectoryResult | CapitalConstrainedResult,
     *,
     initial_cash: Decimal,
     test_sessions: tuple[date, ...],
@@ -179,7 +183,9 @@ def _capital_economic_window(
     """Use only inside a future original-source-owned comparison invocation."""
     try:
         with localcontext(_CONTEXT):
-            _check(type(trajectory) is CapitalTrajectoryResult)
+            _check(type(trajectory) in (CapitalTrajectoryResult, CapitalConstrainedResult))
+            strategy = type(trajectory) is CapitalTrajectoryResult
+            point_type = CapitalTrajectoryPoint if strategy else CapitalConstrainedPoint
             _check(trajectory.source_qualified is False and trajectory.cost_qualified is False)
             _check(trajectory.execution_enabled is False and trajectory.economic_admitted is False)
             _check(trajectory.evidence_promotable is False)
@@ -193,7 +199,7 @@ def _capital_economic_window(
             _check(type(points) is tuple and 1 < len(points) <= 2048)
             _strict_account(trajectory.account)
             for point in points:
-                _check(type(point) is CapitalTrajectoryPoint)
+                _check(type(point) is point_type)
                 require_utc(point.at)
                 _check(point.at.tzinfo is UTC)
                 require_bounded_decimal(point.equity, "original point equity", positive=True)
@@ -306,7 +312,9 @@ def _capital_economic_window(
             )
             identity = content_hash(
                 (
-                    "capital-private-economic-window-v1",
+                    "capital-private-economic-window-v1"
+                    if strategy
+                    else "capital-private-constrained-economic-window-v1",
                     trajectory.input_hash,
                     initial_cash,
                     dates[0],

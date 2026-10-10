@@ -24,6 +24,7 @@ from trading_bot.simulation.etf_capital_account import (
     replay_capital_action_account_prefixes,
 )
 from trading_bot.simulation.etf_capital_action_events import CapitalDistributionPaid
+from trading_bot.simulation.etf_capital_constrained import CapitalConstrainedResult
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
 from trading_bot.simulation.etf_capital_trajectory import (
     CapitalTrajectoryRequest,
@@ -283,7 +284,7 @@ def _capital_path_economics(
 
 
 def _capital_close_exposures(
-    trajectory: CapitalTrajectoryResult,
+    trajectory: CapitalTrajectoryResult | CapitalConstrainedResult,
     prefixes: tuple[CapitalActionAccountReplay, ...],
 ) -> tuple[Decimal, ...]:
     """Shared original account/mark NAV check, before operating expenses."""

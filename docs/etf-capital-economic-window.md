@@ -12,6 +12,15 @@ exit-only tail, not additional test observations. A future source-owned panel
 must enforce the frozen630-session study window. This private generic assembler
 also accepts smaller windows for independent literal fixtures.
 
+The same private assembler accepts two exact, separately typed result families:
+strategy trajectories require exact strategy points; constrained-SPY results
+require exact constrained points. It never converts a benchmark into counterfeit
+strategy records or accepts a caller-selected family. Both use the same original
+account, frontier, exposure and metric arithmetic. Strategy window preimages stay
+unchanged; constrained windows have the distinct
+`capital-private-constrained-economic-window-v1` namespace. This consistency seam
+is not authentication of arbitrary saved results and is not a public study API.
+
 The shared original-risk clock admission checks all observations against both
 their last applied event and next unique event, including tail observations.
 Reordered observations or coordinated future-prefix/account substitutions deny.
