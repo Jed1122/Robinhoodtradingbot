@@ -1,5 +1,22 @@
 # Synthetic next-open capital entry adapter
 
+## Current owner-private entry facts — October 10
+
+The public adapter still returns complete risk/account/result records with its
+original digest preimage. One shared terminal-point gate and one shared emission
+kernel serve public and owner-private calls. The private owner path returns only
+facts it consumes, without constructing discarded full risk reports. It uses
+invocation-local continuation before and after generation; both calls still
+reconstruct complete original account prefixes and validate all source clocks.
+No saved balance, preapproval or caller progress is admitted. The final owner
+canonical risk remains a fresh complete report. Historical certification below
+does not certify this source delta; current review/global/workload gates remain.
+
+The preceding private-exit change timed out the actual first750 training path
+at120.010040seconds. The unchanged guard has not passed and no full-grid or
+economic result is established. Remaining panel/statistics/report composition,
+full workload and qualified-input study gates remain separate.
+
 `simulate_capital_daily_entry` is a bounded research-assumption adapter, not the
 full daily strategy/economic runner. It consumes canonical research config,
 all original v3 account facts and risk observations, declared instrument terms,

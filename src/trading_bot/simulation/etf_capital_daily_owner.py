@@ -47,7 +47,7 @@ from trading_bot.simulation.etf_capital_daily_entry import (
     _CONTEXT,
     CapitalDailyEntryRequest,
     _Offline,
-    simulate_capital_daily_entry,
+    _simulate_owned_capital_daily_entry,
 )
 from trading_bot.simulation.etf_capital_daily_exit import (
     CapitalDailyExitRequest,
@@ -691,7 +691,7 @@ def _replay_capital_owner(
                         *entry_cursors,
                         EventCursor(sequence + 2, opened + timedelta(seconds=2)),
                     )
-                value = simulate_capital_daily_entry(
+                value = _simulate_owned_capital_daily_entry(
                     CapitalDailyEntryRequest(
                         request.loaded,
                         request.initial_cash,
@@ -717,7 +717,8 @@ def _replay_capital_owner(
                         request.roundtrip_friction_pct,
                         request.entry_outcome,
                         request.entry_fill_fraction,
-                    )
+                    ),
+                    progress=risk_progress,
                 )
                 old_count = len(events)
                 events, observations, account = value.events, value.observations, value.account

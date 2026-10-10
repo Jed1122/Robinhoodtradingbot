@@ -1,5 +1,23 @@
 # Parallel Orchestration Transition Report
 
+## Current owner-private entry composition — 2026-10-10
+
+PR41 original-account comparison sourceaf392968 completed10,523full/20native
+tests,92.47% combined and unchanged80overall/90critical; four hosted3.12/3.13
+jobs still pending at last snapshot. It is not merged or economic evidence.
+
+Separate owner-private exit source2cde564 passed independent integrated review
+with no Critical/Important/Minor and full parent-result differentials, but its
+actual750 training path again timed out120.010040s. No guard is relaxed.
+The next bounded increment shares the existing entry terminal-point gate and
+entry emission kernel, preserving public hashes and full risk reports while
+private owner calls avoid discarded graphs. Both original and generated tapes
+still receive complete prefix/clock validation. No caller account is adopted.
+Fresh review/global/native/critical/workload gates remain required for this new
+source. No executable economic freeze or study is established. Source/cost/
+execution/economic/promotion/live flags remain false and production limits intact.
+Historical checkpoints below are retained, not current-source certification.
+
 ## Current owner-private exit composition — 2026-10-10
 
 The bounded local replay correction6599d61 still timed out the actual first750
