@@ -18,10 +18,21 @@ performance pass. Human-document publication is not a fresh executable rerun.
 
 The same source still failed the unchanged first750 training path120-second
 guard at120.010034333s, with178,470,912-byte peakRSS. After three failed bounded
-fixes, the systematic-debugging architecture discussion remains open. The
-same-reducer invocation-owned original-prefix continuation proposal is not a
-frozen API or implemented fourth fix. Do not weaken guards or replace canonical
-serialization globally. Source correctness does not resolve this workload gap.
+fixes, the systematic-debugging architecture discussion remains open. Distinguish
+the two continuation layers:
+
+- The already implemented invocation-owned `_RiskProgress` reuses validated
+  loss-point calculations. The owner-private entry/exit adapters use it before
+  and after event generation. Their shared `_replay_risk_points` still reconstructs
+  complete original account prefixes on every call; it is not an account cursor.
+- The proposed original-account transition continuation is not implemented or
+  API-frozen. It would extract one canonical initialization/transition/snapshot
+  kernel shared by public batch replay and private invocation-owned account state.
+  That is the distinct fourth performance approach under discussion, not a claim
+  that existing risk continuation or the private adapters are missing.
+
+Do not weaken guards or replace canonical serialization globally. Neither the
+implemented risk continuation nor source correctness resolves the workload gap.
 
 Next: finish exact-head adapter release; resolve and freeze that architecture
 before fixture-first implementation; finish compact source-owned aligned panel/
