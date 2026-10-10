@@ -1,5 +1,35 @@
 # Parallel Orchestration Transition Report
 
+## Current local exit replay checkpoint — 2026-10-10
+
+PR41 is published ataf392968 with reviewed original-account comparison windows;
+its current full/native/critical and hosted release gates remain pending.
+The separate owned-comparison sourcec198f36 completed10,504full/20native tests,
+92.46625530273815% combined coverage and unchanged80overall/90critical gates.
+This retained certification does not certify subsequent source changes.
+
+The bounded next increment reuses only the terminal original account from the
+immediately local, fresh pre-exit risk reconstruction. It removes one redundant
+pre-exit reduction, retaining output-event account/risk replay and every public
+input check. Watched redundant-call RED now passes;306related tests preserve
+six complete parent result hashes, precision independence, original conflicts,
+split/receivable/pending-order/purpose controls. Independent increment review
+and fresh full/native/critical verification are still required.
+
+The prior actual750-session training path timed out at120.006seconds. This is
+still a failed workload check, not a full-grid pass. No speedup is presumed.
+Source-owned aligned panel/statistics/reports and full workload verification
+remain unfinished. No executable economic freeze or new study has occurred.
+Retained five-symbol source/actions/access are unverified, not known absent;
+chronology-waiver limitations remain disclosed. Assumed-cost DEVELOPMENT does
+not require genuine customer fill calibration. Qualification, operational and
+live gates remain separate, false/unverified and production limits unchanged.
+
+Next: finish reviewed exact-candidate release checks, measure the bounded replay
+change without increasing guards, complete aligned comparisons/statistics and
+workload validation, freeze all executable/input/selection/cost/protocol identities,
+then qualify authorized inputs before one economic evaluation.
+
 ## Current comparison-window release checkpoint — 2026-10-10
 
 PR39 and PR40 are merged; integration base is

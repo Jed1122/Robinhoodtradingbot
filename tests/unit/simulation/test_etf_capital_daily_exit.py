@@ -363,3 +363,88 @@ def test_protection_gap_and_adverse_range_precedence(opening, high, low, price, 
 )
 def test_protective_exit_prices_apply_friction_once(price, expected):
     assert exit_run(raw_base_price=D(price)).assumed_price == D(expected)
+
+
+def test_exit_reuses_fresh_risk_account_but_reconstructs_output(monkeypatch):
+    from trading_bot.market_data.recording import content_hash
+    from trading_bot.simulation import etf_capital_daily_exit as module
+
+    value = exit_request()
+    original = module.replay_capital_action_account
+    reduced_lengths = []
+
+    def record_reduction(*, initial_cash, events):
+        reduced_lengths.append(len(events))
+        return original(initial_cash=initial_cash, events=events)
+
+    monkeypatch.setattr(module, "replay_capital_action_account", record_reduction)
+    result = module.simulate_capital_daily_exit(value)
+    assert result.account.cash == D("99.95010")
+    assert result.account.unsettled_proceeds == D("19.87005")
+    assert (
+        content_hash(result) == "cabed9a4078fde2a63cf6381f5d381115044a4179648c36eefec2ca03bdbda35"
+    )
+    assert reduced_lengths == [6]
+
+
+@pytest.mark.parametrize(
+    "changes,expected_hash",
+    [
+        ({}, "cabed9a4078fde2a63cf6381f5d381115044a4179648c36eefec2ca03bdbda35"),
+        (
+            {"outcome": "partial", "fill_fraction": D(".5")},
+            "3297fae10c16a70dd2429d0316dfada12ccc313755c41c951a49335ee2e74671",
+        ),
+        (
+            {"outcome": "rejected", "fill_fraction": D("0"), "side_fee": D("0")},
+            "95830f28bf18fb0a7c061b4ed7aed1e95b9bbb941f903d82a6d5bd7d7c3d2fdb",
+        ),
+        (
+            {"outcome": "unfilled", "fill_fraction": D("0"), "side_fee": D("0")},
+            "24ec56a081bf0cbf5f61d04b28f0086b514ce7f0b42f627ad4c23ce729c137dc",
+        ),
+        (
+            {"purpose": OrderPurpose.STRATEGY_EXIT},
+            "03fa515851dbf7a7ccf356612cb535e594170537f44ca38dd1fcdea144c99133",
+        ),
+        (
+            {"raw_base_price": D("90")},
+            "a9cdf06c236edb2bc348a37f0dbdbc591ba3cae3b75f58e36531a5c896f0fe43",
+        ),
+    ],
+)
+def test_local_account_reuse_preserves_parent_complete_exit_hash(changes, expected_hash):
+    from trading_bot.market_data.recording import content_hash
+
+    # These complete-result preimages were captured from af392968 before reuse.
+    assert content_hash(exit_run(**changes)) == expected_hash
+    with localcontext() as ctx:
+        ctx.prec = 3
+        assert content_hash(exit_run(**changes)) == expected_hash
+
+
+def test_conflicting_late_original_fill_denies_before_output_reconstruction(monkeypatch):
+    from trading_bot.simulation import etf_capital_daily_exit as module
+
+    value = exit_request()
+    fill_event = value.events[-1]
+    conflict = replace(fill_event, fill=replace(fill_event.fill, price=D("99")))
+    value = replace(
+        value,
+        events=(*value.events, conflict),
+        observations=(
+            *value.observations[:-1],
+            replace(value.observations[-1], source_count=4),
+        ),
+    )
+    original = module.replay_capital_action_account
+    reductions = []
+
+    def record_reduction(*, initial_cash, events):
+        reductions.append(len(events))
+        return original(initial_cash=initial_cash, events=events)
+
+    monkeypatch.setattr(module, "replay_capital_action_account", record_reduction)
+    with pytest.raises(ValueError):
+        module.simulate_capital_daily_exit(value)
+    assert reductions == []

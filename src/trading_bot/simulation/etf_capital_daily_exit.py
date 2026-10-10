@@ -196,9 +196,9 @@ def simulate_capital_daily_exit(request: CapitalDailyExitRequest) -> CapitalDail
             purpose=request.purpose,
         )
         _check(risk.points[-1].decision.allowed)
-        original = replay_capital_action_account(
-            initial_cash=request.initial_cash, events=request.events
-        )
+        original = risk.points[-1].account
+        if type(original) is not CapitalActionAccountReplay:
+            raise ValueError("capital_daily_exit_invalid")
         _check(original.quantity > 0 and original.average_price is not None)
         opening = None
         for event in request.events:

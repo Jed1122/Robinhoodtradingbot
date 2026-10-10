@@ -3,6 +3,11 @@
 `simulate_capital_daily_exit` reconstructs the complete supplied original v3
 account/action/risk tape. It cannot accept caller cash, quantity, basis, fee
 reserves or loss latches. The current observation must consume the entire tape.
+The pre-exit account is taken only from that immediately local, freshly rebuilt
+action-risk result, with exact action-account type admission. Output events and
+their account/risk results are still independently reconstructed. No caller
+state, cache or new account arithmetic is accepted; legacy result hashes remain
+unchanged. Removing this redundant reduction is not a workload-performance pass.
 Purpose-aware canonical loss decisions permit compatible risk-reducing exits
 without granting entry permission. Drawdown/kill and unknown-state denials are
 not bypassed; unresolved active orders still deny a second order.
