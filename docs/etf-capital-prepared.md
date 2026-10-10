@@ -55,6 +55,13 @@ digests, current bars, signals and distances. They do not alias public owner ide
 sources or replace original public signal identities. Future public evaluators
 must create preparations internally, not adopt externally supplied results.
 
+Private common composition uses `_validate_owned_capital_days` to check source,
+config, full calendar, ordered prepared sessions, original ordinals, exact UTC
+closes and permanently false flags. A constrained path may use a requested
+subset of its invocation's market preparation; the walker requires its exact
+first1,423 dates. This is an internal consistency guard, not authentication of
+arbitrary Python objects, source qualification or a public cache interface.
+
 Literal and differential fixtures cover199/200/201/301-row windows, unchanged
 public policy identity, raw stop distance8, zero ATR, invalid schedules, source
 mutation, new-invocation validation and the intermediate ancient split failure.

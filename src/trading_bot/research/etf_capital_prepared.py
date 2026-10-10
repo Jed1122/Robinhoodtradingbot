@@ -1,7 +1,7 @@
 """Private compact daily calculations from owned originals, never admission."""
 
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal, localcontext
 from typing import Literal
 
@@ -61,6 +61,74 @@ class _PreparedCapitalInput(_PreparationOnly):
     session_dates: tuple[date, ...]
     days: tuple[_PreparedCapitalDay, ...]
     input_hash: str
+
+
+def _validate_owned_capital_days(
+    owned: _OwnedCapitalSource,
+    prepared: _PreparedCapitalInput,
+    *,
+    required_sessions: tuple[date, ...],
+    exact: bool = False,
+) -> None:
+    """Internal consistency only; never authenticate supplied cache tokens."""
+    try:
+        if (
+            type(owned) is not _OwnedCapitalSource
+            or type(prepared) is not _PreparedCapitalInput
+            or type(required_sessions) is not tuple
+            or not required_sessions
+            or any(type(day) is not date for day in required_sessions)
+            or required_sessions != tuple(sorted(set(required_sessions)))
+            or type(exact) is not bool
+        ):
+            raise ValueError("capital_prepared_input_invalid")
+        source = owned.dataset
+        dates = tuple(
+            row.session_date
+            for row in source.calendar.sessions
+            if source.start <= row.session_date < source.end
+        )
+        if (
+            prepared.source_hash != owned.source_hash
+            or prepared.config_hash != source.config_hash
+            or type(prepared.session_dates) is not tuple
+            or prepared.session_dates != dates
+            or type(prepared.days) is not tuple
+            or not 0 < len(prepared.days) <= 4000
+        ):
+            raise ValueError("capital_prepared_input_invalid")
+        ordinals = {day: index for index, day in enumerate(dates)}
+        closes = {row.session_date: row.closes_at for row in source.calendar.sessions}
+        for value in (prepared, *prepared.days):
+            if (
+                value.source_qualified is not False
+                or value.cost_qualified is not False
+                or value.execution_enabled is not False
+                or value.economic_admitted is not False
+                or value.evidence_promotable is not False
+            ):
+                raise ValueError("capital_prepared_input_invalid")
+        for day in prepared.days:
+            if (
+                type(day) is not _PreparedCapitalDay
+                or type(day.session) is not date
+                or day.session not in ordinals
+                or type(day.session_ordinal) is not int
+                or day.session_ordinal != ordinals[day.session]
+                or type(day.as_of) is not datetime
+                or day.as_of.tzinfo is not UTC
+                or day.as_of != closes[day.session]
+            ):
+                raise ValueError("capital_prepared_input_invalid")
+        actual = tuple(day.session for day in prepared.days)
+        if (
+            actual != tuple(sorted(set(actual)))
+            or not set(required_sessions) <= set(actual)
+            or (exact and actual != required_sessions)
+        ):
+            raise ValueError("capital_prepared_input_invalid")
+    except (ValueError, TypeError, AttributeError, KeyError):
+        raise ValueError("capital_prepared_input_invalid") from None
 
 
 def _prepare_capital_days(
@@ -192,8 +260,15 @@ def _prepare_owned_capital_days(
                 )
                 result.append(
                     _PreparedCapitalDay(
-                        day, as_of, ordinals[day], raw, signals, stops,
-                        history_ready, below_sma200, identity,
+                        day,
+                        as_of,
+                        ordinals[day],
+                        raw,
+                        signals,
+                        stops,
+                        history_ready,
+                        below_sma200,
+                        identity,
                     )
                 )
             days = tuple(result)

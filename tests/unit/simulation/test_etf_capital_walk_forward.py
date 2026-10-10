@@ -72,7 +72,7 @@ def orchestration_probe(monkeypatch, owned_originals):
 
     def prepare(source, *, sessions):
         preparations.append(sessions)
-        return SimpleNamespace(source_hash=owned_originals.source_hash, input_hash="a" * 64)
+        return typed_orchestration_prepared(owned_originals)
 
     def replay(**kwargs):
         days = kwargs["schedule"]
@@ -326,7 +326,10 @@ def test_walker_owns_originals_once_with_real_one_day_preparation_boundary(
     def owned_one_day(source, *, sessions):
         value = preparation._prepare_owned_capital_days(source, sessions=sessions[:1])
         prepared_days.append(value.days[0])
-        return value
+        # Only this first day is actually prepared. Remaining typed placeholders
+        # are used solely by the explicitly doubled orchestration kernel.
+        stub = typed_orchestration_prepared(source)
+        return replace(stub, days=(value.days[0], *stub.days[1:]), input_hash=value.input_hash)
 
     monkeypatch.setattr(ownership, "_validate_originals", record)
     monkeypatch.setattr(module, "_own_capital_source", ownership._own_capital_source)
@@ -358,3 +361,122 @@ def test_public_walker_rejects_internal_intermediate_source_tokens(short_origina
     )
     with pytest.raises(ValueError, match="capital_walk_forward_invalid"):
         run(replace(value, dataset=invalid))
+
+
+def typed_orchestration_prepared(owned):
+    """Typed market placeholders for doubled paths; not execution evidence."""
+    from trading_bot.research.etf_capital_prepared import (
+        _PreparedCapitalDay,
+        _PreparedCapitalInput,
+    )
+
+    sessions = owned.dataset.calendar.sessions
+    return _PreparedCapitalInput(
+        owned.source_hash,
+        owned.dataset.config_hash,
+        tuple(s.session_date for s in sessions),
+        tuple(
+            _PreparedCapitalDay(s.session_date, s.closes_at, index, (), (), (), False, (), "b" * 64)
+            for index, s in enumerate(sessions[:1423])
+        ),
+        "a" * 64,
+    )
+
+
+def test_private_walker_reuses_market_inputs_but_not_capital_or_cost_accounts(
+    originals, owned_originals, orchestration_probe, monkeypatch
+):
+    from trading_bot.simulation import etf_capital_walk_forward as module
+
+    private = module._replay_owned_capital_walk_forward
+    prepared = typed_orchestration_prepared(owned_originals)
+
+    def deny(*args, **kwargs):
+        pytest.fail("private replay repeated ownership or preparation")
+
+    monkeypatch.setattr(module, "_own_capital_source", deny)
+    monkeypatch.setattr(module, "_prepare_owned_capital_days", deny)
+    hashes = []
+    for capital, friction in ((D(100), D(".10")), (D(250), D(".40"))):
+        orchestration_probe.paths.clear()
+        value = private(
+            request(originals, initial_cash=capital, roundtrip_friction_pct=friction),
+            owned=owned_originals,
+            prepared=prepared,
+        )
+        assert len(orchestration_probe.paths) == 169
+        assert all(p["terms"].initial_cash == capital for p in orchestration_probe.paths)
+        assert all(
+            p["terms"].roundtrip_friction_pct == friction for p in orchestration_probe.paths[140:]
+        )
+        assert all(f.selection.selected is None for f in value.folds)
+        assert value.evidence_promotable is False
+        hashes.append(value.input_hash)
+    assert hashes[0] != hashes[1]
+
+
+@pytest.mark.parametrize(
+    "change",
+    ("source", "config", "calendar", "order", "ordinal", "close", "flag", "day_flag"),
+)
+def test_private_walker_denies_inconsistent_market_context_before_account_paths(
+    originals, owned_originals, orchestration_probe, change
+):
+    from datetime import UTC, datetime
+
+    from trading_bot.domain import ConfigHash
+    from trading_bot.simulation import etf_capital_walk_forward as module
+
+    private = module._replay_owned_capital_walk_forward
+    prepared = typed_orchestration_prepared(owned_originals)
+    if change == "source":
+        prepared = replace(prepared, source_hash="c" * 64)
+    elif change == "config":
+        prepared = replace(prepared, config_hash=ConfigHash("c" * 64))
+    elif change == "calendar":
+        prepared = replace(prepared, session_dates=prepared.session_dates[:-1])
+    elif change == "order":
+        prepared = replace(prepared, days=prepared.days[::-1])
+    elif change == "ordinal":
+        prepared = replace(
+            prepared, days=(replace(prepared.days[0], session_ordinal=1), *prepared.days[1:])
+        )
+    elif change == "close":
+        prepared = replace(
+            prepared,
+            days=(
+                replace(prepared.days[0], as_of=datetime(2016, 1, 4, tzinfo=UTC)),
+                *prepared.days[1:],
+            ),
+        )
+    elif change == "flag":
+        object.__setattr__(prepared, "source_qualified", True)
+    else:
+        object.__setattr__(prepared.days[0], "execution_enabled", True)
+    with pytest.raises(ValueError, match="capital_walk_forward_invalid"):
+        private(request(originals), owned=owned_originals, prepared=prepared)
+    assert orchestration_probe.paths == []
+
+
+def test_public_walker_preserves_parent_orchestration_identity(originals, orchestration_probe):
+    assert (
+        run(request(originals)).input_hash
+        == "33bf8398cf73db14a203687672d8cd63146f238058c25f7b9fd1f91a97f6a7f6"
+    )
+
+
+def test_common_owned_market_guard_allows_internal_superset_only_when_declared(owned_originals):
+    from trading_bot.research import etf_capital_prepared as module
+
+    prepared = typed_orchestration_prepared(owned_originals)
+    subset = tuple(d.session for d in prepared.days[199:205])
+    module._validate_owned_capital_days(owned_originals, prepared, required_sessions=subset)
+    with pytest.raises(ValueError):
+        module._validate_owned_capital_days(
+            owned_originals, prepared, required_sessions=subset, exact=True
+        )
+    for invalid in ((), subset[::-1], (subset[0], subset[0]), (date(2100, 1, 1),)):
+        with pytest.raises(ValueError):
+            module._validate_owned_capital_days(
+                owned_originals, prepared, required_sessions=invalid
+            )

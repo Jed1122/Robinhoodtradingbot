@@ -1,6 +1,145 @@
 # Parallel Orchestration Transition Report
 
-## Current capital research composition — 2026-10-10
+## Current comparison-window release checkpoint — 2026-10-10
+
+PR39 and PR40 are merged; integration base is
+f628f1ab87e587b5918c860fa3cd404f17e2fc49. Do not resume or remerge them.
+The following older checkpoints are source-bound history, not current pending
+PR state or certification of subsequent changes. A merge is not deployment.
+
+Corrected original-account window source2d0b7a1 completed10,490 full tests
+(33 optional skips/one existing warning),20 native tests,92.45301242056057%
+combined coverage and unchanged80overall/90critical gates. Its later childc198
+adds original-source-owned market-only preparation reuse across the existing
+walk-forward and constrained kernels. Independent review passed93 controls and
+found no Critical/Important/Minor defect;437 related tests passed. Its separate
+full/native composite is still pending at this snapshot. Neither parent result
+certifies the new constrained-window source union.
+
+The private economic-window assembler now accepts exact, separately typed
+strategy and constrained-SPY records using the same original-account/frontier/
+money/metric engine, without counterfeit strategy records or a public saved-
+result API. Strategy hash preimages remain unchanged; constrained windows use a
+distinct namespace. Independent review found one Important exact-type admission
+defect: metaclass equality could impersonate membership in a tuple of classes.
+A watched failing regression is now fixed by explicit identity comparisons.
+Corrected two-window tests64passed; corrected related357passed. Fresh exact-
+source full/native/critical, current hosted gates and compatible integration are
+still required. Prior source certification is retained as history only.
+
+Actual workload performance remains a blocker. An uninstrumented real fabricated
+first750-frame training path timed out at120.006s after148.930s setup, with
+174882816-byte peakRSS. It did not complete the first path, walker or full grid.
+The original120s/512MiB guard is unchanged; neither partial profiles nor thin
+orchestration tests qualify the workload. No executable economic freeze or new
+development study has occurred.
+
+Next: finish this exact-source reviewed release; remove measured redundant work
+in bounded, fixture-verified increments without changing original admission;
+complete the source-owned aligned panel/statistics/report composition and actual
+full workload; freeze code/config/source/calendar/actions/cost/selection/protocol
+identities and criteria; admit qualified authorized inputs before one study.
+Retained five-symbol source/actions/access remain UNVERIFIED, not known absent.
+Publication-chronology waiver stays disclosed. Genuine customer costs, accepted
+economics, broker/paper/shadow and deployed recovery are separate unfinished
+prerequisites. All source/cost/execution/economic/promotion/live flags stay false;
+production risk/capital limits are unchanged.
+
+## Current owned-risk performance checkpoint — 2026-10-10
+
+Latest guard correction: the independent last-point delta review passed139tests
+and135 differential controls, finding no additional loss-logic defect. Required
+BanditB101 was corrected with an explicit None denial. Durable reset/episode/
+failure-retry/mode/public-keyword controls are now committed with328related tests
+passing; Ruff/Mypy391/Bandit/both frozen locks/SBOM pass.455broader tests passed
+on the preceding assertion source; final-source full/native/critical remain
+required. Source review and narrow checks do not constitute global release.
+
+Latest correction: the first independent risk-progress review found one
+Important old-observation alias defect. Five watched RED controls now pass;
+derived records are detached and returned points use current original accounts
+and observations. The owner requests its last point for intermediate decisions
+and complete points once for the final risk report, without skipping original
+validation or changing arithmetic/hashes.65 risk-focused and324 related tests
+passed; current Ruff/Mypy391 pass. An exact600-prefix probe measured1.939s batch
+versus.473s owned-last-point mode, all600 points/final full sequence equal.
+An intermediate full-output implementation was slower and remains logged.
+Corrective-delta review and exact-source full/native/critical gates are pending.
+The completed matched source6f3ccb4 independently passed10,383full/20native,
+92.40296469670372% combined and unchanged80/90critical gates. This does not
+certify the later risk source. Earlier paragraphs below retain source histories.
+
+The reviewed constrained and corrected matched references are composed at
+60534412. Their bounded union regression passed554 tests; parent global
+certifications below do not certify this union or subsequent risk changes.
+The source-owned four-reference panel and complete workload remain unfinished.
+
+A new invocation-owned risk continuation reuses the SAME original point kernel,
+with full canonical configuration/account-prefix and all observation-clock
+validation on every call. Only unchanged, value-copied original prefixes can
+reuse derived loss calculations; no public saved-state/preparation authority,
+persisted cache, risk-policy change or production limit change is introduced.
+Eight missing-API controls were watched RED then GREEN. A further test fixture
+incorrectly declared a fee above its reserve and was correctly rejected; after
+correcting that fixture,12 narrow tests passed. The earlier broader run with
+that fixture failed (440passed/1failed), so it is NOT certification. Corrected
+broad verification, independent exact-source review and new global gates remain
+pending. Ruff/Mypy391/Bandit passed on this increment.
+
+A fabricated600-prefix comparison produced exactly equal final points at every
+prefix:2.372s ordinary versus1.011s invocation-owned continuation. This is NOT
+full-grid performance. A separate60s partial profile stopped in preparation,
+not the owner, and a120s single-walker preflight timed out. Neither is completed
+workload certification or a frozen economic rejection. Preserve their logs.
+
+Corrected matched source6f3ccb4 has its separate full/native/critical composite
+in progress in the intake worktree; do not duplicate or edit that active source.
+PR39/PR40 remain subject to fresh exact-head hosted gates and compatible merge
+identity. No executable economic freeze, private input inspection or study has
+occurred. Actual retained coverage remains UNVERIFIED, not known absent; the
+chronology waiver remains disclosed. All readiness flags remain false.
+
+## Current constrained-reference checkpoint — 2026-10-10
+
+The distinct policy-managed SPY reference reuses the same original-event account,
+risk, sizing and execution owner. Fixed20-session holding, ATR protection,
+adverse next-open admission, split rebasing, partial/unfilled obligations and
+no forced terminal sale remain separate from full mathematical SPY allocation.
+It is not a disguised momentum candidate, broker route or complete comparison
+panel. Independent whole-increment review found no Critical/Important/Minor
+defect;99 focused and484 related tests passed before global verification.
+
+Exact executable2108c8269573f7b9134380aeaf51c34c2aefb231 completed10,345 full
+tests (33 optional skips/one existing warning),20 actual native tests and
+92.39316905801621% combined coverage. Unchanged80overall/90critical gates passed.
+Ruff/Mypy389/Bandit, both frozen locks, SBOM and four shell/root Compose checks
+passed. Unchanged-graph advisory/native-version evidence is retained, not a fresh
+network audit. Optional backups do not establish selected-runtime recovery.
+This later human-document refresh is not a new full rerun.
+
+Retained SHA-256 full/native/coverage/critical, respectively:
+`5d78108d9abda2102e4ec60f43bda7434cdf30faeaed500834fe1b4bb01e8d0e`,
+`c2564cdeddcada43fa2bf06803bf8c967b51626b5ac5e4c7828bcfcd676a8547`,
+`1aa4f88893aa6f263aae23a6c33bbe5f9e00ad103486f864def83aa8ad6bb830`,
+`b8238d4bc11d1be71fc02bf514990cafb63c15a4b34bcc149e4dfbd19a397adb`.
+
+PR39 at03ff and passive-reference PR40 at7245961 remain pending current hosted
+integration gates. Passive executable2c157 completed10,349 full/20 native tests,
+92.389605314576% and unchanged80/90; later publication differs only in reviewed
+human docs/ancestry. These results do not certify subsequently changed matching
+source. Its whole review identified an Important zero-exposure/fee boundary;
+the coordinator reproduced two RED controls and corrected them without waiving
+funded purchase affordability. Corrected regression523passed327.08s; full/native
+global gates for corrected matching source remain pending.
+
+Task5 still needs complete source-owned four-reference statistics/report
+composition, full28x6x4x5 workload validation, capital executable freeze and one
+qualified authorized study. Five-symbol retained coverage/actions/access remain
+UNVERIFIED, not known absent; existing chronology waiver remains disclosed.
+No private inputs were inspected or study performed. All source/cost/execution/
+economic/promotion/live flags remain false; production limits unchanged.
+
+## Historical capital research composition — 2026-10-10
 
 PR37 and PR38 are integrated; PR38 merged at
 a940103b04e83b4065eb0d47bd878ba77ad131fd with reviewed tree

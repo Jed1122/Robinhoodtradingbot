@@ -10,6 +10,42 @@ ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "check_critical_branch_coverage.py"
 
 
+def test_capital_economic_window_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/research/etf_capital_economic_window.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
+@pytest.mark.parametrize(
+    "relative",
+    (
+        "src/trading_bot/research/etf_capital_constrained_policy.py",
+        "src/trading_bot/simulation/etf_capital_constrained.py",
+    ),
+)
+def test_constrained_reference_requires_critical_branch_coverage(tmp_path, relative):
+    root = tmp_path / "project"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
+def test_capital_matched_reference_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/research/etf_capital_matched.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 def test_capital_passive_reference_requires_critical_branch_coverage(tmp_path):
     root = tmp_path / "project"
     relative = "src/trading_bot/research/etf_capital_passive.py"

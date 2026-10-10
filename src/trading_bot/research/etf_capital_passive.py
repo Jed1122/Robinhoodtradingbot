@@ -13,7 +13,7 @@ from trading_bot.market_data.etf_capital_features import (
     _capital_feature_source,
     _capital_owned_raw_source,
 )
-from trading_bot.market_data.etf_capital_owned import _own_capital_source
+from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_benchmark import (
     EtfBenchmarkBar,
@@ -78,6 +78,43 @@ def run_capital_passive_reference(request: CapitalPassiveRequest) -> CapitalPass
         _check(request.execution_enabled is False and request.economic_admitted is False)
         _check(request.evidence_promotable is False)
         owned = _own_capital_source(request.dataset)
+        kernel, quantities, baseline = _capital_passive_values(owned, request)
+        identity = content_hash(
+            (
+                "capital-passive-original-reference-v1",
+                owned.source_hash,
+                owned.dataset.config_hash,
+                baseline,
+                request.sessions,
+                request.initial_cash,
+                request.roundtrip_friction_pct,
+                request.entry_fee,
+                request.estimated_exit_fee,
+                kernel.input_hash,
+                _LIMITATIONS,
+            )
+        )
+        return CapitalPassiveReference(
+            identity,
+            owned.source_hash,
+            owned.dataset.config_hash,
+            baseline,
+            request.sessions,
+            quantities,
+            kernel,
+        )
+    except (ValueError, TypeError, ArithmeticError, AttributeError, IndexError, KeyError):
+        raise ValueError("capital_passive_reference_invalid") from None
+
+
+def _capital_passive_values(
+    owned: _OwnedCapitalSource,
+    request: CapitalPassiveRequest,
+    *,
+    entry_notional: Decimal | None = None,
+) -> tuple[EtfBenchmarkResult, tuple[Decimal, ...], date]:
+    """Invocation-owned valuation seam; no public result or allocation authority."""
+    try:
         with localcontext(_CONTEXT):
             loaded = restore_loaded_config(
                 owned.dataset.canonical_config, owned.dataset.config_hash
@@ -89,7 +126,8 @@ def run_capital_passive_reference(request: CapitalPassiveRequest) -> CapitalPass
             require_bounded_decimal(request.estimated_exit_fee, "exit fee", nonnegative=True)
             _check(request.initial_cash in policy.capital_tiers)
             _check(request.roundtrip_friction_pct in policy.round_trip_friction_pct)
-            _check(request.entry_fee < request.initial_cash)
+            cash_only = entry_notional is not None and entry_notional == 0
+            _check(cash_only or request.entry_fee < request.initial_cash)
             _check(type(request.sessions) is tuple and 0 < len(request.sessions) <= 4000)
             _check(all(type(day) is date for day in request.sessions))
             dates = tuple(
@@ -155,38 +193,17 @@ def run_capital_passive_reference(request: CapitalPassiveRequest) -> CapitalPass
                         tuple(bars),
                         distributions,
                         request.initial_cash,
-                        request.initial_cash - request.entry_fee,
+                        request.initial_cash - request.entry_fee
+                        if entry_notional is None
+                        else entry_notional,
                         request.roundtrip_friction_pct * Decimal(50),
-                        request.entry_fee,
-                        request.estimated_exit_fee,
+                        Decimal(0) if cash_only else request.entry_fee,
+                        Decimal(0) if cash_only else request.estimated_exit_fee,
                     )
                 )
                 quantities = tuple(kernel.shares * factors[day] for day in request.sessions)
                 for quantity in quantities:
                     require_bounded_decimal(quantity, "raw quantity", nonnegative=True)
-            identity = content_hash(
-                (
-                    "capital-passive-original-reference-v1",
-                    owned.source_hash,
-                    owned.dataset.config_hash,
-                    dates[first_index - 1],
-                    request.sessions,
-                    request.initial_cash,
-                    request.roundtrip_friction_pct,
-                    request.entry_fee,
-                    request.estimated_exit_fee,
-                    kernel.input_hash,
-                    _LIMITATIONS,
-                )
-            )
-            return CapitalPassiveReference(
-                identity,
-                owned.source_hash,
-                owned.dataset.config_hash,
-                dates[first_index - 1],
-                request.sessions,
-                quantities,
-                kernel,
-            )
+            return kernel, quantities, dates[first_index - 1]
     except (ValueError, TypeError, ArithmeticError, AttributeError, IndexError, KeyError):
         raise ValueError("capital_passive_reference_invalid") from None

@@ -16,6 +16,16 @@ seconds. Selection occurs at the close immediately before the test starts.
 Earlier folds' elapsed dates may enter subsequent rolling training; these are
 adaptive development folds, not an untouched final test.
 
+The private `_replay_owned_capital_walk_forward` seam permits an owning comparison
+invocation to reuse this same immutable market preparation. It accepts no public
+tokens: the original-input public signature is unchanged. Cheap original terms
+are checked before public preparation and again at private composition; source,
+config, complete calendar, ordered used days, ordinals, UTC closes and false flags
+must agree before account paths run. This is internal consistency, not
+authentication of arbitrary private Python objects. Each capital/cost scenario
+still constructs independent account paths and training selections. Original
+walker hash preimages, training costs and all scheduling rules are unchanged.
+
 All28 training trajectories per fold use0.40% round-trip friction regardless
 of selected/test cost. Their original events, final account, hash and nullable
 complete dollar profit are retained. Only flat, fully settled, final-fee-complete

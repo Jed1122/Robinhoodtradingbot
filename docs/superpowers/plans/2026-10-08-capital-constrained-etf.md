@@ -12,21 +12,79 @@
 
 ## Current Task5 checkpoint — 2026-10-10
 
+Latest comparison-window checkpoint supersedes the historical paragraphs below.
+PR39/40 are already merged at integrationbasef628f1a. Corrected private window
+source2d0b7a1 completed10,490full/20native/92.45301242056057% and unchanged80/90
+gates. Subsequent invocation-owned market-preparation reusec198 passed437related
+tests and independent93-control review with no Critical/Important/Minor findings;
+its separate global composite is pending at this snapshot, not current union
+certification. Exact strategy/constrained window families now share the same
+original-account assembler with distinct namespaces. One independent Important
+metaclass-equality admission finding was reproduced RED and fixed with explicit
+class identity;64window and357related tests pass. Fresh current-source global/
+native/hosted integration gates remain required.
+
+The actual first750-frame training path exceeded its unchanged120-second guard
+after148.930s setup; it did not complete. Full-grid workload, source-owned aligned
+panel/statistics/report composition, executable economic freeze and qualified
+one-time study remain unfinished. No study, qualification, risk increase or
+operational activation is established. The following retains earlier source-
+specific snapshots as history, not current release state.
+
+Current guard correction: independent last-point delta review139tests/135queries
+found no additional loss-logic defect. Required redundant-assert Bandit issue
+fixed with explicit None denial; suggested durable state/mode/public-input
+controls implemented.328related tests/Ruff/Mypy391/Bandit/locks/SBOM pass.455
+broader tests passed on preceding source; exact final full/native/critical gates
+remain. No complete workload/economic freeze or genuine study yet.
+
+Latest corrective source: independent review found one Important continuation
+alias defect; five watched RED controls are fixed. Private latest-point output
+for intermediate decisions avoids repeated allocation, but the final canonical
+report still reconstructs every point with current originals.65 focused risk
+and324 related owner/architecture tests passed;600-prefix equality/performance
+probe1.939s batch/.473s owned mode is not full workload proof. Corrective-delta
+review and new global gates remain pending. Separate corrected matched source
+6f3ccb4 finished10,383full/20native/92.40296469670372%/unchanged80+90; this parent
+certification does not certify the source union or newer risk changes.
+
+Latest increment: reviewed constrained and corrected matched source union60534412
+passed554 bounded regressions. Invocation-owned risk progress is implemented
+fixture-first using the same original reconstruction/point kernel, without a
+public saved-state input or risk-policy change.12 corrected narrow controls
+pass; the earlier broader440pass/1fail run used an over-reserve test fee and is
+non-certification. Corrected broad verification and exact-source independent
+review/global gates are pending. A600-prefix synthetic equality probe measured
+2.372s batch versus1.011s continuation, not complete workload performance.
+The separate partial preparation profile and timed-out walker preflight are
+preserved as non-certification. Corrected matched global verification remains
+separate. No executable economic freeze or genuine study has occurred.
+The following retains earlier source-specific checkpoints, not current-union
+or later-risk certification.
+
 PR29–PR38 are integrated; PR38 mergeda940103 after all14 exact-head checks.
 Original-input walk-forward sourced2a0252 passed10,255full/20native/92.21%;
 corrected descriptive path economics source263cad8 passed10,276full/20native/
 92.37%. Both passed unchanged80overall/90critical gates. These retained source-
-bound results do not certify later changes. Combined preparation/statistics source
-d705b837 completed10,314full/20native/92.37% and unchanged80overall/90critical;
-PR39 current hosted gates remain pending at reviewed03ff03b. The separate
-mathematical SPY adapter source2c157635 completed10,349full/20native/92.39% and
-unchanged80/90 gates. Its independent bounded review found no Critical/Important
-defect; static/locks/SBOM/manifests passed, same-graph advisory evidence retained.
-This document-only refresh is not a fresh full rerun. Optional non-unit ex-factor
-fixture strengthening remains deferred after independent successful probing.
-Distinct constrained-SPY source is separately committed with99focused/484related
-passes; independent review/global gates remain pending. No full strategy workload,
-capital economic executable freeze or genuine study is complete.
+bound results do not certify later changes. Bounded invocation-owned preparation
+reuse and four-role2784-column statistics capacity are independently reviewed.
+Their combined executable d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c completed
+10,314full/20native/92.37%, unchanged80overall/90critical plus static/lock/SBOM/
+manifest checks. Current hosted/compatible integration gates remain required;
+human-document/ancestry-only publication does not claim a fresh full rerun.
+Separate mathematical SPY executable2c157 completed10,349full/20native tests,
+92.389605314576% and unchanged80/90; reviewed publication is pending as PR40.
+Distinct constrained-SPY executable2108c826 completed99focused/484related,
+10,345full/20native tests,92.39316905801621% combined coverage and unchanged
+80overall/90critical gates. Independent whole-increment review found no
+Critical/Important/Minor defect. Hosted publication/integration remains separate.
+Corrected zero-exposure matching regression523passed; global gates remain
+pending. Retained passive certification does not certify changed source. No full strategy
+workload, capital economic executable freeze or genuine study is complete.
+This human-doc-only refresh is not a fresh executable full rerun.
+Optional non-unit ex-factor fixture strengthening remains deferred after the
+independent successful passive probe. This local source union requires fresh
+integrated validation; parent-source certifications do not certify its new tree.
 
 Task5 still needs source-owned four-reference benchmarks, complete aligned
 comparison/statistics/reports, full28x6x4x5 workload/resource verification and

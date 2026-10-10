@@ -17,6 +17,10 @@ from trading_bot.market_data.etf_capital_features import (
     _capital_split_bar,
 )
 from trading_bot.market_data.recording import content_hash
+from trading_bot.research.etf_capital_constrained_policy import (
+    _CapitalConstrainedOpening,
+    _CapitalConstrainedPolicy,
+)
 from trading_bot.research.etf_capital_daily_policy import (
     CapitalDailyPolicy,
     CapitalOpeningPolicy,
@@ -55,6 +59,7 @@ from trading_bot.simulation.etf_capital_risk import (
     CapitalRiskPoint,
     CapitalRiskReplay,
     _replay_risk_points,
+    _RiskProgress,
 )
 from trading_bot.simulation.events import EventCursor
 from trading_bot.simulation.lifecycle import replay_order_lifecycle
@@ -62,6 +67,8 @@ from trading_bot.simulation.lifecycle_models import LifecycleControlEvent, Lifec
 
 type _Event = CapitalAccountEvent | CapitalActionEvent
 type _Outcome = Literal["filled", "partial", "rejected", "unfilled"]
+type _Policy = CapitalDailyPolicy | _CapitalConstrainedPolicy
+type _Opening = CapitalOpeningPolicy | _CapitalConstrainedOpening
 _ZONE = ZoneInfo("America/New_York")
 
 
@@ -156,8 +163,8 @@ class _CapitalOwnerPoint:
     at: datetime
     equity: Decimal
     account: CapitalActionAccountReplay
-    policy: CapitalDailyPolicy | None
-    opening: CapitalOpeningPolicy | None
+    policy: _Policy | None
+    opening: _Opening | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,9 +351,9 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                 frame.entry_submission_allowed,
             )
 
-        def policy_at(
-            index: int, at: datetime, opening: CapitalOpeningPolicy | None
-        ) -> CapitalDailyPolicy:
+        def policy_at(index: int, at: datetime, opening: _Opening | None) -> CapitalDailyPolicy:
+            if opening is not None and type(opening) is not CapitalOpeningPolicy:
+                raise ValueError("capital_daily_owner_invalid")
             frame = request.frames[index]
             return capital_daily_policy(
                 loaded=request.loaded,
@@ -398,7 +405,9 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
         )
         public_points = []
         for point in result.points:
-            if point.policy is None:
+            if type(point.policy) is not CapitalDailyPolicy or (
+                point.opening is not None and type(point.opening) is not CapitalOpeningPolicy
+            ):
                 raise ValueError("capital_daily_owner_invalid")
             public_points.append(
                 CapitalDailyOwnerPoint(
@@ -422,7 +431,7 @@ def _replay_capital_owner(
     frame_at: Callable[
         [int, tuple[_Event, ...], tuple[CapitalRiskObservation, ...]], _CapitalOwnerFrame
     ],
-    policy_at: Callable[[int, datetime, CapitalOpeningPolicy | None], CapitalDailyPolicy | None],
+    policy_at: Callable[[int, datetime, _Opening | None], _Policy | None],
     identity: Callable[[], str],
 ) -> _CapitalOwnerReplay:
     """Single private execution loop; providers are frontend-owned, never public inputs."""
@@ -433,9 +442,10 @@ def _replay_capital_owner(
         events: tuple[_Event, ...] = ()
         observations: tuple[CapitalRiskObservation, ...] = ()
         points: list[_CapitalOwnerPoint] = []
-        bindings: dict[str, CapitalDailyPolicy] = {}
-        pending: CapitalDailyPolicy | None = None
+        bindings: dict[str, _Policy] = {}
+        pending: _Policy | None = None
         account = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
+        risk_progress = _RiskProgress()
 
         def observe(
             at: datetime, mark: Decimal | None, daily: bool = False, weekly: bool = False
@@ -456,7 +466,9 @@ def _replay_capital_owner(
                 CapitalRiskObservation(EventCursor(sequence, at), len(events), mark, daily, weekly),
             )
 
-        def risk(purpose: OrderPurpose = OrderPurpose.ENTRY) -> tuple[CapitalRiskPoint, ...]:
+        def risk(
+            purpose: OrderPurpose = OrderPurpose.ENTRY, *, full: bool = False
+        ) -> tuple[CapitalRiskPoint, ...]:
             return _replay_risk_points(
                 loaded=request.loaded,
                 initial_cash=request.initial_cash,
@@ -464,9 +476,11 @@ def _replay_capital_owner(
                 observations=observations,
                 purpose=purpose,
                 actions=True,
+                _progress=risk_progress,
+                _last_only=not full,
             )
 
-        def owned_opening() -> tuple[CapitalOpeningPolicy | None, Decimal | None]:
+        def owned_opening() -> tuple[_Opening | None, Decimal | None]:
             if account.quantity == 0:
                 return None, None
             buys = tuple(
@@ -500,12 +514,22 @@ def _replay_capital_owner(
                             split_ratio, "cumulative split factor", positive=True
                         )
                         seen_splits.add(event.event_id)
-                opening = CapitalOpeningPolicy(
-                    instruction.candidate,
-                    buy.symbol,
-                    fill.cursor.occurred_at.astimezone(_ZONE).date(),
-                    instruction.stop_distance / split_ratio,
-                )
+                opening: _Opening
+                if type(instruction) is CapitalDailyPolicy:
+                    opening = CapitalOpeningPolicy(
+                        instruction.candidate,
+                        buy.symbol,
+                        fill.cursor.occurred_at.astimezone(_ZONE).date(),
+                        instruction.stop_distance / split_ratio,
+                    )
+                elif type(instruction) is _CapitalConstrainedPolicy:
+                    opening = _CapitalConstrainedOpening(
+                        buy.symbol,
+                        fill.cursor.occurred_at.astimezone(_ZONE).date(),
+                        instruction.stop_distance / split_ratio,
+                    )
+                else:
+                    raise ValueError("capital_daily_owner_invalid")
                 return opening, fill.fill.price / split_ratio
 
         for index in range(count):
@@ -589,7 +613,7 @@ def _replay_capital_owner(
                 base: Decimal,
                 purpose: OrderPurpose,
                 policy_hash: str,
-                owned: CapitalOpeningPolicy,
+                owned: _Opening,
                 instrument: Instrument,
             ) -> None:
                 nonlocal events, observations, account
@@ -728,7 +752,7 @@ def _replay_capital_owner(
             opening, _ = owned_opening()
             at = closed + timedelta(seconds=3)
             observe(at, prices[opening.symbol].close if opening else None)
-            final_risk = risk()
+            final_risk = risk(full=index == count - 1)
             pending = policy_at(index, at, opening)
             if (
                 pending is not None

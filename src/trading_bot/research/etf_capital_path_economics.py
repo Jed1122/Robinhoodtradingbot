@@ -20,9 +20,11 @@ from trading_bot.research.metrics import (
 )
 from trading_bot.simulation.etf_capital_account import (
     CapitalAccountSubmission,
+    CapitalActionAccountReplay,
     replay_capital_action_account_prefixes,
 )
 from trading_bot.simulation.etf_capital_action_events import CapitalDistributionPaid
+from trading_bot.simulation.etf_capital_constrained import CapitalConstrainedResult
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
 from trading_bot.simulation.etf_capital_trajectory import (
     CapitalTrajectoryRequest,
@@ -158,19 +160,7 @@ def _capital_path_economics(
         _check(bool(points) and initial_at < points[0].at)
         dates = tuple(point.at.date() for point in points)
         _check(all(a < b for a, b in pairwise(dates)))
-        observations = {row.cursor.occurred_at: row for row in trajectory.observations}
-        exposures: list[Decimal] = []
-        for point in points:
-            original = observations[point.at]
-            _check(point.account == prefixes[original.source_count])
-            held = point.account.quantity
-            _check(not held or original.mark is not None)
-            notional = Decimal(0) if not held else held * original.mark  # type: ignore[operator]
-            _check(
-                point.equity
-                == point.account.cash + point.account.distribution_receivable + notional
-            )
-            exposures.append(Decimal(0) if point.equity == 0 else _ratio(notional, point.equity))
+        exposures = _capital_close_exposures(trajectory, prefixes)
 
         accruals = tuple(
             Decimal((day - dates[0]).days + 1) * recurring_usd_per_day for day in dates
@@ -291,3 +281,25 @@ def _capital_path_economics(
         )
         _bounded(astuple(result))
         return result
+
+
+def _capital_close_exposures(
+    trajectory: CapitalTrajectoryResult | CapitalConstrainedResult,
+    prefixes: tuple[CapitalActionAccountReplay, ...],
+) -> tuple[Decimal, ...]:
+    """Shared original account/mark NAV check, before operating expenses."""
+    with localcontext(_CONTEXT):
+        observations = {row.cursor.occurred_at: row for row in trajectory.observations}
+        exposures = []
+        for point in trajectory.points:
+            original = observations[point.at]
+            _check(point.account == prefixes[original.source_count])
+            held = point.account.quantity
+            _check(not held or original.mark is not None)
+            notional = Decimal(0) if not held else held * original.mark  # type: ignore[operator]
+            _check(
+                point.equity
+                == point.account.cash + point.account.distribution_receivable + notional
+            )
+            exposures.append(Decimal(0) if point.equity == 0 else _ratio(notional, point.equity))
+        return tuple(exposures)

@@ -23,6 +23,7 @@ from trading_bot.simulation.etf_capital_daily_owner import (
     _CapitalOwnerFrame,
     _CapitalOwnerTerms,
     _Event,
+    _Opening,
     _Outcome,
     _replay_capital_owner,
     _validate_owner_terms,
@@ -233,9 +234,9 @@ def _replay_prepared_capital_trajectory(
             allowed,
         )
 
-    def policy_at(
-        index: int, at: datetime, opening: CapitalOpeningPolicy | None
-    ) -> CapitalDailyPolicy | None:
+    def policy_at(index: int, at: datetime, opening: _Opening | None) -> CapitalDailyPolicy | None:
+        if opening is not None and type(opening) is not CapitalOpeningPolicy:
+            raise ValueError("capital_trajectory_invalid")
         candidate = opening.candidate if opening else schedule[index].candidate
         if candidate is None:
             return None
@@ -278,13 +279,21 @@ def _replay_prepared_capital_trajectory(
         policy_at=policy_at,
         identity=identity,
     )
+    points = []
+    for point in result.points:
+        if (point.policy is not None and type(point.policy) is not CapitalDailyPolicy) or (
+            point.opening is not None and type(point.opening) is not CapitalOpeningPolicy
+        ):
+            raise ValueError("capital_trajectory_invalid")
+        points.append(
+            CapitalTrajectoryPoint(
+                point.at, point.equity, point.account, point.policy, point.opening
+            )
+        )
     return CapitalTrajectoryResult(
         result.events,
         result.observations,
-        tuple(
-            CapitalTrajectoryPoint(p.at, p.equity, p.account, p.policy, p.opening)
-            for p in result.points
-        ),
+        tuple(points),
         result.account,
         result.risk,
         result.input_hash,
