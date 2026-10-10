@@ -50,6 +50,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.append(recorded_options_runtime)
 
     for relative_path in (
+        Path("market_data/etf_capital_owned.py"),
         Path("domain/options_account.py"),
         Path("domain/owned_order_lifecycle.py"),
         Path("accounting/owned_economic_models.py"),
@@ -79,6 +80,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.extend(simulation_directory.glob("etf_capital_daily_entry.py"))
         modules.extend(simulation_directory.glob("etf_capital_daily_exit.py"))
         modules.extend(simulation_directory.glob("etf_capital_daily_owner.py"))
+        modules.extend(simulation_directory.glob("etf_capital_due_facts.py"))
         modules.extend(simulation_directory.glob("etf_fixture_execution.py"))
         modules.extend(simulation_directory.glob("etf_strategy.py"))
         modules.extend(simulation_directory.glob("etf_native_history.py"))
@@ -94,6 +96,10 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
         modules.extend(research_directory.glob("etf_costs.py"))
         modules.extend(research_directory.glob("etf_capital_feasibility.py"))
         modules.extend(research_directory.glob("etf_capital_daily_policy.py"))
+        modules.extend(research_directory.glob("etf_capital_prepared_policy.py"))
+        modules.extend(research_directory.glob("etf_capital_prepared.py"))
+        modules.extend(research_directory.glob("etf_capital_feature_epoch.py"))
+        modules.extend(research_directory.glob("etf_capital_projection_preimage.py"))
         modules.extend(research_directory.glob("etf_daily_*.py"))
         modules.extend(research_directory.glob("etf_monthly_*.py"))
         modules.extend(research_directory.glob("etf_exploratory_economics.py"))

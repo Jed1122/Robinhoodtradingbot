@@ -10,7 +10,26 @@
 
 **Spec:** docs/superpowers/specs/2026-10-08-capital-constrained-etf-design.md
 
-## Current Task5 checkpoint — 2026-10-09
+## Current Task5 checkpoint — 2026-10-10
+
+PR29–PR37 are integrated; PR37 mergedec40d5185a3af3993244598c53722518ad899d94
+with reviewed tree136d732cb2a7c2cb81b4a75793b3075af2231aeb after all14 current
+jobs passed and all9 substantive threads were resolved. Merge is not deployment.
+The independent preparation/policy/due-facts sourcee1bf1f7 completed10,220full/
+20native/92.30% and unchanged80overall/90critical gates, plus static/lock/SBOM/
+manifest checks. Its zero-value obligation finality correction has watched
+RED-to-GREEN controls and independent review. Human-doc publication retains
+that exact-source certification, not a fresh run at a document-only head.
+
+Task5 remains partial. Original-input trajectory0c97253 is independently reviewed
+but its full regression suite is running separately. Owned train-only walk-forward
+selection, continuous account/policy carryover, dependent statistics/benchmarks/
+reports and full-grid performance verification remain. The preparation750-session
+guard passed, but is not a complete workload result. No executable economic freeze
+or study has run, and qualified authorized five-symbol inputs/costs are not
+established. Production limits and all eligibility flags remain unchanged.
+
+## Historical Task5 checkpoint — 2026-10-09
 
 PR29–PR34 are integrated; corrected signal/frontier PR34 merged atf1326c9.
 Entry/exit executable e814a29 completed9,896full/20native/92.16% and unchanged
