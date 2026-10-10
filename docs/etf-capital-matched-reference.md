@@ -12,7 +12,10 @@ This whole-window mean is retrospective and future-conditioned. It is not a
 causal trading rule, attainable daily exposure replica, training score or
 promotion evidence. Its mathematical initial SPY notional is the observed mean
 times initial capital after the declared entry-fee reserve. Positive allocation
-pays that fee once; a zero mean buys nothing and charges no fictional fees.
+pays that fee once; a zero mean buys nothing and charges no fictional fees,
+even when a declared purchase fee would be unaffordable. Original declared
+costs remain in the matched identity; the existing full-passive purchase
+affordability requirement is unchanged.
 Ratios/mean use the existing64-digit context; funded notional is multiplied
 exactly. Friction is the same approved round-trip whole-percent assumption,
 split equally per side, embedded once. A liquidation proxy estimates the exit

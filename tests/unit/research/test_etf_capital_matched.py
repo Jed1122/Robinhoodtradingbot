@@ -98,6 +98,34 @@ def test_cash_only_original_trajectory_does_not_pay_fictional_entry_or_exit_fee(
     assert tuple(p.liquidation_proxy for p in value.kernel_result.points) == (D(100),) * 5
 
 
+@pytest.mark.parametrize("fee", (D(100), D(101)))
+def test_cash_only_comparison_remains_cash_when_declared_purchase_fee_is_unaffordable(source, fee):
+    from tests.unit.research.test_etf_capital_passive import request as passive_request
+    from tests.unit.research.test_etf_capital_passive import run as passive_run
+
+    original = request(source)
+    path = replace(
+        original.trajectory,
+        days=tuple(replace(day, candidate=None) for day in original.trajectory.days),
+        entry_fee=fee,
+        exit_fee=D(0),
+        episode_fee_bound=fee,
+    )
+    value = run(replace(original, trajectory=path))
+    assert value.close_exposures == (D(0),) * 5 and value.mean_exposure == 0
+    assert value.raw_quantities == (D(0),) * 5
+    assert value.kernel_result.request.entry_notional == 0
+    assert value.kernel_result.fees_paid == 0
+    assert value.kernel_result.estimated_terminal_liquidation_cost == 0
+    assert tuple(p.close_midpoint_nav for p in value.kernel_result.points) == (D(100),) * 5
+    assert value.cash_nav == (D(100),) * 5
+    assert value.input_hash != run(
+        replace(original, trajectory=replace(path, entry_fee=D(0), episode_fee_bound=D(0)))
+    ).input_hash
+    with pytest.raises(ValueError, match=r"^capital_passive_reference_invalid$"):
+        passive_run(passive_request(source, entry_fee=fee))
+
+
 @pytest.mark.parametrize("indices", ((), (0, 1), (1, 3), (2, 1), (1, 1), (2,)))
 def test_missing_baseline_gap_duplicate_reversed_or_shifted_test_window_denies(source, indices):
     original = request(source)

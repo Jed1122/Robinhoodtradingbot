@@ -126,7 +126,8 @@ def _capital_passive_values(
             require_bounded_decimal(request.estimated_exit_fee, "exit fee", nonnegative=True)
             _check(request.initial_cash in policy.capital_tiers)
             _check(request.roundtrip_friction_pct in policy.round_trip_friction_pct)
-            _check(request.entry_fee < request.initial_cash)
+            cash_only = entry_notional is not None and entry_notional == 0
+            _check(cash_only or request.entry_fee < request.initial_cash)
             _check(type(request.sessions) is tuple and 0 < len(request.sessions) <= 4000)
             _check(all(type(day) is date for day in request.sessions))
             dates = tuple(
@@ -196,8 +197,8 @@ def _capital_passive_values(
                         if entry_notional is None
                         else entry_notional,
                         request.roundtrip_friction_pct * Decimal(50),
-                        request.entry_fee,
-                        request.estimated_exit_fee,
+                        Decimal(0) if cash_only else request.entry_fee,
+                        Decimal(0) if cash_only else request.estimated_exit_fee,
                     )
                 )
                 quantities = tuple(kernel.shares * factors[day] for day in request.sessions)

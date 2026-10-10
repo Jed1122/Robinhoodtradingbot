@@ -107,7 +107,9 @@ def _capital_matched_reference(
             require_bounded_decimal(exposure, "exposure", nonnegative=True)
             _check(exposure <= 1)
         with localcontext(_money_context()):
-            notional = (original.initial_cash - original.entry_fee) * mean
+            notional = (
+                Decimal(0) if mean == 0 else (original.initial_cash - original.entry_fee) * mean
+            )
         kernel, quantities, baseline = _capital_passive_values(
             owned,
             CapitalPassiveRequest(
