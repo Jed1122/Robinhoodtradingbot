@@ -1,6 +1,48 @@
 # Parallel Orchestration Transition Report
 
-## Current owner release correction — 2026-10-09
+## Current reviewed owner-v5 release — 2026-10-09
+
+PR37 remains unmerged. Exact executable source c7de7fc83d88ff758e2a8655845e283f7ecc0d6a
+completed10,058 full tests (33 optional skips/one existing warning),20 actual
+native tests and92.22% combined coverage. Unchanged80overall/90critical gates
+passed. Ruff/Mypy378/Bandit, frozen primary/research locks, SBOM/documentation
+and shell/Compose checks passed; unchanged-graph advisory/native-version evidence
+is retained, not a fresh network audit. Skipped backups do not prove recovery.
+This handoff correction changes human documentation only; those results certify
+c7 source, not a fresh full run at a later document-only publication head.
+
+Owner-v5 binds the original declared calendar and full session prefixes. It
+rejects unknown initial adjusted bases and unsupported unheld rebases, retains
+append-only original distribution facts, and uses the shared original64-digit
+split arithmetic for features/protection. Training selection hashes the normalized
+UTC timestamps it actually validated. Calendar consistency is not authenticated
+exchange-calendar/source completeness. Independent integrated review returned
+READY with no Critical/Important/Minor findings; covered fixes retain their
+RED-to-GREEN evidence. Public legacy identities were not silently rewritten.
+
+Actual integration target remains codex/robinhood-system-implementation at
+8302f9a7f35caecb51b01741e6219e24f8754905 (PR36 already merged). Current exact-head
+hosted push/PR checks and substantive-thread disposition are still required
+before PR37 integration; pending/missing/cancelled is not passing. No bypass,
+deployment or live activation is authorized by a green software release.
+
+The independent owned preparation branch is reviewed but unconsumed. Its
+projection-only2adda0c increment preserves original hash bytes; the750-session
+guard still FAILED120.0258s at81,362,944-byte observed peakRSS. Further current-basis
+preimage reuse is in fixture-first verification, not certified workload performance.
+No complete28x6x4x5 workload pass, executable economic freeze or new study exists.
+Qualified five-symbol inputs/actions/calendar/cost evidence and accepted economics
+remain unavailable; genuine customer calibration, broker/paper/shadow and actual
+selected-runtime recovery are separate unverified prerequisites. All source/cost/
+execution/economic/promotion/live flags remain false and production limits unchanged.
+
+Next: finish exact-candidate release, complete performant original-event evaluator
+and train-only fold/policy/statistics/report composition, verify the full workload,
+then freeze all identities/criteria before one study using qualified authorized
+inputs. Preserve original evidence and untouched future final-test rules. Every
+older status section below is a historical checkpoint, not the current handoff.
+
+## Historical owner release correction — before owner-v5
 
 PR37 remains unmerged. Published14d8285 retains exactfea60a9 source/tree;
 that source completed10,037 full and20 native tests,92.22% combined coverage
@@ -18,7 +60,7 @@ reviewed, unconsumed preparation, not a complete evaluator or economic result.
 Preserve all previous source-bound artifacts and pending review threads until
 global verification supports their disposition. Earlier checkpoints follow.
 
-## Current Task5 continuation — 2026-10-09
+## Historical Task5 continuation — before owner-v5
 
 PR35 is merged atdeee82e; PR36 is merged at8302f9a with reviewed tree4b300e68
 after all14 current jobs passed. Neither merge is deployment. Owner PR37 is
