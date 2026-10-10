@@ -12,6 +12,16 @@
 
 ## Current Task5 checkpoint — 2026-10-10
 
+Latest corrective source: independent review found one Important continuation
+alias defect; five watched RED controls are fixed. Private latest-point output
+for intermediate decisions avoids repeated allocation, but the final canonical
+report still reconstructs every point with current originals.65 focused risk
+and324 related owner/architecture tests passed;600-prefix equality/performance
+probe1.939s batch/.473s owned mode is not full workload proof. Corrective-delta
+review and new global gates remain pending. Separate corrected matched source
+6f3ccb4 finished10,383full/20native/92.40296469670372%/unchanged80+90; this parent
+certification does not certify the source union or newer risk changes.
+
 Latest increment: reviewed constrained and corrected matched source union60534412
 passed554 bounded regressions. Invocation-owned risk progress is implemented
 fixture-first using the same original reconstruction/point kernel, without a

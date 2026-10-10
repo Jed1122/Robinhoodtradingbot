@@ -210,3 +210,156 @@ def test_old_observation_mutation_is_not_equal_to_independently_copied_values():
     current = progress_points(progress, script()[:3], observations)
     assert current[-1].equity == D("99.96")
     assert current[-1].snapshot.daily_loss_pct == D(".04")
+
+
+def test_mutating_old_input_cannot_corrupt_reused_original_point_values():
+    import trading_bot.simulation.etf_capital_risk as module
+
+    progress = module._RiskProgress()
+    old = (point(0, 0), point(1, 3, "89"))
+    progress_points(progress, script()[:3], old)
+    object.__setattr__(old[1], "mark", D(99))
+    fresh = (point(0, 0), point(1, 3, "89"))
+    current = progress_points(progress, script()[:3], fresh)
+    batch = progress_points(None, script()[:3], fresh)
+    assert current == batch
+    assert current[-1].observation.mark == D(89)
+    assert current[-1].equity == D("98.96")
+    assert module._risk_result(
+        loaded(), D(100), OrderPurpose.ENTRY, current, actions=True
+    ) == module._risk_result(loaded(), D(100), OrderPurpose.ENTRY, batch, actions=True)
+
+
+@pytest.mark.parametrize("record", ("account", "snapshot", "decision", "equity"))
+def test_mutating_returned_points_cannot_change_owned_continuation(record):
+    import trading_bot.simulation.etf_capital_risk as module
+
+    progress = module._RiskProgress()
+    observations = (point(0, 0), point(1, 3, "89"))
+    prior = progress_points(progress, script()[:3], observations)
+    if record == "account":
+        object.__setattr__(prior[-1].account, "cash", D(123))
+    elif record == "snapshot":
+        object.__setattr__(prior[-1].snapshot, "daily_loss_pct", D(0))
+    elif record == "decision":
+        object.__setattr__(prior[-1].decision, "allowed", True)
+    else:
+        object.__setattr__(prior[-1], "equity", D(123))
+    current = progress_points(progress, script()[:3], observations)
+    batch = progress_points(None, script()[:3], observations)
+    assert current == batch
+
+
+@pytest.mark.parametrize("changed", ("shorter", "capital", "config", "actions"))
+def test_each_continuation_identity_guard_independently_rebuilds(changed, monkeypatch):
+    import trading_bot.simulation.etf_capital_risk as module
+    from trading_bot.config.hashing import hash_loaded_config
+
+    progress = module._RiskProgress()
+    config = loaded()
+    observations = (
+        point(0, 0),
+        replace(point(1, 0), cursor=EventCursor(1, ORIGIN + timedelta(days=1))),
+    )
+    arguments = dict(
+        loaded=config,
+        initial_cash=D(100),
+        events=(),
+        observations=observations,
+        purpose=OrderPurpose.ENTRY,
+        actions=True,
+    )
+    module._replay_risk_points(**arguments, _progress=progress)
+    if changed == "shorter":
+        arguments["observations"] = observations[:1]
+    elif changed == "capital":
+        arguments["initial_cash"] = D(250)
+    elif changed == "actions":
+        arguments["actions"] = False
+    else:
+        loss = config.config.capital_research.loss_limits.model_copy(
+            update={"max_daily_loss_pct": D(".5")}
+        )
+        policy = config.config.capital_research.model_copy(update={"loss_limits": loss})
+        revised = config.config.model_copy(update={"capital_research": policy})
+        envelope = config.safety_envelope.model_copy(update={"capital_research": policy})
+        canonical, digest = hash_loaded_config(revised, envelope)
+        arguments["loaded"] = replace(
+            config,
+            config=revised,
+            safety_envelope=envelope,
+            canonical_json=canonical,
+            config_hash=digest,
+        )
+    calls = []
+    calculate = module._loss_pct
+
+    def observed(*args):
+        calls.append(1)
+        return calculate(*args)
+
+    monkeypatch.setattr(module, "_loss_pct", observed)
+    current = module._replay_risk_points(**arguments, _progress=progress)
+    assert len(calls) == 3 * len(arguments["observations"])
+    assert current == module._replay_risk_points(**arguments)
+
+
+@pytest.mark.parametrize("purpose", tuple(OrderPurpose))
+def test_owned_last_only_points_and_final_full_hash_equal_batch(purpose):
+    import trading_bot.simulation.etf_capital_risk as module
+
+    progress = module._RiskProgress()
+    events = (*script()[:5], action(ex_mark=D(80)))
+    observations = (point(0, 0), point(1, 5, "99"), point(2, 6))
+    for count in range(1, len(observations) + 1):
+        arguments = dict(
+            loaded=loaded(),
+            initial_cash=D(100),
+            events=events[: observations[count - 1].source_count],
+            observations=observations[:count],
+            purpose=purpose,
+            actions=True,
+        )
+        expected = module._replay_risk_points(**arguments)
+        current = module._replay_risk_points(**arguments, _progress=progress, _last_only=True)
+        assert current == expected[-1:]
+    full = module._replay_risk_points(**arguments, _progress=progress)
+    assert full == expected
+    assert module._risk_result(
+        loaded(), D(100), purpose, full, actions=True
+    ) == module._risk_result(loaded(), D(100), purpose, expected, actions=True)
+
+
+def test_repeated_last_only_output_cannot_mutate_cached_derived_values():
+    import trading_bot.simulation.etf_capital_risk as module
+
+    arguments = dict(
+        loaded=loaded(),
+        initial_cash=D(100),
+        events=script()[:3],
+        observations=(point(0, 0), point(1, 3, "89")),
+        purpose=OrderPurpose.ENTRY,
+        actions=True,
+    )
+    progress = module._RiskProgress()
+    output = module._replay_risk_points(**arguments, _progress=progress, _last_only=True)
+    object.__setattr__(output[-1].snapshot, "daily_loss_pct", D(0))
+    assert (
+        module._replay_risk_points(**arguments, _progress=progress, _last_only=True)
+        == module._replay_risk_points(**arguments)[-1:]
+    )
+
+
+def test_private_last_only_mode_requires_exact_bool():
+    import trading_bot.simulation.etf_capital_risk as module
+
+    with pytest.raises(ValueError, match="capital_risk_invalid"):
+        module._replay_risk_points(
+            loaded=loaded(),
+            initial_cash=D(100),
+            events=(),
+            observations=(point(0, 0),),
+            purpose=OrderPurpose.ENTRY,
+            actions=True,
+            _last_only=1,
+        )

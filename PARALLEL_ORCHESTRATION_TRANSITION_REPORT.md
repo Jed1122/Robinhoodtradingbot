@@ -2,6 +2,20 @@
 
 ## Current owned-risk performance checkpoint — 2026-10-10
 
+Latest correction: the first independent risk-progress review found one
+Important old-observation alias defect. Five watched RED controls now pass;
+derived records are detached and returned points use current original accounts
+and observations. The owner requests its last point for intermediate decisions
+and complete points once for the final risk report, without skipping original
+validation or changing arithmetic/hashes.65 risk-focused and324 related tests
+passed; current Ruff/Mypy391 pass. An exact600-prefix probe measured1.939s batch
+versus.473s owned-last-point mode, all600 points/final full sequence equal.
+An intermediate full-output implementation was slower and remains logged.
+Corrective-delta review and exact-source full/native/critical gates are pending.
+The completed matched source6f3ccb4 independently passed10,383full/20native,
+92.40296469670372% combined and unchanged80/90critical gates. This does not
+certify the later risk source. Earlier paragraphs below retain source histories.
+
 The reviewed constrained and corrected matched references are composed at
 60534412. Their bounded union regression passed554 tests; parent global
 certifications below do not certify this union or subsequent risk changes.

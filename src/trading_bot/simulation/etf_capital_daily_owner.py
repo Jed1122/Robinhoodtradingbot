@@ -466,7 +466,9 @@ def _replay_capital_owner(
                 CapitalRiskObservation(EventCursor(sequence, at), len(events), mark, daily, weekly),
             )
 
-        def risk(purpose: OrderPurpose = OrderPurpose.ENTRY) -> tuple[CapitalRiskPoint, ...]:
+        def risk(
+            purpose: OrderPurpose = OrderPurpose.ENTRY, *, full: bool = False
+        ) -> tuple[CapitalRiskPoint, ...]:
             return _replay_risk_points(
                 loaded=request.loaded,
                 initial_cash=request.initial_cash,
@@ -475,6 +477,7 @@ def _replay_capital_owner(
                 purpose=purpose,
                 actions=True,
                 _progress=risk_progress,
+                _last_only=not full,
             )
 
         def owned_opening() -> tuple[_Opening | None, Decimal | None]:
@@ -749,7 +752,7 @@ def _replay_capital_owner(
             opening, _ = owned_opening()
             at = closed + timedelta(seconds=3)
             observe(at, prices[opening.symbol].close if opening else None)
-            final_risk = risk()
+            final_risk = risk(full=index == count - 1)
             pending = policy_at(index, at, opening)
             if (
                 pending is not None

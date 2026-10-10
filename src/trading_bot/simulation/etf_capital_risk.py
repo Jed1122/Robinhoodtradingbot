@@ -1,5 +1,6 @@
 """Original-prefix synthetic marked loss state; never execution authority."""
 
+from copy import copy
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_CEILING, Decimal, localcontext
@@ -77,13 +78,20 @@ class CapitalRiskReplay:
 
 
 @dataclass(frozen=True, slots=True)
+class _RiskPointValues:
+    equity: Decimal
+    snapshot: LossSnapshot
+    decision: LossDecision
+
+
+@dataclass(frozen=True, slots=True)
 class _RiskContinuation:
     config_hash: str
     initial_cash: Decimal
     actions: bool
     observations: tuple[CapitalRiskObservation, ...]
     account_hashes: tuple[str, ...]
-    points: tuple[CapitalRiskPoint, ...]
+    points: tuple[_RiskPointValues, ...]
     consumed: int
     prior_equity: Decimal
     daily_base: Decimal
@@ -202,6 +210,7 @@ def _replay_risk_points(
     purpose: OrderPurpose,
     actions: bool,
     _progress: _RiskProgress | None = None,
+    _last_only: bool = False,
 ) -> tuple[CapitalRiskPoint, ...]:
     """Same original-state reconstruction, without discarded intermediate hashes."""
     try:
@@ -251,6 +260,7 @@ def _replay_risk_points(
             _check(type(observations) is tuple and 0 < len(observations) <= 4096)
             _check(type(purpose) is OrderPurpose)
             _check(_progress is None or type(_progress) is _RiskProgress)
+            _check(type(_last_only) is bool)
             # Reconstruct ALL original accounts above on every call. These
             # complete-source clock checks also cover previously processed
             # observations: a newly appended backdated event must still deny.
@@ -288,7 +298,22 @@ def _replay_risk_points(
             start = 0
             if continuation is not None:
                 start = len(continuation.observations)
-                points = list(continuation.points)
+                # Never return aliases from an earlier invocation. Original
+                # observations/accounts are freshly validated above; copied
+                # derived records remain private, detached from prior results.
+                if not _last_only:
+                    points = [
+                        CapitalRiskPoint(
+                            observation,
+                            accounts[observation.source_count],
+                            values.equity,
+                            replace(values.snapshot),
+                            copy(values.decision),
+                        )
+                        for observation, values in zip(
+                            observations[:start], continuation.points, strict=True
+                        )
+                    ]
                 prior = continuation.observations[-1]
                 consumed = continuation.consumed
                 # Never adopt a stored account balance: use freshly reduced
@@ -401,7 +426,22 @@ def _replay_risk_points(
                 points.append(CapitalRiskPoint(observation, account, equity, snapshot, decision))
                 prior, prior_equity = observation, equity
             _check({count for count in required_actions if count <= consumed} <= covered_actions)
-            result = tuple(points)
+            new_points = points if _last_only else points[start:]
+            if _last_only and not points:
+                _check(continuation is not None)
+                assert continuation is not None
+                values = continuation.points[-1]
+                observation = observations[-1]
+                points = [
+                    CapitalRiskPoint(
+                        observation,
+                        accounts[observation.source_count],
+                        values.equity,
+                        replace(values.snapshot),
+                        copy(values.decision),
+                    )
+                ]
+            result = tuple(points[-1:] if _last_only else points)
             if _progress is not None:
                 # Publish only after complete validation. Copies prevent a
                 # changed observation object from masquerading as an old value.
@@ -409,9 +449,16 @@ def _replay_risk_points(
                     loaded.config_hash,
                     initial_cash,
                     actions,
-                    tuple(replace(row, cursor=replace(row.cursor)) for row in observations),
+                    (() if continuation is None else continuation.observations)
+                    + tuple(
+                        replace(row, cursor=replace(row.cursor)) for row in observations[start:]
+                    ),
                     hashes,
-                    result,
+                    (() if continuation is None else continuation.points)
+                    + tuple(
+                        _RiskPointValues(p.equity, replace(p.snapshot), copy(p.decision))
+                        for p in new_points
+                    ),
                     consumed,
                     prior_equity,
                     daily_base,
