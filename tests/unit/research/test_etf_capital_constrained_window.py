@@ -178,6 +178,27 @@ def test_constrained_inconsistent_originals_deny_before_window_selection(origina
         window(changed, count=21)
 
 
+def test_constrained_result_metaclass_cannot_impersonate_exact_family(original):
+    class EqualFamily(type):
+        def __eq__(cls, other):
+            return other is CapitalConstrainedResult
+
+    class Spoof(CapitalConstrainedResult, metaclass=EqualFamily):
+        pass
+
+    changed = Spoof(
+        original.events,
+        original.observations,
+        original.points,
+        original.account,
+        original.risk,
+        original.input_hash,
+    )
+    assert type(changed) is not CapitalConstrainedResult
+    with pytest.raises(ValueError, match=r"^capital_economic_window_invalid$"):
+        window(changed)
+
+
 def test_constrained_namespace_is_derived_from_exact_family(original, monkeypatch):
     from trading_bot.research import etf_capital_economic_window as module
 

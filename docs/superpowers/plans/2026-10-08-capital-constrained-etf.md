@@ -12,6 +12,25 @@
 
 ## Current Task5 checkpoint — 2026-10-10
 
+Latest comparison-window checkpoint supersedes the historical paragraphs below.
+PR39/40 are already merged at integrationbasef628f1a. Corrected private window
+source2d0b7a1 completed10,490full/20native/92.45301242056057% and unchanged80/90
+gates. Subsequent invocation-owned market-preparation reusec198 passed437related
+tests and independent93-control review with no Critical/Important/Minor findings;
+its separate global composite is pending at this snapshot, not current union
+certification. Exact strategy/constrained window families now share the same
+original-account assembler with distinct namespaces. One independent Important
+metaclass-equality admission finding was reproduced RED and fixed with explicit
+class identity;64window and357related tests pass. Fresh current-source global/
+native/hosted integration gates remain required.
+
+The actual first750-frame training path exceeded its unchanged120-second guard
+after148.930s setup; it did not complete. Full-grid workload, source-owned aligned
+panel/statistics/report composition, executable economic freeze and qualified
+one-time study remain unfinished. No study, qualification, risk increase or
+operational activation is established. The following retains earlier source-
+specific snapshots as history, not current release state.
+
 Current guard correction: independent last-point delta review139tests/135queries
 found no additional loss-logic defect. Required redundant-assert Bandit issue
 fixed with explicit None denial; suggested durable state/mode/public-input

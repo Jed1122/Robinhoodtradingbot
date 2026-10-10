@@ -183,7 +183,10 @@ def _capital_economic_window(
     """Use only inside a future original-source-owned comparison invocation."""
     try:
         with localcontext(_CONTEXT):
-            _check(type(trajectory) in (CapitalTrajectoryResult, CapitalConstrainedResult))
+            _check(
+                type(trajectory) is CapitalTrajectoryResult
+                or type(trajectory) is CapitalConstrainedResult
+            )
             strategy = type(trajectory) is CapitalTrajectoryResult
             point_type = CapitalTrajectoryPoint if strategy else CapitalConstrainedPoint
             _check(trajectory.source_qualified is False and trajectory.cost_qualified is False)

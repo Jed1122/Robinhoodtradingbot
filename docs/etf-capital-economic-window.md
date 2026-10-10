@@ -51,9 +51,16 @@ returns are not the fixed-initial-capital paired increments used by resampling.
 Legacy Sortino is not labeled a standard target-downside-deviation estimate.
 Independent opportunity support and measured spread/slippage remain unknown.
 
-Independent whole review found two cutoff/UTC-type validation defects, reproduced
-by17 failing regressions. The corrective shared-clock/exact-type increment passed
-119 focused tests; its integrated review and global checks remain separate.
+The original window's independent review found two cutoff/UTC-type validation
+defects, reproduced by17 failing regressions. Corrected source2d0b7a1 completed
+10,490 full and20 native tests,92.45301242056057% combined coverage and unchanged
+80overall/90critical gates. These results do not certify later changed source.
+
+The constrained-family review additionally found that tuple membership invokes
+metaclass equality instead of exact identity. A watched regression confirmed
+the subclass bypass; explicit `is` checks now reject it. Corrected two-window
+suites64passed and related357passed. Fresh current-source global and release
+gates remain necessary. Old strategy preimages are still literal-fixture bound.
 
 Next: independently review and globally verify this bounded increment; compose
 the original-source-owned four-reference aligned panel and conditional dependent

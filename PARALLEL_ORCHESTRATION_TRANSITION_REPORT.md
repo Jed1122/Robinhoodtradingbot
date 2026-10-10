@@ -1,5 +1,50 @@
 # Parallel Orchestration Transition Report
 
+## Current comparison-window release checkpoint — 2026-10-10
+
+PR39 and PR40 are merged; integration base is
+f628f1ab87e587b5918c860fa3cd404f17e2fc49. Do not resume or remerge them.
+The following older checkpoints are source-bound history, not current pending
+PR state or certification of subsequent changes. A merge is not deployment.
+
+Corrected original-account window source2d0b7a1 completed10,490 full tests
+(33 optional skips/one existing warning),20 native tests,92.45301242056057%
+combined coverage and unchanged80overall/90critical gates. Its later childc198
+adds original-source-owned market-only preparation reuse across the existing
+walk-forward and constrained kernels. Independent review passed93 controls and
+found no Critical/Important/Minor defect;437 related tests passed. Its separate
+full/native composite is still pending at this snapshot. Neither parent result
+certifies the new constrained-window source union.
+
+The private economic-window assembler now accepts exact, separately typed
+strategy and constrained-SPY records using the same original-account/frontier/
+money/metric engine, without counterfeit strategy records or a public saved-
+result API. Strategy hash preimages remain unchanged; constrained windows use a
+distinct namespace. Independent review found one Important exact-type admission
+defect: metaclass equality could impersonate membership in a tuple of classes.
+A watched failing regression is now fixed by explicit identity comparisons.
+Corrected two-window tests64passed; corrected related357passed. Fresh exact-
+source full/native/critical, current hosted gates and compatible integration are
+still required. Prior source certification is retained as history only.
+
+Actual workload performance remains a blocker. An uninstrumented real fabricated
+first750-frame training path timed out at120.006s after148.930s setup, with
+174882816-byte peakRSS. It did not complete the first path, walker or full grid.
+The original120s/512MiB guard is unchanged; neither partial profiles nor thin
+orchestration tests qualify the workload. No executable economic freeze or new
+development study has occurred.
+
+Next: finish this exact-source reviewed release; remove measured redundant work
+in bounded, fixture-verified increments without changing original admission;
+complete the source-owned aligned panel/statistics/report composition and actual
+full workload; freeze code/config/source/calendar/actions/cost/selection/protocol
+identities and criteria; admit qualified authorized inputs before one study.
+Retained five-symbol source/actions/access remain UNVERIFIED, not known absent.
+Publication-chronology waiver stays disclosed. Genuine customer costs, accepted
+economics, broker/paper/shadow and deployed recovery are separate unfinished
+prerequisites. All source/cost/execution/economic/promotion/live flags stay false;
+production risk/capital limits are unchanged.
+
 ## Current owned-risk performance checkpoint — 2026-10-10
 
 Latest guard correction: the independent last-point delta review passed139tests
