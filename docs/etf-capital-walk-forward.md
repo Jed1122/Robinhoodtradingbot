@@ -1,66 +1,88 @@
-# Capital walk-forward composition
+# Original-input walk-forward development composition
 
-The native composition remains incomplete and permanently non-promotable.
-These primitives do not establish qualified data, an economic edge, broker
-capability, paper/shadow operation or deployed recovery.
+`replay_capital_walk_forward` accepts original `CapitalResearchDataset`, one
+of the six research cash tiers, five explicit instrument assumptions, fees and
+fee bound, one approved friction level, explicit weekly-review dates and bounded
+execution outcomes. It accepts no prepared data, training scores, winners,
+balances, latches, callbacks or independence counts. Research declarations are
+not authenticated source, cost, account, reconciliation or broker evidence.
 
-## Purge and tail entry gates
+The invocation privately owns originals and prepares the first1,423 used dates
+once. Unchanged five calendar-anchored folds each own750 training sessions,
+730 decision-eligible closes,20 purged closes and20 embargo sessions. A final
+eligible decision may execute at the next opening during the purge; no training
+run extends into embargo. Training cutoff is its last close plus three synthetic
+seconds. Selection occurs at the close immediately before the test starts.
+Earlier folds' elapsed dates may enter subsequent rolling training; these are
+adaptive development folds, not an untouched final test.
 
-The daily owner accepts two exact-bool, denial-only frame controls:
-`entry_decision_allowed` and `entry_submission_allowed`. Both default true for
-existing fabricated trajectories. A disabled close cannot schedule an entry;
-a disabled opening cannot submit one. A suppressed prior instruction is not
-delayed into a later opening. Neither flag bypasses original-state risk/sizing,
-settled-cash, reservations, ownership, loss latches or kill controls.
+All28 training trajectories per fold use0.40% round-trip friction regardless
+of selected/test cost. Their original events, final account, hash and nullable
+complete dollar profit are retained. Only flat, fully settled, final-fee-complete
+outcomes can rank. Incomplete paths remain visible exclusions, not zero-profit
+paths. The existing pure selector chooses the greatest strictly positive complete
+USD profit, ties by frozen grid order, otherwise cash. It does not infer a
+statistically supported edge or economic admission.
 
-The separate controls allow the final valid training close to fill at the next
-training opening while that opening's later close is already entry-purged.
-Held-position protection, maximum holding and regime exits continue during
-entry-disabled sessions. Existing obligations remain incomplete until explicit
-original settlement and bound final fees arrive. There is no terminal sale or
-settlement invented to make a selection score complete.
+One selected account and28 fixed comparison accounts each run continuously from
+original index769 through1422. They retain cash, reservations, obligations,
+loss latches, streaks and the policy bound to the original opening BUY. At
+session895, its opening still belongs to fold0's previous instruction; its close
+prepares fold1's instruction for opening896. A new close winner cannot cancel
+an eligible instruction retroactively at that day's opening. Cash selection
+does not remove existing positions or finalize partial/submitted orders.
 
-## Training ranking primitive
+Intermediate local tails overlap subsequent normal test sessions. They are not
+unioned into an entry halt. Only the final global tail1400–1422 forbids new
+submissions; close1399 cannot schedule a new entry. No forced terminal sale,
+payment, settlement or fee finality is introduced. All used and unused source
+dates are reported. Default-empty weekly-review assumptions retain the shared
+denial gate, not automatic research approval.
 
-`select_capital_training` consumes all 28 frozen candidates in their registered
-order, independently for one canonical capital tier. Only complete declared
-after-cost dollar P&L at 0.40% round-trip friction can rank. A nonpositive best
-result selects mathematical zero-yield cash; incomplete results stay unknown
-and excluded. Exact ties use the frozen grid order, not test performance.
-No observation later than the training cutoff is admitted. Configuration,
-capital, cutoffs and every declaration/original-run hash bind the panel hash.
+The private trajectory seam reuses the same original-event execution loop,
+account reducer, risk/loss controls, sizing and configuration. Public trajectory-v1
+preimages and owner-v5 identities are unchanged. Separately scheduled opening
+winners bind a new private namespace; they are never public approval tokens.
 
-This is a pure, non-authoritative ranking seam. Its declarations are not proof
-of genuine fills, cost completeness or original input provenance. The remaining
-owning evaluator must recompute every score from its own original-event request,
-enforce purged labels and calendar folds, and carry one account/opening policy
-across tests. This function cannot approve an account or establish independence.
+Synthetic path-orchestration tests use clearly identified doubles to inspect the
+140 training attempts and continuous schedules. Real shared-kernel fixtures
+independently check adverse prices, literal cash, old-opening/new-close timing,
+original holding exits and settlement/finality. These controls are not a full
+workload benchmark or historical economic evaluation.
 
-## Simultaneous dependent statistics
+## Existing denial and statistical primitives
 
-`dependent_simultaneous_mean_intervals` extends the shared seeded block-draw
-engine without changing legacy individual results. Equal-length columns use
-identical noncircular block starts, preserving cross-column dependence. Within
-each draw it takes the maximum absolute centered mean error over the supplied
-columns. The outward 95th-percentile radius supplies simultaneous two-sided
-conditional bands; numerical division/endpoints round outward. Defaults are
-1,000 draws and both 20/100-session blocks. These are model-dependent bootstrap
-bands, not guaranteed coverage or an estimate of independent opportunities.
+The daily owner's exact-bool `entry_decision_allowed` and
+`entry_submission_allowed` frame controls remain denial-only. They cannot bypass
+original-state risk/sizing, settled cash, reservations, ownership, loss latches
+or kill controls. A suppressed instruction is not delayed into a later opening;
+held-position exits and existing obligations continue independently.
 
-The eventual preregistered evaluator must include the whole comparison family,
-not only winners: 28 candidates plus the selected policy, six capital tiers,
-four friction levels and three paired references (up to 2,088 columns). It must
-bind dates, column identities, all attempted paths and the family/protocol hash.
-The math primitive validates aligned lengths and finite bounded values but
-cannot authenticate dates, labels or family completeness. Independent support
-remains unknown; 1,000 draws do not mean 1,000 opportunities.
+`select_capital_training` remains a pure, non-authoritative helper when called
+directly. Its declarations and original-run hashes bind ranking integrity, not
+proof of genuine fills or authenticated cost/source completeness. The new owning
+composer derives those declarations from its own original-event paths instead
+of treating supplied scores as evidence.
 
-## Remaining work
+`dependent_simultaneous_mean_intervals` retains the shared seeded draw engine
+and unchanged legacy individual results. Equal-length columns share noncircular
+block starts. Each draw takes the maximum absolute centered mean error over the
+supplied columns; the outward95th-percentile radius gives conditional two-sided
+bands. Defaults are1,000 draws and20/100-session blocks. These are model-dependent
+bootstrap bands, not guaranteed coverage or an independent-opportunity estimate.
 
-Finish original-event settlement/action scheduling, train-only score derivation,
-fold selection with account/policy carryover, comparison-family/report binding,
-benchmarks and costs/taxes, complete anticipated workload verification, and
-integrated release checks. Only then freeze executable/config/source/calendar/
-actions/cost/selection/statistical identities. Qualified authorized inputs are
-required for a qualified economic evaluation. Assumption-labeled development
-results cannot become promotion or live evidence.
+The report adapter still must bind the complete29-path/six-capital/four-cost/
+four-reference family (2,784 columns), exact dates, identities and all attempted
+paths. References are full mathematical SPY, constrained policy-managed SPY,
+retrospective exposure-matched SPY and zero-yield cash. They are not interchangeable
+or automatically executable. The separately versioned capital math entrypoint
+provides capacity over the same kernel; the legacy API retains2,088 columns.
+Numeric length validation alone authenticates neither labels nor family
+completeness. Draw counts and completed episodes never become independent support.
+
+Statistics, compatible benchmarks, complete workload/resource verification and
+economic executable preregistration remain separate unfinished composition.
+Qualified authorized five-symbol source/calendar/actions and defensible costs
+are not established by this module. Every source/cost/execution/economic/
+promotion/live eligibility flag remains false. Existing production limits and
+live blocks remain unchanged. Merge is not deployment or profitability proof.

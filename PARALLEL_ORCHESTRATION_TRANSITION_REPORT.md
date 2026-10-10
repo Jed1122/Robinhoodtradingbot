@@ -1,46 +1,64 @@
 # Parallel Orchestration Transition Report
 
-## Current original-input preparation and due-facts release — 2026-10-10
+## Current capital research composition — 2026-10-10
 
-PR37 is merged at ec40d5185a3af3993244598c53722518ad899d94, with the exact
-reviewed tree136d732cb2a7c2cb81b4a75793b3075af2231aeb, after all14 current
-hosted jobs passed and all9 substantive threads were resolved. This is software
-integration, not deployment or evidence of profitability.
+PR37 and PR38 are integrated; PR38 merged at
+a940103b04e83b4065eb0d47bd878ba77ad131fd with reviewed tree
+aed4d6d4dcb55557a23ea16a5946ad25114ddd74 after all14 exact-head jobs passed.
+A merge is not deployment. All original evidence and linked branches are retained.
 
-The separately reviewed preparation/policy/due-facts executable source
-e1bf1f7456756718d8234fde43e28ea3cd984c74 completed10,220 full tests
-(33 optional skips/one existing warning),20 actual native tests and92.30%
-combined coverage. Unchanged80overall/90critical gates passed. Ruff/Mypy384/
-Bandit, both frozen locks, SBOM and shell/Compose checks passed. Native backend
-versions were checked; clean advisory evidence is retained for unchanged
-dependency graphs, not represented as a fresh network audit. Optional backup
-skips do not prove deployed recovery. Human-document-only publication changes
-retain that source certification, not a new full run at a later document head.
+Original-input walk-forward composition derives its140 training runs and29
+continuous comparison paths internally, preserving original held policy across
+fold boundaries. Its exactd2a0252 source passed10,255 full and20 native tests,
+92.21% combined coverage and unchanged80overall/90critical gates. Descriptive
+path economics source263cad8 passed10,276 full and20 native tests,92.37% and
+unchanged80/90 gates. These are source-bound software results, not certification
+of later changed source or genuine economics. Conventional Sortino remains
+explicitly unavailable rather than mislabeled from the shared legacy formula.
 
-Original-source ownership and invocation-local preparation reuse the same
-canonical configuration, feature, signal, account, loss and sizing machinery.
-The corrected private due-facts scheduler retains original unpaid entitlement
-and unsettled SELL fill identities even when their monetary amount is zero.
-Its T+2, dated payment and fee-finality conventions remain declared research
-assumptions, not authenticated broker facts. Public legacy identities remain
-unchanged; no saved balance or latch becomes authority.
+The bounded invocation-owned preparation optimization preserves public original
+and copied-source validation, canonical preimages and the same accounting/risk
+engines. Six watched RED controls then103 focused tests passed; independent whole
+review found no Critical/Important/Minor defect. The same six-session fabricated
+profile measured6.99s versus10.23s before, not universal or full-grid performance.
+The separately reviewed four-role statistics wrapper supports2784 aligned math
+columns over the unchanged shared kernel; legacy2088 admission remains intact.
+Its fabricated math-only workload ran two complete repeats in24–25s with about
+243MiB peakRSS. The combined executable source
+d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c completed10,314 full tests
+(33 optional skips/one existing warning),20 actual native tests and92.37%
+combined coverage; unchanged80overall/90critical gates passed. Ruff/Mypy387/
+Bandit, both frozen locks, SBOM and shell/Compose checks passed. Same unchanged
+dependency-graph clean advisory/native-version evidence is retained, not a fresh
+network audit. Optional backup skips do not establish deployed recovery.
+This human-document refresh retains exact d705 certification, not a fresh full
+run at a later documentation/ancestry-only publication head. Current exact-head
+hosted checks and compatible integration remain required before release.
 
-The750-session preparation guard passed60.7347s/88,047,616-byte observed peakRSS,
-but neither that guard nor the newly reviewed original-input trajectory proves
-the complete28x6x4x5 workload. The trajectory's own full suite is still running
-at0c97253; it is not certified by the e1bf preparation suite. Train-only
-walk-forward composition, continuous selected/comparison accounts, statistics,
-benchmarks and reports remain unfinished. No executable economic freeze or
-new study exists. Qualified five-symbol source/calendar/actions/cost inputs are
-not established; retained private input completeness has not been inspected.
-Genuine customer calibration, broker/paper/shadow and actual selected-runtime
-recovery remain separate unfinished gates. Every eligibility flag stays false
-and production limits remain unchanged.
+The separate full mathematical SPY adapter owns originals, handles split-adjusted
+entry-share units and ex-date dividend factors through the unchanged benchmark
+kernel. Its independent bounded review found no Critical/Important defect;377
+central tests passed. Its own full/native gates are pending separately. It is
+not policy-admitted execution or a finished four-reference panel. Optional
+persistent non-unit ex-factor fixture strengthening is deferred; the reviewer
+independently probed that combination successfully. No study was rerun.
 
-Next: finish exact-candidate release checks, complete owned walk-forward and
-statistics/report composition, verify the complete workload, then freeze all
-identities and criteria before one economic evaluation with qualified authorized
-inputs. All older sections below are historical, not current readiness claims.
+Task5 remains unfinished: source-owned compatible four-role benchmarks, complete
+comparison-family/statistics/report composition, actual full strategy workload,
+capital-specific executable preregistration and one authorized development study.
+Actual retained five-symbol coverage is UNVERIFIED, not known absent. Empty
+action tuples or hashes cannot establish completeness or licensing. Waived
+publication/correction chronology remains a disclosed latest-vintage limitation,
+not an invented timestamp or renewed initial research prerequisite.
+
+Source/cost/execution/economic/promotion/live flags remain false; production
+limits unchanged. Genuine customer cost calibration, broker/paper/shadow and
+actual selected-runtime recovery remain independent unverified prerequisites.
+No private input inspection, real study, acquisition, broker order or deployment
+is established by this software snapshot. Next: complete exact candidate gates,
+source-owned benchmark/report composition and full workload validation, then
+freeze code/config/input/calendar/actions/cost/selection/protocol identities
+before outcomes using qualified authorized inputs. Earlier sections are history.
 
 ## Historical reviewed owner-v5 release — 2026-10-09
 

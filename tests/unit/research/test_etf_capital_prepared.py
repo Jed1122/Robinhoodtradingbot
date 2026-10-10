@@ -30,10 +30,10 @@ def prepare(source, sessions):
     return _prepare_capital_days(source, sessions=sessions)
 
 
-def long_source(count=301, *, ancient=False, flat=False, last_close=None):
+def long_source(count=301, *, ancient=False, flat=False, last_close=None, start_day=None):
     source = dataset()
     days = []
-    day = date(2020, 1, 2)
+    day = date(2020, 1, 2) if start_day is None else start_day
     while len(days) < count:
         if day.weekday() < 5:
             days.append(day)
@@ -54,6 +54,7 @@ def long_source(count=301, *, ancient=False, flat=False, last_close=None):
             archive.request,
             start_ns=_ns(datetime.combine(days[0], time(), UTC)),
             end_ns=_ns(datetime.combine(end, time(), UTC)),
+            limit=max(archive.request.limit, count),
         )
         wire = json.loads(body(request.symbol))
         prototype = wire["bars"][0]
@@ -241,3 +242,34 @@ def test_prepared_input_is_not_a_supported_source_argument():
     dates = tuple(row.session_date for row in source.calendar.sessions)
     with pytest.raises(ValueError):
         prepare(prepare(source, dates), dates)
+
+
+def test_invocation_owned_preparation_preserves_literal_original_identities():
+    from trading_bot.market_data.etf_capital_owned import _own_capital_source
+    from trading_bot.research import etf_capital_prepared as module
+
+    source = dataset()
+    dates = tuple(row.session_date for row in source.calendar.sessions)
+    value = module._prepare_owned_capital_days(_own_capital_source(source), sessions=dates)
+    assert value == prepare(source, dates)
+    assert value.input_hash == "5ed8dd9701b0bd770c73764c4b720bbb562ad2b8df24967b504e912f910ee4c1"
+    assert value.source_hash == "1e55843963127a4d4795a755aaa33fbfe676f98e61dcc4ff76882e61265ec23c"
+    assert value.days[0].raw_bars[0].close == D(22)
+    assert value.days[1].raw_bars[0].close == D(11)
+
+
+@pytest.mark.parametrize("invalid", (None, object(), dataset()))
+def test_owned_preparation_requires_private_owned_source_not_public_input(invalid):
+    from trading_bot.research import etf_capital_prepared as module
+
+    with pytest.raises(ValueError, match="capital_prepared_input_invalid"):
+        module._prepare_owned_capital_days(invalid, sessions=(date(2023, 1, 3),))
+
+
+def test_public_preparation_does_not_accept_internal_owned_source():
+    from trading_bot.market_data.etf_capital_owned import _own_capital_source
+
+    source = dataset()
+    dates = tuple(row.session_date for row in source.calendar.sessions)
+    with pytest.raises(ValueError, match="capital_prepared_input_invalid"):
+        prepare(_own_capital_source(source), dates)

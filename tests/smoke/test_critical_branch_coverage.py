@@ -10,6 +10,26 @@ ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "check_critical_branch_coverage.py"
 
 
+def test_capital_shared_resampling_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/research/etf_resampling.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
+def test_capital_owned_walk_forward_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/simulation/etf_capital_walk_forward.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 @pytest.mark.parametrize(
     "filename", (
         "etf_capital_feature_epoch.py", "etf_capital_projection_preimage.py",
@@ -119,6 +139,16 @@ def test_capital_daily_owner_requires_critical_branch_coverage(tmp_path):
 def test_capital_due_facts_requires_critical_branch_coverage(tmp_path):
     root = tmp_path / "project"
     relative = "src/trading_bot/simulation/etf_capital_due_facts.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
+def test_capital_trajectory_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/simulation/etf_capital_trajectory.py"
     _source(root, relative)
     report = _report(tmp_path / "coverage.json", {})
     assert _load_checker().check_critical_branch_coverage(report, root) == [
@@ -580,4 +610,14 @@ def test_rejects_a_root_without_discovered_critical_modules(tmp_path: Path) -> N
 
     assert _load_checker().check_critical_branch_coverage(report, root) == [
         "no critical source modules discovered"
+    ]
+
+
+def test_capital_path_economic_report_requires_critical_branch_coverage(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    path = "src/trading_bot/research/etf_capital_path_economics.py"
+    _source(root, path)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {path}"
     ]

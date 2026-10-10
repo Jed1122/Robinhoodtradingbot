@@ -12,35 +12,28 @@
 
 ## Current Task5 checkpoint — 2026-10-10
 
-PR29–PR37 are integrated; PR37 mergedec40d5185a3af3993244598c53722518ad899d94
-with reviewed tree136d732cb2a7c2cb81b4a75793b3075af2231aeb after all14 current
-jobs passed and all9 substantive threads were resolved. Merge is not deployment.
-The independent preparation/policy/due-facts sourcee1bf1f7 completed10,220full/
-20native/92.30% and unchanged80overall/90critical gates, plus static/lock/SBOM/
-manifest checks. Its zero-value obligation finality correction has watched
-RED-to-GREEN controls and independent review. Human-doc publication retains
-that exact-source certification, not a fresh run at a document-only head.
+PR29–PR38 are integrated; PR38 mergeda940103 after all14 exact-head checks.
+Original-input walk-forward sourced2a0252 passed10,255full/20native/92.21%;
+corrected descriptive path economics source263cad8 passed10,276full/20native/
+92.37%. Both passed unchanged80overall/90critical gates. These retained source-
+bound results do not certify later changes. Bounded invocation-owned preparation
+reuse and four-role2784-column statistics capacity are independently reviewed.
+Their combined executable d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c completed
+10,314full/20native/92.37%, unchanged80overall/90critical plus static/lock/SBOM/
+manifest checks. Current hosted/compatible integration gates remain required;
+human-document/ancestry-only publication does not claim a fresh full rerun.
+Separate mathematical SPY adapter is independently reviewed/377central tests
+passed, but its own global gates remain pending. No full strategy workload,
+capital economic executable freeze or genuine study is complete.
 
-Task5 remains partial. Original-input trajectory0c97253 is independently reviewed
-but its full regression suite is running separately. Owned train-only walk-forward
-selection, continuous account/policy carryover, dependent statistics/benchmarks/
-reports and full-grid performance verification remain. The preparation750-session
-guard passed, but is not a complete workload result. No executable economic freeze
-or study has run, and qualified authorized five-symbol inputs/costs are not
-established. Production limits and all eligibility flags remain unchanged.
-
-## Historical Task5 checkpoint — 2026-10-09
-
-PR29–PR34 are integrated; corrected signal/frontier PR34 merged atf1326c9.
-Entry/exit executable e814a29 completed9,896full/20native/92.16% and unchanged
-80overall/90critical gates with independent review's duplicate-BUY correction
-covered RED-to-GREEN; PR35's hosted integration remains pending. Pure policy
-executableb2dc8f8 completed9,918full/20native/92.17% and unchanged80/90 gates,
-with reviewed holding-deadline correction covered RED-to-GREEN. This does not
-complete Task5. Policy release, the original-event daily owner, train-only selection/account-policy carryover,
-dependent statistics/reports and full-workload verification remain. No executable
-economic freeze or study has run; qualified authorized inputs remain necessary.
-Retain earlier checkpoints as history, not current release or readiness claims.
+Task5 still needs source-owned four-reference benchmarks, complete aligned
+comparison/statistics/reports, full28x6x4x5 workload/resource verification and
+capital-specific immutable preregistration before one authorized evaluation.
+Actual retained five-symbol inputs/actions/access are UNVERIFIED, not known
+absent. Latest-vintage/publication limitations remain disclosed under the waiver;
+missing costs/support/coverage never become zeros or qualification. All readiness
+flags remain false and production limits unchanged. Preserve earlier execution
+checkpoints as history, not current release or project-completion claims.
 
 ## Global Constraints
 

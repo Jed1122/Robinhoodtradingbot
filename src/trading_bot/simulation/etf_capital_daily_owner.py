@@ -1,5 +1,6 @@
 """Owned original-event daily assumptions; no broker or economic authority."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, localcontext
@@ -7,7 +8,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from trading_bot.config import LoadedConfig
-from trading_bot.domain import Instrument, OrderPurpose, Side, require_bounded_decimal
+from trading_bot.domain import Bar, Instrument, OrderPurpose, Side, require_bounded_decimal
 from trading_bot.market_data.etf_calendar import EtfCalendarArchive
 from trading_bot.market_data.etf_capital_actions import CapitalSplit
 from trading_bot.market_data.etf_capital_features import _CONTEXT as _FEATURE_CONTEXT
@@ -124,6 +125,51 @@ class CapitalDailyOwnerResult(_Offline):
     input_hash: str
 
 
+@dataclass(frozen=True, slots=True)
+class _CapitalOwnerTerms:
+    loaded: LoadedConfig
+    initial_cash: Decimal
+    episode_fee_bound: Decimal | None
+    entry_fee: Decimal
+    exit_fee: Decimal
+    roundtrip_friction_pct: Decimal
+    calendar: EtfCalendarArchive
+    entry_outcome: _Outcome
+    entry_fill_fraction: Decimal
+    exit_outcome: _Outcome
+    exit_fill_fraction: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class _CapitalOwnerFrame:
+    bars: tuple[Bar, ...]
+    instruments: tuple[Instrument, ...]
+    original_facts: tuple[CapitalDailyOriginalFact, ...]
+    daily_reset_reconciled: bool
+    weekly_reset_reviewed: bool
+    entry_decision_allowed: bool
+    entry_submission_allowed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _CapitalOwnerPoint:
+    at: datetime
+    equity: Decimal
+    account: CapitalActionAccountReplay
+    policy: CapitalDailyPolicy | None
+    opening: CapitalOpeningPolicy | None
+
+
+@dataclass(frozen=True, slots=True)
+class _CapitalOwnerReplay:
+    events: tuple[_Event, ...]
+    observations: tuple[CapitalRiskObservation, ...]
+    points: tuple[_CapitalOwnerPoint, ...]
+    account: CapitalActionAccountReplay
+    risk: CapitalRiskReplay
+    input_hash: str
+
+
 def _cursor(event: _Event) -> EventCursor:
     if isinstance(event, CapitalAccountSubmission):
         return event.request.submitted
@@ -192,6 +238,11 @@ def _validate(request: CapitalDailyOwnerRequest) -> None:
     _check(request.source_qualified is False and request.cost_qualified is False)
     _check(request.execution_enabled is False and request.economic_admitted is False)
     _check(request.evidence_promotable is False)
+    _check(type(request.frames) is tuple and 0 < len(request.frames) <= 2048)
+    _validate_owner_terms(request)
+
+
+def _validate_owner_terms(request: CapitalDailyOwnerRequest | _CapitalOwnerTerms) -> None:
     _config(request.loaded)
     _check(type(request.calendar) is EtfCalendarArchive)
     request.calendar.__post_init__()
@@ -208,7 +259,6 @@ def _validate(request: CapitalDailyOwnerRequest) -> None:
     )
     for session in request.calendar.sessions:
         _check(session.opens_at.tzinfo is UTC and session.closes_at.tzinfo is UTC)
-    _check(type(request.frames) is tuple and 0 < len(request.frames) <= 2048)
     for fee in (request.entry_fee, request.exit_fee):
         require_bounded_decimal(fee, "side fee", nonnegative=True)
     if request.episode_fee_bound is not None:
@@ -232,14 +282,158 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
     """Recompute a complete assumed trajectory; never adopt saved account state."""
     with localcontext(_CONTEXT):
         _validate(request)
-        cfg = _config(request.loaded)
-        events: tuple[_Event, ...] = ()
-        observations: tuple[CapitalRiskObservation, ...] = ()
-        points: list[CapitalDailyOwnerPoint] = []
-        bindings: dict[str, CapitalDailyPolicy] = {}
         prior_projections: tuple[CapitalFeatureProjection, ...] = ()
         basis_splits: dict[str, tuple[CapitalSplit, ...]] = {}
         calendar_hash = request.calendar.archive_hash
+
+        def frame_at(
+            index: int, events: tuple[_Event, ...], observations: tuple[CapitalRiskObservation, ...]
+        ) -> _CapitalOwnerFrame:
+            nonlocal prior_projections
+            frame = request.frames[index]
+            _check(type(frame) is CapitalDailyFrame)
+            _check(type(frame.entry_decision_allowed) is bool)
+            _check(type(frame.entry_submission_allowed) is bool)
+            _check(type(frame.projections) is tuple and len(frame.projections) == 5)
+            _check(type(frame.instruments) is tuple and len(frame.instruments) == 5)
+            _check(type(frame.original_facts) is tuple)
+            prior_raw = {str(p.raw_bars[-1].instrument_id): p.raw_bars for p in prior_projections}
+            prior_features = {str(p.raw_bars[-1].instrument_id): p for p in prior_projections}
+            for projection in frame.projections:
+                _check(type(projection) is CapitalFeatureProjection)
+                projection.__post_init__()
+                _check(projection.calendar_hash == calendar_hash)
+                expected_sessions = tuple(
+                    (row.opens_at, row.closes_at)
+                    for row in request.calendar.sessions
+                    if row.session_date <= projection.as_of_session
+                )
+                _check(
+                    tuple((bar.starts_at, bar.ends_at) for bar in projection.raw_bars)
+                    == expected_sessions
+                )
+                symbol = str(projection.raw_bars[-1].instrument_id)
+                if prior_projections:
+                    _check(symbol in prior_raw)
+                    previous = prior_raw[symbol]
+                    _check(len(projection.raw_bars) == len(previous) + 1)
+                    _check(projection.raw_bars[:-1] == previous)
+                    basis_splits[symbol] = _feature_continuity(
+                        prior_features[symbol],
+                        projection,
+                        frame.original_facts,
+                        events,
+                        request.initial_cash,
+                        basis_splits.get(symbol, ()),
+                    )
+                for raw, feature in zip(projection.raw_bars, projection.feature_bars, strict=True):
+                    expected = _capital_split_bar(
+                        raw,
+                        splits=basis_splits.get(symbol, ()),
+                        as_of_session=projection.as_of_session,
+                    )
+                    _check(replace(expected, data_hash=feature.data_hash) == feature)
+            prior_projections = frame.projections
+            return _CapitalOwnerFrame(
+                tuple(p.raw_bars[-1] for p in frame.projections),
+                frame.instruments,
+                frame.original_facts,
+                frame.daily_reset_reconciled,
+                frame.weekly_reset_reviewed,
+                frame.entry_decision_allowed,
+                frame.entry_submission_allowed,
+            )
+
+        def policy_at(
+            index: int, at: datetime, opening: CapitalOpeningPolicy | None
+        ) -> CapitalDailyPolicy:
+            frame = request.frames[index]
+            return capital_daily_policy(
+                loaded=request.loaded,
+                candidate=frame.candidate,
+                projections=frame.projections,
+                as_of=at,
+                opening=opening,
+            )
+
+        def identity() -> str:
+            return content_hash(
+                (
+                    "capital-daily-owner-v5",
+                    request.loaded.config_hash,
+                    calendar_hash,
+                    request.initial_cash,
+                    tuple(
+                        content_hash(("capital-daily-owner-frame-v1", f)) for f in request.frames
+                    ),
+                    request.episode_fee_bound,
+                    request.entry_fee,
+                    request.exit_fee,
+                    request.roundtrip_friction_pct,
+                    request.entry_outcome,
+                    request.entry_fill_fraction,
+                    request.exit_outcome,
+                    request.exit_fill_fraction,
+                )
+            )
+
+        result = _replay_capital_owner(
+            _CapitalOwnerTerms(
+                request.loaded,
+                request.initial_cash,
+                request.episode_fee_bound,
+                request.entry_fee,
+                request.exit_fee,
+                request.roundtrip_friction_pct,
+                request.calendar,
+                request.entry_outcome,
+                request.entry_fill_fraction,
+                request.exit_outcome,
+                request.exit_fill_fraction,
+            ),
+            count=len(request.frames),
+            frame_at=frame_at,
+            policy_at=policy_at,
+            identity=identity,
+        )
+        public_points = []
+        for point in result.points:
+            if point.policy is None:
+                raise ValueError("capital_daily_owner_invalid")
+            public_points.append(
+                CapitalDailyOwnerPoint(
+                    point.at, point.equity, point.account, point.policy, point.opening
+                )
+            )
+        return CapitalDailyOwnerResult(
+            result.events,
+            result.observations,
+            tuple(public_points),
+            result.account,
+            result.risk,
+            result.input_hash,
+        )
+
+
+def _replay_capital_owner(
+    request: _CapitalOwnerTerms,
+    *,
+    count: int,
+    frame_at: Callable[
+        [int, tuple[_Event, ...], tuple[CapitalRiskObservation, ...]], _CapitalOwnerFrame
+    ],
+    policy_at: Callable[[int, datetime, CapitalOpeningPolicy | None], CapitalDailyPolicy | None],
+    identity: Callable[[], str],
+) -> _CapitalOwnerReplay:
+    """Single private execution loop; providers are frontend-owned, never public inputs."""
+    with localcontext(_CONTEXT):
+        _validate_owner_terms(request)
+        _check(type(count) is int and 0 < count <= 2048)
+        cfg = _config(request.loaded)
+        events: tuple[_Event, ...] = ()
+        observations: tuple[CapitalRiskObservation, ...] = ()
+        points: list[_CapitalOwnerPoint] = []
+        bindings: dict[str, CapitalDailyPolicy] = {}
         pending: CapitalDailyPolicy | None = None
         account = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
 
@@ -314,51 +508,15 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                 )
                 return opening, fill.fill.price / split_ratio
 
-        for frame in request.frames:
-            _check(type(frame) is CapitalDailyFrame)
+        for index in range(count):
+            frame = frame_at(index, events, observations)
+            _check(type(frame) is _CapitalOwnerFrame)
             _check(type(frame.entry_decision_allowed) is bool)
             _check(type(frame.entry_submission_allowed) is bool)
-            _check(type(frame.projections) is tuple and len(frame.projections) == 5)
             _check(type(frame.instruments) is tuple and len(frame.instruments) == 5)
             _check(type(frame.original_facts) is tuple)
-            prior_raw = {str(p.raw_bars[-1].instrument_id): p.raw_bars for p in prior_projections}
-            prior_features = {str(p.raw_bars[-1].instrument_id): p for p in prior_projections}
-            for projection in frame.projections:
-                _check(type(projection) is CapitalFeatureProjection)
-                projection.__post_init__()
-                _check(projection.calendar_hash == calendar_hash)
-                expected_sessions = tuple(
-                    (row.opens_at, row.closes_at)
-                    for row in request.calendar.sessions
-                    if row.session_date <= projection.as_of_session
-                )
-                _check(
-                    tuple((bar.starts_at, bar.ends_at) for bar in projection.raw_bars)
-                    == expected_sessions
-                )
-                symbol = str(projection.raw_bars[-1].instrument_id)
-                if prior_projections:
-                    _check(symbol in prior_raw)
-                    previous = prior_raw[symbol]
-                    _check(len(projection.raw_bars) == len(previous) + 1)
-                    _check(projection.raw_bars[:-1] == previous)
-                    basis_splits[symbol] = _feature_continuity(
-                        prior_features[symbol],
-                        projection,
-                        frame.original_facts,
-                        events,
-                        request.initial_cash,
-                        basis_splits.get(symbol, ()),
-                    )
-                for raw, feature in zip(projection.raw_bars, projection.feature_bars, strict=True):
-                    expected = _capital_split_bar(
-                        raw,
-                        splits=basis_splits.get(symbol, ()),
-                        as_of_session=projection.as_of_session,
-                    )
-                    _check(replace(expected, data_hash=feature.data_hash) == feature)
-            prior_projections = frame.projections
-            bars = tuple(p.raw_bars[-1] for p in frame.projections)
+            bars = frame.bars
+            _check(type(bars) is tuple and len(bars) == 5)
             opened, closed = bars[0].starts_at, bars[0].ends_at
             _check(all(b.starts_at == opened and b.ends_at == closed for b in bars))
             _check(not points or points[-1].at < opened)
@@ -571,14 +729,12 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             at = closed + timedelta(seconds=3)
             observe(at, prices[opening.symbol].close if opening else None)
             final_risk = risk()
-            pending = capital_daily_policy(
-                loaded=request.loaded,
-                candidate=frame.candidate,
-                projections=frame.projections,
-                as_of=at,
-                opening=opening,
-            )
-            if pending.action == "entry" and not frame.entry_decision_allowed:
+            pending = policy_at(index, at, opening)
+            if (
+                pending is not None
+                and pending.action == "entry"
+                and not frame.entry_decision_allowed
+            ):
                 pending = replace(
                     pending,
                     action="wait",
@@ -589,10 +745,8 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
                         ("capital-owner-entry-disabled-v2", pending.policy_hash)
                     ),
                 )
-            points.append(
-                CapitalDailyOwnerPoint(at, final_risk[-1].equity, account, pending, opening)
-            )
-        return CapitalDailyOwnerResult(
+            points.append(_CapitalOwnerPoint(at, final_risk[-1].equity, account, pending, opening))
+        return _CapitalOwnerReplay(
             events,
             observations,
             tuple(points),
@@ -600,24 +754,5 @@ def replay_capital_daily_owner(request: CapitalDailyOwnerRequest) -> CapitalDail
             etf_capital_risk._risk_result(
                 request.loaded, request.initial_cash, OrderPurpose.ENTRY, final_risk, actions=True
             ),
-            content_hash(
-                (
-                    "capital-daily-owner-v5",
-                    request.loaded.config_hash,
-                    calendar_hash,
-                    request.initial_cash,
-                    tuple(
-                        content_hash(("capital-daily-owner-frame-v1", frame))
-                        for frame in request.frames
-                    ),
-                    request.episode_fee_bound,
-                    request.entry_fee,
-                    request.exit_fee,
-                    request.roundtrip_friction_pct,
-                    request.entry_outcome,
-                    request.entry_fill_fraction,
-                    request.exit_outcome,
-                    request.exit_fill_fraction,
-                )
-            ),
+            identity(),
         )

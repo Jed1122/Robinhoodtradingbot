@@ -12,7 +12,7 @@ from trading_bot.market_data.etf_capital_features import (
     _capital_feature_source,
     _capital_owned_raw_source,
 )
-from trading_bot.market_data.etf_capital_owned import _own_capital_source
+from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_capital_daily_policy import (
     _capital_below_sma200,
@@ -66,21 +66,31 @@ class _PreparedCapitalInput(_PreparationOnly):
 def _prepare_capital_days(
     dataset: CapitalResearchDataset, *, sessions: tuple[date, ...]
 ) -> _PreparedCapitalInput:
-    """Own original inputs internally; never accept a cached preparation token.
+    """Own original inputs internally; never accept a cached preparation token."""
+    try:
+        return _prepare_owned_capital_days(_own_capital_source(dataset), sessions=sessions)
+    except (ValueError, TypeError, ArithmeticError, AttributeError):
+        raise ValueError("capital_prepared_input_invalid") from None
+
+
+def _prepare_owned_capital_days(
+    owned: _OwnedCapitalSource, *, sessions: tuple[date, ...]
+) -> _PreparedCapitalInput:
+    """Reuse this invocation's internally owned originals, never public state.
 
     Full as-of validation/digests precede truncation. A terminal-valid inverse
     split cannot hide invalid old values at a requested intermediate basis.
     """
     try:
         if (
-            type(sessions) is not tuple
+            type(owned) is not _OwnedCapitalSource
+            or type(sessions) is not tuple
             or not 0 < len(sessions) <= 4000
             or any(type(day) is not date for day in sessions)
             or sessions != tuple(sorted(set(sessions)))
         ):
             raise ValueError("capital_prepared_input_invalid")
         with localcontext(_CONTEXT):
-            owned = _own_capital_source(dataset)
             source = owned.dataset
             loaded = restore_loaded_config(source.canonical_config, source.config_hash)
             multiplier = _config(loaded).equity_strategies.stop_loss_atr_multiplier
