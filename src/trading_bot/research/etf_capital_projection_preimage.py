@@ -35,7 +35,10 @@ def _array_preimage(values: Iterable[bytes]) -> Iterator[bytes]:
 
 
 def _capital_projection_preimage(
-    projection: CapitalFeatureProjection, *, raw_json: tuple[bytes, ...]
+    projection: CapitalFeatureProjection,
+    *,
+    raw_json: tuple[bytes, ...],
+    feature_json: tuple[bytes, ...] | None = None,
 ) -> Iterator[bytes]:
     """Called only with matching private owned raw prefixes after full validation.
 
@@ -48,6 +51,14 @@ def _capital_projection_preimage(
         or type(raw_json) is not tuple
         or len(raw_json) != len(projection.raw_bars)
         or any(type(value) is not bytes for value in raw_json)
+        or (
+            feature_json is not None
+            and (
+                type(feature_json) is not tuple
+                or len(feature_json) != len(projection.feature_bars)
+                or any(type(value) is not bytes for value in feature_json)
+            )
+        )
     ):
         raise ValueError("capital_projection_preimage_invalid")
     projection.__post_init__()
@@ -74,7 +85,11 @@ def _capital_projection_preimage(
             yield b","
         yield canonical_json(name).encode() + b":" + canonical_json(value).encode()
     yield b',"feature_bars":'
-    yield from _array_preimage(canonical_json(bar).encode() for bar in projection.feature_bars)
+    yield from _array_preimage(
+        (canonical_json(bar).encode() for bar in projection.feature_bars)
+        if feature_json is None
+        else feature_json
+    )
     yield b',"limitations":' + canonical_json(projection.limitations).encode()
     yield b',"raw_bars":'
     yield from _array_preimage(raw_json)
@@ -83,9 +98,14 @@ def _capital_projection_preimage(
 
 
 def _capital_projection_digest(
-    projection: CapitalFeatureProjection, *, raw_json: tuple[bytes, ...]
+    projection: CapitalFeatureProjection,
+    *,
+    raw_json: tuple[bytes, ...],
+    feature_json: tuple[bytes, ...] | None = None,
 ) -> str:
     digest = sha256()
-    for chunk in _capital_projection_preimage(projection, raw_json=raw_json):
+    for chunk in _capital_projection_preimage(
+        projection, raw_json=raw_json, feature_json=feature_json
+    ):
         digest.update(chunk)
     return digest.hexdigest()

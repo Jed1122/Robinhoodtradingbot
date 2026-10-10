@@ -10,13 +10,16 @@ from trading_bot.domain import Bar
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
 from trading_bot.market_data.etf_capital_features import (
     _capital_feature_source,
-    _capital_features_at,
     _capital_owned_raw_source,
 )
 from trading_bot.market_data.etf_capital_owned import _own_capital_source
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_capital_daily_policy import _capital_entry_distance
 from trading_bot.research.etf_capital_feasibility import _CONTEXT, _config
+from trading_bot.research.etf_capital_feature_epoch import (
+    _capital_features_epoch_at,
+    _CapitalFeatureBasis,
+)
 from trading_bot.research.etf_capital_projection_preimage import _capital_projection_digest
 from trading_bot.research.etf_capital_signals import (
     CapitalSignal,
@@ -96,10 +99,14 @@ def _prepare_capital_days(
                     raise ValueError("capital_prepared_input_invalid")
                 raw_json.append(tuple(canonical_json(bar).encode() for _, bar in item.raw_rows))
             result = []
+            bases: list[_CapitalFeatureBasis | None] = [None] * len(feature_sources)
             for day in sessions:
-                full = tuple(
-                    _capital_features_at(item, as_of_session=day) for item in feature_sources
+                basis_outputs = tuple(
+                    _capital_features_epoch_at(item, as_of_session=day, basis=basis)
+                    for item, basis in zip(feature_sources, bases, strict=True)
                 )
+                bases = [item[0] for item in basis_outputs]
+                full = tuple(item[1] for item in basis_outputs)
                 as_of = _validate_capital_projection_structure(
                     full, source.config_hash, full[0].raw_bars[-1].ends_at
                 )
@@ -108,10 +115,14 @@ def _prepare_capital_days(
                         (
                             str(projection.raw_bars[-1].instrument_id),
                             _capital_projection_digest(
-                                projection, raw_json=encoded[: len(projection.raw_bars)]
+                                projection,
+                                raw_json=encoded[: len(projection.raw_bars)],
+                                feature_json=feature_json,
                             ),
                         )
-                        for projection, encoded in zip(full, raw_json, strict=True)
+                        for (_, projection, feature_json), encoded in zip(
+                            basis_outputs, raw_json, strict=True
+                        )
                     )
                 )
                 compact = tuple(
