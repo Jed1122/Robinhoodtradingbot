@@ -601,3 +601,13 @@ def test_rejects_a_root_without_discovered_critical_modules(tmp_path: Path) -> N
     assert _load_checker().check_critical_branch_coverage(report, root) == [
         "no critical source modules discovered"
     ]
+
+
+def test_capital_path_economic_report_requires_critical_branch_coverage(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    path = "src/trading_bot/research/etf_capital_path_economics.py"
+    _source(root, path)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {path}"
+    ]
