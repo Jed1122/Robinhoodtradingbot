@@ -28,8 +28,8 @@ Distinct constrained-SPY executable2108c826 completed99focused/484related,
 10,345full/20native tests,92.39316905801621% combined coverage and unchanged
 80overall/90critical gates. Independent whole-increment review found no
 Critical/Important/Minor defect. Hosted publication/integration remains separate.
-Corrected zero-exposure matching regression/global gates are pending; retained
-passive certification does not certify that changed source. No full strategy
+Corrected zero-exposure matching regression523passed; global gates remain
+pending. Retained passive certification does not certify changed source. No full strategy
 workload, capital economic executable freeze or genuine study is complete.
 This human-doc-only refresh is not a fresh executable full rerun.
 

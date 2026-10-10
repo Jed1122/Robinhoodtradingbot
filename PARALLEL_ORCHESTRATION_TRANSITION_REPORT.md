@@ -30,7 +30,8 @@ integration gates. Passive executable2c157 completed10,349 full/20 native tests,
 human docs/ancestry. These results do not certify subsequently changed matching
 source. Its whole review identified an Important zero-exposure/fee boundary;
 the coordinator reproduced two RED controls and corrected them without waiving
-funded purchase affordability. Corrected regression/global gates remain pending.
+funded purchase affordability. Corrected regression523passed327.08s; full/native
+global gates for corrected matching source remain pending.
 
 Task5 still needs complete source-owned four-reference statistics/report
 composition, full28x6x4x5 workload validation, capital executable freeze and one
