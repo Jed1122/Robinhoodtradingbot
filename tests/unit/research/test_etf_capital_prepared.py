@@ -30,10 +30,10 @@ def prepare(source, sessions):
     return _prepare_capital_days(source, sessions=sessions)
 
 
-def long_source(count=301, *, ancient=False, flat=False, last_close=None):
+def long_source(count=301, *, ancient=False, flat=False, last_close=None, start_day=None):
     source = dataset()
     days = []
-    day = date(2020, 1, 2)
+    day = date(2020, 1, 2) if start_day is None else start_day
     while len(days) < count:
         if day.weekday() < 5:
             days.append(day)
@@ -54,6 +54,7 @@ def long_source(count=301, *, ancient=False, flat=False, last_close=None):
             archive.request,
             start_ns=_ns(datetime.combine(days[0], time(), UTC)),
             end_ns=_ns(datetime.combine(end, time(), UTC)),
+            limit=max(archive.request.limit, count),
         )
         wire = json.loads(body(request.symbol))
         prototype = wire["bars"][0]

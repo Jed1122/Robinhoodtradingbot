@@ -11,7 +11,7 @@ from trading_bot.market_data.etf_capital_owned import _own_capital_source
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_daily_policy import CapitalDailyPolicy, CapitalOpeningPolicy
 from trading_bot.research.etf_capital_feasibility import _config
-from trading_bot.research.etf_capital_prepared import _prepare_capital_days
+from trading_bot.research.etf_capital_prepared import _prepare_capital_days, _PreparedCapitalInput
 from trading_bot.research.etf_capital_prepared_policy import _capital_prepared_policy
 from trading_bot.research.etf_capital_signals import CapitalCandidate
 from trading_bot.simulation.etf_capital_account import CapitalActionAccountReplay
@@ -147,108 +147,142 @@ def replay_capital_trajectory(request: CapitalTrajectoryRequest) -> CapitalTraje
             prepared = _prepare_capital_days(source, sessions=sessions)
             _check(prepared.source_hash == owned.source_hash)
 
-            def frame_at(
-                index: int,
-                events: tuple[_Event, ...],
-                observations: tuple[CapitalRiskObservation, ...],
-            ) -> _CapitalOwnerFrame:
-                day = schedule[index]
-                original = prepared.days[index]
-                facts = _capital_due_facts(
-                    initial_cash=terms.initial_cash,
-                    events=events,
-                    observations=observations,
-                    calendar=source.calendar,
-                    actions=source.actions,
-                    session=day.session,
-                    raw_bars=original.raw_bars,
-                )
-                allowed = day.entry_submission_allowed and day.candidate is not None
-                if index:
-                    previous = schedule[index - 1]
-                    allowed = allowed and previous.candidate == day.candidate
-                    if previous.candidate is not None:
-                        signal = next(
-                            s
-                            for s in prepared.days[index - 1].signals
-                            if s.candidate == previous.candidate
-                        )
-                        for archive in source.actions:
-                            if archive.symbol == signal.entry_symbol and any(
-                                s.effective_date == day.session for s in archive.splits or ()
-                            ):
-                                allowed = False
-                return _CapitalOwnerFrame(
-                    original.raw_bars,
-                    instruments,
-                    tuple(
-                        replace(
-                            fact,
-                            daily_reset_reconciled=True,
-                            weekly_reset_reviewed=day.weekly_review_assumed,
-                        )
-                        for fact in facts
-                    ),
-                    True,
-                    day.weekly_review_assumed,
-                    day.entry_decision_allowed and day.candidate is not None,
-                    allowed,
-                )
-
-            def policy_at(
-                index: int, at: datetime, opening: CapitalOpeningPolicy | None
-            ) -> CapitalDailyPolicy | None:
-                candidate = opening.candidate if opening else schedule[index].candidate
-                if candidate is None:
-                    return None
-                # Signal close and synthetic account close+3 are separate clocks
-                # bound by the new trajectory identity, not v5 hash aliases.
-                return _capital_prepared_policy(
-                    loaded=loaded,
-                    prepared=prepared,
-                    day_index=index,
-                    candidate=candidate,
-                    opening=opening,
-                )
-
-            def identity() -> str:
-                return content_hash(
-                    (
-                        "capital-dataset-trajectory-v1",
-                        owned.source_hash,
-                        prepared.input_hash,
-                        schedule,
-                        instruments,
-                        terms.initial_cash,
-                        terms.episode_fee_bound,
-                        terms.entry_fee,
-                        terms.exit_fee,
-                        terms.roundtrip_friction_pct,
-                        terms.entry_outcome,
-                        terms.entry_fill_fraction,
-                        terms.exit_outcome,
-                        terms.exit_fill_fraction,
-                        "close-signal-close-plus3-observation_daily-model-reset_declared-weekly-assumption_T+2",
-                    )
-                )
-
-            result = _replay_capital_owner(
-                terms,
-                count=len(schedule),
-                frame_at=frame_at,
-                policy_at=policy_at,
-                identity=identity,
-            )
-            return CapitalTrajectoryResult(
-                result.events,
-                result.observations,
-                tuple(
-                    CapitalTrajectoryPoint(p.at, p.equity, p.account, p.policy, p.opening)
-                    for p in result.points
-                ),
-                result.account,
-                result.risk,
-                result.input_hash,
+            return _replay_prepared_capital_trajectory(
+                source=source,
+                source_hash=owned.source_hash,
+                prepared=prepared,
+                terms=terms,
+                instruments=instruments,
+                schedule=schedule,
             )
     except (ValueError, TypeError, AttributeError, ArithmeticError, StopIteration):
         raise ValueError("capital_trajectory_invalid") from None
+
+
+def _replay_prepared_capital_trajectory(
+    *,
+    source: CapitalResearchDataset,
+    source_hash: str,
+    prepared: _PreparedCapitalInput,
+    terms: _CapitalOwnerTerms,
+    instruments: tuple[Instrument, ...],
+    schedule: tuple[CapitalTrajectoryDay, ...],
+    opening_candidates: tuple[CapitalCandidate | None, ...] | None = None,
+) -> CapitalTrajectoryResult:
+    """Invocation-local owned inputs only; never a public preparation factory.
+
+    The walk-forward frontend distinguishes a prior instruction's opening
+    winner from the new close winner. Public trajectory-v1 remains unchanged.
+    """
+    _check(prepared.source_hash == source_hash and prepared.config_hash == source.config_hash)
+    if opening_candidates is not None:
+        _check(len(opening_candidates) == len(schedule))
+    indices = {day.session: index for index, day in enumerate(prepared.days)}
+
+    def frame_at(
+        index: int,
+        events: tuple[_Event, ...],
+        observations: tuple[CapitalRiskObservation, ...],
+    ) -> _CapitalOwnerFrame:
+        day = schedule[index]
+        original = prepared.days[indices[day.session]]
+        facts = _capital_due_facts(
+            initial_cash=terms.initial_cash,
+            events=events,
+            observations=observations,
+            calendar=source.calendar,
+            actions=source.actions,
+            session=day.session,
+            raw_bars=original.raw_bars,
+        )
+        opening_candidate = (
+            day.candidate if opening_candidates is None else opening_candidates[index]
+        )
+        allowed = day.entry_submission_allowed and opening_candidate is not None
+        if index:
+            previous = schedule[index - 1]
+            allowed = allowed and previous.candidate == opening_candidate
+            if previous.candidate is not None:
+                signal = next(
+                    s
+                    for s in prepared.days[indices[previous.session]].signals
+                    if s.candidate == previous.candidate
+                )
+                for archive in source.actions:
+                    if archive.symbol == signal.entry_symbol and any(
+                        s.effective_date == day.session for s in archive.splits or ()
+                    ):
+                        allowed = False
+        return _CapitalOwnerFrame(
+            original.raw_bars,
+            instruments,
+            tuple(
+                replace(
+                    fact,
+                    daily_reset_reconciled=True,
+                    weekly_reset_reviewed=day.weekly_review_assumed,
+                )
+                for fact in facts
+            ),
+            True,
+            day.weekly_review_assumed,
+            day.entry_decision_allowed and day.candidate is not None,
+            allowed,
+        )
+
+    def policy_at(
+        index: int, at: datetime, opening: CapitalOpeningPolicy | None
+    ) -> CapitalDailyPolicy | None:
+        candidate = opening.candidate if opening else schedule[index].candidate
+        if candidate is None:
+            return None
+        return _capital_prepared_policy(
+            loaded=terms.loaded,
+            prepared=prepared,
+            day_index=indices[schedule[index].session],
+            candidate=candidate,
+            opening=opening,
+        )
+
+    def identity() -> str:
+        preimage = (
+            "capital-dataset-trajectory-v1",
+            source_hash,
+            prepared.input_hash,
+            schedule,
+            instruments,
+            terms.initial_cash,
+            terms.episode_fee_bound,
+            terms.entry_fee,
+            terms.exit_fee,
+            terms.roundtrip_friction_pct,
+            terms.entry_outcome,
+            terms.entry_fill_fraction,
+            terms.exit_outcome,
+            terms.exit_fill_fraction,
+            "close-signal-close-plus3-observation_daily-model-reset_declared-weekly-assumption_T+2",
+        )
+        if opening_candidates is not None:
+            return content_hash(
+                ("capital-trajectory-opening-selection-v1", preimage, opening_candidates)
+            )
+        return content_hash(preimage)
+
+    result = _replay_capital_owner(
+        terms,
+        count=len(schedule),
+        frame_at=frame_at,
+        policy_at=policy_at,
+        identity=identity,
+    )
+    return CapitalTrajectoryResult(
+        result.events,
+        result.observations,
+        tuple(
+            CapitalTrajectoryPoint(p.at, p.equity, p.account, p.policy, p.opening)
+            for p in result.points
+        ),
+        result.account,
+        result.risk,
+        result.input_hash,
+    )
