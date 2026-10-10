@@ -116,6 +116,16 @@ def test_capital_daily_owner_requires_critical_branch_coverage(tmp_path):
     ]
 
 
+def test_capital_due_facts_requires_critical_branch_coverage(tmp_path):
+    root = tmp_path / "project"
+    relative = "src/trading_bot/simulation/etf_capital_due_facts.py"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 def test_capital_daily_policy_requires_critical_branch_coverage(tmp_path):
     root = tmp_path / "project"
     relative = "src/trading_bot/research/etf_capital_daily_policy.py"
