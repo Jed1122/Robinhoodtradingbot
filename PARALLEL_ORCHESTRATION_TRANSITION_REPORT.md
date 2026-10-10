@@ -24,8 +24,24 @@ profile measured6.99s versus10.23s before, not universal or full-grid performanc
 The separately reviewed four-role statistics wrapper supports2784 aligned math
 columns over the unchanged shared kernel; legacy2088 admission remains intact.
 Its fabricated math-only workload ran two complete repeats in24–25s with about
-243MiB peakRSS. These bounded changes still require current exact-source global
-and hosted release gates; prior suites are not current-candidate certification.
+243MiB peakRSS. The combined executable source
+d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c completed10,314 full tests
+(33 optional skips/one existing warning),20 actual native tests and92.37%
+combined coverage; unchanged80overall/90critical gates passed. Ruff/Mypy387/
+Bandit, both frozen locks, SBOM and shell/Compose checks passed. Same unchanged
+dependency-graph clean advisory/native-version evidence is retained, not a fresh
+network audit. Optional backup skips do not establish deployed recovery.
+This human-document refresh retains exact d705 certification, not a fresh full
+run at a later documentation/ancestry-only publication head. Current exact-head
+hosted checks and compatible integration remain required before release.
+
+The separate full mathematical SPY adapter owns originals, handles split-adjusted
+entry-share units and ex-date dividend factors through the unchanged benchmark
+kernel. Its independent bounded review found no Critical/Important defect;377
+central tests passed. Its own full/native gates are pending separately. It is
+not policy-admitted execution or a finished four-reference panel. Optional
+persistent non-unit ex-factor fixture strengthening is deferred; the reviewer
+independently probed that combination successfully. No study was rerun.
 
 Task5 remains unfinished: source-owned compatible four-role benchmarks, complete
 comparison-family/statistics/report composition, actual full strategy workload,

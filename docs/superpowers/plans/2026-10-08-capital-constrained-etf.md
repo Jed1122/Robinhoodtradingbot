@@ -17,9 +17,14 @@ Original-input walk-forward sourced2a0252 passed10,255full/20native/92.21%;
 corrected descriptive path economics source263cad8 passed10,276full/20native/
 92.37%. Both passed unchanged80overall/90critical gates. These retained source-
 bound results do not certify later changes. Bounded invocation-owned preparation
-reuse and four-role2784-column statistics capacity are independently reviewed;
-their current combined-source release gates remain required. No full strategy
-workload, capital economic executable freeze or genuine study is complete.
+reuse and four-role2784-column statistics capacity are independently reviewed.
+Their combined executable d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c completed
+10,314full/20native/92.37%, unchanged80overall/90critical plus static/lock/SBOM/
+manifest checks. Current hosted/compatible integration gates remain required;
+human-document/ancestry-only publication does not claim a fresh full rerun.
+Separate mathematical SPY adapter is independently reviewed/377central tests
+passed, but its own global gates remain pending. No full strategy workload,
+capital economic executable freeze or genuine study is complete.
 
 Task5 still needs source-owned four-reference benchmarks, complete aligned
 comparison/statistics/reports, full28x6x4x5 workload/resource verification and
