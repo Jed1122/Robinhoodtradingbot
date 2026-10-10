@@ -36,6 +36,9 @@ deadlines deny. Out-of-range future obligations remain unpaid and incomplete.
 Episode final fees bind the original BUY, only after terminal orders, flat
 holdings, settled sales and paid entitlements. The exact episode amount is
 reconstructed cumulative fees less the prior episode's original prefix fees.
+Outstanding original fill/entitlement identities remain obligations even when
+their monetary totals are explicitly zero. Facts generated at this opening are
+included when checking whether every original obligation is discharged.
 This is execution-model accounting, not proof of genuine broker fee completeness.
 Explicit zero model fees do not mean missing actual fees are zero.
 

@@ -323,3 +323,48 @@ def test_same_session_declared_payment_does_not_wait_for_another_frame(source):
 def test_missed_settlement_session_denies_instead_of_silently_retiming_it(source):
     with pytest.raises(ValueError):
         due(source, tape(source), 4)
+
+
+def test_zero_amount_unpaid_entitlement_retains_identity_until_original_payment(source):
+    actions = distribution_actions(source, pay_index=6)
+    row = replace(actions[0].distributions[0], amount_per_share=D(0))
+    actions = (replace(actions[0], distributions=(row,)), *actions[1:])
+    events = tape(source, 5)
+    events = applied(events, due(source, events, 2, actions=actions))
+    sold_at = source.calendar.sessions[2].opens_at + timedelta(minutes=1)
+    events = (
+        *events,
+        *(retime(e, sold_at + timedelta(seconds=i), 20 + i) for i, e in enumerate(script()[5:8])),
+    )
+    assert replay(events).distribution_receivable == 0
+    facts = due(source, events, 4, actions=actions)
+    assert tuple(type(f.event) for f in facts) == (CapitalSaleSettlement,)
+    events = applied(events, facts)
+    assert replay(events).complete is False
+    assert due(source, events, 5, actions=actions) == ()
+    facts = due(source, events, 6, actions=actions)
+    assert tuple(type(f.event) for f in facts) == (
+        CapitalDistributionPaid,
+        CapitalEpisodeFeesFinal,
+    )
+    assert facts[0].event.amount == 0 and facts[1].event.total_fees == D(".09")
+    result = replay(applied(events, facts))
+    assert result.complete is True and result.cash == D("100.11")
+
+
+def test_zero_net_sale_still_requires_original_fill_settlement(source):
+    events = list(tape(source))
+    sale = events[5]
+    events[5] = replace(
+        sale, request=replace(sale.request, order=replace(sale.request.order, limit_price=D(".5")))
+    )
+    events[7] = replace(events[7], fill=replace(events[7].fill, price=D(".5")))
+    events = tuple(events)
+    account = replay(events)
+    assert account.unsettled_proceeds == 0 and account.complete is False
+    assert due(source, events, 2) == ()
+    facts = due(source, events, 3)
+    assert tuple(type(f.event) for f in facts) == (CapitalSaleSettlement, CapitalEpisodeFeesFinal)
+    assert facts[0].event.fill_id == "sell-fill"
+    result = replay(applied(events, facts))
+    assert result.complete is True and result.cash == D("90.06")

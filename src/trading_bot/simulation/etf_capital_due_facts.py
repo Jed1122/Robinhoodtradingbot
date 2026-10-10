@@ -222,6 +222,7 @@ def _capital_due_facts(
                                 event_id("T+2", event.fill.id), cursor(), event.fill.id
                             )
                         )
+                        settled.add(event.fill.id)
 
             paid = {e.entitlement_id for e in originals if type(e) is CapitalDistributionPaid}
             for entitlement, amount in entitlements:
@@ -242,12 +243,19 @@ def _capital_due_facts(
                             amount,
                         )
                     )
+                    paid.add(entitlement.action_id)
 
             if (
                 not account.complete
                 and account.quantity == 0
                 and account.unsettled_proceeds == 0
                 and account.distribution_receivable == 0
+                and all(
+                    event.fill.id in settled
+                    for _, event in unique
+                    if type(event) is LifecycleFillEvent and event.fill.side is Side.SELL
+                )
+                and all(entitlement.action_id in paid for entitlement, _ in entitlements)
                 and not _active(candidate_events)
             ):
                 fees = account.fees - prefixes[opening_index].fees
