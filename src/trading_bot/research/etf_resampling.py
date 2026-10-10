@@ -204,8 +204,41 @@ def dependent_simultaneous_mean_intervals(
     aligned sessions; existing Decimal/seed/draw/block bounds also apply.
     Every original legacy individual interval and seeded preimage is preserved.
     """
+    return _simultaneous_mean_intervals(
+        series, seed=seed, block_lengths=block_lengths, draws=draws, maximum_columns=2088
+    )
+
+
+def dependent_capital_simultaneous_mean_intervals(
+    series: tuple[tuple[Decimal, ...], ...],
+    *,
+    seed: int,
+    block_lengths: tuple[int, ...] = (20, 100),
+    draws: int = 1000,
+) -> tuple[EtfSimultaneousBlockIntervals, ...]:
+    """Same joint kernel, bounded for four capital-study reference roles.
+
+    Accept1..2784 aligned columns (29paths*6capitals*4costs*4roles), at most2048
+    observations each. This capacity does NOT authenticate a complete family,
+    role/date identities, source qualification, independent opportunities or
+    economic admission. The original2088-column API remains unchanged.
+    """
+    return _simultaneous_mean_intervals(
+        series, seed=seed, block_lengths=block_lengths, draws=draws, maximum_columns=2784
+    )
+
+
+def _simultaneous_mean_intervals(
+    series: tuple[tuple[Decimal, ...], ...],
+    *,
+    seed: int,
+    block_lengths: tuple[int, ...],
+    draws: int,
+    maximum_columns: int,
+) -> tuple[EtfSimultaneousBlockIntervals, ...]:
+    """Private shared math; callers bind fixed namespace-specific admission bounds."""
     try:
-        _require(type(series) is tuple and 1 <= len(series) <= 2088)
+        _require(type(series) is tuple and 1 <= len(series) <= maximum_columns)
         for values in series:
             _validate(values, seed, block_lengths, draws)
         count = len(series[0])

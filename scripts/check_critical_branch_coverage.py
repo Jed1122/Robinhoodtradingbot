@@ -94,6 +94,7 @@ def _critical_modules(root: Path) -> tuple[Path, ...]:
 
     research_directory = source_root / "research"
     if research_directory.is_dir():
+        modules.extend(research_directory.glob("etf_resampling.py"))
         modules.extend(research_directory.glob("options_account_*.py"))
         modules.extend(research_directory.glob("etf_costs.py"))
         modules.extend(research_directory.glob("etf_capital_feasibility.py"))
