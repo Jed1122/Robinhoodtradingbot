@@ -26,6 +26,11 @@ paired P&L fractions. Any nonpositive preceding net NAV makes all volatility,
 Sharpe and Sortino ratios unavailable, without truncating the series. Financial
 sums retain the shared exact context; descriptive ratios/performance use fixed
 64-digit arithmetic. All derived outputs must satisfy existing Decimal bounds.
+The shared historical helper divides mean return by the sample standard deviation
+of negative returns, not target downside deviation. This adapter does not publish
+that nonstandard ratio as Sortino: conventional Sortino is unavailable with an
+explicit status. Historical helpers are unchanged; the corrected adapter binds
+this convention in its new v2 report identity.
 
 Episode expectancy is finalized trading USD before operating-cost allocation.
 Turnover is total unique fill notional divided by initial capital. Close occupancy

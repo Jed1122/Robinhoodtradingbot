@@ -214,6 +214,16 @@ def _capital_path_economics(
             metrics = replace(
                 metrics, annualized_volatility_pct=undefined, sharpe=undefined, sortino=undefined
             )
+        else:
+            # The shared historical helper uses negative-return sample SD,
+            # not target downside deviation. Do not publish it as Sortino.
+            metrics = replace(
+                metrics,
+                sortino=MetricValue(
+                    None,
+                    "unavailable_legacy_negative_return_sample_sd_not_target_downside_deviation",
+                ),
+            )
         metrics = replace(
             metrics,
             independent_opportunities=MetricValue(None, "independent_support_not_established"),
@@ -245,13 +255,14 @@ def _capital_path_economics(
         ) + (() if complete else ("account_outcome_incomplete",))
         identity = content_hash(
             (
-                "capital-path-descriptive-economics-v1",
+                "capital-path-descriptive-economics-v2",
                 trajectory.input_hash,
                 initial_cash,
                 initial_at,
                 recurring_usd_per_day,
                 sunk_research_usd,
                 "inclusive_UTC_ACT365_priorNAV_returns_finalized_trading_episodePNL_dailyclose_proxies_no_tax_no_support",
+                "standard_sortino_unavailable_legacy_negative_return_sample_sd",
             )
         )
         result = CapitalPathEconomics(

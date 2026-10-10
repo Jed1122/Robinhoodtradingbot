@@ -83,6 +83,22 @@ def test_prior_nav_returns_are_not_fixed_initial_capital_increments(source):
     assert value.prior_nav_returns[2] != D(".0005")
 
 
+def test_cash_only_expense_path_cannot_publish_legacy_ratio_as_standard_sortino(source):
+    original = trajectory(source, count=3)
+    cash_only = replace(
+        original,
+        days=tuple(replace(day, candidate=None) for day in original.days),
+    )
+    value = run(request(source, trajectory=cash_only))
+    assert value.net_nav == (D("99.99"), D("99.98"), D("99.97"))
+    assert value.trading_pnl == 0 and value.operating_profit == D("-.03")
+    assert value.metrics.sortino.value is None
+    assert value.metrics.sortino.status == (
+        "unavailable_legacy_negative_return_sample_sd_not_target_downside_deviation"
+    )
+    assert value.metrics.sharpe.value is not None
+
+
 def test_nonpositive_prior_nav_makes_entire_return_ratios_unknown(source):
     value = run(request(source, recurring_usd_per_day=D(101)))
     assert value.prior_nav_returns is None
