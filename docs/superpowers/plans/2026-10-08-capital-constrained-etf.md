@@ -16,14 +16,16 @@ PR29–PR38 are integrated; PR38 mergeda940103 after all14 exact-head checks.
 Original-input walk-forward sourced2a0252 passed10,255full/20native/92.21%;
 corrected descriptive path economics source263cad8 passed10,276full/20native/
 92.37%. Both passed unchanged80overall/90critical gates. These retained source-
-bound results do not certify later changes. Bounded invocation-owned preparation
-reuse and four-role2784-column statistics capacity are independently reviewed.
-Their combined executable d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c completed
-10,314full/20native/92.37%, unchanged80overall/90critical plus static/lock/SBOM/
-manifest checks. Current hosted/compatible integration gates remain required;
-human-document/ancestry-only publication does not claim a fresh full rerun.
-Separate mathematical SPY adapter is independently reviewed/377central tests
-passed, but its own global gates remain pending. No full strategy workload,
+bound results do not certify later changes. Combined preparation/statistics source
+d705b837 completed10,314full/20native/92.37% and unchanged80overall/90critical;
+PR39 current hosted gates remain pending at reviewed03ff03b. The separate
+mathematical SPY adapter source2c157635 completed10,349full/20native/92.39% and
+unchanged80/90 gates. Its independent bounded review found no Critical/Important
+defect; static/locks/SBOM/manifests passed, same-graph advisory evidence retained.
+This document-only refresh is not a fresh full rerun. Optional non-unit ex-factor
+fixture strengthening remains deferred after independent successful probing.
+Distinct constrained-SPY source is separately committed with99focused/484related
+passes; independent review/global gates remain pending. No full strategy workload,
 capital economic executable freeze or genuine study is complete.
 
 Task5 still needs source-owned four-reference benchmarks, complete aligned
