@@ -59,6 +59,7 @@ from trading_bot.simulation.etf_capital_risk import (
     CapitalRiskPoint,
     CapitalRiskReplay,
     _replay_risk_points,
+    _RiskProgress,
 )
 from trading_bot.simulation.events import EventCursor
 from trading_bot.simulation.lifecycle import replay_order_lifecycle
@@ -444,6 +445,7 @@ def _replay_capital_owner(
         bindings: dict[str, _Policy] = {}
         pending: _Policy | None = None
         account = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
+        risk_progress = _RiskProgress()
 
         def observe(
             at: datetime, mark: Decimal | None, daily: bool = False, weekly: bool = False
@@ -472,6 +474,7 @@ def _replay_capital_owner(
                 observations=observations,
                 purpose=purpose,
                 actions=True,
+                _progress=risk_progress,
             )
 
         def owned_opening() -> tuple[_Opening | None, Decimal | None]:

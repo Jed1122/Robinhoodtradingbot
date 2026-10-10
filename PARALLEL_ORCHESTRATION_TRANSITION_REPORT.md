@@ -1,5 +1,37 @@
 # Parallel Orchestration Transition Report
 
+## Current owned-risk performance checkpoint — 2026-10-10
+
+The reviewed constrained and corrected matched references are composed at
+60534412. Their bounded union regression passed554 tests; parent global
+certifications below do not certify this union or subsequent risk changes.
+The source-owned four-reference panel and complete workload remain unfinished.
+
+A new invocation-owned risk continuation reuses the SAME original point kernel,
+with full canonical configuration/account-prefix and all observation-clock
+validation on every call. Only unchanged, value-copied original prefixes can
+reuse derived loss calculations; no public saved-state/preparation authority,
+persisted cache, risk-policy change or production limit change is introduced.
+Eight missing-API controls were watched RED then GREEN. A further test fixture
+incorrectly declared a fee above its reserve and was correctly rejected; after
+correcting that fixture,12 narrow tests passed. The earlier broader run with
+that fixture failed (440passed/1failed), so it is NOT certification. Corrected
+broad verification, independent exact-source review and new global gates remain
+pending. Ruff/Mypy391/Bandit passed on this increment.
+
+A fabricated600-prefix comparison produced exactly equal final points at every
+prefix:2.372s ordinary versus1.011s invocation-owned continuation. This is NOT
+full-grid performance. A separate60s partial profile stopped in preparation,
+not the owner, and a120s single-walker preflight timed out. Neither is completed
+workload certification or a frozen economic rejection. Preserve their logs.
+
+Corrected matched source6f3ccb4 has its separate full/native/critical composite
+in progress in the intake worktree; do not duplicate or edit that active source.
+PR39/PR40 remain subject to fresh exact-head hosted gates and compatible merge
+identity. No executable economic freeze, private input inspection or study has
+occurred. Actual retained coverage remains UNVERIFIED, not known absent; the
+chronology waiver remains disclosed. All readiness flags remain false.
+
 ## Current constrained-reference checkpoint — 2026-10-10
 
 The distinct policy-managed SPY reference reuses the same original-event account,

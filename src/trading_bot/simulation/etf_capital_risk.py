@@ -1,6 +1,6 @@
 """Original-prefix synthetic marked loss state; never execution authority."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_CEILING, Decimal, localcontext
 from typing import cast
@@ -74,6 +74,41 @@ class CapitalRiskReplay:
     result_hash: str
     execution_enabled: bool = field(default=False, init=False)
     evidence_promotable: bool = field(default=False, init=False)
+
+
+@dataclass(frozen=True, slots=True)
+class _RiskContinuation:
+    config_hash: str
+    initial_cash: Decimal
+    actions: bool
+    observations: tuple[CapitalRiskObservation, ...]
+    account_hashes: tuple[str, ...]
+    points: tuple[CapitalRiskPoint, ...]
+    consumed: int
+    prior_equity: Decimal
+    daily_base: Decimal
+    weekly_base: Decimal
+    peak: Decimal
+    episode_base: Decimal
+    daily_max: Decimal
+    weekly_max: Decimal
+    drawdown_max: Decimal
+    losses: int
+    last_loss: datetime | None
+    daily_start: datetime | None
+    weekly_start: datetime | None
+    daily_ok: bool
+    weekly_ok: bool
+    covered_actions: frozenset[int]
+
+
+class _RiskProgress:
+    """Allocated only inside one owner; never persisted or a public input."""
+
+    __slots__ = ("states",)
+
+    def __init__(self) -> None:
+        self.states: dict[OrderPurpose, _RiskContinuation] = {}
 
 
 def _cursor(event: CapitalAccountEvent | CapitalActionEvent) -> EventCursor:
@@ -166,6 +201,7 @@ def _replay_risk_points(
     observations: tuple[CapitalRiskObservation, ...],
     purpose: OrderPurpose,
     actions: bool,
+    _progress: _RiskProgress | None = None,
 ) -> tuple[CapitalRiskPoint, ...]:
     """Same original-state reconstruction, without discarded intermediate hashes."""
     try:
@@ -214,6 +250,29 @@ def _replay_risk_points(
                 following[index] = frontiers[index + 1] if applied[index] else following[index + 1]
             _check(type(observations) is tuple and 0 < len(observations) <= 4096)
             _check(type(purpose) is OrderPurpose)
+            _check(_progress is None or type(_progress) is _RiskProgress)
+            # Reconstruct ALL original accounts above on every call. These
+            # complete-source clock checks also cover previously processed
+            # observations: a newly appended backdated event must still deny.
+            for observation in observations:
+                _check(type(observation) is CapitalRiskObservation)
+                observation.__post_init__()
+                count, at = observation.source_count, observation.cursor.occurred_at
+                _check(count <= len(events))
+                frontier, next_event = frontiers[count], following[count]
+                _check(frontier is None or frontier <= at)
+                _check(next_event is None or next_event >= at)
+            hashes = tuple(account.economic_hash for account in accounts)
+            continuation = None if _progress is None else _progress.states.get(purpose)
+            if continuation is not None and not (
+                continuation.config_hash == loaded.config_hash
+                and continuation.initial_cash == initial_cash
+                and continuation.actions is actions
+                and len(continuation.observations) <= len(observations)
+                and observations[: len(continuation.observations)] == continuation.observations
+                and hashes[: len(continuation.account_hashes)] == continuation.account_hashes
+            ):
+                continuation = None
             points: list[CapitalRiskPoint] = []
             prior: CapitalRiskObservation | None = None
             prior_account = accounts[0]
@@ -226,7 +285,31 @@ def _replay_risk_points(
             weekly_start: datetime | None = None
             daily_ok = weekly_ok = False
             covered_actions: set[int] = set()
-            for observation in observations:
+            start = 0
+            if continuation is not None:
+                start = len(continuation.observations)
+                points = list(continuation.points)
+                prior = continuation.observations[-1]
+                consumed = continuation.consumed
+                # Never adopt a stored account balance: use freshly reduced
+                # originals, whose full prefix identities matched above.
+                prior_account = accounts[consumed]
+                prior_equity = continuation.prior_equity
+                daily_base = continuation.daily_base
+                weekly_base = continuation.weekly_base
+                peak = continuation.peak
+                episode_base = continuation.episode_base
+                daily_max = continuation.daily_max
+                weekly_max = continuation.weekly_max
+                drawdown_max = continuation.drawdown_max
+                losses = continuation.losses
+                last_loss = continuation.last_loss
+                daily_start = continuation.daily_start
+                weekly_start = continuation.weekly_start
+                daily_ok = continuation.daily_ok
+                weekly_ok = continuation.weekly_ok
+                covered_actions = set(continuation.covered_actions)
+            for observation in observations[start:]:
                 _check(type(observation) is CapitalRiskObservation)
                 observation.__post_init__()
                 count, at = observation.source_count, observation.cursor.occurred_at
@@ -318,7 +401,35 @@ def _replay_risk_points(
                 points.append(CapitalRiskPoint(observation, account, equity, snapshot, decision))
                 prior, prior_equity = observation, equity
             _check({count for count in required_actions if count <= consumed} <= covered_actions)
-            return tuple(points)
+            result = tuple(points)
+            if _progress is not None:
+                # Publish only after complete validation. Copies prevent a
+                # changed observation object from masquerading as an old value.
+                _progress.states[purpose] = _RiskContinuation(
+                    loaded.config_hash,
+                    initial_cash,
+                    actions,
+                    tuple(replace(row, cursor=replace(row.cursor)) for row in observations),
+                    hashes,
+                    result,
+                    consumed,
+                    prior_equity,
+                    daily_base,
+                    weekly_base,
+                    peak,
+                    episode_base,
+                    daily_max,
+                    weekly_max,
+                    drawdown_max,
+                    losses,
+                    last_loss,
+                    daily_start,
+                    weekly_start,
+                    daily_ok,
+                    weekly_ok,
+                    frozenset(covered_actions),
+                )
+            return result
     except (ValueError, TypeError, ArithmeticError, AttributeError):
         raise ValueError("capital_risk_invalid") from None
 

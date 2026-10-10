@@ -12,6 +12,20 @@
 
 ## Current Task5 checkpoint — 2026-10-10
 
+Latest increment: reviewed constrained and corrected matched source union60534412
+passed554 bounded regressions. Invocation-owned risk progress is implemented
+fixture-first using the same original reconstruction/point kernel, without a
+public saved-state input or risk-policy change.12 corrected narrow controls
+pass; the earlier broader440pass/1fail run used an over-reserve test fee and is
+non-certification. Corrected broad verification and exact-source independent
+review/global gates are pending. A600-prefix synthetic equality probe measured
+2.372s batch versus1.011s continuation, not complete workload performance.
+The separate partial preparation profile and timed-out walker preflight are
+preserved as non-certification. Corrected matched global verification remains
+separate. No executable economic freeze or genuine study has occurred.
+The following retains earlier source-specific checkpoints, not current-union
+or later-risk certification.
+
 PR29–PR38 are integrated; PR38 mergeda940103 after all14 exact-head checks.
 Original-input walk-forward sourced2a0252 passed10,255full/20native/92.21%;
 corrected descriptive path economics source263cad8 passed10,276full/20native/
