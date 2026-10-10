@@ -32,6 +32,9 @@ Corrected zero-exposure matching regression523passed; global gates remain
 pending. Retained passive certification does not certify changed source. No full strategy
 workload, capital economic executable freeze or genuine study is complete.
 This human-doc-only refresh is not a fresh executable full rerun.
+Optional non-unit ex-factor fixture strengthening remains deferred after the
+independent successful passive probe. This local source union requires fresh
+integrated validation; parent-source certifications do not certify its new tree.
 
 Task5 still needs source-owned four-reference benchmarks, complete aligned
 comparison/statistics/reports, full28x6x4x5 workload/resource verification and

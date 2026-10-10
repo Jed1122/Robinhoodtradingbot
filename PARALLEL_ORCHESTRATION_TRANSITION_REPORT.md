@@ -64,24 +64,33 @@ profile measured6.99s versus10.23s before, not universal or full-grid performanc
 The separately reviewed four-role statistics wrapper supports2784 aligned math
 columns over the unchanged shared kernel; legacy2088 admission remains intact.
 Its fabricated math-only workload ran two complete repeats in24–25s with about
-243MiB peakRSS. The combined executable source
-d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c completed10,314 full tests
-(33 optional skips/one existing warning),20 actual native tests and92.37%
-combined coverage; unchanged80overall/90critical gates passed. Ruff/Mypy387/
+243MiB peakRSS. Combined executable d705b8372fe2a519e4ebe6429b209ea8d3ae8a7c
+completed10,314 full and20 actual native tests,92.37% combined coverage and
+unchanged80overall/90critical gates. PR39 publishes the reviewed unchanged
+executable bytes through documentation/ancestry head03ff03b; its current hosted
+checks remain pending. Neither a math-only probe nor a merge is full strategy
+workload, economic qualification or deployment.
+
+The separately reviewed original-source full mathematical SPY adapter at
+2c1576354257e81b7a58d2ecaaa042bab8a52c49 completed10,349 full tests
+(33 optional skips/one existing warning),20 actual native tests and92.39%
+combined coverage; unchanged80overall/90critical gates passed. Ruff/Mypy388/
 Bandit, both frozen locks, SBOM and shell/Compose checks passed. Same unchanged
 dependency-graph clean advisory/native-version evidence is retained, not a fresh
 network audit. Optional backup skips do not establish deployed recovery.
-This human-document refresh retains exact d705 certification, not a fresh full
-run at a later documentation/ancestry-only publication head. Current exact-head
-hosted checks and compatible integration remain required before release.
+This human-document refresh retains exact2c157 certification, not a fresh full
+run at a later documentation/ancestry-only head. Current exact-head hosted checks
+and compatible integration remain required before release.
 
-The separate full mathematical SPY adapter owns originals, handles split-adjusted
-entry-share units and ex-date dividend factors through the unchanged benchmark
-kernel. Its independent bounded review found no Critical/Important defect;377
-central tests passed. Its own full/native gates are pending separately. It is
-not policy-admitted execution or a finished four-reference panel. Optional
-persistent non-unit ex-factor fixture strengthening is deferred; the reviewer
-independently probed that combination successfully. No study was rerun.
+The adapter uses original raw split factors and ex-date distribution cash in
+entry-share units through the unchanged mathematical benchmark kernel. No DRIP,
+forced sale/payment/settlement or risk-admitted fractional brokerage route is
+inferred. Independent bounded review found no Critical/Important defect;377
+central tests passed. Optional persistent non-unit ex-factor fixture strengthening
+is deferred; the reviewer independently probed it successfully. A distinct
+policy-managed constrained SPY reference is committed on an isolated branch,
+with99 focused/484 related tests; its own review/global gates remain pending.
+Neither reference is a complete aligned four-role comparison panel.
 
 Task5 remains unfinished: source-owned compatible four-role benchmarks, complete
 comparison-family/statistics/report composition, actual full strategy workload,
