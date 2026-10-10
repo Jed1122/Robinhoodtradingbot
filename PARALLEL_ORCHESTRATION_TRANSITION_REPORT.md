@@ -1,5 +1,97 @@
 # Parallel Orchestration Transition Report
 
+## Current reviewed owner-v5 release — 2026-10-09
+
+PR37 remains unmerged. Exact executable source c7de7fc83d88ff758e2a8655845e283f7ecc0d6a
+completed10,058 full tests (33 optional skips/one existing warning),20 actual
+native tests and92.22% combined coverage. Unchanged80overall/90critical gates
+passed. Ruff/Mypy378/Bandit, frozen primary/research locks, SBOM/documentation
+and shell/Compose checks passed; unchanged-graph advisory/native-version evidence
+is retained, not a fresh network audit. Skipped backups do not prove recovery.
+This handoff correction changes human documentation only; those results certify
+c7 source, not a fresh full run at a later document-only publication head.
+
+Owner-v5 binds the original declared calendar and full session prefixes. It
+rejects unknown initial adjusted bases and unsupported unheld rebases, retains
+append-only original distribution facts, and uses the shared original64-digit
+split arithmetic for features/protection. Training selection hashes the normalized
+UTC timestamps it actually validated. Calendar consistency is not authenticated
+exchange-calendar/source completeness. Independent integrated review returned
+READY with no Critical/Important/Minor findings; covered fixes retain their
+RED-to-GREEN evidence. Public legacy identities were not silently rewritten.
+
+Actual integration target remains codex/robinhood-system-implementation at
+8302f9a7f35caecb51b01741e6219e24f8754905 (PR36 already merged). Current exact-head
+hosted push/PR checks and substantive-thread disposition are still required
+before PR37 integration; pending/missing/cancelled is not passing. No bypass,
+deployment or live activation is authorized by a green software release.
+
+The independent owned preparation branch is reviewed but unconsumed. Its
+projection-only2adda0c increment preserves original hash bytes; the750-session
+guard still FAILED120.0258s at81,362,944-byte observed peakRSS. Further current-basis
+preimage reuse is in fixture-first verification, not certified workload performance.
+No complete28x6x4x5 workload pass, executable economic freeze or new study exists.
+Qualified five-symbol inputs/actions/calendar/cost evidence and accepted economics
+remain unavailable; genuine customer calibration, broker/paper/shadow and actual
+selected-runtime recovery are separate unverified prerequisites. All source/cost/
+execution/economic/promotion/live flags remain false and production limits unchanged.
+
+Next: finish exact-candidate release, complete performant original-event evaluator
+and train-only fold/policy/statistics/report composition, verify the full workload,
+then freeze all identities/criteria before one study using qualified authorized
+inputs. Preserve original evidence and untouched future final-test rules. Every
+older status section below is a historical checkpoint, not the current handoff.
+
+## Historical owner release correction — before owner-v5
+
+PR37 remains unmerged. Published14d8285 retains exactfea60a9 source/tree;
+that source completed10,037 full and20 native tests,92.22% combined coverage
+and unchanged80overall/90critical gates. Two subsequent substantive hosted
+findings require a new corrected candidate: flat terminal BUYs could authorize
+split rebases, and prior distribution projections could change between frames.
+Five regressions were watched RED, then strict original positive-held pre-split
+frontiers and append-only distribution history corrected both. Seven focused
+controls and480 related tests pass; owner74branches5partial exceeds90%.
+Ruff/Mypy378 pass. Earlier certification is HISTORICAL after this source change;
+fresh full/native/critical/current exact-head hosted checks remain required.
+No executable economic freeze/study, qualified inputs or workload pass exists.
+Independent owned-source/signal-batch foundations in the second worktree are
+reviewed, unconsumed preparation, not a complete evaluator or economic result.
+Preserve all previous source-bound artifacts and pending review threads until
+global verification supports their disposition. Earlier checkpoints follow.
+
+## Historical Task5 continuation — before owner-v5
+
+PR35 is merged atdeee82e; PR36 is merged at8302f9a with reviewed tree4b300e68
+after all14 current jobs passed. Neither merge is deployment. Owner PR37 is
+published at71928bc; its retained ce71 source certification is9,952full/20native,
+92.20% and unchanged80overall/90critical. Three NEW substantive hosted findings
+prevent that head's release. Current correction rejects undeclared feature
+rewrites/unsupported flat split rebases and coalesces compatible opening-time
+observations. Four reproductions were watched RED;54owner and203 related tests
+pass. Fresh corrected-source full/native/current hosted gates remain required.
+
+Separate c650 selection/statistics primitives have independent review READY,
+189 independent tests,10,003 full passes/20 native passes,92.21% combined coverage
+and unchanged80overall/90critical gates in the other worktree.
+They do not derive genuine training P&L or own complete fold carryover. The
+2088-column statistics workload passed, but750-session owner replay exceeded
+its frozen120second budget. Canonical serialization is a measured hotspot;
+No full-grid workload certification or executable economic freeze exists.
+Current corrective performance candidate extracts the same shared risk-point
+loop, defers only discarded intermediate result hashing, and explicitly uses
+owner-v4 ordered full-frame commitments without rewriting old owner digests.
+Independent review found three compatibility regressions in the experimental
+serializer/risk extraction. Eight reproductions were watched RED, then the plain
+serializer was removed and public risk's original context/error boundary restored;
+59 targeted controls pass. Fresh full/native certification is still required.
+The750-frame probe still failed120s (315,015,168bytes observed), so bounded
+incremental derived-data/original-state composition remains a critical path.
+Qualified five-symbol/action/source/cost inputs, accepted economics, broker/
+paper/shadow and selected-runtime recovery remain separate unfinished gates.
+All eligibility flags and production limits remain unchanged. Earlier status
+sections below are retained historical checkpoints, not current release claims.
+
 ## Pure prior-close policy locally certified; owner unfinished — 2026-10-09
 
 PR34 merged at f1326c901a12430abcbae25ede7401c62f22ea55, reviewed tree

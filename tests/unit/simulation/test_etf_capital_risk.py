@@ -1,8 +1,9 @@
 """Literal synthetic loss-state controls; no broker or market evidence."""
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import timedelta, timezone, tzinfo
 from decimal import Decimal as D
+from decimal import getcontext, localcontext
 
 import pytest
 
@@ -46,6 +47,59 @@ def test_genesis_cash_is_reconstructed_and_cannot_enable_execution():
     assert result.points[-1].decision.new_entries_allowed
     assert not result.execution_enabled
     assert not result.evidence_promotable
+
+
+class RefusingCopyZone(tzinfo):
+    def utcoffset(self, value):
+        return timedelta(0)
+
+    def dst(self, value):
+        return timedelta(0)
+
+    def __deepcopy__(self, memo):
+        raise TypeError("timezone-copy-refused")
+
+
+class PrecisionCopyZone(RefusingCopyZone):
+    def __deepcopy__(self, memo):
+        return timezone(timedelta(minutes=getcontext().prec % 60))
+
+
+@pytest.mark.parametrize("actions", [False, True])
+def test_public_risk_normalizes_result_serialization_errors(actions):
+    from trading_bot.simulation.etf_capital_risk import (
+        replay_capital_action_risk,
+        replay_capital_risk,
+    )
+
+    replay = replay_capital_action_risk if actions else replay_capital_risk
+    original = point(0, 0)
+    original = replace(original, cursor=EventCursor(0, ORIGIN.replace(tzinfo=RefusingCopyZone())))
+    with pytest.raises(ValueError, match=r"^capital_risk_invalid$"):
+        replay(loaded=loaded(), initial_cash=D("100"), events=(), observations=(original,))
+
+
+@pytest.mark.parametrize("actions", [False, True])
+def test_public_risk_serialization_retains_fixed_decimal_context(actions):
+    from trading_bot.simulation.etf_capital_risk import (
+        replay_capital_action_risk,
+        replay_capital_risk,
+    )
+
+    replay = replay_capital_action_risk if actions else replay_capital_risk
+    original = point(0, 0)
+    original = replace(original, cursor=EventCursor(0, ORIGIN.replace(tzinfo=PrecisionCopyZone())))
+    config = loaded()
+    hashes = []
+    for precision in (2, 28):
+        with localcontext() as context:
+            context.prec = precision
+            hashes.append(
+                replay(
+                    loaded=config, initial_cash=D("100"), events=(), observations=(original,)
+                ).result_hash
+            )
+    assert hashes[0] == hashes[1]
 
 
 def test_current_risk_cannot_consume_unbound_historical_fee_finality():

@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 from decimal import (
+    ROUND_CEILING,
+    ROUND_FLOOR,
     ROUND_HALF_EVEN,
     Context,
     Decimal,
@@ -76,6 +78,42 @@ class EtfBlockRisk:
     nonpositive_probability: Decimal
 
 
+@dataclass(frozen=True, slots=True)
+class EtfSimultaneousBlockIntervals:
+    """Conditional joint-bootstrap bands, not opportunity or source evidence."""
+
+    block_length: int
+    samples: int
+    observations: int
+    comparisons: int
+    radius: Decimal
+    intervals: tuple[EtfBlockInterval, ...]
+    independent_opportunities: None = None
+
+
+def _draw_totals(
+    values: tuple[Decimal, ...], *, seed: int, length: int, draws: int
+) -> tuple[Decimal, ...]:
+    """Exact original draw engine, shared by individual and joint intervals."""
+    with localcontext(_SUM_CONTEXT):
+        prefix = [Decimal(0)]
+        for value in values:
+            prefix.append(prefix[-1] + value)
+        # Every equal-length column receives the SAME starts; never global RNG.
+        rng = Random(seed + length)  # nosec B311
+        starts = len(values) - length + 1
+        full_blocks, remainder = divmod(len(values), length)
+        sums = tuple(prefix[start + length] - prefix[start] for start in range(starts))
+        tails = tuple(prefix[start + remainder] - prefix[start] for start in range(starts))
+        totals = []
+        for _ in range(draws):
+            total = sum((sums[rng.randrange(starts)] for _ in range(full_blocks)), Decimal(0))
+            if remainder:
+                total += tails[rng.randrange(starts)]
+            totals.append(total)
+        return tuple(totals)
+
+
 def dependent_mean_risks(
     values: tuple[Decimal, ...],
     *,
@@ -115,24 +153,10 @@ def dependent_mean_risks(
         denominator = Decimal(observations)
         mean_context = _MEAN_CONTEXT.copy()
         with localcontext(_SUM_CONTEXT):
-            prefix = [Decimal("0")]
-            for value in values:
-                prefix.append(prefix[-1] + value)
             for length in block_lengths:
-                # Seeded statistics only; never credentials or cryptographic identities.
-                rng = Random(seed + length)  # nosec B311
-                starts = observations - length + 1
-                full_blocks, remainder = divmod(observations, length)
-                sums = tuple(prefix[start + length] - prefix[start] for start in range(starts))
-                tails = tuple(prefix[start + remainder] - prefix[start] for start in range(starts))
                 means = []
                 loss_samples = nonpositive_samples = 0
-                for _ in range(draws):
-                    total = sum(
-                        (sums[rng.randrange(starts)] for _ in range(full_blocks)), Decimal("0")
-                    )
-                    if remainder:
-                        total += tails[rng.randrange(starts)]
+                for total in _draw_totals(values, seed=seed, length=length, draws=draws):
                     loss_samples += total < 0
                     nonpositive_samples += total <= 0
                     means.append(mean_context.divide(total, denominator))
@@ -154,6 +178,74 @@ def dependent_mean_risks(
                     )
                 )
         return tuple(risks)
+    except (ValueError, TypeError, ArithmeticError):
+        raise ValueError("etf_resampling_invalid") from None
+
+
+def dependent_simultaneous_mean_intervals(
+    series: tuple[tuple[Decimal, ...], ...],
+    *,
+    seed: int,
+    block_lengths: tuple[int, ...] = (20, 100),
+    draws: int = 1000,
+) -> tuple[EtfSimultaneousBlockIntervals, ...]:
+    """Joint noncircular block-bootstrap max-error bands over supplied columns.
+
+    Columns must be aligned original after-cost paired increments, not NAV
+    returns. For each draw, all columns use identical block starts. The maximum
+    absolute centered mean error across columns supplies a common radius at
+    ceil(.95*(draws-1)); division and interval endpoints round outward to28
+    digits. This is conditional/model-based uncertainty, NOT guaranteed market
+    coverage or a proof of independent opportunities. Dates, grid completeness,
+    labels and selection provenance belong to the owning evaluator; this math
+    function cannot authenticate them or approve a candidate.
+
+    Bounds:1..2088 columns (29paths*6capital*4friction*3references), at most2048
+    aligned sessions; existing Decimal/seed/draw/block bounds also apply.
+    Every original legacy individual interval and seeded preimage is preserved.
+    """
+    try:
+        _require(type(series) is tuple and 1 <= len(series) <= 2088)
+        for values in series:
+            _validate(values, seed, block_lengths, draws)
+        count = len(series[0])
+        _require(count <= 2048 and all(len(values) == count for values in series))
+        upward, downward = _MEAN_CONTEXT.copy(), _MEAN_CONTEXT.copy()
+        upward.rounding, downward.rounding = ROUND_CEILING, ROUND_FLOOR
+        denominator = Decimal(count)
+        result = []
+        with localcontext(_SUM_CONTEXT):
+            original_totals = tuple(sum(values, Decimal(0)) for values in series)
+            for length in block_lengths:
+                maximum_errors = [Decimal(0)] * draws
+                for values, original in zip(series, original_totals, strict=True):
+                    totals = _draw_totals(values, seed=seed, length=length, draws=draws)
+                    for index, total in enumerate(totals):
+                        maximum_errors[index] = max(maximum_errors[index], abs(total - original))
+                maximum_errors.sort()
+                radius = upward.divide(
+                    maximum_errors[(95 * (draws - 1) + 99) // 100], denominator
+                )
+                result.append(
+                    EtfSimultaneousBlockIntervals(
+                        length,
+                        draws,
+                        count,
+                        len(series),
+                        radius,
+                        tuple(
+                            EtfBlockInterval(
+                                length,
+                                draws,
+                                count,
+                                downward.divide(original - denominator * radius, denominator),
+                                upward.divide(original + denominator * radius, denominator),
+                            )
+                            for original in original_totals
+                        ),
+                    )
+                )
+        return tuple(result)
     except (ValueError, TypeError, ArithmeticError):
         raise ValueError("etf_resampling_invalid") from None
 

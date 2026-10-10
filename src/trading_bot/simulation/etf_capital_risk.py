@@ -145,6 +145,31 @@ def _replay_risk(
 ) -> CapitalRiskReplay:
     try:
         with localcontext(_CONTEXT):
+            points = _replay_risk_points(
+                loaded=loaded,
+                initial_cash=initial_cash,
+                events=events,
+                observations=observations,
+                purpose=purpose,
+                actions=actions,
+            )
+            return _risk_result(loaded, initial_cash, purpose, points, actions=actions)
+    except (ValueError, TypeError, ArithmeticError, AttributeError):
+        raise ValueError("capital_risk_invalid") from None
+
+
+def _replay_risk_points(
+    *,
+    loaded: LoadedConfig,
+    initial_cash: Decimal,
+    events: tuple[CapitalAccountEvent | CapitalActionEvent, ...],
+    observations: tuple[CapitalRiskObservation, ...],
+    purpose: OrderPurpose,
+    actions: bool,
+) -> tuple[CapitalRiskPoint, ...]:
+    """Same original-state reconstruction, without discarded intermediate hashes."""
+    try:
+        with localcontext(_CONTEXT):
             config = _config(loaded)
             accounts: tuple[CapitalAccountReplay, ...]
             if actions:
@@ -293,7 +318,7 @@ def _replay_risk(
                 points.append(CapitalRiskPoint(observation, account, equity, snapshot, decision))
                 prior, prior_equity = observation, equity
             _check({count for count in required_actions if count <= consumed} <= covered_actions)
-            return _risk_result(loaded, initial_cash, purpose, tuple(points), actions=actions)
+            return tuple(points)
     except (ValueError, TypeError, ArithmeticError, AttributeError):
         raise ValueError("capital_risk_invalid") from None
 
