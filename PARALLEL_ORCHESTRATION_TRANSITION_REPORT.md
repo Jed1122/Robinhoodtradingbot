@@ -1,6 +1,48 @@
 # Parallel Orchestration Transition Report
 
-## Current reviewed owner-v5 release — 2026-10-09
+## Current original-input preparation and due-facts release — 2026-10-10
+
+PR37 is merged at ec40d5185a3af3993244598c53722518ad899d94, with the exact
+reviewed tree136d732cb2a7c2cb81b4a75793b3075af2231aeb, after all14 current
+hosted jobs passed and all9 substantive threads were resolved. This is software
+integration, not deployment or evidence of profitability.
+
+The separately reviewed preparation/policy/due-facts executable source
+e1bf1f7456756718d8234fde43e28ea3cd984c74 completed10,220 full tests
+(33 optional skips/one existing warning),20 actual native tests and92.30%
+combined coverage. Unchanged80overall/90critical gates passed. Ruff/Mypy384/
+Bandit, both frozen locks, SBOM and shell/Compose checks passed. Native backend
+versions were checked; clean advisory evidence is retained for unchanged
+dependency graphs, not represented as a fresh network audit. Optional backup
+skips do not prove deployed recovery. Human-document-only publication changes
+retain that source certification, not a new full run at a later document head.
+
+Original-source ownership and invocation-local preparation reuse the same
+canonical configuration, feature, signal, account, loss and sizing machinery.
+The corrected private due-facts scheduler retains original unpaid entitlement
+and unsettled SELL fill identities even when their monetary amount is zero.
+Its T+2, dated payment and fee-finality conventions remain declared research
+assumptions, not authenticated broker facts. Public legacy identities remain
+unchanged; no saved balance or latch becomes authority.
+
+The750-session preparation guard passed60.7347s/88,047,616-byte observed peakRSS,
+but neither that guard nor the newly reviewed original-input trajectory proves
+the complete28x6x4x5 workload. The trajectory's own full suite is still running
+at0c97253; it is not certified by the e1bf preparation suite. Train-only
+walk-forward composition, continuous selected/comparison accounts, statistics,
+benchmarks and reports remain unfinished. No executable economic freeze or
+new study exists. Qualified five-symbol source/calendar/actions/cost inputs are
+not established; retained private input completeness has not been inspected.
+Genuine customer calibration, broker/paper/shadow and actual selected-runtime
+recovery remain separate unfinished gates. Every eligibility flag stays false
+and production limits remain unchanged.
+
+Next: finish exact-candidate release checks, complete owned walk-forward and
+statistics/report composition, verify the complete workload, then freeze all
+identities and criteria before one economic evaluation with qualified authorized
+inputs. All older sections below are historical, not current readiness claims.
+
+## Historical reviewed owner-v5 release — 2026-10-09
 
 PR37 remains unmerged. Exact executable source c7de7fc83d88ff758e2a8655845e283f7ecc0d6a
 completed10,058 full tests (33 optional skips/one existing warning),20 actual
