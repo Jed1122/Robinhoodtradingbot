@@ -1,5 +1,25 @@
 # Capital research signal and fold contracts
 
+## Private all-candidate preparation foundation
+
+The private `_capital_strategy_signals` helper validates a complete five-symbol
+projection set and hashes each complete projection once per invocation, then
+calculates all28 fixed candidates using the SAME numerical kernel as the public
+single-candidate API. It accepts no cached hashes, prepared results, balances,
+risk decisions or enabling flags. Every invocation validates originals anew;
+there is no global cache. Public single-candidate identities and results retain
+their existing preimage and semantics.
+
+Fixture verification includes six pre-extraction literal all28 output hashes,
+199/200/201-bar warmup boundaries, RSI reversal, rising/falling/flat series and
+metadata/clock/mutation denials. Five projection hashes rather than140 is an
+operation-count result, not wall-time or full-workload certification. This
+unconsumed foundation and the private owned-source snapshot do not complete the
+dataset-driven evaluator, policy carryover, accepted inputs or economic freeze.
+All source/cost/execution/economic/promotion/live eligibility remains false.
+
+## Retained signal release history
+
 Current PR34 correction: latest-bar Eastern session must equal the declared
 as-of session, and each projection permits only one bar per Eastern date.
 Action-aware entry admission must consume the complete supplied original tape;

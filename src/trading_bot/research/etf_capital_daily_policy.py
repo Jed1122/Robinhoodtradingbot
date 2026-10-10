@@ -56,6 +56,29 @@ class CapitalDailyPolicy:
     evidence_promotable: Literal[False] = field(default=False, init=False)
 
 
+def _capital_entry_distance(
+    projection: CapitalFeatureProjection,
+    *,
+    as_of: datetime,
+    multiplier: Decimal,
+    signal_hash: str,
+) -> Decimal:
+    """Shared original100-bar ATR arithmetic; not account/risk permission."""
+    bars = projection.feature_bars[-100:]
+    with localcontext(_CONTEXT):
+        features = FeaturePipeline().compute(
+            HistoricalSlice(bars[-1].instrument_id, bars, None, DataHash(signal_hash)),
+            as_of=as_of,
+        )
+        atr = dict(features.values)["average_true_range"]
+        if type(atr) is not Decimal:
+            raise ValueError("capital_daily_policy_invalid")
+        distance = atr * multiplier * projection.raw_bars[-1].close / bars[-1].close
+        if distance > 0:
+            require_bounded_decimal(distance, "raw stop distance", positive=True)
+        return distance
+
+
 def capital_daily_policy(
     *,
     loaded: LoadedConfig,
@@ -112,22 +135,13 @@ def capital_daily_policy(
             if cfg.equity_strategies.exit_on_regime_change and invalidated:
                 action, reason = "exit", "regime_exit"
         elif target is not None:
-            bars = target.feature_bars[-100:]
-            features = FeaturePipeline().compute(
-                HistoricalSlice(bars[-1].instrument_id, bars, None, DataHash(signal.input_hash)),
+            distance = _capital_entry_distance(
+                target,
                 as_of=as_of,
-            )
-            atr = dict(features.values)["average_true_range"]
-            if type(atr) is not Decimal:
-                raise ValueError("capital_daily_policy_invalid")
-            distance = (
-                atr
-                * cfg.equity_strategies.stop_loss_atr_multiplier
-                * target.raw_bars[-1].close
-                / bars[-1].close
+                multiplier=cfg.equity_strategies.stop_loss_atr_multiplier,
+                signal_hash=signal.input_hash,
             )
             if distance > 0:
-                require_bounded_decimal(distance, "raw stop distance", positive=True)
                 action, reason = "entry", "prior_close_signal"
             else:
                 distance, reason = None, "zero_atr"
