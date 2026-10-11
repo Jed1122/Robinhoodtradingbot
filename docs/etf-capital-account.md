@@ -235,6 +235,9 @@ deny, and failed suffixes or fresh source-observation checks publish neither
 partial accounts nor loss continuation. Mutable collections and nested lifecycle
 records are detached; returned prefix records cannot mutate retained progress.
 Duplicate deliveries retain raw positions but not a second economic application.
+Accepted non-inert UTC timezone objects use original batch replay without
+retaining continuation state, because custom copy hooks can change their values.
+This preserves public acceptance rather than normalizing original hash inputs.
 Public APIs do not accept this private state; v1 remains a historical batch reader.
 
 This removes repeated account transition work, not all cumulative hashing or

@@ -229,3 +229,69 @@ def test_fresh_risk_frontier_failure_does_not_publish_account_candidate():
 def test_public_account_apis_do_not_accept_continuation(name):
     with pytest.raises(TypeError):
         getattr(account, name)(initial_cash=D(100), events=(), _resume=object())
+
+
+@pytest.mark.parametrize("location", ("settlement", "control", "submission"))
+def test_accepted_custom_utc_copy_hooks_use_original_batch_fallback(location):
+    from .test_etf_capital_risk import PrecisionCopyZone
+
+    tape = script()
+    if location == "submission":
+        first = tape[0]
+        at = first.request.submitted.occurred_at.replace(tzinfo=PrecisionCopyZone())
+        first = replace(
+            first,
+            request=replace(
+                first.request,
+                submitted=replace(first.request.submitted, occurred_at=at),
+                order=replace(first.request.order, created_at=at, updated_at=at),
+                position=replace(first.request.position, observed_at=at),
+            ),
+        )
+        tape = (first, *tape[1:])
+    else:
+        index = 8 if location == "settlement" else 4
+        event = tape[index]
+        at = event.cursor.occurred_at.replace(tzinfo=PrecisionCopyZone())
+        tape = (
+            *tape[:index],
+            replace(event, cursor=replace(event.cursor, occurred_at=at)),
+            *tape[index + 1 :],
+        )
+    batch = account.replay_capital_action_account_prefixes(initial_cash=D(100), events=tape)
+    progress = None
+    for count in range(len(tape) + 1):
+        progress, prefixes = owned(progress, tape[:count])
+        assert prefixes == batch[: count + 1]
+    assert prefixes[-1].cash == D("100.11")
+    assert progress.state is None
+    # Unsafe originals are not retained as state; caller mutation cannot poison
+    # the subsequent clean, inert-timestamp reconstruction.
+    _, retry = owned(progress, script())
+    assert retry[-1].cash == D("100.11")
+
+
+def test_risk_continuation_preserves_batch_acceptance_of_custom_utc_originals():
+    from trading_bot.simulation.etf_capital_risk import _RiskProgress
+
+    from .test_etf_capital_risk import PrecisionCopyZone
+
+    tape = script()
+    event = tape[8]
+    tape = (
+        *tape[:8],
+        replace(
+            event,
+            cursor=replace(
+                event.cursor,
+                occurred_at=event.cursor.occurred_at.replace(tzinfo=PrecisionCopyZone()),
+            ),
+        ),
+        tape[9],
+    )
+    progress = _RiskProgress()
+    progress_points(progress, tape[:8], (point(0, 0), point(1, 8)))
+    observations = (point(0, 0), point(1, 10))
+    assert progress_points(progress, tape, observations) == progress_points(
+        None, tape, observations
+    )

@@ -8,6 +8,7 @@ separate composition; none of these records grants execution authority.
 
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from decimal import Context, Decimal, DecimalException, localcontext
 from fractions import Fraction
 from typing import NoReturn
@@ -279,7 +280,7 @@ class _AccountState:
 class _AccountProgress:
     binding: str
     originals: tuple[str, ...]
-    state: _AccountState
+    state: _AccountState | None
     prefixes: tuple[CapitalAccountReplay, ...]
 
 
@@ -354,15 +355,26 @@ def _account_prefixes_owned(
             ):
                 _deny()
             originals = []
+            inert_clocks = True
             for event in events:
                 _admit_event(event, legacy=False, actions=actions)
+                inert_clocks = _inert_event_clocks(event) and inert_clocks
                 originals.append(canonical_json(event))
             original_values = tuple(originals)
             binding = canonical_json(
                 {"initial_representation": initial_cash.as_tuple(), "actions": actions}
             )
+            if not inert_clocks:
+                # Valid zero-offset tzinfo objects may have transforming copy
+                # hooks. Preserve original batch acceptance/hash semantics; do
+                # not retain their mutable graphs or copy them before replay.
+                batch: list[CapitalAccountReplay] = []
+                _replay(initial_cash, events, batch, actions=actions)
+                values = tuple(batch)
+                return _AccountProgress(binding, original_values, None, values), deepcopy(values)
             reusable = (
                 progress is not None
+                and progress.state is not None
                 and progress.binding == binding
                 and len(progress.originals) <= len(original_values)
                 and original_values[: len(progress.originals)] == progress.originals
@@ -391,6 +403,23 @@ def _account_prefixes_owned(
             return candidate, deepcopy(prefixes)
     except (ValueError, TypeError, DecimalException, AttributeError):
         _deny()
+
+
+def _inert_event_clocks(event: CapitalAccountEvent | CapitalActionEvent) -> bool:
+    """Continuation eligibility only; never narrow public original admission."""
+    clocks: tuple[datetime, ...]
+    if isinstance(event, CapitalAccountSubmission):
+        clocks = (
+            event.request.submitted.occurred_at,
+            event.request.order.created_at,
+            event.request.order.updated_at,
+            event.request.position.observed_at,
+        )
+    elif isinstance(event, LifecycleFillEvent):
+        clocks = (event.cursor.occurred_at, event.fill.occurred_at)
+    else:
+        clocks = (event.cursor.occurred_at,)
+    return all(type(clock) is datetime and clock.tzinfo is UTC for clock in clocks)
 
 
 def _replay(
