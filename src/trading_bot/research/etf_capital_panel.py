@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import date, datetime
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta
 from decimal import Decimal, localcontext
 from itertools import pairwise
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
+from trading_bot.code_identity import CodeIdentity, CodeIdentityError, resolve_code_identity
 from trading_bot.config import LoadedConfig
 from trading_bot.config.capital_research import CapitalResearchAppConfig
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Instrument, require_bounded_decimal
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
-from trading_bot.market_data.etf_capital_owned import _OwnedCapitalSource
+from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
+from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_economic_window import _capital_economic_window
 from trading_bot.research.etf_capital_feasibility import _config
 from trading_bot.research.etf_capital_matched import _capital_matched_values, _CapitalMatchedTerms
@@ -23,6 +26,7 @@ from trading_bot.research.etf_capital_panel_models import (
     _KEYS,
     _ROLES,
     _TAGS,
+    CapitalEconomicPanelReport,
     CapitalPanelCriterion,
     CapitalPanelDecision,
     CapitalPanelFamily,
@@ -38,18 +42,39 @@ from trading_bot.research.etf_capital_panel_models import (
     _PanelRecord,
     _typed,
 )
+from trading_bot.research.etf_capital_passive import (
+    _LIMITATIONS as _PASSIVE_LIMITATIONS,
+)
+from trading_bot.research.etf_capital_passive import (
+    CapitalPassiveRequest,
+    _capital_passive_values,
+)
 from trading_bot.research.etf_capital_path_economics import _ratio
-from trading_bot.research.etf_capital_prepared import _PreparedCapitalInput
+from trading_bot.research.etf_capital_prepared import (
+    _prepare_owned_capital_days,
+    _PreparedCapitalInput,
+)
 from trading_bot.research.etf_capital_selection import (
     CapitalTrainingOutcome,
     CapitalTrainingSelection,
+    select_capital_training,
 )
-from trading_bot.research.etf_capital_signals import CapitalCandidate, CapitalWalkForwardFold
+from trading_bot.research.etf_capital_signals import (
+    CapitalCandidate,
+    CapitalWalkForwardFold,
+    capital_candidates,
+)
 from trading_bot.research.etf_resampling import (
     EtfBlockRisk,
     dependent_capital_simultaneous_mean_intervals,
+    dependent_mean_risks,
 )
-from trading_bot.simulation.etf_capital_constrained import CapitalConstrainedResult
+from trading_bot.simulation.etf_capital_constrained import (
+    CapitalConstrainedDay,
+    CapitalConstrainedRequest,
+    CapitalConstrainedResult,
+    _replay_owned_capital_constrained,
+)
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
 from trading_bot.simulation.etf_capital_daily_owner import _Outcome
 from trading_bot.simulation.etf_capital_trajectory import CapitalTrajectoryResult
@@ -478,3 +503,454 @@ class _CapitalCompactWalkForward:
     folds: tuple[CapitalPanelFold, ...]
     paths: tuple[CapitalPanelPath, ...]
     walker_hash: str
+
+
+_PROTOCOL = (
+    "capital-original-economic-panel-v1",
+    1423,
+    769,
+    (770, 1400),
+    (1400, 1423),
+    (750, 20, 20, 126, 5),
+    "first-source-session-anchored_unused-suffix-reported",
+    "train-only-complete-positive-USDPNL-at-.40_grid-order-cash-zero",
+    "continuous-account_original-opening-policy-carried_no-terminal-forced-fill",
+    "whole-percent-roundtrip-halfside_fees-once",
+    _ROLES,
+    "capital-friction-selected-then-grid-role_order_2784x630",
+    "managed-candidate-and-managed-SPY_same-calendar-UTC-date-elapsed-operating-cost",
+    "passive-matched-cash-zero-incremental-expense-assumption",
+    "unknown-recurring-whole-operating-family-none_no-cancellation",
+    "marked-prior-NAV-returns-distinct-from-paired-USD-increments-over-fixed-capital",
+    "sunk-declared-once-not-summed_tax-unknown_development-only",
+)
+_LIMITATIONS = (
+    "development_only_not_qualified_market_source_or_expected_live_performance",
+    "source_actions_access_costs_fractional_terms_and_execution_unqualified",
+    "2016_2023_adaptive_2024_2025_used_or_uncertain_not_untouched",
+    "publication_chronology_waiver_disclosed_not_reinstated_or_validated",
+    "future_126_eligible_final_sessions_require_complete_freeze_no_peek_or_auto_extension",
+    "conditional_joint_bands_do_not_establish_independence_or_adaptive_selection_coverage",
+    "marked_NAV_not_sale_final_fees_settlement_or_window_realized_profit",
+    "cash_zero_yield_lower_bound_full_SPY_not_risk_executable_matched_SPY_retrospective",
+    "managed_paths_same_declared_recurring_cost_passive_matched_cash_zero_incremental_assumed",
+    "sunk_research_cost_is_one_declaration_not_sum_of_nested_repetitions",
+    "taxes_unknown_not_assumed_zero",
+    "no_economic_admission_promotion_runtime_or_live_authority",
+)
+
+
+def _evaluate_scenario(
+    walk: CapitalWalkForwardRequest,
+    *,
+    owned: _OwnedCapitalSource,
+    prepared: _PreparedCapitalInput,
+    recurring_usd_per_day: Decimal | None,
+    sunk_research_usd: Decimal | None,
+) -> CapitalPanelScenario:
+    from trading_bot.simulation.etf_capital_walk_forward import (
+        _replay_owned_capital_walk_forward,
+        _walk_forward_inputs,
+    )
+
+    _, _, dates, _, reviews = _walk_forward_inputs(walk, owned)
+    tests = dates[770:1400]
+    terms = _CapitalMatchedTerms(
+        walk.initial_cash, walk.roundtrip_friction_pct, walk.entry_fee, walk.exit_fee
+    )
+    compact = _replay_owned_capital_walk_forward(
+        walk,
+        owned=owned,
+        prepared=prepared,
+        retention=_CapitalPanelRetention(
+            owned, prepared, terms, tests, recurring_usd_per_day, sunk_research_usd
+        ),
+    )
+    passive_request = CapitalPassiveRequest(
+        owned.dataset,
+        walk.initial_cash,
+        tests,
+        walk.roundtrip_friction_pct,
+        walk.entry_fee,
+        walk.exit_fee,
+    )
+    kernel, quantities, baseline = _capital_passive_values(owned, passive_request)
+    reference_hash = content_hash(
+        (
+            "capital-passive-original-reference-v1",
+            owned.source_hash,
+            owned.dataset.config_hash,
+            baseline,
+            tests,
+            walk.initial_cash,
+            walk.roundtrip_friction_pct,
+            walk.entry_fee,
+            walk.exit_fee,
+            kernel.input_hash,
+            _PASSIVE_LIMITATIONS,
+        )
+    )
+    full = _record(
+        CapitalPanelMathematical,
+        reference_hash,
+        kernel.input_hash,
+        walk.initial_cash,
+        (walk.initial_cash, *tuple(p.close_midpoint_nav for p in kernel.points)),
+        quantities,
+        None,
+        None,
+        _PASSIVE_LIMITATIONS,
+    )
+    schedule = tuple(
+        CapitalConstrainedDay(
+            day,
+            index < 1399,
+            index < 1400,
+            day in reviews,
+        )
+        for index, day in enumerate(dates[769:1423], start=769)
+    )
+    managed = _replay_owned_capital_constrained(
+        CapitalConstrainedRequest(
+            owned.dataset,
+            walk.initial_cash,
+            schedule,
+            walk.instruments,
+            walk.episode_fee_bound,
+            walk.entry_fee,
+            walk.exit_fee,
+            walk.roundtrip_friction_pct,
+            walk.entry_outcome,
+            walk.entry_fill_fraction,
+            walk.exit_outcome,
+            walk.exit_fill_fraction,
+        ),
+        owned=owned,
+        prepared=prepared,
+    )
+    managed_window = _capital_economic_window(
+        managed,
+        initial_cash=walk.initial_cash,
+        test_sessions=tests,
+        recurring_usd_per_day=recurring_usd_per_day,
+        sunk_research_usd=sunk_research_usd,
+    )
+    managed_final = _retain_final(managed, initial_cash=walk.initial_cash, test_count=630)
+    del managed
+    return _record(
+        CapitalPanelScenario,
+        walk.initial_cash,
+        walk.roundtrip_friction_pct,
+        compact.walker_hash,
+        compact.folds,
+        compact.paths,
+        full,
+        managed_window,
+        managed_final,
+        (walk.initial_cash,) * 631,
+    )
+
+
+def _validate_scenario(
+    scenario: CapitalPanelScenario,
+    *,
+    walk: CapitalWalkForwardRequest,
+    owned: _OwnedCapitalSource,
+    recurring_usd_per_day: Decimal | None,
+    sunk_research_usd: Decimal | None,
+) -> None:
+    """Admit every retained fact before any whole-panel statistical call."""
+    from trading_bot.simulation.etf_capital_walk_forward import _walk_forward_inputs
+
+    _typed(scenario, CapitalPanelScenario)
+    terms, _, dates, folds, _ = _walk_forward_inputs(walk, owned)
+    sessions = {s.session_date: s for s in owned.dataset.calendar.sessions}
+    candidates = capital_candidates()
+    _check(scenario.capital == walk.initial_cash)
+    _check(scenario.friction_pct == walk.roundtrip_friction_pct)
+    _check(len(scenario.folds) == 5 and len(scenario.paths) == 29)
+    for actual, expected in zip(scenario.folds, folds, strict=True):
+        _check(actual.fold == expected)
+        cutoff = sessions[expected.train_sessions[-1]].closes_at + timedelta(seconds=3)
+        at = sessions[dates[dates.index(expected.test_sessions[0]) - 1]].closes_at
+        _check(actual.training_cutoff == cutoff and actual.selection_at == at)
+        _check(len(actual.training) == 28)
+        for value, candidate in zip(actual.training, candidates, strict=True):
+            value.__post_init__()
+            _check(value.candidate == candidate)
+        selection = select_capital_training(
+            tuple(t.outcome for t in actual.training),
+            loaded=terms.loaded,
+            capital=walk.initial_cash,
+            training_cutoff=cutoff,
+            selection_at=at,
+        )
+        _check(actual.selection == selection)
+
+    def window(value: object) -> None:
+        from trading_bot.research.etf_capital_economic_window import CapitalEconomicWindow
+
+        _typed(value, CapitalEconomicWindow)
+        current = cast(CapitalEconomicWindow, value)
+        _check(current.initial_cash == walk.initial_cash)
+        _check(current.baseline_session == dates[769])
+        _check(current.session_dates == dates[770:1400])
+        _check(current.tail_sessions == dates[1400:1423])
+        _check(len(current.marked_nav) == 631 and current.baseline_nav == current.marked_nav[0])
+        _check(current.marked_pnl == current.marked_nav[-1] - current.baseline_nav)
+        _check(current.sunk_research_cost == sunk_research_usd)
+        _check(current.independent_opportunities is current.actual_tax_usd is None)
+        if recurring_usd_per_day is None:
+            _check(current.net_nav is None and current.recurring_cost is None)
+            _check(current.operating_profit is None and current.marked_operating_profit is None)
+            _check(current.operating_prior_nav_returns is None)
+            _check(current.operating_metrics is None)
+        else:
+            costs = tuple(
+                Decimal((day - dates[769]).days) * recurring_usd_per_day for day in dates[769:1400]
+            )
+            net = tuple(nav - cost for nav, cost in zip(current.marked_nav, costs, strict=True))
+            _check(current.net_nav == net and current.recurring_cost == costs[-1])
+            _check(current.marked_operating_profit == current.marked_pnl - costs[-1])
+            _check(
+                current.operating_profit
+                == (None if current.trading_pnl is None else current.trading_pnl - costs[-1])
+            )
+            _check(current.operating_metrics is not None)
+
+    def mathematical(value: CapitalPanelMathematical, *, matched: bool) -> None:
+        _check(len(value.marked_nav) == 631 and len(value.raw_quantities) == 630)
+        _check(value.baseline_nav == walk.initial_cash == value.marked_nav[0])
+        _check(all(q >= 0 for q in value.raw_quantities))
+        if matched:
+            _check(value.exposures is not None and len(value.exposures) == 630)
+            _check(value.mean_exposure is not None and 0 <= value.mean_exposure <= 1)
+        else:
+            _check(value.mean_exposure is None and value.exposures is None)
+
+    mathematical(scenario.full_spy, matched=False)
+    _check(scenario.cash_nav == (walk.initial_cash,) * 631)
+    window(scenario.managed_spy)
+    _check(scenario.managed_spy_final.trajectory_hash == scenario.managed_spy.trajectory_hash)
+    for index, (path, path_candidate) in enumerate(
+        zip(scenario.paths, (None, *candidates), strict=True)
+    ):
+        _check(path.path_index == index and path.candidate == path_candidate)
+        _check(path.trajectory_hash == path.window.trajectory_hash == path.final.trajectory_hash)
+        window(path.window)
+        mathematical(path.matched_spy, matched=True)
+
+
+def _implementation() -> CodeIdentity:
+    value = resolve_code_identity(Path(__file__).resolve().parents[3], image_digest=None)
+    _typed(value, CodeIdentity)
+    _check(value.dirty is False and value.git_commit is not None and value.image_digest is None)
+    return value
+
+
+def evaluate_capital_economic_panel(
+    request: CapitalEconomicPanelRequest,
+) -> CapitalEconomicPanelReport:
+    """Own originals and evaluate the complete frozen DEVELOPMENT family.
+
+    No caller winners, scores, balances, observations, cached results or authority
+    are accepted. This produces only REJECT or INSUFFICIENT_EVIDENCE.
+    """
+    try:
+        with localcontext(_CONTEXT):
+            _check(type(request) is CapitalEconomicPanelRequest)
+            _check(all(getattr(request, flag) is False for flag in _FLAGS))
+            implementation = _implementation()
+            owned = _own_capital_source(request.dataset)
+            cfg, _, base = _panel_inputs(request, owned)
+            request = replace(
+                request,
+                dataset=owned.dataset,
+                instruments=tuple(replace(i) for i in request.instruments),
+            )
+            base = replace(base, dataset=owned.dataset, instruments=request.instruments)
+            source = owned.dataset
+            dates = tuple(
+                s.session_date
+                for s in source.calendar.sessions
+                if source.start <= s.session_date < source.end
+            )
+            used, tests, tail = dates[:1423], dates[770:1400], dates[1400:1423]
+            prepared = _prepare_owned_capital_days(owned, sessions=used)
+            capitals = cfg.capital_research.capital_tiers
+            frictions = cfg.capital_research.round_trip_friction_pct
+            scenarios = []
+            labels, trading_columns, operating_columns = [], [], []
+            for capital in capitals:
+                for cost in frictions:
+                    walk = replace(base, initial_cash=capital, roundtrip_friction_pct=cost)
+                    scenario = _evaluate_scenario(
+                        walk,
+                        owned=owned,
+                        prepared=prepared,
+                        recurring_usd_per_day=request.recurring_usd_per_day,
+                        sunk_research_usd=request.sunk_research_usd,
+                    )
+                    _validate_scenario(
+                        scenario,
+                        walk=walk,
+                        owned=owned,
+                        recurring_usd_per_day=request.recurring_usd_per_day,
+                        sunk_research_usd=request.sunk_research_usd,
+                    )
+                    scenarios.append(scenario)
+                    for path in scenario.paths:
+                        trading_refs = (
+                            scenario.full_spy.marked_nav,
+                            scenario.managed_spy.marked_nav,
+                            path.matched_spy.marked_nav,
+                            scenario.cash_nav,
+                        )
+                        for role, reference in zip(_ROLES, trading_refs, strict=True):
+                            labels.append(
+                                CapitalPanelLabel(
+                                    capital,
+                                    cost,
+                                    path.path_index,
+                                    cast(
+                                        Literal["full_spy", "managed_spy", "matched_spy", "cash"],
+                                        role,
+                                    ),
+                                )
+                            )
+                            trading_columns.append(
+                                _paired_column(path.window.marked_nav, reference, capital)
+                            )
+                        if request.recurring_usd_per_day is not None:
+                            _check(path.window.net_nav is not None)
+                            _check(scenario.managed_spy.net_nav is not None)
+                            operating_refs = (
+                                scenario.full_spy.marked_nav,
+                                scenario.managed_spy.net_nav,
+                                path.matched_spy.marked_nav,
+                                scenario.cash_nav,
+                            )
+                            for operating_reference in operating_refs:
+                                operating_columns.append(
+                                    _paired_column(
+                                        cast(tuple[Decimal, ...], path.window.net_nav),
+                                        cast(tuple[Decimal, ...], operating_reference),
+                                        capital,
+                                    )
+                                )
+            _check(len(scenarios) == 24)
+            trading = _build_family(
+                "trading",
+                tests,
+                tuple(labels),
+                tuple(trading_columns),
+                capitals=capitals,
+                frictions=frictions,
+                seed=cfg.research.seed,
+                draws=cfg.research.monte_carlo_iterations,
+            )
+            operating = None
+            risks = None
+            if request.recurring_usd_per_day is not None:
+                operating = _build_family(
+                    "operating",
+                    tests,
+                    tuple(labels),
+                    tuple(operating_columns),
+                    capitals=capitals,
+                    frictions=frictions,
+                    seed=cfg.research.seed,
+                    draws=cfg.research.monte_carlo_iterations,
+                )
+                risks = tuple(
+                    dependent_mean_risks(
+                        operating.columns[index],
+                        seed=cfg.research.seed,
+                        block_lengths=(20, 100),
+                        draws=cfg.research.monte_carlo_iterations,
+                    )
+                    for index in range(3, 2784, 4)
+                )
+            recorded = tuple(scenarios)
+            decisions = tuple(
+                _decide_path(
+                    capital,
+                    index,
+                    recorded[tier * 4 : tier * 4 + 4],
+                    operating=operating,
+                    cash_risks=risks,
+                    cfg=cfg,
+                )
+                for tier, capital in enumerate(capitals)
+                for index in range(29)
+            )
+            report = _record(
+                CapitalEconomicPanelReport,
+                implementation,
+                owned.source_hash,
+                str(source.config_hash),
+                prepared.input_hash,
+                content_hash(source.calendar),
+                content_hash(source.actions),
+                _panel_hash(
+                    "terms",
+                    base.instruments,
+                    request.episode_fee_bound,
+                    request.entry_fee,
+                    request.exit_fee,
+                    request.weekly_review_sessions,
+                    request.entry_outcome,
+                    request.entry_fill_fraction,
+                    request.exit_outcome,
+                    request.exit_fill_fraction,
+                ),
+                _panel_hash(
+                    "cost", frictions, request.recurring_usd_per_day, request.sunk_research_usd
+                ),
+                _panel_hash("protocol", _PROTOCOL),
+                _panel_hash(
+                    "selection",
+                    "train-only-complete-positive-USDPNL-at-.40_grid-order-cash-zero",
+                    tuple(f.selection for s in recorded for f in s.folds),
+                ),
+                _panel_hash(
+                    "statistics",
+                    tuple(labels),
+                    cfg.research.seed,
+                    (20, 100),
+                    cfg.research.monte_carlo_iterations,
+                    "existing-dependent-mean_and-complete-family-max-error-v1",
+                ),
+                _panel_hash(
+                    "criteria",
+                    _KEYS,
+                    (">", ">=", "<=", ">=", ">", "<="),
+                    tuple(c.threshold for c in decisions[0].criteria),
+                    "last-four-always-unknown_no-GO_conditional-not-independent",
+                ),
+                used,
+                dates[1423:],
+                dates[769],
+                tests,
+                tail,
+                recorded,
+                trading,
+                operating,
+                risks,
+                decisions,
+                _LIMITATIONS,
+            )
+            _check(_implementation() == implementation)
+            return report
+    except (
+        ValueError,
+        TypeError,
+        AttributeError,
+        ArithmeticError,
+        KeyError,
+        StopIteration,
+        IndexError,
+        CodeIdentityError,
+        OSError,
+    ):
+        raise ValueError("capital_economic_panel_invalid") from None
