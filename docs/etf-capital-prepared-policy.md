@@ -24,7 +24,7 @@ never interpreted as permission to hold. Zero/unknown ATR cannot create entry.
 This boundary is private and invocation-local. Constructing a private dataclass
 does not authenticate a source, an execution route, opening ownership, cost or
 risk approval. The implemented original-event owner/panel reconstructs these facts from its
-own original request and bind unique BUY/fill events before using an opening
+own original request and binds unique BUY/fill events before using an opening
 policy. There is no public prepared-token/economic-admission factory.
 
 Source/cost/execution/economic/promotion flags remain false. Original scheduling,
