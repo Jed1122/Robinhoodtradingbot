@@ -5,8 +5,10 @@ inside its current invocation. Public risk/admission/recovery requests do not
 accept progress objects, saved balances or saved latches. The ordinary batch
 risk reader still reconstructs from genesis using the same point kernel.
 
-Every call reconstructs the complete original account prefix and validates
-canonical configuration. Continuation requires the same capital/config/action
+Every call admits the complete original account prefix and validates canonical
+configuration. Private original-account continuation now stages matching suffixes
+through the SAME batch reducer; public batch still reconstructs genesis.
+Continuation requires the same capital/config/action
 mode, value-copied observation prefix and all original prefix economic hashes.
 Changed or shortened inputs reconstruct from genesis; no previous account
 balance is authoritative. All supplied observation fields and original
@@ -50,8 +52,9 @@ are implemented.328 related tests and Ruff/Mypy391/Bandit/frozen locks/SBOM pass
 The earlier455-test broad run belongs to the immediately preceding assertion
 source; it does not substitute for final-source global certification.
 
-Remaining: exact-source full/native/critical
-verification, complete measured study workload, aligned four-role economics,
-immutable executable/input/cost freeze, then one authorized evaluation with
+Aligned four-role [panel composition](etf-capital-panel.md) is implemented/reviewed;
+its conditional statistics do not establish independent support. Remaining:
+corrected-source full/native/critical/release verification, complete measured
+workload, immutable executable/input/cost freeze, then one authorized evaluation with
 qualified inputs. All source/cost/execution/economic/promotion/live flags remain
 false; paper and deployed recovery are separate unverified prerequisites.

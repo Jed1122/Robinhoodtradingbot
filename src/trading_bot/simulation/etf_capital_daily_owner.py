@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, localcontext
-from typing import Literal
+from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
 from trading_bot.config import LoadedConfig
@@ -35,6 +35,7 @@ from trading_bot.simulation.etf_capital_account import (
     CapitalActionAccountReplay,
     CapitalEpisodeFeesFinal,
     CapitalSaleSettlement,
+    _account_prefixes_owned,
     replay_capital_action_account,
 )
 from trading_bot.simulation.etf_capital_action_events import (
@@ -567,9 +568,13 @@ def _replay_capital_owner(
                 )
                 before = account
                 candidate_events = (*events, fact.event)
-                account = replay_capital_action_account(
-                    initial_cash=request.initial_cash, events=candidate_events
+                _, candidate_accounts = _account_prefixes_owned(
+                    risk_progress.accounts,
+                    initial_cash=request.initial_cash,
+                    events=candidate_events,
+                    actions=True,
                 )
+                account = cast(CapitalActionAccountReplay, candidate_accounts[-1])
                 events = candidate_events
                 if account.economic_hash != before.economic_hash:
                     _check(_cursor(fact.event).occurred_at <= opened)

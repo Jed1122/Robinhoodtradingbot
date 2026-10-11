@@ -1,8 +1,9 @@
 # Original-bound assumed due facts
 
-`_capital_due_facts` is a private composition helper for the future original-input
-research evaluator. It reconstructs the complete v3 account tape through the same
-account/prefix reducer. It accepts no saved cash, quantities, risk latches,
+`_capital_due_facts` is a private helper consumed by original-input trajectory
+and [panel composition](etf-capital-panel.md). It validates the complete v3 tape through the same
+account/prefix reducer, with invocation-owned continuation in private consumers.
+It accepts no saved cash, quantities, risk latches,
 completion assertions, preapproved entries or broker capability. Original risk
 observation cursors only establish the next sequence frontier, not approval.
 

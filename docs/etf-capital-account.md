@@ -1,12 +1,20 @@
 # Capital research account boundary
 
-Status: funding/v2 composition, v3 corporate actions, prefixes and joint
+Current: the original-event daily owner, shared original-account continuation,
+train-only walk-forward carryover and [complete DEVELOPMENT panel](etf-capital-panel.md)
+are implemented/reviewed. Exactb8 passed its bounded first750 gate; complete
+workload, current corrected-source release, executable freeze and qualified
+authorized economic study remain unfinished. A failed3a8 architecture run is
+preserved; bounded-field correction passes196 architecture/admission tests but
+still needs full verification. No accepted economics or operational readiness.
+
+Historical release evidence: funding/v2 composition, v3 corporate actions, prefixes and joint
 action-aware risk/recovery are released through PR29–PR33. PR34's corrected
 signal/frontier contract is merged atf1326c9 after all14 hosted jobs and local9,826
 full/20 native tests,92.11% combined coverage and unchanged80/90 gates atf889808.
 The separate entry/exit adapter at e814a29 passed9,896full/20native/92.16% and
-unchanged80/90 gates locally; its release is pending. The complete daily owner,
-strategy/fold economic evaluator and executable economic freeze are not implemented.
+unchanged80/90 gates locally. Those releases are merged through PR42; their
+historical test counts do not certify the newer architecture/panel executable.
 See [Action-account boundary](etf-capital-actions.md). No operational readiness
 or accepted economic result is asserted.
 
@@ -218,3 +226,43 @@ Current checkpoint inputs, owner and envelope schemas use v2 namespaces and the
 migrated or modified. This increment does not add a legacy persisted-checkpoint
 reader; the explicit v1 account-event reader remains available for historical
 event evidence. It is not a joint risk/actions restart implementation.
+
+## Invocation-owned original-account continuation
+
+The daily owner's private risk progress now prepares account continuation through
+the SAME initialization/transition/snapshot reducer as public batch replay. It
+retains only invocation-local detached originals/state, never adopted caller
+balances, persisted cursors, or broker authority. All original exact types,
+post-init checks, mode restrictions and identifier bounds run before canonical
+prefix comparison. Initial Decimal representation and v2/v3 mode are bound
+explicitly; historical canonical hashes remain unchanged.
+
+An exact validated prefix applies only its new suffix on a whole-state clone.
+Changed/shortened/binding-changed inputs reconstruct from genesis. Invalid inputs
+deny, and failed suffixes or fresh source-observation checks publish neither
+partial accounts nor loss continuation. Mutable collections and nested lifecycle
+records are detached; returned prefix records cannot mutate retained progress.
+Duplicate deliveries retain raw positions but not a second economic application.
+Accepted non-inert UTC timezone objects use original batch replay without
+retaining continuation state, because custom copy hooks can change their values.
+This preserves public acceptance rather than normalizing original hash inputs.
+Public APIs do not accept this private state; v1 remains a historical batch reader.
+
+This removes repeated account transition work, not all cumulative hashing or
+current-order lifecycle replay. Correctness, unchanged first750120s/512MiB and
+complete28x6x4x5 workload acceptance remain separate gates. No current workload,
+economic freeze, qualified-input study, deployed recovery or live readiness is
+established by this implementation.
+
+The prepared trajectory and constrained-reference frontends also allocate private
+due-fact continuation for their own invocation. Every call still validates the
+complete original calendar, actions, bars, observations and account deliveries.
+It stages all derived settlement/action/payment/finality facts transactionally;
+a later invalid fact leaves the earlier continuation untouched. Entry/exit fact
+generation and owner fact application use the same account helper, while full
+fresh risk validation alone publishes the corresponding risk account candidate.
+Public batch APIs and their full result/hash preimages remain unchanged. Separate
+consumer forks do not supply account balances, risk approvals or a second engine.
+The first continuation-only635 probe historically timed out at120seconds. The
+reviewed extended-consumerb8 first750 passed65.113611584s/170,688,512bytes; this
+does not certify the current complete panel or replace its full workload gates.

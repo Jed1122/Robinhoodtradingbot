@@ -8,8 +8,8 @@ capability. Source/cost/execution/economic/promotion flags remain false.
 prefixes with the existing reducer and validates every trajectory close against
 its original observation frontier. The baseline is the first close; test dates
 must be the next contiguous supplied closes. Later points are explicitly an
-exit-only tail, not additional test observations. A future source-owned panel
-must enforce the frozen630-session study window. This private generic assembler
+exit-only tail, not additional test observations. The implemented source-owned
+panel enforces the frozen630-session study window. This private generic assembler
 also accepts smaller windows for independent literal fixtures.
 
 The same private assembler accepts two exact, separately typed result families:
@@ -62,8 +62,8 @@ the subclass bypass; explicit `is` checks now reject it. Corrected two-window
 suites64passed and related357passed. Fresh current-source global and release
 gates remain necessary. Old strategy preimages are still literal-fixture bound.
 
-Next: independently review and globally verify this bounded increment; compose
-the original-source-owned four-reference aligned panel and conditional dependent
-statistics; measure the complete workload; freeze executable identities and
+The original-source-owned four-reference panel and conditional dependent
+statistics are implemented/reviewed. Next: corrected-source global/native/release
+verification; measure the complete workload; freeze executable identities and
 criteria; admit qualified authorized inputs before one development evaluation.
 No deployment, broker authorization or profitability follows from this code.

@@ -66,10 +66,11 @@ kind of evidence. Calendar counts never establish source acceptance; strategy
 projection, qualification and promotion remain false. This is an inventory,
 not an accepted dataset or feature normalizer.
 
-Next are split/distribution/availability dataset controls
-and a separately authorized bounded capture composition. These must be verified
-and frozen before the walk-forward
-strategy study. No genuine economic result, qualifying paper/shadow behavior or
+Split/distribution/availability dataset controls are implemented below. Actual
+retained source/actions/access remain unverified; capture remains separately
+authorized, not supplied by a parser. Current panel/release/workload gates and
+immutable identities must precede a qualified authorized DEVELOPMENT study.
+No genuine economic result, qualifying paper/shadow behavior or
 broker/runtime readiness follows from this parser.
 
 ## Supplied action facts and feature basis
@@ -88,7 +89,8 @@ distribution ex-dates must have declared calendar sessions. Split factors apply
 only through the as-of session; raw assumed execution OHLC remain separate and
 captured bytes unchanged. Dividend cash is not subtracted from feature prices
 or automatically reinvested. Account entitlement/settlement and total-return
-rotation remain future composition work.
+rotation are implemented in the original owner/shared signal/panel composition;
+their software existence does not qualify supplied inputs.
 
 Session-close availability and latest-vintage action completeness are research
 assumptions, not original publication evidence. All qualification, promotion and
@@ -114,8 +116,9 @@ permanently false.
 terminal split-normalized series for earlier decisions. Unavailable requested
 sessions deny rather than being clipped. Raw OHLC quality is checked during
 construction. No forward fill, execution quote, original publication time or
-automatic cash settlement is invented. Strategy/account/total-return composition
-and actual-source acquisition remain unfinished.
+automatic cash settlement is invented. Strategy/account/total-return software
+composition exists; actual-source qualification/acquisition is not established
+by this module. Current release/workload/freeze/study gates remain unfinished.
 
 ## Reviewed integrity and finite feature precision
 

@@ -14,8 +14,10 @@ Fixture verification includes six pre-extraction literal all28 output hashes,
 199/200/201-bar warmup boundaries, RSI reversal, rising/falling/flat series and
 metadata/clock/mutation denials. Five projection hashes rather than140 is an
 operation-count result, not wall-time or full-workload certification. This
-unconsumed foundation and the private owned-source snapshot do not complete the
-dataset-driven evaluator, policy carryover, accepted inputs or economic freeze.
+wrapper remains unconsumed. The implemented prepared-input/DEVELOPMENT panel
+instead calls the SAME `_calculate_capital_signal` numerical kernel directly
+through private preparation. Original-owner carryover and complete panel
+composition exist; accepted inputs, full workload and economic freeze do not.
 All source/cost/execution/economic/promotion/live eligibility remains false.
 
 ## Retained signal release history
@@ -77,8 +79,9 @@ exit-only sessions per fold reserve maxhold20, next event and assumedT+2 tail;
 missing later execution/settlement is still incomplete, never a forced fill.
 The caller must establish complete calendar/data inputs; this helper cannot.
 
-Next: implement and review the account/risk-gated daily execution adapter,
-train-only selection with policy carryover, dependent selection-adjusted
-uncertainty, operating-cost and benchmark reports. Bind code/config/source/
-calendar/actions/cost/protocol identities before a development study. These
-contracts alone do not supply any of those results or qualify paper/shadow/live.
+The account/risk-gated daily owner, train-only carryover and dependent whole-family
+cost/benchmark [panel](etf-capital-panel.md) are implemented and reviewed; this
+signal helper alone is not their qualification. Next: corrected-source release
+verification and actual full workload, then immutable code/config/source/calendar/
+actions/cost/protocol/selection/statistics/criteria freeze before a qualified
+authorized DEVELOPMENT study. No paper/shadow/live qualification follows.
