@@ -6,7 +6,14 @@ no scores, winners, balances, saved risk latches, prepared-input tokens, callbac
 or saved results. Every source/cost/execution/economic/promotion flag remains
 false. Its only verdicts are `REJECT` and `INSUFFICIENT_EVIDENCE`, never GO.
 
-This implementation is undergoing integration verification. Synthetic tests,
+This implementation is undergoing corrected-source integration verification.
+The exact3a8 full run failed architecture enforcement on unresolved reflection;
+its stopped partial results are NONCERT, with no native append. The correction
+uses a finite immutable registry of literal data-field readers and five literal
+flag checks, denying unknown names without weakening the guard or encoder.
+196 bounded-field/architecture tests and Ruff/Mypy394/Bandit pass; independent
+corrective review and full panel/global/native verification remain required.
+Synthetic tests,
 the earlier bounded first750 performance pass and prior merged releases do not
 establish the complete panel workload, executable economic freeze, qualified
 market input, profitability, broker readiness, paper/shadow or deployed recovery.
@@ -77,7 +84,9 @@ assembly. New records have versioned hashes; public historical hash namespaces
 and canonical encoders are unchanged. Output is immutable data, never restart,
 account or promotion authority.
 
-Next: finish independent whole-panel review and exact-source regression/native
+Independent implemented-increment reviews are complete, including the evaluator;
+they do not certify current regression or workload performance.
+Next: finish corrective-delta review and exact-source regression/native
 coverage80overall/90critical, statics, locks, SBOM, shell/Compose and reviewed
 all-green hosted integration. Measure the unchanged first750120s/512MiB gate and
 the actual complete28×6×4×5 evaluator/report workload, including setup and

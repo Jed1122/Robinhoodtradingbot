@@ -37,16 +37,17 @@ trajectory types reject constrained policies; their historical preimages remain
 unchanged. No second cash, risk, configuration or order-lifecycle engine exists.
 
 The private `_replay_owned_capital_constrained` seam supports common market-only
-preparation inside a future original-input comparison invocation. It checks the
+preparation inside the implemented original-input panel invocation. It checks the
 source/config/calendar/day metadata and maps schedule dates into that preparation
 instead of assuming the first prepared row is the account baseline. It still
 constructs an independent account through the same owner. Public original-input
 admission and schedule-only hash preimages are unchanged; a larger private
 preparation correctly binds a different input hash, not a counterfeit old one.
 
-This output retains all owner observations; it is not yet the aligned 630-date
-economic comparison panel. Test-window attribution, exposure-matched and cash
-references, operating expenses, dependent statistics, full workload validation
-and the immutable economic study freeze remain separate work. Qualified,
+This output retains all owner observations; alone it is not the aligned630-date
+comparison panel. Test-window attribution, matched/cash references, expenses and
+conditional statistics are composed in the [panel](etf-capital-panel.md).
+Corrected-source release, actual full workload validation and immutable economic
+study freeze remain unfinished. Qualified,
 authorized five-symbol inputs and genuine customer execution costs are not
 established by this implementation or its fabricated fixtures.

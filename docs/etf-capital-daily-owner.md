@@ -5,16 +5,17 @@ daily entry/exit adapters, v3 account/risk reducers and lifecycle replay.
 It is not a broker worker, economic study, promotion path or live service.
 Exact491cda9 independent review and local full/native/critical verification
 passed:10,571full/20native tests,92.47% combined coverage, unchanged80overall/
-90critical gates. Hosted adapter integration remains separate. A later human-
+90critical gates. Adapter integration completed through PR42. A later human-
 document head does not represent a fresh executable full rerun.
 
-The same source still timed out the unchanged first750 training-path120-second
-guard at120.010034333s. Three failed bounded fixes require an architecture
-discussion before a fourth implementation. The same-reducer invocation-owned
-original-prefix continuation proposal is not a frozen API or implemented fix.
-Full-grid performance, compact source-owned panel/statistics/report composition,
-immutable economic freeze and one qualified authorized DEVELOPMENT study remain
-unfinished. Older performance snapshots below are historical, not acceptance.
+Historical491c timed out first750 at120.010034333s. Architecture discussion and
+implementation are complete: shared-reducer invocation-owned continuation and
+private consumers are reviewed. Exactb8 first750 passed65.113611584s/170,688,512bytes.
+The complete [source-owned panel](etf-capital-panel.md) is implemented/reviewed;
+corrected-source release verification, actual full workload, immutable economic
+freeze and one qualified authorized DEVELOPMENT study remain unfinished.
+Failed3a8 architecture verification is retained as NONCERT. Older performance
+snapshots below are historical, not current acceptance.
 
 `replay_capital_daily_owner` starts with cash and immutable original frames.
 The first completed close may create an instruction but cannot trade its own
@@ -103,19 +104,20 @@ fixed Decimal context and normalized denial boundary, including copy-hook
 failures. Original account/risk hashes must remain unchanged under the full
 compatibility gates.
 
-The fabricated750-frame probe still exceeds its120-second time budget, although
+The historical fabricated750-frame probe exceeded its120-second time budget, although
 the v4 frame commitments prevent the prior giant final-allocation failure.
 The most recent observed bound was120.084s/315,015,168bytes before owned-worker
 termination. This is NOT complete workload validation or economic freeze.
-Total growing-history validation/hashing remains quadratic. Before economics,
-the owning evaluator needs bounded local derived-data reuse/shared original-state
-composition and full28-candidate/six-capital/four-cost/five-fold validation.
+That older revision repeatedly reconstructed growing account prefixes. Current
+private continuation shares the canonical reducer without adopting balances;
+boundedb8 acceptance does not replace full28×6×4×5 panel validation before economics.
 
 Inputs remain bounded by existing account/risk limits as well as the owner's
 2,048-frame admission ceiling. That ceiling does not promise that every maximum
 trajectory fits the inherited event/observation limits. Full walk-forward workload
-performance, train-only selection, dependent uncertainty, economic reporting and
-executable study freeze remain subsequent work.
+performance and executable study freeze remain subsequent gates. Train-only
+selection/carryover and conditional dependent-statistics/economic report composition
+are implemented; unqualified source and unknown independent support stay unknown.
 
 All five source/cost/execution/economic/promotion flags are permanently false.
 Tests use fabricated records only; no production limits or broker capabilities

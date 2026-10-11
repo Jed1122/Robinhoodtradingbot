@@ -81,7 +81,7 @@ supplied columns; the outward95th-percentile radius gives conditional two-sided
 bands. Defaults are1,000 draws and20/100-session blocks. These are model-dependent
 bootstrap bands, not guaranteed coverage or an independent-opportunity estimate.
 
-The report adapter still must bind the complete29-path/six-capital/four-cost/
+The implemented [source-owned panel](etf-capital-panel.md) binds the complete29-path/six-capital/four-cost/
 four-reference family (2,784 columns), exact dates, identities and all attempted
 paths. References are full mathematical SPY, constrained policy-managed SPY,
 retrospective exposure-matched SPY and zero-yield cash. They are not interchangeable
@@ -90,8 +90,9 @@ provides capacity over the same kernel; the legacy API retains2,088 columns.
 Numeric length validation alone authenticates neither labels nor family
 completeness. Draw counts and completed episodes never become independent support.
 
-Statistics, compatible benchmarks, complete workload/resource verification and
-economic executable preregistration remain separate unfinished composition.
+Statistics and compatible benchmarks are composed in that panel, not this kernel
+alone. Corrected-source release, actual complete workload/resource verification
+and economic executable preregistration remain unfinished gates.
 Qualified authorized five-symbol source/calendar/actions and defensible costs
 are not established by this module. Every source/cost/execution/economic/
 promotion/live eligibility flag remains false. Existing production limits and

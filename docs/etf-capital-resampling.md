@@ -16,6 +16,7 @@ This function accepts math columns, not authenticated source facts. It cannot
 verify complete family membership, dates, roles, capital/cost identities or
 train-only selection provenance. Conditional bootstrap bands are not guaranteed
 adaptive-selection coverage, economic acceptance or promotion evidence. The
-owning evaluator still needs complete original-event path/benchmark composition,
-full workload validation, protocol freeze and qualified authorized inputs.
+owning [panel](etf-capital-panel.md) now composes complete original-event paths
+and benchmarks. Current corrected-source release, actual full workload validation,
+protocol freeze and qualified authorized inputs remain separate unfinished gates.
 No source/cost/execution/economic/promotion/live eligibility is established here.

@@ -1,6 +1,40 @@
 # Parallel Orchestration Transition Report
 
-## Current original-account consumers — implementation, not workload acceptance
+## Current architecture and panel — October 11
+
+Architecture resolution and implementation are complete: invocation-owned
+original-account continuation and private consumers reuse the SAME canonical
+reducer, with whole-suffix rollback, detached originals, fresh source/frontier
+admission and unchanged public APIs/hashes. Exactb8c6fa4 independent review passed;
+its unchanged first750 gate passed65.113611584s/170,688,512bytes after104.823942791s
+setup. That is bounded revision-specific evidence, not complete workload acceptance.
+
+The original-source DEVELOPMENT panel is implemented and independently reviewed:
+24 scenarios,140 training facts each,29 selected/fixed paths, four references,
+complete2,784×630 trading/nullable operating families,696 known-cost cash risks
+and174 conditional decisions. See [Panel boundary](docs/etf-capital-panel.md).
+All eligibility flags remain false; unknown support never becomes GO.
+
+Exact3a8 global verification failed the architecture guard on six unresolved
+dynamic field reads; the stopped partial run is preserved as NONCERT, not a pass.
+Corrective sourceceeefac9 bounds literal data-field access without changing the
+guard, encoder or hashes. Its196 bounded/architecture tests and statics pass;
+corrective review and current panel/global/native verification remain required.
+The complete unmocked workload has not run. No executable economic freeze or
+qualified-input economic study exists. PR17–42 are merged; merge is not deployment.
+
+Next: finish corrected-source verification/review and current all-green release,
+measure unchanged first750120s/512MiB plus the full28×6×4×5 evaluator/report within
+predeclared24h/2GiB including setup/serialization, then freeze all identities
+before ONE qualified authorized DEVELOPMENT evaluation. Retained five-symbol
+inputs/actions/access are unverified, not absent; private inspection requires
+applicable explicit authority. Chronology waiver stays disclosed; genuine fills
+are not prerequisite to declared assumed-cost screening. No provider/broker,
+spending/trade/deployment/risk increase or live authority. Production limits stand.
+
+All sections below are retained historical checkpoints, not current status.
+
+## Historical original-account consumer implementation checkpoint
 
 The original-account continuation architecture is implemented. Its6355700 first
 750-session path still timed out at120.004seconds after105.349seconds setup;
@@ -18,7 +52,7 @@ validation/review, actual fixed resource gates, compact panel implementation and
 full workload, release certification, immutable freeze and authorized qualified
 DEVELOPMENT evaluation. All older paragraphs below are historical checkpoints.
 
-## Current architecture implementation checkpoint — 2026-10-11
+## Historical architecture implementation checkpoint — 2026-10-11
 
 The human directed architecture resolution and completion. Main selected and
 implemented invocation-owned ORIGINAL-ACCOUNT continuation through the SAME
@@ -46,7 +80,7 @@ genuine fills are not a prerequisite to declared assumed-cost screening. No
 private/provider/broker/spending/trade/deployment activity or risk increase.
 All eligibility flagsfalse and production limits unchanged.
 
-## Current verified adapter release checkpoint — 2026-10-10
+## Historical verified adapter release checkpoint — 2026-10-10
 
 PR41 merged2026-10-10T10:06:57Z at
 5fd6a2dae3889405df812de4978f1f8592139880 after all14 exact-head hosted jobs

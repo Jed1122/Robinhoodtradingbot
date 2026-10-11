@@ -10,7 +10,32 @@
 
 **Spec:** docs/superpowers/specs/2026-10-08-capital-constrained-etf-design.md
 
-## Current Task5 checkpoint — 2026-10-10
+## Current Task5 checkpoint — 2026-10-11
+
+Architecture resolution, shared original-account continuation/private consumers,
+train-only carryover, compact retention and the complete source-owned panel are
+implemented and independently reviewed. Exactb8 first750 passed65.113611584s/
+170,688,512bytes; no complete workload acceptance is inferred. The panel retains
+all24 scenarios/140 training facts/29 paths/four roles/2,784×630 paired columns,
+nullable whole operating family, conditional statistics and unknown support.
+
+Exact3a8 global run failed the unresolved-reflection architecture guard and was
+stopped: partial1failed/6,686passed/23skipped944.24s, NONCERT; no native append.
+Corrective sourceceeefac9 uses bounded literal fields with unchanged guard,
+encoder/hash semantics;196 bounded/architecture tests and statics pass. Current
+corrective review/panel/full/native/80-90/hosted release gates remain required.
+See [Panel](../../etf-capital-panel.md). Do not mark combined Task5 gates complete.
+
+Next: exact corrected-source verification/review/integration, actual unchanged
+first750120s/512MiB and complete28×6×4×5 workload within24h/2GiB including setup
+and serialization, immutable all-identity executable/input freeze, then ONE
+qualified authorized DEVELOPMENT study. No study/freeze/workload pass exists.
+Retained five-symbol inputs/actions/access remain unverified, not absent; the
+chronology waiver stays disclosed and genuine fills are not prerequisite to an
+assumed-cost screen. All flagsfalse, production limits and private-input authority
+boundaries unchanged. All following checkpoints are retained history.
+
+## Historical adapter/architecture checkpoints — 2026-10-10/11
 
 October11 architecture resolution supersedes the older pause/release paragraphs:
 PR42 already merged26767d0 with all14 exact-head checks. Human-directed same-reducer

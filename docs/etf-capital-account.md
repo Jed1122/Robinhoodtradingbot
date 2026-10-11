@@ -1,12 +1,20 @@
 # Capital research account boundary
 
-Status: funding/v2 composition, v3 corporate actions, prefixes and joint
+Current: the original-event daily owner, shared original-account continuation,
+train-only walk-forward carryover and [complete DEVELOPMENT panel](etf-capital-panel.md)
+are implemented/reviewed. Exactb8 passed its bounded first750 gate; complete
+workload, current corrected-source release, executable freeze and qualified
+authorized economic study remain unfinished. A failed3a8 architecture run is
+preserved; bounded-field correction passes196 architecture/admission tests but
+still needs full verification. No accepted economics or operational readiness.
+
+Historical release evidence: funding/v2 composition, v3 corporate actions, prefixes and joint
 action-aware risk/recovery are released through PR29–PR33. PR34's corrected
 signal/frontier contract is merged atf1326c9 after all14 hosted jobs and local9,826
 full/20 native tests,92.11% combined coverage and unchanged80/90 gates atf889808.
 The separate entry/exit adapter at e814a29 passed9,896full/20native/92.16% and
-unchanged80/90 gates locally; its release is pending. The complete daily owner,
-strategy/fold economic evaluator and executable economic freeze are not implemented.
+unchanged80/90 gates locally. Those releases are merged through PR42; their
+historical test counts do not certify the newer architecture/panel executable.
 See [Action-account boundary](etf-capital-actions.md). No operational readiness
 or accepted economic result is asserted.
 
@@ -255,5 +263,6 @@ generation and owner fact application use the same account helper, while full
 fresh risk validation alone publishes the corresponding risk account candidate.
 Public batch APIs and their full result/hash preimages remain unchanged. Separate
 consumer forks do not supply account balances, risk approvals or a second engine.
-The first continuation-only750-session probe still timed out at120seconds; the
-extended-consumer increment has no resource acceptance until actually measured.
+The first continuation-only635 probe historically timed out at120seconds. The
+reviewed extended-consumerb8 first750 passed65.113611584s/170,688,512bytes; this
+does not certify the current complete panel or replace its full workload gates.

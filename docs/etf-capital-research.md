@@ -37,7 +37,7 @@ round down to declared increments and must satisfy quantity/notional minimums,
 maximum quantity, settled cash and the one-position/daily-breaker restrictions.
 Any tighter correlated-group ceiling also reduces the single-position budget.
 Stop risk is planned risk only: gaps can produce larger realized losses.
-Cash-floor sizing assumes unallocated equity remains cash; the forthcoming replay
+Cash-floor sizing assumes unallocated equity remains cash; original account replay
 must account for unsettled proceeds and other obligations separately.
 
 ## Unknowns and operating costs
@@ -55,12 +55,14 @@ zero-data/$12-monthly compute. The latter is $144 yearly:144% of $100 equity and
 an actual current provider price nor authorize billing changes. Prior research
 expense is not silently treated as a recurring expense or a trading loss.
 
-## Remaining implementation
+## Remaining verification and research progression
 
-1. Add versioned multi-symbol Alpaca daily intake and fixture-tested quality,
-   corporate-action, distribution and availability contracts.
-2. Implement momentum, mean reversion and rotation independently using the
-   frozen six-capital/four-friction grid and purged rolling walk-forward tests.
+1. Versioned five-symbol intake, supplied action/availability controls and the
+   daily owner are implemented. Retained original-source/action/access qualification
+   is still unverified and requires applicable explicit read authority.
+2. The fixed momentum/reversion/rotation grid, train-only carryover and complete
+   [DEVELOPMENT panel](etf-capital-panel.md) are implemented/reviewed. Finish current
+   corrected-source release and actual unchanged first750/full workload gates.
 3. Freeze executable/source/cost identities before evaluating development data.
    Used or uncertain historical holdouts are not called untouched.
 4. Only if a candidate survives, evaluate the preregistered regime combination,
