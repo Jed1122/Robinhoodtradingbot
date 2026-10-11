@@ -1,5 +1,33 @@
 # Parallel Orchestration Transition Report
 
+## Current architecture implementation checkpoint — 2026-10-11
+
+The human directed architecture resolution and completion. Main selected and
+implemented invocation-owned ORIGINAL-ACCOUNT continuation through the SAME
+batch reducer, after freezing its exact private ownership/transaction/fallback
+contract and watching missing-API RED fixtures. This is distinct from the already
+implemented purpose-specific derived `_RiskProgress` loss continuation. Both
+layers remain private; public APIs/hash preimages and all safety rules stand.
+Original admission runs before canonical comparison/copy, whole-suffix state is
+transactionally detached, and fresh source/frontier/risk checks precede publication.
+Changed inputs reconstruct from genesis; invalid suffixes cannot poison retry.
+
+PR42 already merged26767d085af32946922921095a42bf7ac37d93bc with all14 exact-head
+jobs green; do not resume/remerge PR17–42. This new source is NOT covered by the
+historical491c10571full/20native certification. Focused checks do not establish
+current global/native/hosted release or actual workload acceptance. No new source
+release, performance pass, executable economic freeze or qualified study exists
+at this checkpoint. Older sections below retain source-specific history.
+
+Next: integrated exact-source review and regressions; unchanged first750120s/
+512MiB acceptance; compact original-source panel/report implementation and full
+28x6x4x5 workload within24h/2GiB; fresh release gates and immutable study freeze;
+ONE qualified authorized DEVELOPMENT evaluation. Actual retained five-symbol
+inputs/actions/access remain UNVERIFIED, not absent. Chronology waiver retained;
+genuine fills are not a prerequisite to declared assumed-cost screening. No
+private/provider/broker/spending/trade/deployment activity or risk increase.
+All eligibility flagsfalse and production limits unchanged.
+
 ## Current verified adapter release checkpoint — 2026-10-10
 
 PR41 merged2026-10-10T10:06:57Z at

@@ -12,6 +12,16 @@
 
 ## Current Task5 checkpoint — 2026-10-10
 
+October11 architecture resolution supersedes the older pause/release paragraphs:
+PR42 already merged26767d0 with all14 exact-head checks. Human-directed same-reducer
+original-account continuation is now implemented fixture-first under its frozen
+private contract. Whole-suffix rollback, fresh original/source-frontier admission,
+detachment and public hash/API compatibility remain mandatory. Current-source
+independent review/global/native/hosted checks and actual unchanged first750 and
+full28x6x4x5 workload remain required. No executable economic freeze/study exists.
+Next compact panel follows the existing task5y exact design, not a new audit loop.
+All input-qualification/authority and live false-flag boundaries remain intact.
+
 Latest verified checkpoint supersedes all older current/running paragraphs below.
 PR41 merged5fd6a2dae3889405df812de4978f1f8592139880 after all14 exactaf392968
 hosted jobs passed, fresh reviews had no substantive findings, and actual merge

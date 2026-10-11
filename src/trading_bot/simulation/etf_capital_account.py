@@ -6,13 +6,14 @@ Canonical entry admission, joint loss latches and durable publication remain
 separate composition; none of these records grants execution authority.
 """
 
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from decimal import Context, Decimal, DecimalException, localcontext
 from fractions import Fraction
 from typing import NoReturn
 
 from trading_bot.domain import AssetClass, DataHash, Side, require_bounded_decimal
-from trading_bot.market_data.recording import content_hash
+from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.simulation.etf_capital_action_events import (
     CapitalActionEvent,
 )
@@ -243,6 +244,155 @@ def replay_capital_account_prefixes(
         _deny()
 
 
+@dataclass(slots=True)
+class _AccountState:
+    """One canonical reducer's locals; never accepted by a public frontend."""
+
+    cash: Decimal
+    fees: Decimal = _ZERO
+    quantity: Decimal = _ZERO
+    episode_fees: Decimal = _ZERO
+    fee_bound: Decimal = _ZERO
+    final: bool = True
+    request: LifecycleRequest | None = None
+    current: LifecycleResult | None = None
+    account_id: str | None = None
+    symbol: str | None = None
+    opening_order_id: str | None = None
+    previous_cursor: EventCursor | None = None
+    order_fees_before: Decimal = _ZERO
+    seen: dict[str, DataHash] = field(default_factory=dict)
+    orders: set[str] = field(default_factory=set)
+    fills: set[str] = field(default_factory=set)
+    settlements: dict[str, Decimal] = field(default_factory=dict)
+    digests: list[DataHash] = field(default_factory=list)
+    average_price: Decimal | None = None
+    mark: Decimal | None = None
+    entitlements: dict[str, tuple[Decimal, CapitalDistributionEntitled]] = field(
+        default_factory=dict
+    )
+    action_ids: set[str] = field(default_factory=set)
+    adjusted: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _AccountProgress:
+    binding: str
+    originals: tuple[str, ...]
+    state: _AccountState
+    prefixes: tuple[CapitalAccountReplay, ...]
+
+
+def _admit_event(
+    event: CapitalAccountEvent | CapitalActionEvent, *, legacy: bool, actions: bool
+) -> tuple[EventCursor, str]:
+    """Validate ORIGINAL records before hashing, copying, or prefix comparison."""
+    if type(event) not in (
+        CapitalAccountSubmission,
+        LifecycleControlEvent,
+        LifecycleFillEvent,
+        CapitalSaleSettlement,
+        CapitalFeesFinal,
+        CapitalEpisodeFeesFinal,
+        CapitalSplitApplied,
+        CapitalDistributionEntitled,
+        CapitalDistributionPaid,
+    ):
+        _deny()
+    if not actions and type(event) in (
+        CapitalSplitApplied,
+        CapitalDistributionEntitled,
+        CapitalDistributionPaid,
+    ):
+        _deny()
+    if (isinstance(event, CapitalFeesFinal) and not legacy) or (
+        isinstance(event, CapitalEpisodeFeesFinal) and legacy
+    ):
+        _deny()
+    event.__post_init__()
+    if isinstance(event, CapitalAccountSubmission):
+        if not legacy:
+            for optional_id in (
+                event.request.order.intent_id,
+                event.request.order.client_order_id,
+            ):
+                if optional_id is not None:
+                    _identifier(optional_id)
+        return event.request.submitted, "submission:" + event.request.order.id
+    _identifier(event.event_id)
+    if isinstance(event, LifecycleFillEvent):
+        for value in (
+            event.fill.id,
+            event.fill.account_id,
+            event.fill.instrument_id,
+            event.fill.broker_order_id,
+        ):
+            _identifier(value)
+    elif isinstance(event, LifecycleControlEvent):
+        for value in (event.account_id, event.instrument_id, event.broker_order_id):
+            _identifier(value)
+    return event.cursor, "event:" + event.event_id
+
+
+def _account_prefixes_owned(
+    progress: _AccountProgress | None,
+    *,
+    initial_cash: Decimal,
+    events: tuple[CapitalAccountEvent | CapitalActionEvent, ...],
+    actions: bool,
+) -> tuple[_AccountProgress, tuple[CapitalAccountReplay, ...]]:
+    """Prepare a detached transaction; only the owner may publish its success."""
+    try:
+        with localcontext(_CONTEXT):
+            require_bounded_decimal(initial_cash, "initial_cash", positive=True)
+            if (
+                initial_cash not in _TIERS
+                or type(events) is not tuple
+                or len(events) > 4096
+                or type(actions) is not bool
+                or (progress is not None and type(progress) is not _AccountProgress)
+            ):
+                _deny()
+            originals = []
+            for event in events:
+                _admit_event(event, legacy=False, actions=actions)
+                originals.append(canonical_json(event))
+            original_values = tuple(originals)
+            binding = canonical_json(
+                {"initial_representation": initial_cash.as_tuple(), "actions": actions}
+            )
+            reusable = (
+                progress is not None
+                and progress.binding == binding
+                and len(progress.originals) <= len(original_values)
+                and original_values[: len(progress.originals)] == progress.originals
+            )
+            count = len(progress.originals) if reusable and progress is not None else 0
+            # Clone the ENTIRE candidate, not just its cursor/seen map. Invalid
+            # late events may already have changed fills, actions or entitlements.
+            state = deepcopy(progress.state) if reusable and progress is not None else None
+            completed: list[_AccountState] = []
+            suffix_prefixes: list[CapitalAccountReplay] = []
+            _replay(
+                initial_cash,
+                deepcopy(events[count:]),
+                suffix_prefixes,
+                actions=actions,
+                _resume=state,
+                _completed=completed,
+            )
+            prefixes = (
+                progress.prefixes + tuple(suffix_prefixes[1:])
+                if reusable and progress is not None
+                else tuple(suffix_prefixes)
+            )
+            candidate = _AccountProgress(binding, original_values, completed[0], prefixes)
+            # No original or returned nested record aliases the retained state.
+            return candidate, deepcopy(prefixes)
+    except (ValueError, TypeError, DecimalException, AttributeError):
+        _deny()
+
+
 def _replay(
     initial: Decimal,
     events: tuple[CapitalAccountEvent | CapitalActionEvent, ...],
@@ -250,33 +400,22 @@ def _replay(
     *,
     legacy: bool = False,
     actions: bool = False,
+    _resume: _AccountState | None = None,
+    _completed: list[_AccountState] | None = None,
 ) -> CapitalAccountReplay:
     require_bounded_decimal(initial, "initial_cash", positive=True)
     if initial not in _TIERS or type(events) is not tuple or len(events) > 4096:
         _deny()
-    cash = initial
-    fees = _ZERO
-    quantity = _ZERO
-    episode_fees = _ZERO
-    fee_bound = _ZERO
-    final = True
-    request: LifecycleRequest | None = None
-    current: LifecycleResult | None = None
-    account_id: str | None = None
-    symbol: str | None = None
-    opening_order_id: str | None = None
-    previous_cursor: EventCursor | None = None
-    order_fees_before = _ZERO
-    seen: dict[str, DataHash] = {}
-    orders: set[str] = set()
-    fills: set[str] = set()
-    settlements: dict[str, Decimal] = {}
-    digests: list[DataHash] = []
-    average_price: Decimal | None = None
-    mark: Decimal | None = None
-    entitlements: dict[str, tuple[Decimal, CapitalDistributionEntitled]] = {}
-    action_ids: set[str] = set()
-    adjusted = False
+    state = _AccountState(initial) if _resume is None else _resume
+    cash, fees, quantity = state.cash, state.fees, state.quantity
+    episode_fees, fee_bound, final = state.episode_fees, state.fee_bound, state.final
+    request, current = state.request, state.current
+    account_id, symbol, opening_order_id = state.account_id, state.symbol, state.opening_order_id
+    previous_cursor, order_fees_before = state.previous_cursor, state.order_fees_before
+    seen, orders, fills = state.seen, state.orders, state.fills
+    settlements, digests = state.settlements, state.digests
+    average_price, mark = state.average_price, state.mark
+    entitlements, action_ids, adjusted = state.entitlements, state.action_ids, state.adjusted
     version = "v1" if legacy else "v3" if actions else "v2"
 
     def receivable_total() -> Decimal:
@@ -343,54 +482,7 @@ def _replay(
     if prefixes is not None:
         prefixes.append(snapshot())
     for event in events:
-        if type(event) not in (
-            CapitalAccountSubmission,
-            LifecycleControlEvent,
-            LifecycleFillEvent,
-            CapitalSaleSettlement,
-            CapitalFeesFinal,
-            CapitalEpisodeFeesFinal,
-            CapitalSplitApplied,
-            CapitalDistributionEntitled,
-            CapitalDistributionPaid,
-        ):
-            _deny()
-        if not actions and type(event) in (
-            CapitalSplitApplied,
-            CapitalDistributionEntitled,
-            CapitalDistributionPaid,
-        ):
-            _deny()
-        if (isinstance(event, CapitalFeesFinal) and not legacy) or (
-            isinstance(event, CapitalEpisodeFeesFinal) and legacy
-        ):
-            _deny()
-        event.__post_init__()
-        if isinstance(event, CapitalAccountSubmission):
-            if not legacy:
-                for optional_id in (
-                    event.request.order.intent_id,
-                    event.request.order.client_order_id,
-                ):
-                    if optional_id is not None:
-                        _identifier(optional_id)
-            cursor = event.request.submitted
-            event_id = "submission:" + event.request.order.id
-        else:
-            cursor = event.cursor
-            event_id = "event:" + event.event_id
-            _identifier(event.event_id)
-            if isinstance(event, LifecycleFillEvent):
-                for value in (
-                    event.fill.id,
-                    event.fill.account_id,
-                    event.fill.instrument_id,
-                    event.fill.broker_order_id,
-                ):
-                    _identifier(value)
-            elif isinstance(event, LifecycleControlEvent):
-                for value in (event.account_id, event.instrument_id, event.broker_order_id):
-                    _identifier(value)
+        cursor, event_id = _admit_event(event, legacy=legacy, actions=actions)
         digest = content_hash(
             {
                 "namespace": "capital-account-event-" + version,
@@ -555,4 +647,32 @@ def _replay(
         digests.append(digest)
         if prefixes is not None:
             prefixes.append(snapshot())
+    if _completed is not None:
+        _completed.append(
+            _AccountState(
+                cash=cash,
+                fees=fees,
+                quantity=quantity,
+                episode_fees=episode_fees,
+                fee_bound=fee_bound,
+                final=final,
+                request=request,
+                current=current,
+                account_id=account_id,
+                symbol=symbol,
+                opening_order_id=opening_order_id,
+                previous_cursor=previous_cursor,
+                order_fees_before=order_fees_before,
+                seen=seen,
+                orders=orders,
+                fills=fills,
+                settlements=settlements,
+                digests=digests,
+                average_price=average_price,
+                mark=mark,
+                entitlements=entitlements,
+                action_ids=action_ids,
+                adjusted=adjusted,
+            )
+        )
     return snapshot() if prefixes is None else prefixes[-1]

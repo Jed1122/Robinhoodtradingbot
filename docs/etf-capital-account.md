@@ -218,3 +218,27 @@ Current checkpoint inputs, owner and envelope schemas use v2 namespaces and the
 migrated or modified. This increment does not add a legacy persisted-checkpoint
 reader; the explicit v1 account-event reader remains available for historical
 event evidence. It is not a joint risk/actions restart implementation.
+
+## Invocation-owned original-account continuation
+
+The daily owner's private risk progress now prepares account continuation through
+the SAME initialization/transition/snapshot reducer as public batch replay. It
+retains only invocation-local detached originals/state, never adopted caller
+balances, persisted cursors, or broker authority. All original exact types,
+post-init checks, mode restrictions and identifier bounds run before canonical
+prefix comparison. Initial Decimal representation and v2/v3 mode are bound
+explicitly; historical canonical hashes remain unchanged.
+
+An exact validated prefix applies only its new suffix on a whole-state clone.
+Changed/shortened/binding-changed inputs reconstruct from genesis. Invalid inputs
+deny, and failed suffixes or fresh source-observation checks publish neither
+partial accounts nor loss continuation. Mutable collections and nested lifecycle
+records are detached; returned prefix records cannot mutate retained progress.
+Duplicate deliveries retain raw positions but not a second economic application.
+Public APIs do not accept this private state; v1 remains a historical batch reader.
+
+This removes repeated account transition work, not all cumulative hashing or
+current-order lifecycle replay. Correctness, unchanged first750120s/512MiB and
+complete28x6x4x5 workload acceptance remain separate gates. No current workload,
+economic freeze, qualified-input study, deployed recovery or live readiness is
+established by this implementation.
