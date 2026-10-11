@@ -52,8 +52,8 @@ the recent numerical window cannot replace it.
 New `capital-prepared-day-v2` and `capital-prepared-input-v2` identities bind full
 owned source/config, requested date/clock/ordinal, original full projection
 digests, current bars, signals and distances. They do not alias public owner identities, qualify
-sources or replace original public signal identities. Future public evaluators
-must create preparations internally, not adopt externally supplied results.
+sources or replace original public signal identities. The public DEVELOPMENT
+panel creates preparations internally, never adopting externally supplied results.
 
 Private common composition uses `_validate_owned_capital_days` to check source,
 config, full calendar, ordered prepared sessions, original ordinals, exact UTC
@@ -80,10 +80,10 @@ This bounded preparation pass is not the original-event account runner or full
 28×6×4×5 workload. Integration/global/native/critical release checks remain
 separate; no economic executable freeze or study follows from the benchmark.
 
-Still required: original-event account/action/settlement scheduling, fresh risk
-admission, immutable held policy across selection boundaries, genuine train-run
-scores, continuous fold carryover, dependent statistics/benchmark/operating-cost
-reports and full workload verification. Then freeze all executable/source/config/
+Original-event scheduling, fresh risk, immutable held policy, actual train-run
+scores, continuous carryover and conditional cost/benchmark/statistics reports
+are composed in the [panel](etf-capital-panel.md). Still required: corrected-source
+release and actual full workload verification. Then freeze executable/source/config/
 calendar/action/cost/protocol/selection identities before any authorized economic
 study with qualified inputs. All qualification/execution/promotion/live flags
 remain false; production limits are unchanged.

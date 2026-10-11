@@ -31,7 +31,7 @@ from trading_bot.simulation.etf_capital_daily_owner import (
     _replay_capital_owner,
     _validate_owner_terms,
 )
-from trading_bot.simulation.etf_capital_due_facts import _capital_due_facts
+from trading_bot.simulation.etf_capital_due_facts import _capital_due_facts, _CapitalDueProgress
 from trading_bot.simulation.etf_capital_risk import CapitalRiskObservation, CapitalRiskReplay
 
 
@@ -177,6 +177,7 @@ def _replay_owned_capital_constrained(
             sessions = tuple(d.session for d in schedule)
             _validate_owned_capital_days(owned, prepared, required_sessions=sessions)
             indices = {day.session: index for index, day in enumerate(prepared.days)}
+            due_progress = _CapitalDueProgress()
 
             def frame_at(
                 index: int,
@@ -193,6 +194,7 @@ def _replay_owned_capital_constrained(
                     actions=source.actions,
                     session=day.session,
                     raw_bars=original.raw_bars,
+                    _progress=due_progress,
                 )
                 overnight_split = any(
                     a.symbol == "SPY"

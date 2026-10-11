@@ -21,6 +21,8 @@ from trading_bot.simulation.etf_capital_account import (
     CapitalAccountReplay,
     CapitalAccountSubmission,
     CapitalActionAccountReplay,
+    _account_prefixes_owned,
+    _AccountProgress,
     replay_capital_account_prefixes,
     replay_capital_action_account_prefixes,
 )
@@ -113,10 +115,11 @@ class _RiskContinuation:
 class _RiskProgress:
     """Allocated only inside one owner; never persisted or a public input."""
 
-    __slots__ = ("states",)
+    __slots__ = ("accounts", "states")
 
     def __init__(self) -> None:
         self.states: dict[OrderPurpose, _RiskContinuation] = {}
+        self.accounts: _AccountProgress | None = None
 
 
 def _cursor(event: CapitalAccountEvent | CapitalActionEvent) -> EventCursor:
@@ -287,8 +290,16 @@ def _replay_risk_points(
     try:
         with localcontext(_CONTEXT):
             config = _config(loaded)
+            _check(type(purpose) is OrderPurpose)
+            _check(_progress is None or type(_progress) is _RiskProgress)
+            _check(type(_last_only) is bool)
             accounts: tuple[CapitalAccountReplay, ...]
-            if actions:
+            candidate = None
+            if _progress is not None:
+                candidate, accounts = _account_prefixes_owned(
+                    _progress.accounts, initial_cash=initial_cash, events=events, actions=actions
+                )
+            elif actions:
                 accounts = replay_capital_action_account_prefixes(
                     initial_cash=initial_cash, events=events
                 )
@@ -298,11 +309,8 @@ def _replay_risk_points(
                 accounts = replay_capital_account_prefixes(
                     initial_cash=initial_cash, events=cast(tuple[CapitalAccountEvent, ...], events)
                 )
-            _check(type(purpose) is OrderPurpose)
-            _check(_progress is None or type(_progress) is _RiskProgress)
-            _check(type(_last_only) is bool)
-            # Reconstruct ALL original accounts above on every call. These
-            # complete-source clock checks also cover previously processed
+            # Admit ALL originals above on every call; arithmetic may continue
+            # only from this owner's validated prefix. Fresh clocks cover prior
             # observations: a newly appended backdated event must still deny.
             source = _capital_risk_source_frontiers(
                 events=events, accounts=accounts, observations=observations, actions=actions
@@ -489,6 +497,7 @@ def _replay_risk_points(
                     weekly_ok,
                     frozenset(covered_actions),
                 )
+                _progress.accounts = candidate
             return result
     except (ValueError, TypeError, ArithmeticError, AttributeError):
         raise ValueError("capital_risk_invalid") from None

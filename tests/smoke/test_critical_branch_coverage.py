@@ -66,6 +66,17 @@ def test_capital_shared_resampling_requires_critical_branch_coverage(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("filename", ("etf_capital_panel.py", "etf_capital_panel_models.py"))
+def test_capital_complete_panel_requires_critical_branch_coverage(tmp_path, filename):
+    root = tmp_path / "project"
+    relative = f"src/trading_bot/research/{filename}"
+    _source(root, relative)
+    report = _report(tmp_path / "coverage.json", {})
+    assert _load_checker().check_critical_branch_coverage(report, root) == [
+        f"missing branch coverage for {relative}"
+    ]
+
+
 def test_capital_owned_walk_forward_requires_critical_branch_coverage(tmp_path):
     root = tmp_path / "project"
     relative = "src/trading_bot/simulation/etf_capital_walk_forward.py"

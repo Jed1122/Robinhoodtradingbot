@@ -1,8 +1,11 @@
 """Owned original-input walk-forward development, never economic admission."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, localcontext
+from typing import TYPE_CHECKING, overload
 
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Instrument, require_bounded_decimal
@@ -37,6 +40,17 @@ from trading_bot.simulation.etf_capital_trajectory import (
     CapitalTrajectoryResult,
     _replay_prepared_capital_trajectory,
 )
+
+if TYPE_CHECKING:
+    from trading_bot.research.etf_capital_panel import (
+        _CapitalCompactWalkForward,
+        _CapitalPanelRetention,
+    )
+    from trading_bot.research.etf_capital_panel_models import (
+        CapitalPanelFold,
+        CapitalPanelPath,
+        CapitalPanelTraining,
+    )
 
 
 def _check(value: bool) -> None:
@@ -162,12 +176,33 @@ def replay_capital_walk_forward(request: CapitalWalkForwardRequest) -> CapitalWa
         raise ValueError("capital_walk_forward_invalid") from None
 
 
+@overload
 def _replay_owned_capital_walk_forward(
     request: CapitalWalkForwardRequest,
     *,
     owned: _OwnedCapitalSource,
     prepared: _PreparedCapitalInput,
-) -> CapitalWalkForwardResult:
+    retention: None = None,
+) -> CapitalWalkForwardResult: ...
+
+
+@overload
+def _replay_owned_capital_walk_forward(
+    request: CapitalWalkForwardRequest,
+    *,
+    owned: _OwnedCapitalSource,
+    prepared: _PreparedCapitalInput,
+    retention: _CapitalPanelRetention,
+) -> _CapitalCompactWalkForward: ...
+
+
+def _replay_owned_capital_walk_forward(
+    request: CapitalWalkForwardRequest,
+    *,
+    owned: _OwnedCapitalSource,
+    prepared: _PreparedCapitalInput,
+    retention: _CapitalPanelRetention | None = None,
+) -> CapitalWalkForwardResult | _CapitalCompactWalkForward:
     """Derive all training scores internally, then carry complete test accounts.
 
     Later rolling training may use already elapsed earlier-fold dates. Current
@@ -176,11 +211,30 @@ def _replay_owned_capital_walk_forward(
     """
     try:
         with localcontext(_CONTEXT):
+            from trading_bot.research.etf_capital_matched import _CapitalMatchedTerms
+            from trading_bot.research.etf_capital_panel import (
+                _CapitalCompactWalkForward,
+                _CapitalPanelRetention,
+            )
+
+            _check(retention is None or type(retention) is _CapitalPanelRetention)
             terms, instruments, dates, folds, reviews = _walk_forward_inputs(request, owned)
             source = owned.dataset
             used = dates[:1423]
             sessions_by_date = {s.session_date: s for s in source.calendar.sessions}
             _validate_owned_capital_days(owned, prepared, required_sessions=used, exact=True)
+            if retention is not None:
+                _check(retention.owned is owned and retention.prepared is prepared)
+                _check(
+                    retention.terms
+                    == _CapitalMatchedTerms(
+                        terms.initial_cash,
+                        terms.roundtrip_friction_pct,
+                        terms.entry_fee,
+                        terms.exit_fee,
+                    )
+                )
+                _check(retention.test_sessions == dates[770:1400])
 
             def trajectory(
                 schedule: tuple[CapitalTrajectoryDay, ...],
@@ -200,12 +254,17 @@ def _replay_owned_capital_walk_forward(
                     opening_candidates=opening_candidates,
                 )
 
-            attempts = []
+            attempts: list[CapitalWalkForwardAttempt] = []
+            compact_folds: list[CapitalPanelFold] = []
+            selections: list[CapitalTrainingSelection] = []
+            fold_identities = []
             for fold in folds:
                 cutoff = sessions_by_date[fold.train_sessions[-1]].closes_at + timedelta(seconds=3)
                 selection_date = dates[dates.index(fold.test_sessions[0]) - 1]
                 selection_at = sessions_by_date[selection_date].closes_at
-                training_attempts = []
+                training_attempts: list[CapitalTrainingAttempt] = []
+                retained: list[CapitalPanelTraining] = []
+                outcomes_list: list[CapitalTrainingOutcome] = []
                 for candidate in capital_candidates():
                     schedule = tuple(
                         CapitalTrajectoryDay(
@@ -226,8 +285,13 @@ def _replay_owned_capital_walk_forward(
                         result.points[-1].at,
                         result.input_hash,
                     )
-                    training_attempts.append(CapitalTrainingAttempt(candidate, result, outcome))
-                outcomes = tuple(a.outcome for a in training_attempts)
+                    outcomes_list.append(outcome)
+                    if retention is None:
+                        training_attempts.append(CapitalTrainingAttempt(candidate, result, outcome))
+                    else:
+                        retained.append(retention.training(result, candidate, outcome))
+                        del result
+                outcomes = tuple(outcomes_list)
                 selection = select_capital_training(
                     outcomes,
                     loaded=terms.loaded,
@@ -235,20 +299,27 @@ def _replay_owned_capital_walk_forward(
                     training_cutoff=cutoff,
                     selection_at=selection_at,
                 )
-                attempts.append(
-                    CapitalWalkForwardAttempt(
-                        fold, cutoff, selection_at, tuple(training_attempts), selection
+                selections.append(selection)
+                fold_identities.append((fold, cutoff, selection_at, selection.panel_hash))
+                if retention is None:
+                    attempts.append(
+                        CapitalWalkForwardAttempt(
+                            fold, cutoff, selection_at, tuple(training_attempts), selection
+                        )
                     )
-                )
+                else:
+                    compact_folds.append(
+                        retention.fold(fold, cutoff, selection_at, tuple(retained), selection)
+                    )
             recorded = tuple(attempts)
             # At session895, the open belongs to fold0 and the close prepares
             # fold1. Selection knowledge at close must not reach backward.
             starts = tuple(769 + 126 * index for index in range(5))
 
             def close_candidate(index: int) -> CapitalCandidate | None:
-                return recorded[
+                return selections[
                     max(i for i, start in enumerate(starts) if start <= index)
-                ].selection.selected
+                ].selected
 
             schedule = tuple(
                 CapitalTrajectoryDay(
@@ -260,13 +331,22 @@ def _replay_owned_capital_walk_forward(
                 close_candidate(index - 1) if index > 769 else None for index in range(769, 1423)
             )
             selected = trajectory(schedule, opening_candidates=opening_candidates)
-            fixed = tuple(
-                CapitalFixedTrajectory(
-                    candidate,
-                    trajectory(tuple(replace(day, candidate=candidate) for day in schedule)),
-                )
-                for candidate in capital_candidates()
-            )
+            selected_hash = selected.input_hash
+            compact_paths: list[CapitalPanelPath] = []
+            if retention is not None:
+                compact_paths.append(retention.path(selected, 0, None))
+                del selected
+            fixed_results: list[CapitalFixedTrajectory] = []
+            fixed_identities = []
+            for index, candidate in enumerate(capital_candidates(), start=1):
+                result = trajectory(tuple(replace(day, candidate=candidate) for day in schedule))
+                fixed_identities.append((candidate, result.input_hash))
+                if retention is None:
+                    fixed_results.append(CapitalFixedTrajectory(candidate, result))
+                else:
+                    compact_paths.append(retention.path(result, index, candidate))
+                    del result
+            fixed = tuple(fixed_results)
             identity = content_hash(
                 (
                     "capital-owned-walk-forward-v1",
@@ -286,15 +366,16 @@ def _replay_owned_capital_walk_forward(
                     reviews,
                     used,
                     dates[1423:],
-                    tuple(
-                        (a.fold, a.training_cutoff, a.selection_at, a.selection.panel_hash)
-                        for a in recorded
-                    ),
-                    selected.input_hash,
-                    tuple((a.candidate, a.trajectory.input_hash) for a in fixed),
+                    tuple(fold_identities),
+                    selected_hash,
+                    tuple(fixed_identities),
                     "positive-complete-USDPNL-at-.40_grid-order-cash-zero_continuous-account_final23-exit-only",
                 )
             )
+            if retention is not None:
+                return _CapitalCompactWalkForward(
+                    tuple(compact_folds), tuple(compact_paths), identity
+                )
             return CapitalWalkForwardResult(recorded, selected, fixed, used, dates[1423:], identity)
     except (ValueError, TypeError, AttributeError, ArithmeticError, StopIteration, KeyError):
         raise ValueError("capital_walk_forward_invalid") from None

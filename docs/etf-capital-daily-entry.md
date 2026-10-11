@@ -1,24 +1,24 @@
 # Synthetic next-open capital entry adapter
 
-## Current owner-private entry facts — October 10
+## Owner-private entry facts and current composition
 
 The public adapter still returns complete risk/account/result records with its
 original digest preimage. One shared terminal-point gate and one shared emission
 kernel serve public and owner-private calls. The private owner path returns only
 facts it consumes, without constructing discarded full risk reports. It uses
-invocation-local continuation before and after generation; both calls still
-reconstruct complete original account prefixes and validate all source clocks.
+invocation-local shared-reducer account continuation before and after generation;
+both calls validate complete originals and all source clocks. Changed/shortened
+bindings reconstruct genesis; staged suffixes publish only after full validation.
 No saved balance, preapproval or caller progress is admitted. The final owner
 canonical risk remains a fresh complete report. Exact491cda9 independent review
-and local full/native/critical verification passed; hosted adapter integration
-and actual workload acceptance remain separate, unfinished gates.
+and local full/native/critical verification passed; those adapters integrated
+through PR42. These historical counts do not certify later source changes.
 
-The current private-entry source timed out the actual first750 training path
-at120.010034333seconds. The unchanged guard has not passed and no full-grid or
-economic result is established. Remaining panel/statistics/report composition,
-full workload and qualified-input study gates remain separate. After three
-failed bounded fixes, architecture discussion precedes a fourth implementation;
-the same-reducer original-prefix continuation proposal is not a frozen API.
+Historical491c timed out first750 at120.010034333seconds. Architecture is now
+resolved/implemented/reviewed; exactb8 unchanged first750 passed65.113611584s/
+170,688,512bytes. The complete [panel](etf-capital-panel.md) is implemented/reviewed,
+but corrected-source global/native/release and full actual workload are unfinished.
+Failed3a8 architecture evidence is retained; no economic freeze/study is established.
 
 `simulate_capital_daily_entry` is a bounded research-assumption adapter, not the
 full daily strategy/economic runner. It consumes canonical research config,
@@ -55,8 +55,7 @@ locks, SBOM and shell/Compose checks passed. Retained clean same-graph advisory
 evidence is not a fresh network audit. This is local correctness evidence, not
 a fresh rerun on a later human-doc head or hosted integration/performance proof.
 
-Next: finish exact-head adapter integration, resolve/freeze the shared account-
-replay performance architecture, then complete aligned walk-forward/statistics/
-report composition and full-grid workload validation. The existing original-
-event owner and train-only kernels are not the complete economic evaluator.
-Executable study freeze and qualified-input economic evaluation remain unfinished.
+Next: finish corrected-source verification/review/release and actual full-grid
+workload validation, then immutable study freeze and one qualified authorized
+DEVELOPMENT evaluation. This adapter alone is not the complete panel or evidence
+of accepted economics, operational recovery or live authority.

@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal, localcontext
+from typing import cast
 from zoneinfo import ZoneInfo
 
 from trading_bot.domain import Bar, BarInterval, Side
@@ -12,8 +13,11 @@ from trading_bot.simulation.etf_capital_account import (
     _CONTEXT,
     CapitalAccountEvent,
     CapitalAccountSubmission,
+    CapitalActionAccountReplay,
     CapitalEpisodeFeesFinal,
     CapitalSaleSettlement,
+    _account_prefixes_owned,
+    _AccountProgress,
     replay_capital_action_account,
     replay_capital_action_account_prefixes,
 )
@@ -37,6 +41,15 @@ _SYMBOLS = ("SPY", "QQQ", "IWM", "SHY", "IEF")
 _ZONE = ZoneInfo("America/New_York")
 
 
+class _CapitalDueProgress:
+    """One frontend invocation's transactional fork, never a public input."""
+
+    __slots__ = ("accounts",)
+
+    def __init__(self) -> None:
+        self.accounts: _AccountProgress | None = None
+
+
 def _check(value: bool) -> None:
     if not value:
         raise ValueError("capital_due_facts_invalid")
@@ -51,6 +64,7 @@ def _capital_due_facts(
     actions: tuple[CapitalActionArchive, ...],
     session: date,
     raw_bars: tuple[Bar, ...],
+    _progress: _CapitalDueProgress | None = None,
 ) -> tuple[CapitalDailyOriginalFact, ...]:
     """Derive declared T+2/payment/finality facts from invocation-owned originals.
 
@@ -60,6 +74,7 @@ def _capital_due_facts(
     """
     try:
         with localcontext(_CONTEXT):
+            _check(_progress is None or type(_progress) is _CapitalDueProgress)
             _check(type(calendar) is EtfCalendarArchive and type(session) is date)
             calendar.__post_init__()
             dates = tuple(s.session_date for s in calendar.sessions)
@@ -88,9 +103,16 @@ def _capital_due_facts(
                 )
                 _check(len(records) == len(set(records)))
 
-            prefixes = replay_capital_action_account_prefixes(
-                initial_cash=initial_cash, events=events
-            )
+            candidate = None
+            if _progress is None:
+                prefixes = replay_capital_action_account_prefixes(
+                    initial_cash=initial_cash, events=events
+                )
+            else:
+                candidate, staged = _account_prefixes_owned(
+                    _progress.accounts, initial_cash=initial_cash, events=events, actions=True
+                )
+                prefixes = cast(tuple[CapitalActionAccountReplay, ...], staged)
             unique = tuple(
                 (index, event)
                 for index, event in enumerate(events)
@@ -114,6 +136,8 @@ def _capital_due_facts(
                 if type(event) is CapitalAccountSubmission and event.request.order.side is Side.BUY
             )
             if not buys:
+                if _progress is not None:
+                    _progress.accounts = candidate
                 return ()
             opening_index, opening = buys[-1]
             identity = opening.request.order
@@ -147,12 +171,18 @@ def _capital_due_facts(
                 )
 
             def append(event: _Event) -> None:
-                nonlocal candidate_events, account
+                nonlocal candidate_events, account, candidate
                 before = account
                 candidate_events = (*candidate_events, event)
-                account = replay_capital_action_account(
-                    initial_cash=initial_cash, events=candidate_events
-                )
+                if _progress is None:
+                    account = replay_capital_action_account(
+                        initial_cash=initial_cash, events=candidate_events
+                    )
+                else:
+                    candidate, values = _account_prefixes_owned(
+                        candidate, initial_cash=initial_cash, events=candidate_events, actions=True
+                    )
+                    account = cast(CapitalActionAccountReplay, values[-1])
                 result.append(
                     CapitalDailyOriginalFact(
                         event, prices[opening.symbol] if account.quantity else None
@@ -268,6 +298,8 @@ def _capital_due_facts(
                         identity.id,
                     )
                 )
+            if _progress is not None:
+                _progress.accounts = candidate
             return tuple(result)
     except (ValueError, TypeError, AttributeError, ArithmeticError):
         raise ValueError("capital_due_facts_invalid") from None

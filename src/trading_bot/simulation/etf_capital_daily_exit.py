@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal, localcontext
-from typing import Literal
+from typing import Literal, cast
 
 from trading_bot.config import LoadedConfig
 from trading_bot.domain import (
@@ -32,6 +32,8 @@ from trading_bot.simulation.etf_capital_account import (
     CapitalAccountEvent,
     CapitalAccountSubmission,
     CapitalActionAccountReplay,
+    _account_prefixes_owned,
+    _AccountProgress,
     replay_capital_action_account,
 )
 from trading_bot.simulation.etf_capital_action_events import CapitalActionEvent
@@ -197,7 +199,10 @@ def _validate(request: CapitalDailyExitRequest) -> None:
 
 
 def _generate_capital_daily_exit(
-    request: CapitalDailyExitRequest, point: CapitalRiskPoint
+    request: CapitalDailyExitRequest,
+    point: CapitalRiskPoint,
+    *,
+    _account_progress: _AccountProgress | None = None,
 ) -> _CapitalDailyExitFacts:
     """Single emission kernel; wrappers freshly reconstruct the input point."""
     with localcontext(_CONTEXT):
@@ -328,7 +333,13 @@ def _generate_capital_daily_exit(
                 *events,
                 LifecycleFillEvent(digest + ":fill-event", request.lifecycle_cursors[1], fill),
             )
-        state = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
+        if _account_progress is None:
+            state = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
+        else:
+            _, accounts = _account_prefixes_owned(
+                _account_progress, initial_cash=request.initial_cash, events=events, actions=True
+            )
+            state = cast(CapitalActionAccountReplay, accounts[-1])
         observations = (
             *request.observations,
             CapitalRiskObservation(
@@ -391,7 +402,9 @@ def _simulate_owned_capital_daily_exit(
             _progress=progress,
             _last_only=True,
         )
-        facts = _generate_capital_daily_exit(request, before[-1])
+        facts = _generate_capital_daily_exit(
+            request, before[-1], _account_progress=progress.accounts
+        )
         _replay_risk_points(
             loaded=request.loaded,
             initial_cash=request.initial_cash,

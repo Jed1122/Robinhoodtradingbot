@@ -8,7 +8,7 @@ only. No credential, transport, live intent or source qualification is supplied.
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_CEILING, Context, Decimal, localcontext
-from typing import Literal
+from typing import Literal, cast
 
 from trading_bot.config import LoadedConfig
 from trading_bot.domain import (
@@ -39,6 +39,8 @@ from trading_bot.simulation.etf_capital_account import (
     CapitalAccountEvent,
     CapitalAccountSubmission,
     CapitalActionAccountReplay,
+    _account_prefixes_owned,
+    _AccountProgress,
     replay_capital_action_account,
 )
 from trading_bot.simulation.etf_capital_action_events import CapitalActionEvent
@@ -200,7 +202,11 @@ def _entry_price(request: CapitalDailyEntryRequest) -> Decimal:
 
 
 def _generate_capital_daily_entry(
-    request: CapitalDailyEntryRequest, current: CapitalRiskPoint, price: Decimal
+    request: CapitalDailyEntryRequest,
+    current: CapitalRiskPoint,
+    price: Decimal,
+    *,
+    _account_progress: _AccountProgress | None = None,
 ) -> _CapitalDailyEntryFacts:
     """One emission kernel; terminal facts come only from fresh original replay."""
     with localcontext(_CONTEXT):
@@ -337,7 +343,13 @@ def _generate_capital_daily_entry(
                     False,
                 ),
             )
-        state = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
+        if _account_progress is None:
+            state = replay_capital_action_account(initial_cash=request.initial_cash, events=events)
+        else:
+            _, accounts = _account_prefixes_owned(
+                _account_progress, initial_cash=request.initial_cash, events=events, actions=True
+            )
+            state = cast(CapitalActionAccountReplay, accounts[-1])
         return _CapitalDailyEntryFacts(admission, price, events, observations, state, digest)
 
 
@@ -386,7 +398,9 @@ def _simulate_owned_capital_daily_entry(
         _progress=progress,
         _last_only=True,
     )
-    facts = _generate_capital_daily_entry(request, original[-1], price)
+    facts = _generate_capital_daily_entry(
+        request, original[-1], price, _account_progress=progress.accounts
+    )
     _replay_risk_points(
         loaded=request.loaded,
         initial_cash=request.initial_cash,

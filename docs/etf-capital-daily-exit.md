@@ -37,10 +37,10 @@ uses all original held shares, including declared split-adjusted dust; this does
 not establish an executable broker route. All source/cost/execution/economic/
 promotion flags remain false. No credentials, transport or live order factory.
 
-The original-event daily owner and train-only walk-forward kernels are separate
-implemented components, not a complete aligned economic evaluator. Source-owned
-panel/statistical reporting, full-grid workload acceptance and economic study
-remain unfinished. Local fixtures and release checks cannot establish profitability,
+The original-event owner and train-only walker now compose the implemented,
+reviewed [source-owned panel](etf-capital-panel.md). This exit adapter alone is
+not that evaluator. Current corrected-source release, full-grid workload acceptance,
+immutable freeze and economic study remain unfinished. Local checks cannot establish profitability,
 genuine customer costs, paper/shadow readiness or deployed recovery.
 
 Local executable `491cda915974292be17861025c369f6d23e0f075` completed10,571 full
@@ -48,11 +48,12 @@ tests (33optional skips/one existing warning),20native tests and92.47% combined
 coverage with unchanged80overall/90critical gates. Ruff/Mypy392/Bandit, frozen
 locks, SBOM and shell/Compose checks passed. Clean same-graph advisory evidence
 is retained, not a fresh network audit. Independent source review passed;
-hosted exact-head adapter integration remains separate. This is retained source
+hosted adapter integration completed through PR42. This is retained source
 certification, not a fresh full rerun after a human-document-only refresh.
 
-Current first750 training-path performance still failed the unchanged120-second
-guard. Resolve/freeze the same-reducer continuation architecture before another
-performance implementation; do not weaken admission or call a partial profile
-workload acceptance. Next are complete panel/statistics/workload verification,
-executable and input freeze, then one qualified authorized DEVELOPMENT study.
+Historical491c first750 failed120seconds; shared-reducer continuation/private
+consumers are now implemented/reviewed, and exactb8 first750 passed65.113611584s/
+170,688,512bytes. No partial profile or bounded path certifies full workload.
+Next: corrected-source architecture/panel/global/native/release verification,
+actual complete workload, executable/input freeze, then one qualified authorized
+DEVELOPMENT study. Safety gates and production limits remain unchanged.

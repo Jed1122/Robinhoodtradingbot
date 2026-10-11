@@ -28,7 +28,7 @@ from trading_bot.simulation.etf_capital_daily_owner import (
     _replay_capital_owner,
     _validate_owner_terms,
 )
-from trading_bot.simulation.etf_capital_due_facts import _capital_due_facts
+from trading_bot.simulation.etf_capital_due_facts import _capital_due_facts, _CapitalDueProgress
 from trading_bot.simulation.etf_capital_risk import CapitalRiskObservation, CapitalRiskReplay
 
 
@@ -182,6 +182,7 @@ def _replay_prepared_capital_trajectory(
     if opening_candidates is not None:
         _check(len(opening_candidates) == len(schedule))
     indices = {day.session: index for index, day in enumerate(prepared.days)}
+    due_progress = _CapitalDueProgress()
 
     def frame_at(
         index: int,
@@ -198,6 +199,7 @@ def _replay_prepared_capital_trajectory(
             actions=source.actions,
             session=day.session,
             raw_bars=original.raw_bars,
+            _progress=due_progress,
         )
         opening_candidate = (
             day.candidate if opening_candidates is None else opening_candidates[index]

@@ -49,8 +49,9 @@ rights or historical availability evidence. Latest-vintage chronology limitation
 remain disclosed under the existing research waiver.
 
 Source, cost, execution, economic, promotion and live eligibility remain false.
-Next: policy-managed SPY and source-derived retrospective exposure matching,
-complete aligned comparisons/reports, full strategy workload verification,
+Policy-managed SPY, retrospective exposure matching and complete aligned reports
+are implemented/reviewed in the [panel](etf-capital-panel.md). Next: corrected-source
+release and full actual workload verification,
 capital-specific immutable executable freeze, then evaluation only with qualified
 authorized inputs. No broker/provider call, private-data inspection, deployment,
 spending or risk-limit change is provided by this adapter.

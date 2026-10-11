@@ -1,9 +1,9 @@
 # Prior-close capital-research policy
 
-Local release evidence belongs to executable b2dc8f8:9,918 full passes,
+Historical local release evidence belongs to executable b2dc8f8:9,918 full passes,
 33 optional skips/one existing warning;20 native passes;92.17% combined coverage
 and unchanged80overall/90critical gates. Ruff/Mypy376/Bandit, locks and SBOM
-passed. Hosted exact-head checks/integration remain pending; this is not a fresh
+passed. Those policy/adapters integrated through PR42; this is not a fresh
 full run at a later human-document head. The known-holding-deadline correction
 was watched RED-to-GREEN before this certification.
 
@@ -18,7 +18,7 @@ retain their200-bar warmup and independently configured approved family windows.
 Zero ATR or insufficient history cannot manufacture an entry.
 
 A declared `CapitalOpeningPolicy` retains the original candidate, symbol, entry
-session and stop distance. A future owner must bind this record to its unique
+session and stop distance. The original-event owner binds this record to its unique
 original BUY/fill; caller declarations alone do not establish ownership. A new
 fold candidate never changes the existing position's policy. Entry session counts
 as1 toward maximum holding2/5/10/20; a completed-close exit instruction belongs
@@ -34,6 +34,7 @@ does not depend on regime permission. Protection, actions and actual lifecycle
 timing belong to the original-event daily owner, not this pure policy consumer.
 
 All source/cost/execution/economic/promotion flags remain false. Tests use
-fabricated inputs only. The complete daily runner, fold carryover, dependent
-selection-adjusted evaluator, workload validation, executable freeze and real
-economic study remain unfinished. No live trading or provider call is added.
+fabricated inputs only. The daily runner, fold carryover and complete conditional
+dependent-statistics [panel](etf-capital-panel.md) are implemented/reviewed.
+Corrected-source release/workload validation, executable freeze and real economic
+study remain unfinished. No live trading or provider call is added.

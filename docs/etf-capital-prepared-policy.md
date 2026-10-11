@@ -23,12 +23,13 @@ never interpreted as permission to hold. Zero/unknown ATR cannot create entry.
 
 This boundary is private and invocation-local. Constructing a private dataclass
 does not authenticate a source, an execution route, opening ownership, cost or
-risk approval. The eventual evaluator must reconstruct these facts from its
-own original request and bind unique BUY/fill events before using an opening
+risk approval. The implemented original-event owner/panel reconstructs these facts from its
+own original request and binds unique BUY/fill events before using an opening
 policy. There is no public prepared-token/economic-admission factory.
 
-Source/cost/execution/economic/promotion flags remain false. Full workload,
-original-event action/settlement scheduling, train-derived ranking, continuous
-account carryover, benchmark reports, executable freeze and qualified economics
-remain separate incomplete deliverables. No study, brokerage call, trade,
+Source/cost/execution/economic/promotion flags remain false. Original scheduling,
+train-derived ranking, account carryover and benchmark reports are composed in
+the [panel](etf-capital-panel.md), not supplied by this helper alone. Current
+release, full workload, executable freeze and qualified economics remain
+incomplete gates. No study, brokerage call, trade,
 deployment or production risk change is implied by this software.
