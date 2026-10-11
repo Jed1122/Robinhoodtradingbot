@@ -140,3 +140,34 @@ def test_conditional_rejection_does_not_remove_unknown_independence():
     assert result.criteria[6].value is None and result.criteria[6].threshold == 30
     with pytest.raises(ValueError, match="capital_economic_panel_invalid"):
         replace(result, verdict="GO")
+
+
+def test_label_constructor_rejects_bool_as_path_index():
+    from trading_bot.research.etf_capital_panel_models import CapitalPanelLabel
+
+    with pytest.raises(ValueError, match="capital_economic_panel_invalid"):
+        CapitalPanelLabel(D(100), D(".05"), False, "cash")
+
+
+def test_rehashed_family_cannot_hide_malformed_column_identity():
+    from tests.unit.research.test_etf_capital_panel import family_inputs
+    from trading_bot.research.etf_capital_panel import _build_family
+    from trading_bot.research.etf_capital_panel_models import CapitalPanelFamily
+
+    dates, capitals, costs, labels, columns = family_inputs()
+    value = _build_family(
+        "trading",
+        dates,
+        labels,
+        columns,
+        capitals=capitals,
+        frictions=costs,
+        seed=20260710,
+        draws=1,
+    )
+    hashes = ("not-a-sha256", *value.column_hashes[1:])
+    fields = (value.kind, dates, labels, columns, hashes, value.bands)
+    with pytest.raises(ValueError, match="capital_economic_panel_invalid"):
+        CapitalPanelFamily(
+            *fields, content_hash(("capital-panel-family-v1", *fields, (False,) * 5))
+        )

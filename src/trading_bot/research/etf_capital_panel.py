@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, localcontext
 from itertools import pairwise
 from typing import TYPE_CHECKING, Literal, cast
@@ -15,20 +15,32 @@ from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Instrument, require_bounded_decimal
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
 from trading_bot.market_data.etf_capital_owned import _OwnedCapitalSource
+from trading_bot.research.etf_capital_economic_window import _capital_economic_window
 from trading_bot.research.etf_capital_feasibility import _config
+from trading_bot.research.etf_capital_matched import _capital_matched_values, _CapitalMatchedTerms
 from trading_bot.research.etf_capital_panel_models import (
     _FLAGS,
     _ROLES,
     _TAGS,
     CapitalPanelFamily,
     CapitalPanelFinal,
+    CapitalPanelFold,
     CapitalPanelLabel,
+    CapitalPanelMathematical,
+    CapitalPanelPath,
+    CapitalPanelTraining,
     _check,
     _panel_hash,
     _PanelRecord,
     _typed,
 )
 from trading_bot.research.etf_capital_path_economics import _ratio
+from trading_bot.research.etf_capital_prepared import _PreparedCapitalInput
+from trading_bot.research.etf_capital_selection import (
+    CapitalTrainingOutcome,
+    CapitalTrainingSelection,
+)
+from trading_bot.research.etf_capital_signals import CapitalCandidate, CapitalWalkForwardFold
 from trading_bot.research.etf_resampling import dependent_capital_simultaneous_mean_intervals
 from trading_bot.simulation.etf_capital_constrained import CapitalConstrainedResult
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
@@ -200,3 +212,110 @@ def _retain_final(
                 *(() if complete else ("final_outcome_incomplete",)),
             ),
         )
+
+
+def _retain_training(
+    result: CapitalTrajectoryResult,
+    candidate: CapitalCandidate,
+    outcome: CapitalTrainingOutcome,
+) -> CapitalPanelTraining:
+    _check(type(result) is CapitalTrajectoryResult)
+    _check(all(getattr(result, flag) is False for flag in _FLAGS))
+    return _record(
+        CapitalPanelTraining,
+        candidate,
+        outcome,
+        result.input_hash,
+        result.account.economic_hash,
+        result.risk.result_hash,
+        len(result.points),
+        len(result.events),
+    )
+
+
+def _retain_path(
+    result: CapitalTrajectoryResult,
+    *,
+    path_index: int,
+    candidate: CapitalCandidate | None,
+    owned: _OwnedCapitalSource,
+    terms: _CapitalMatchedTerms,
+    test_sessions: tuple[date, ...],
+    recurring_usd_per_day: Decimal | None,
+    sunk_research_usd: Decimal | None,
+) -> CapitalPanelPath:
+    _check(type(result) is CapitalTrajectoryResult)
+    window = _capital_economic_window(
+        result,
+        initial_cash=terms.initial_cash,
+        test_sessions=test_sessions,
+        recurring_usd_per_day=recurring_usd_per_day,
+        sunk_research_usd=sunk_research_usd,
+    )
+    final = _retain_final(result, initial_cash=terms.initial_cash, test_count=len(test_sessions))
+    matched = _capital_matched_values(owned, terms, result, test_sessions)
+    mathematical = _record(
+        CapitalPanelMathematical,
+        matched.input_hash,
+        matched.kernel_result.input_hash,
+        terms.initial_cash,
+        (terms.initial_cash, *tuple(p.close_midpoint_nav for p in matched.kernel_result.points)),
+        matched.raw_quantities,
+        matched.mean_exposure,
+        matched.close_exposures,
+        matched.limitations,
+    )
+    return _record(
+        CapitalPanelPath, path_index, candidate, result.input_hash, window, final, mathematical
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _CapitalPanelRetention:
+    """Invocation-private projection context, never a public callback/token."""
+
+    owned: _OwnedCapitalSource
+    prepared: _PreparedCapitalInput
+    terms: _CapitalMatchedTerms
+    test_sessions: tuple[date, ...]
+    recurring_usd_per_day: Decimal | None
+    sunk_research_usd: Decimal | None
+
+    def training(
+        self,
+        result: CapitalTrajectoryResult,
+        candidate: CapitalCandidate,
+        outcome: CapitalTrainingOutcome,
+    ) -> CapitalPanelTraining:
+        return _retain_training(result, candidate, outcome)
+
+    def fold(
+        self,
+        fold: CapitalWalkForwardFold,
+        cutoff: datetime,
+        at: datetime,
+        training: tuple[CapitalPanelTraining, ...],
+        selection: CapitalTrainingSelection,
+    ) -> CapitalPanelFold:
+        return _record(CapitalPanelFold, fold, cutoff, at, training, selection)
+
+    def path(
+        self, result: CapitalTrajectoryResult, index: int, candidate: CapitalCandidate | None
+    ) -> CapitalPanelPath:
+        return _retain_path(
+            result,
+            path_index=index,
+            candidate=candidate,
+            owned=self.owned,
+            terms=self.terms,
+            test_sessions=self.test_sessions,
+            recurring_usd_per_day=self.recurring_usd_per_day,
+            sunk_research_usd=self.sunk_research_usd,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _CapitalCompactWalkForward:
+    folds: tuple[CapitalPanelFold, ...]
+    paths: tuple[CapitalPanelPath, ...]
+    walker_hash: str

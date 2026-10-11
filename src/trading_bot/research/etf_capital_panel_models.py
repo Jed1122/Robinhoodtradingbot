@@ -104,6 +104,9 @@ def _admit_fields(value: Any) -> None:
         _typed(current, hints[item.name])
         if item.name.endswith("_hash") and type(current) is str:
             _require_sha256_hex(current, "panel identity")
+        if item.name in ("column_hashes", "evidence_hashes"):
+            for identity in current:
+                _require_sha256_hex(identity, "panel identities")
         if item.name in _FLAGS:
             _check(current is False)
 
@@ -237,6 +240,15 @@ class CapitalPanelLabel:
     friction_pct: Decimal
     path_index: int
     role: Literal["full_spy", "managed_spy", "matched_spy", "cash"]
+
+    def __post_init__(self) -> None:
+        try:
+            _check(type(self) is CapitalPanelLabel)
+            _admit_fields(self)
+            _check(self.capital in _CAPITALS and 0 <= self.path_index <= 28)
+            _check(self.friction_pct in tuple(map(Decimal, (".05", ".10", ".20", ".40"))))
+        except (ValueError, TypeError, AttributeError, ArithmeticError):
+            raise ValueError("capital_economic_panel_invalid") from None
 
 
 @dataclass(frozen=True, slots=True)
