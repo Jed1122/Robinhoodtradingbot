@@ -1,5 +1,23 @@
 # Parallel Orchestration Transition Report
 
+## Current original-account consumers — implementation, not workload acceptance
+
+The original-account continuation architecture is implemented. Its6355700 first
+750-session path still timed out at120.004seconds after105.349seconds setup;
+this is a failed resource gate, not a correctness failure or economic result.
+The subsequent bounded diagnostic confirmed owned continuation905times but found
+full batch account replay still dominating due-fact/entry/exit/owner consumers.
+The current increment extends SAME-reducer continuation to those private consumers,
+with complete original admission, transactional due-fact publication, fresh risk
+validation and unchanged public APIs/hashes. It does not change limits or budgets.
+New consumer controls watched20RED before implementation. Focused, composition,
+review, actual unchanged first750 and full panel acceptance remain revision-specific.
+No executable economic freeze, qualified-input study, provider/broker operation,
+deployed recovery or live authority is established. Next: finish exact-source
+validation/review, actual fixed resource gates, compact panel implementation and
+full workload, release certification, immutable freeze and authorized qualified
+DEVELOPMENT evaluation. All older paragraphs below are historical checkpoints.
+
 ## Current architecture implementation checkpoint — 2026-10-11
 
 The human directed architecture resolution and completion. Main selected and

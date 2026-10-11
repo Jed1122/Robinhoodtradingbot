@@ -245,3 +245,15 @@ current-order lifecycle replay. Correctness, unchanged first750120s/512MiB and
 complete28x6x4x5 workload acceptance remain separate gates. No current workload,
 economic freeze, qualified-input study, deployed recovery or live readiness is
 established by this implementation.
+
+The prepared trajectory and constrained-reference frontends also allocate private
+due-fact continuation for their own invocation. Every call still validates the
+complete original calendar, actions, bars, observations and account deliveries.
+It stages all derived settlement/action/payment/finality facts transactionally;
+a later invalid fact leaves the earlier continuation untouched. Entry/exit fact
+generation and owner fact application use the same account helper, while full
+fresh risk validation alone publishes the corresponding risk account candidate.
+Public batch APIs and their full result/hash preimages remain unchanged. Separate
+consumer forks do not supply account balances, risk approvals or a second engine.
+The first continuation-only750-session probe still timed out at120seconds; the
+extended-consumer increment has no resource acceptance until actually measured.
