@@ -20,14 +20,18 @@ from trading_bot.research.etf_capital_feasibility import _config
 from trading_bot.research.etf_capital_matched import _capital_matched_values, _CapitalMatchedTerms
 from trading_bot.research.etf_capital_panel_models import (
     _FLAGS,
+    _KEYS,
     _ROLES,
     _TAGS,
+    CapitalPanelCriterion,
+    CapitalPanelDecision,
     CapitalPanelFamily,
     CapitalPanelFinal,
     CapitalPanelFold,
     CapitalPanelLabel,
     CapitalPanelMathematical,
     CapitalPanelPath,
+    CapitalPanelScenario,
     CapitalPanelTraining,
     _check,
     _panel_hash,
@@ -41,7 +45,10 @@ from trading_bot.research.etf_capital_selection import (
     CapitalTrainingSelection,
 )
 from trading_bot.research.etf_capital_signals import CapitalCandidate, CapitalWalkForwardFold
-from trading_bot.research.etf_resampling import dependent_capital_simultaneous_mean_intervals
+from trading_bot.research.etf_resampling import (
+    EtfBlockRisk,
+    dependent_capital_simultaneous_mean_intervals,
+)
 from trading_bot.simulation.etf_capital_constrained import CapitalConstrainedResult
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
 from trading_bot.simulation.etf_capital_daily_owner import _Outcome
@@ -212,6 +219,158 @@ def _retain_final(
                 *(() if complete else ("final_outcome_incomplete",)),
             ),
         )
+
+
+def _decide_path(
+    capital: Decimal,
+    path_index: int,
+    scenarios: tuple[CapitalPanelScenario, ...],
+    *,
+    operating: CapitalPanelFamily | None,
+    cash_risks: tuple[tuple[EtfBlockRisk, ...], ...] | None,
+    cfg: CapitalResearchAppConfig,
+) -> CapitalPanelDecision:
+    """Private cross-cost screen of freshly assembled, complete panel facts.
+
+    Conditional resampling never supplies independence or adaptive coverage.
+    Full scenario/family admission belongs to the original-source assembler.
+    """
+    with localcontext(_CONTEXT):
+        tiers = cfg.capital_research.capital_tiers
+        costs = cfg.capital_research.round_trip_friction_pct
+        _check(type(capital) is Decimal and capital in tiers)
+        _check(type(path_index) is int and 0 <= path_index < 29)
+        _check(type(scenarios) is tuple and len(scenarios) == 4)
+        windows = []
+        for scenario, cost in zip(scenarios, costs, strict=True):
+            _check(type(scenario) is CapitalPanelScenario)
+            _check(scenario.capital == capital and scenario.friction_pct == cost)
+            _check(len(scenario.paths) > path_index)
+            path = scenario.paths[path_index]
+            _check(type(path) is CapitalPanelPath and path.path_index == path_index)
+            windows.append(path.window)
+        research = cfg.research
+        thresholds = (
+            Decimal(0),
+            Decimal(research.minimum_positive_walk_forward_folds),
+            research.maximum_stressed_drawdown_pct,
+            research.minimum_benchmark_excess_return_pct,
+            Decimal(0),
+            research.maximum_monte_carlo_loss_probability_pct,
+            Decimal(research.minimum_independent_opportunities),
+            research.maximum_single_opportunity_profit_contribution_pct,
+            Decimal(0),
+            cfg.equity_strategies.etf_pilot.confidence_level_pct,
+        )
+        values: list[Decimal | None] = [None] * 10
+        reasons = ["operating_cost_unknown"] * 6 + [
+            "dependent_dates_draws_and_episodes_are_not_independent_opportunities",
+            "independent_profit_attribution_not_established",
+            "positive_marks_are_not_conservative_net_expectancy",
+            "conditional_bands_do_not_rerun_adaptive_selection",
+        ]
+        evidence = tuple(s.input_hash for s in scenarios)
+        if operating is None:
+            _check(cash_risks is None)
+            _check(all(w.net_nav is None and w.marked_operating_profit is None for w in windows))
+        else:
+            _check(type(operating) is CapitalPanelFamily and operating.kind == "operating")
+            _check(len(operating.columns) == len(operating.labels) == 2784)
+            if cash_risks is None:
+                raise ValueError("capital_economic_panel_invalid")
+            _check(type(cash_risks) is tuple and len(cash_risks) == 696)
+            _check(tuple(b.block_length for b in operating.bands) == (20, 100))
+            _check(all(len(b.intervals) == 2784 for b in operating.bands))
+            profits, positives, drawdowns = [], [], []
+            excesses: list[Decimal] = []
+            lower_bounds: list[Decimal] = []
+            probabilities: list[Decimal] = []
+            tier = tiers.index(capital)
+            for cost_index, window in enumerate(windows):
+                _check(window.session_dates == operating.session_dates)
+                if (
+                    window.net_nav is None
+                    or window.marked_operating_profit is None
+                    or window.operating_metrics is None
+                ):
+                    raise ValueError("capital_economic_panel_invalid")
+                _check(len(window.net_nav) == 631)
+                profits.append(window.marked_operating_profit)
+                positives.append(
+                    Decimal(
+                        sum(
+                            window.net_nav[(fold + 1) * 126] > window.net_nav[fold * 126]
+                            for fold in range(5)
+                        )
+                    )
+                )
+                drawdown = window.operating_metrics.maximum_drawdown_pct.value
+                if drawdown is None:
+                    raise ValueError("capital_economic_panel_invalid")
+                drawdowns.append(abs(Decimal(drawdown)))
+                base = ((tier * 4 + cost_index) * 29 + path_index) * 4
+                for role_index, role in enumerate(_ROLES):
+                    index = base + role_index
+                    _check(
+                        operating.labels[index]
+                        == CapitalPanelLabel(
+                            capital,
+                            costs[cost_index],
+                            path_index,
+                            cast(Literal["full_spy", "managed_spy", "matched_spy", "cash"], role),
+                        )
+                    )
+                    excesses.append(sum(operating.columns[index], Decimal(0)) * 100)
+                    lower_bounds.extend(b.intervals[index].lower for b in operating.bands)
+                risks = cash_risks[base // 4]
+                _check(tuple(r.interval.block_length for r in risks) == (20, 100))
+                for risk in risks:
+                    _check(type(risk) is EtfBlockRisk and 0 <= risk.loss_probability <= 1)
+                    probabilities.append(100 * risk.loss_probability)
+            values[:6] = [
+                min(profits),
+                min(positives),
+                max(drawdowns),
+                min(excesses),
+                min(lower_bounds),
+                max(probabilities),
+            ]
+            reasons[:6] = [
+                "minimum_observed_marked_operating_profit_across_four_costs",
+                "minimum_positive_consecutive_126_date_folds_across_four_costs",
+                "worst_original_operating_drawdown_across_four_costs",
+                "minimum_fixed_capital_paired_excess_across_all_roles_and_costs",
+                "conditional_complete_family_lower_bound_not_adaptive_coverage",
+                "conditional_cash_loss_probability_whole_percent_not_population_proof",
+            ]
+            evidence = (*evidence, operating.input_hash)
+        criteria = []
+        for index, (key, value, threshold, reason) in enumerate(
+            zip(_KEYS, values, thresholds, reasons, strict=True)
+        ):
+            passed = value is not None and (
+                value > threshold
+                if index in (0, 4)
+                else value <= threshold
+                if index in (2, 5)
+                else value >= threshold
+            )
+            status: Literal["passes_declared_screen", "fails_declared_screen", "unknown"] = (
+                "unknown"
+                if value is None
+                else "passes_declared_screen"
+                if passed
+                else "fails_declared_screen"
+            )
+            criteria.append(
+                _record(CapitalPanelCriterion, key, status, value, threshold, reason, evidence)
+            )
+        verdict = (
+            "REJECT"
+            if any(c.status == "fails_declared_screen" for c in criteria)
+            else ("INSUFFICIENT_EVIDENCE")
+        )
+        return _record(CapitalPanelDecision, capital, path_index, tuple(criteria), verdict)
 
 
 def _retain_training(
