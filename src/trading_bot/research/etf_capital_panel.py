@@ -22,7 +22,6 @@ from trading_bot.research.etf_capital_economic_window import _capital_economic_w
 from trading_bot.research.etf_capital_feasibility import _config
 from trading_bot.research.etf_capital_matched import _capital_matched_values, _CapitalMatchedTerms
 from trading_bot.research.etf_capital_panel_models import (
-    _FLAGS,
     _KEYS,
     _ROLES,
     _TAGS,
@@ -38,6 +37,7 @@ from trading_bot.research.etf_capital_panel_models import (
     CapitalPanelScenario,
     CapitalPanelTraining,
     _check,
+    _false_flags,
     _panel_hash,
     _PanelRecord,
     _typed,
@@ -113,7 +113,7 @@ def _panel_inputs(
 
     try:
         _check(type(request) is CapitalEconomicPanelRequest)
-        _check(all(getattr(request, flag) is False for flag in _FLAGS))
+        _check(_false_flags(request))
         loaded = restore_loaded_config(owned.dataset.canonical_config, owned.dataset.config_hash)
         cfg = _config(loaded)
         for amount in (request.entry_fee, request.exit_fee):
@@ -216,7 +216,7 @@ def _retain_final(
 ) -> CapitalPanelFinal:
     with localcontext(_CONTEXT):
         _check(type(trajectory) in (CapitalTrajectoryResult, CapitalConstrainedResult))
-        _check(all(getattr(trajectory, flag) is False for flag in _FLAGS))
+        _check(_false_flags(trajectory))
         _check(type(test_count) is int and 0 < test_count < len(trajectory.points))
         require_bounded_decimal(initial_cash, "capital", positive=True)
         account, cutoff = trajectory.account, trajectory.points[test_count].account
@@ -404,7 +404,7 @@ def _retain_training(
     outcome: CapitalTrainingOutcome,
 ) -> CapitalPanelTraining:
     _check(type(result) is CapitalTrajectoryResult)
-    _check(all(getattr(result, flag) is False for flag in _FLAGS))
+    _check(_false_flags(result))
     return _record(
         CapitalPanelTraining,
         candidate,
@@ -759,7 +759,7 @@ def evaluate_capital_economic_panel(
     try:
         with localcontext(_CONTEXT):
             _check(type(request) is CapitalEconomicPanelRequest)
-            _check(all(getattr(request, flag) is False for flag in _FLAGS))
+            _check(_false_flags(request))
             implementation = _implementation()
             owned = _own_capital_source(request.dataset)
             cfg, _, base = _panel_inputs(request, owned)

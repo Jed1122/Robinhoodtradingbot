@@ -1,11 +1,11 @@
 """Immutable compact development records, never saved-outcome authority."""
 
-from collections.abc import Hashable
+from collections.abc import Callable, Hashable, Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from functools import lru_cache
-from types import UnionType
+from types import MappingProxyType, UnionType
 from typing import Any, Literal, Union, cast, get_args, get_origin, get_type_hints
 
 from trading_bot.code_identity import CodeIdentity
@@ -97,10 +97,201 @@ def _typed(value: Any, expected: Any) -> None:
                 value.__post_init__()
 
 
+# Closed data-field capability: schema names select only literal attribute reads.
+# No original values are cached and no unknown-name reflection fallback exists.
+_FIELD_READERS: Mapping[str, Callable[[Any], Any]] = MappingProxyType(
+    {
+        "account_hash": lambda value: value.account_hash,
+        "actions_hash": lambda value: value.actions_hash,
+        "actual_tax_usd": lambda value: value.actual_tax_usd,
+        "annualized_volatility_pct": lambda value: value.annualized_volatility_pct,
+        "available_cash": lambda value: value.available_cash,
+        "average_drawdown_pct": lambda value: value.average_drawdown_pct,
+        "average_gross_exposure": lambda value: value.average_gross_exposure,
+        "average_loss": lambda value: value.average_loss,
+        "average_net_exposure": lambda value: value.average_net_exposure,
+        "average_win": lambda value: value.average_win,
+        "bands": lambda value: value.bands,
+        "baseline_nav": lambda value: value.baseline_nav,
+        "baseline_session": lambda value: value.baseline_session,
+        "block_length": lambda value: value.block_length,
+        "cagr_pct": lambda value: value.cagr_pct,
+        "calendar_hash": lambda value: value.calendar_hash,
+        "calmar": lambda value: value.calmar,
+        "candidate": lambda value: value.candidate,
+        "capital": lambda value: value.capital,
+        "cash": lambda value: value.cash,
+        "cash_change": lambda value: value.cash_change,
+        "cash_nav": lambda value: value.cash_nav,
+        "cash_risks": lambda value: value.cash_risks,
+        "code_hash": lambda value: value.code_hash,
+        "column_hashes": lambda value: value.column_hashes,
+        "columns": lambda value: value.columns,
+        "comparisons": lambda value: value.comparisons,
+        "complete": lambda value: value.complete,
+        "completed_episode_pnl": lambda value: value.completed_episode_pnl,
+        "config_hash": lambda value: value.config_hash,
+        "cost_hash": lambda value: value.cost_hash,
+        "cost_qualified": lambda value: value.cost_qualified,
+        "criteria": lambda value: value.criteria,
+        "criteria_hash": lambda value: value.criteria_hash,
+        "decisions": lambda value: value.decisions,
+        "dirty": lambda value: value.dirty,
+        "distribution_receivable": lambda value: value.distribution_receivable,
+        "distributions_paid": lambda value: value.distributions_paid,
+        "economic_admitted": lambda value: value.economic_admitted,
+        "embargo_sessions": lambda value: value.embargo_sessions,
+        "event_count": lambda value: value.event_count,
+        "evidence_hashes": lambda value: value.evidence_hashes,
+        "evidence_promotable": lambda value: value.evidence_promotable,
+        "excluded": lambda value: value.excluded,
+        "execution_enabled": lambda value: value.execution_enabled,
+        "exit_only_sessions": lambda value: value.exit_only_sessions,
+        "expectancy": lambda value: value.expectancy,
+        "exposures": lambda value: value.exposures,
+        "family": lambda value: value.family,
+        "fees": lambda value: value.fees,
+        "fees_paid": lambda value: value.fees_paid,
+        "final": lambda value: value.final,
+        "final_account_hash": lambda value: value.final_account_hash,
+        "final_risk_hash": lambda value: value.final_risk_hash,
+        "fold": lambda value: value.fold,
+        "folds": lambda value: value.folds,
+        "friction_pct": lambda value: value.friction_pct,
+        "full_spy": lambda value: value.full_spy,
+        "git_commit": lambda value: value.git_commit,
+        "hold_sessions": lambda value: value.hold_sessions,
+        "image_digest": lambda value: value.image_digest,
+        "implementation": lambda value: value.implementation,
+        "independent_opportunities": lambda value: value.independent_opportunities,
+        "initial_cash": lambda value: value.initial_cash,
+        "input_hash": lambda value: value.input_hash,
+        "interval": lambda value: value.interval,
+        "intervals": lambda value: value.intervals,
+        "kernel_hash": lambda value: value.kernel_hash,
+        "key": lambda value: value.key,
+        "kind": lambda value: value.kind,
+        "labels": lambda value: value.labels,
+        "last_outcome_at": lambda value: value.last_outcome_at,
+        "limitations": lambda value: value.limitations,
+        "long_window": lambda value: value.long_window,
+        "longest_losing_streak": lambda value: value.longest_losing_streak,
+        "loss_probability": lambda value: value.loss_probability,
+        "loss_samples": lambda value: value.loss_samples,
+        "lower": lambda value: value.lower,
+        "managed_spy": lambda value: value.managed_spy,
+        "managed_spy_final": lambda value: value.managed_spy_final,
+        "marked_equity": lambda value: value.marked_equity,
+        "marked_nav": lambda value: value.marked_nav,
+        "marked_operating_profit": lambda value: value.marked_operating_profit,
+        "marked_pnl": lambda value: value.marked_pnl,
+        "matched_spy": lambda value: value.matched_spy,
+        "maximum_drawdown_duration": lambda value: value.maximum_drawdown_duration,
+        "maximum_drawdown_pct": lambda value: value.maximum_drawdown_pct,
+        "mean_exposure": lambda value: value.mean_exposure,
+        "median_trade": lambda value: value.median_trade,
+        "net_nav": lambda value: value.net_nav,
+        "net_pnl": lambda value: value.net_pnl,
+        "non_promotable": lambda value: value.non_promotable,
+        "nonpositive_probability": lambda value: value.nonpositive_probability,
+        "nonpositive_samples": lambda value: value.nonpositive_samples,
+        "observations": lambda value: value.observations,
+        "operating": lambda value: value.operating,
+        "operating_metrics": lambda value: value.operating_metrics,
+        "operating_prior_nav_returns": lambda value: value.operating_prior_nav_returns,
+        "operating_profit": lambda value: value.operating_profit,
+        "outcome": lambda value: value.outcome,
+        "panel_hash": lambda value: value.panel_hash,
+        "path_index": lambda value: value.path_index,
+        "paths": lambda value: value.paths,
+        "payoff_ratio": lambda value: value.payoff_ratio,
+        "point_count": lambda value: value.point_count,
+        "preparation_hash": lambda value: value.preparation_hash,
+        "profit_factor": lambda value: value.profit_factor,
+        "protocol_hash": lambda value: value.protocol_hash,
+        "quantity": lambda value: value.quantity,
+        "radius": lambda value: value.radius,
+        "raw_quantities": lambda value: value.raw_quantities,
+        "reason": lambda value: value.reason,
+        "reasons": lambda value: value.reasons,
+        "recurring_cost": lambda value: value.recurring_cost,
+        "reference_hash": lambda value: value.reference_hash,
+        "residual_quantity": lambda value: value.residual_quantity,
+        "risk_hash": lambda value: value.risk_hash,
+        "role": lambda value: value.role,
+        "roundtrip_friction_pct": lambda value: value.roundtrip_friction_pct,
+        "samples": lambda value: value.samples,
+        "scenarios": lambda value: value.scenarios,
+        "selected": lambda value: value.selected,
+        "selected_net_pnl": lambda value: value.selected_net_pnl,
+        "selection": lambda value: value.selection,
+        "selection_at": lambda value: value.selection_at,
+        "selection_hash": lambda value: value.selection_hash,
+        "selection_sessions": lambda value: value.selection_sessions,
+        "session_dates": lambda value: value.session_dates,
+        "sharpe": lambda value: value.sharpe,
+        "slippage_cost": lambda value: value.slippage_cost,
+        "sortino": lambda value: value.sortino,
+        "source_hash": lambda value: value.source_hash,
+        "source_qualified": lambda value: value.source_qualified,
+        "spread_cost": lambda value: value.spread_cost,
+        "statistics_hash": lambda value: value.statistics_hash,
+        "status": lambda value: value.status,
+        "sunk_research_cost": lambda value: value.sunk_research_cost,
+        "tail_cash_change": lambda value: value.tail_cash_change,
+        "tail_fee_change": lambda value: value.tail_fee_change,
+        "tail_loss": lambda value: value.tail_loss,
+        "tail_sessions": lambda value: value.tail_sessions,
+        "terms_hash": lambda value: value.terms_hash,
+        "test_sessions": lambda value: value.test_sessions,
+        "threshold": lambda value: value.threshold,
+        "time_in_market_pct": lambda value: value.time_in_market_pct,
+        "total_return_pct": lambda value: value.total_return_pct,
+        "trading": lambda value: value.trading,
+        "trading_metrics": lambda value: value.trading_metrics,
+        "trading_pnl": lambda value: value.trading_pnl,
+        "trading_prior_nav_returns": lambda value: value.trading_prior_nav_returns,
+        "train_sessions": lambda value: value.train_sessions,
+        "training": lambda value: value.training,
+        "training_cutoff": lambda value: value.training_cutoff,
+        "trajectory_hash": lambda value: value.trajectory_hash,
+        "turnover": lambda value: value.turnover,
+        "turnover_notional": lambda value: value.turnover_notional,
+        "unsettled_proceeds": lambda value: value.unsettled_proceeds,
+        "unused_sessions": lambda value: value.unused_sessions,
+        "upper": lambda value: value.upper,
+        "used_sessions": lambda value: value.used_sessions,
+        "value": lambda value: value.value,
+        "verdict": lambda value: value.verdict,
+        "walker_hash": lambda value: value.walker_hash,
+        "win_rate_pct": lambda value: value.win_rate_pct,
+        "window": lambda value: value.window,
+    }
+)
+
+
+def _field_value(value: Any, name: str) -> Any:
+    _check(type(name) is str and name in _FIELD_READERS)
+    return _FIELD_READERS[name](value)
+
+
+def _false_flags(value: Any) -> bool:
+    return all(
+        flag is False
+        for flag in (
+            value.source_qualified,
+            value.cost_qualified,
+            value.execution_enabled,
+            value.economic_admitted,
+            value.evidence_promotable,
+        )
+    )
+
+
 def _admit_fields(value: Any) -> None:
     hints = _hints(cast(Hashable, type(value)))
     for item in fields(value):
-        current = getattr(value, item.name)
+        current = _field_value(value, item.name)
         _typed(current, hints[item.name])
         if item.name.endswith("_hash") and type(current) is str:
             _require_sha256_hex(current, "panel identity")
@@ -113,7 +304,7 @@ def _admit_fields(value: Any) -> None:
 
 def _values(value: Any) -> tuple[object, ...]:
     return tuple(
-        getattr(value, item.name)
+        _field_value(value, item.name)
         for item in fields(value)
         if item.name not in (*_FLAGS, "input_hash")
     )
