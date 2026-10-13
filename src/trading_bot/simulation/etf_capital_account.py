@@ -7,13 +7,24 @@ separate composition; none of these records grants execution authority.
 """
 
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from datetime import UTC, datetime
 from decimal import Context, Decimal, DecimalException, localcontext
+from enum import Enum
 from fractions import Fraction
+from inspect import getattr_static
+from types import MethodType
 from typing import NoReturn
 
-from trading_bot.domain import AssetClass, DataHash, Side, require_bounded_decimal
+from trading_bot.domain import (
+    AssetClass,
+    BrokerOrder,
+    DataHash,
+    Fill,
+    Position,
+    Side,
+    require_bounded_decimal,
+)
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.simulation.etf_capital_action_events import (
     CapitalActionEvent,
@@ -359,7 +370,7 @@ def _account_prefixes_owned(
             for event in events:
                 _admit_event(event, legacy=False, actions=actions)
                 inert_clocks = _inert_event_clocks(event) and inert_clocks
-                originals.append(canonical_json(event))
+                originals.append(_original_event_json(event))
             original_values = tuple(originals)
             binding = canonical_json(
                 {"initial_representation": initial_cash.as_tuple(), "actions": actions}
@@ -420,6 +431,375 @@ def _inert_event_clocks(event: CapitalAccountEvent | CapitalActionEvent) -> bool
     else:
         clocks = (event.cursor.occurred_at,)
     return all(type(clock) is datetime and clock.tzinfo is UTC for clock in clocks)
+
+
+# Literal declaration-order inventory checked against pinned source at import.
+# No input or outcome cache. Hostile concurrent source/stdlib patching is excluded.
+_ORIGINAL_SCHEMAS = (
+    (
+        CapitalAccountSubmission,
+        (
+            "symbol",
+            "request",
+            "episode_fee_bound",
+            "execution_enabled",
+        ),
+    ),
+    (
+        CapitalSaleSettlement,
+        (
+            "event_id",
+            "cursor",
+            "fill_id",
+        ),
+    ),
+    (
+        CapitalEpisodeFeesFinal,
+        (
+            "event_id",
+            "cursor",
+            "total_fees",
+            "account_id",
+            "opening_order_id",
+        ),
+    ),
+    (
+        LifecycleControlEvent,
+        (
+            "event_id",
+            "cursor",
+            "account_id",
+            "instrument_id",
+            "broker_order_id",
+            "event",
+        ),
+    ),
+    (
+        LifecycleFillEvent,
+        (
+            "event_id",
+            "cursor",
+            "fill",
+        ),
+    ),
+    (
+        CapitalSplitApplied,
+        (
+            "event_id",
+            "cursor",
+            "account_id",
+            "opening_order_id",
+            "symbol",
+            "execution_enabled",
+            "source_qualified",
+            "evidence_promotable",
+            "action_id",
+            "record_hash",
+            "ratio",
+            "post_action_mark",
+        ),
+    ),
+    (
+        CapitalDistributionEntitled,
+        (
+            "event_id",
+            "cursor",
+            "account_id",
+            "opening_order_id",
+            "symbol",
+            "execution_enabled",
+            "source_qualified",
+            "evidence_promotable",
+            "action_id",
+            "record_hash",
+            "amount_per_share",
+            "ex_mark",
+            "pay_date",
+        ),
+    ),
+    (
+        CapitalDistributionPaid,
+        (
+            "event_id",
+            "cursor",
+            "account_id",
+            "opening_order_id",
+            "symbol",
+            "execution_enabled",
+            "source_qualified",
+            "evidence_promotable",
+            "entitlement_id",
+            "amount",
+        ),
+    ),
+    (
+        EventCursor,
+        (
+            "sequence",
+            "occurred_at",
+        ),
+    ),
+    (
+        LifecycleRequest,
+        (
+            "order",
+            "position",
+            "cash",
+            "submitted",
+            "events",
+        ),
+    ),
+    (
+        BrokerOrder,
+        (
+            "id",
+            "broker_order_id",
+            "account_id",
+            "intent_id",
+            "client_order_id",
+            "instrument_id",
+            "side",
+            "purpose",
+            "order_type",
+            "time_in_force",
+            "requested_quantity",
+            "filled_quantity",
+            "limit_price",
+            "stop_price",
+            "state",
+            "created_at",
+            "updated_at",
+            "data_hash",
+        ),
+    ),
+    (
+        Position,
+        (
+            "account_id",
+            "instrument_id",
+            "asset_class",
+            "quantity",
+            "average_price",
+            "market_value",
+            "observed_at",
+            "data_hash",
+        ),
+    ),
+    (
+        Fill,
+        (
+            "id",
+            "broker_order_id",
+            "account_id",
+            "instrument_id",
+            "side",
+            "quantity",
+            "price",
+            "fee",
+            "occurred_at",
+            "data_hash",
+        ),
+    ),
+)
+_ORIGINAL_SCHEMA_OK = all(
+    tuple(field.name for field in fields(cls)) == names for cls, names in _ORIGINAL_SCHEMAS
+)
+_ORIGINAL_ENUM_COPY = Enum.__deepcopy__
+
+
+def _original_ordinary_enum(value: Enum) -> bool:
+    # Static lookup never invokes an unknown descriptor or probes hook metadata.
+    # Unknown/missing hooks are handled only by the original whole-event encoder.
+    method = getattr_static(value, "__deepcopy__", None)
+    return method is _ORIGINAL_ENUM_COPY or (
+        type(method) is MethodType
+        and method.__func__ is _ORIGINAL_ENUM_COPY
+        and method.__self__ is value
+    )
+
+
+def _original_inert_enums(event: CapitalAccountEvent | CapitalActionEvent) -> bool:
+    values: tuple[Enum, ...]
+    if isinstance(event, CapitalAccountSubmission):
+        order = event.request.order
+        values = (
+            order.side,
+            order.purpose,
+            order.order_type,
+            order.time_in_force,
+            order.state,
+            event.request.position.asset_class,
+        )
+    elif isinstance(event, LifecycleControlEvent):
+        values = (event.event,)
+    elif isinstance(event, LifecycleFillEvent):
+        values = (event.fill.side,)
+    else:
+        values = ()
+    return all(_original_ordinary_enum(value) for value in values)
+
+
+def _original_event_json(event: CapitalAccountEvent | CapitalActionEvent) -> str:
+    """Private seam immediately after fresh original admission in account loop."""
+    if (
+        not _ORIGINAL_SCHEMA_OK
+        or not _inert_event_clocks(event)
+        or not _original_inert_enums(event)
+    ):
+        return canonical_json(event)
+    return canonical_json(_original_event(event))
+
+
+def _original_cursor(value: EventCursor) -> dict[str, object]:
+    return {
+        "sequence": value.sequence,
+        "occurred_at": value.occurred_at,
+    }
+
+
+def _original_request(value: LifecycleRequest) -> dict[str, object]:
+    return {
+        "order": _original_order(value.order),
+        "position": _original_position(value.position),
+        "cash": value.cash,
+        "submitted": _original_cursor(value.submitted),
+        "events": value.events,
+    }
+
+
+def _original_order(value: BrokerOrder) -> dict[str, object]:
+    return {
+        "id": value.id,
+        "broker_order_id": value.broker_order_id,
+        "account_id": value.account_id,
+        "intent_id": value.intent_id,
+        "client_order_id": value.client_order_id,
+        "instrument_id": value.instrument_id,
+        "side": deepcopy(value.side),
+        "purpose": deepcopy(value.purpose),
+        "order_type": deepcopy(value.order_type),
+        "time_in_force": deepcopy(value.time_in_force),
+        "requested_quantity": value.requested_quantity,
+        "filled_quantity": value.filled_quantity,
+        "limit_price": value.limit_price,
+        "stop_price": value.stop_price,
+        "state": deepcopy(value.state),
+        "created_at": value.created_at,
+        "updated_at": value.updated_at,
+        "data_hash": value.data_hash,
+    }
+
+
+def _original_position(value: Position) -> dict[str, object]:
+    return {
+        "account_id": value.account_id,
+        "instrument_id": value.instrument_id,
+        "asset_class": deepcopy(value.asset_class),
+        "quantity": value.quantity,
+        "average_price": value.average_price,
+        "market_value": value.market_value,
+        "observed_at": value.observed_at,
+        "data_hash": value.data_hash,
+    }
+
+
+def _original_fill(value: Fill) -> dict[str, object]:
+    return {
+        "id": value.id,
+        "broker_order_id": value.broker_order_id,
+        "account_id": value.account_id,
+        "instrument_id": value.instrument_id,
+        "side": deepcopy(value.side),
+        "quantity": value.quantity,
+        "price": value.price,
+        "fee": value.fee,
+        "occurred_at": value.occurred_at,
+        "data_hash": value.data_hash,
+    }
+
+
+def _original_event(value: CapitalAccountEvent | CapitalActionEvent) -> dict[str, object]:
+    if isinstance(value, CapitalAccountSubmission):
+        return {
+            "symbol": value.symbol,
+            "request": _original_request(value.request),
+            "episode_fee_bound": value.episode_fee_bound,
+            "execution_enabled": value.execution_enabled,
+        }
+    if isinstance(value, CapitalSaleSettlement):
+        return {
+            "event_id": value.event_id,
+            "cursor": _original_cursor(value.cursor),
+            "fill_id": value.fill_id,
+        }
+    if isinstance(value, CapitalEpisodeFeesFinal):
+        return {
+            "event_id": value.event_id,
+            "cursor": _original_cursor(value.cursor),
+            "total_fees": value.total_fees,
+            "account_id": value.account_id,
+            "opening_order_id": value.opening_order_id,
+        }
+    if isinstance(value, LifecycleControlEvent):
+        return {
+            "event_id": value.event_id,
+            "cursor": _original_cursor(value.cursor),
+            "account_id": value.account_id,
+            "instrument_id": value.instrument_id,
+            "broker_order_id": value.broker_order_id,
+            "event": deepcopy(value.event),
+        }
+    if isinstance(value, LifecycleFillEvent):
+        return {
+            "event_id": value.event_id,
+            "cursor": _original_cursor(value.cursor),
+            "fill": _original_fill(value.fill),
+        }
+    if isinstance(value, CapitalSplitApplied):
+        return {
+            "event_id": value.event_id,
+            "cursor": _original_cursor(value.cursor),
+            "account_id": value.account_id,
+            "opening_order_id": value.opening_order_id,
+            "symbol": value.symbol,
+            "execution_enabled": value.execution_enabled,
+            "source_qualified": value.source_qualified,
+            "evidence_promotable": value.evidence_promotable,
+            "action_id": value.action_id,
+            "record_hash": value.record_hash,
+            "ratio": value.ratio,
+            "post_action_mark": value.post_action_mark,
+        }
+    if isinstance(value, CapitalDistributionEntitled):
+        return {
+            "event_id": value.event_id,
+            "cursor": _original_cursor(value.cursor),
+            "account_id": value.account_id,
+            "opening_order_id": value.opening_order_id,
+            "symbol": value.symbol,
+            "execution_enabled": value.execution_enabled,
+            "source_qualified": value.source_qualified,
+            "evidence_promotable": value.evidence_promotable,
+            "action_id": value.action_id,
+            "record_hash": value.record_hash,
+            "amount_per_share": value.amount_per_share,
+            "ex_mark": value.ex_mark,
+            "pay_date": value.pay_date,
+        }
+    if isinstance(value, CapitalDistributionPaid):
+        return {
+            "event_id": value.event_id,
+            "cursor": _original_cursor(value.cursor),
+            "account_id": value.account_id,
+            "opening_order_id": value.opening_order_id,
+            "symbol": value.symbol,
+            "execution_enabled": value.execution_enabled,
+            "source_qualified": value.source_qualified,
+            "evidence_promotable": value.evidence_promotable,
+            "entitlement_id": value.entitlement_id,
+            "amount": value.amount,
+        }
+    _deny()
 
 
 def _replay(

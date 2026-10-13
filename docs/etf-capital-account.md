@@ -266,3 +266,27 @@ consumer forks do not supply account balances, risk approvals or a second engine
 The first continuation-only635 probe historically timed out at120seconds. The
 reviewed extended-consumerb8 first750 passed65.113611584s/170,688,512bytes; this
 does not certify the current complete panel or replace its full workload gates.
+
+## Account-local original-event preimages
+
+The private continuation scan uses a closed, declaration-order mapping for its
+original-event identity only. Every original is still freshly admitted and its
+clocks checked on every call. The existing scalar canonical encoder renders the
+mapping; public batch replay, reducer content hashes, initial-capital Decimal
+representation binding, full suffix computation and detached transactions are
+unchanged. No event, validation result or economic outcome is memoized.
+
+Literal inventories cover every admitted event and nested dataclass field. A
+schema mismatch, non-singleton UTC clock or custom enum copy hook selects the
+original whole-event encoder before any partial copying. Hook eligibility uses
+only constant-name static inspection and exact standard function/bound-method
+identity, without invoking descriptors or probing unknown callable metadata.
+Enum leaves retain one copy per occurrence in dataclass declaration order.
+These private helpers stay in the account module to avoid a circular dependency;
+they are not a second general-purpose encoder or a new public input boundary.
+
+Exact byte/hash, unusual-hook, original-admission and whole-suffix rollback
+controls remain distinct from performance evidence. A short fabricated comparison
+does not establish a full-workload speedup, economic validity or live readiness.
+Complete current-source verification, unchanged full-workload acceptance, qualified
+inputs/costs and the immutable research freeze remain separate required gates.
