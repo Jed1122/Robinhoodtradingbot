@@ -12,7 +12,18 @@ from trading_bot.market_data.etf_capital_features import (
     _capital_feature_source,
     _capital_owned_raw_source,
 )
-from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
+from trading_bot.market_data.etf_capital_observed import (
+    CapitalDailyRangeView,
+    CapitalObservedDataset,
+    _capital_range_feature_source,
+)
+from trading_bot.market_data.etf_capital_owned import (
+    _own_capital_observed_source,
+    _own_capital_source,
+    _owned_capital_source_kind_valid,
+    _OwnedCapitalObservedSource,
+    _OwnedCapitalSource,
+)
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.research.etf_capital_daily_policy import (
     _capital_below_sma200,
@@ -64,7 +75,7 @@ class _PreparedCapitalInput(_PreparationOnly):
 
 
 def _validate_owned_capital_days(
-    owned: _OwnedCapitalSource,
+    owned: _OwnedCapitalSource | _OwnedCapitalObservedSource,
     prepared: _PreparedCapitalInput,
     *,
     required_sessions: tuple[date, ...],
@@ -73,7 +84,7 @@ def _validate_owned_capital_days(
     """Internal consistency only; never authenticate supplied cache tokens."""
     try:
         if (
-            type(owned) is not _OwnedCapitalSource
+            not _owned_capital_source_kind_valid(owned)
             or type(prepared) is not _PreparedCapitalInput
             or type(required_sessions) is not tuple
             or not required_sessions
@@ -142,7 +153,7 @@ def _prepare_capital_days(
 
 
 def _prepare_owned_capital_days(
-    owned: _OwnedCapitalSource, *, sessions: tuple[date, ...]
+    owned: _OwnedCapitalSource | _OwnedCapitalObservedSource, *, sessions: tuple[date, ...]
 ) -> _PreparedCapitalInput:
     """Reuse this invocation's internally owned originals, never public state.
 
@@ -151,7 +162,7 @@ def _prepare_owned_capital_days(
     """
     try:
         if (
-            type(owned) is not _OwnedCapitalSource
+            not _owned_capital_source_kind_valid(owned)
             or type(sessions) is not tuple
             or not 0 < len(sessions) <= 4000
             or any(type(day) is not date for day in sessions)
@@ -170,14 +181,27 @@ def _prepare_owned_capital_days(
             ordinals = {day: index for index, day in enumerate(dates)}
             if any(day not in ordinals for day in sessions):
                 raise ValueError("capital_prepared_input_invalid")
-            feature_sources = tuple(
-                _capital_owned_raw_source(
-                    _capital_feature_source(
-                        archive, source.calendar, actions, as_of_session=sessions[0]
+            if type(owned) is _OwnedCapitalObservedSource:
+                # The range factory's raw_rows are deliberately as-of bounded.
+                # Internally own the complete selected history once; epoch kernels
+                # still slice at each requested close. Never include excluded rows.
+                feature_sources = tuple(
+                    _capital_range_feature_source(
+                        CapitalDailyRangeView(archive, source.calendar, source.start, source.end),
+                        actions,
+                        as_of_session=dates[-1],
                     )
+                    for archive, actions in zip(source.archives, source.actions, strict=True)
                 )
-                for archive, actions in zip(source.archives, source.actions, strict=True)
-            )
+            else:
+                feature_sources = tuple(
+                    _capital_owned_raw_source(
+                        _capital_feature_source(
+                            archive, source.calendar, actions, as_of_session=sessions[0]
+                        )
+                    )
+                    for archive, actions in zip(source.archives, source.actions, strict=True)
+                )
             raw_json = []
             for item in feature_sources:
                 if item.raw_rows is None:
@@ -287,5 +311,15 @@ def _prepare_owned_capital_days(
                     )
                 ),
             )
+    except (ValueError, TypeError, ArithmeticError, AttributeError):
+        raise ValueError("capital_prepared_input_invalid") from None
+
+
+def _prepare_capital_observed_days(
+    dataset: CapitalObservedDataset, *, sessions: tuple[date, ...]
+) -> _PreparedCapitalInput:
+    """Explicit observed input path; saved prepared or owned tokens are denied."""
+    try:
+        return _prepare_owned_capital_days(_own_capital_observed_source(dataset), sessions=sessions)
     except (ValueError, TypeError, ArithmeticError, AttributeError):
         raise ValueError("capital_prepared_input_invalid") from None

@@ -17,6 +17,10 @@ from trading_bot.market_data.etf_capital_dataset import (
     CapitalResearchDataset,
     capital_dataset_features,
 )
+from trading_bot.market_data.etf_capital_observed import (
+    CapitalObservedDataset,
+    capital_observed_features,
+)
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_feasibility import _CONTEXT
 
@@ -29,6 +33,24 @@ class _OwnedCapitalSource:
     source_hash: str
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _OwnedCapitalObservedSource:
+    """Distinct internal ownership of conditional observed-development inputs."""
+
+    dataset: CapitalObservedDataset
+    source_hash: str
+
+
+def _owned_capital_source_kind_valid(
+    owned: _OwnedCapitalSource | _OwnedCapitalObservedSource,
+) -> bool:
+    return (
+        type(owned) is _OwnedCapitalSource and type(owned.dataset) is CapitalResearchDataset
+    ) or (
+        type(owned) is _OwnedCapitalObservedSource and type(owned.dataset) is CapitalObservedDataset
+    )
+
+
 def _immutable_clock(value: datetime) -> None:
     # Public readers keep their broader historical UTC contract. This NEW owned
     # boundary cannot retain arbitrary mutable timezone instances as aliases.
@@ -38,6 +60,12 @@ def _immutable_clock(value: datetime) -> None:
 
 def _validate_originals(dataset: CapitalResearchDataset) -> str:
     if type(dataset) is not CapitalResearchDataset:
+        raise ValueError("capital_owned_source_invalid")
+    return _validate_source_originals(dataset)
+
+
+def _validate_source_originals(dataset: CapitalResearchDataset | CapitalObservedDataset) -> str:
+    if type(dataset) not in (CapitalResearchDataset, CapitalObservedDataset):
         raise ValueError("capital_owned_source_invalid")
     if (
         type(dataset.archives) is not tuple
@@ -76,7 +104,10 @@ def _validate_originals(dataset: CapitalResearchDataset) -> str:
     )
     # This existing consumer validates complete raw/action/calendar/basis
     # semantics, not only the recent signal window. Nothing is cached globally.
-    capital_dataset_features(dataset, as_of_session=last)
+    if type(dataset) is CapitalObservedDataset:
+        capital_observed_features(dataset, as_of_session=last)
+    else:
+        capital_dataset_features(cast(CapitalResearchDataset, dataset), as_of_session=last)
     return dataset.dataset_hash
 
 
@@ -87,9 +118,26 @@ def _own_capital_source(dataset: CapitalResearchDataset) -> _OwnedCapitalSource:
     public API that accepts an _OwnedCapitalSource as evidence or authority.
     Exact immutable leaves can be shared; every dataclass node is reconstructed.
     """
+    if type(dataset) is not CapitalResearchDataset:
+        raise ValueError("capital_owned_source_invalid")
+    owned, source_hash = _copy_capital_source(dataset)
+    return _OwnedCapitalSource(cast(CapitalResearchDataset, owned), source_hash)
+
+
+def _own_capital_observed_source(dataset: CapitalObservedDataset) -> _OwnedCapitalObservedSource:
+    """Own this variant explicitly; legacy admission is never widened."""
+    if type(dataset) is not CapitalObservedDataset:
+        raise ValueError("capital_owned_source_invalid")
+    owned, source_hash = _copy_capital_source(dataset)
+    return _OwnedCapitalObservedSource(cast(CapitalObservedDataset, owned), source_hash)
+
+
+def _copy_capital_source(
+    dataset: CapitalResearchDataset | CapitalObservedDataset,
+) -> tuple[CapitalResearchDataset | CapitalObservedDataset, str]:
     try:
         with localcontext(_CONTEXT):
-            original_hash = _validate_originals(dataset)
+            original_hash = _validate_source_originals(dataset)
             archives = []
             for archive in dataset.archives:
                 request = replace(archive.request)
@@ -121,14 +169,31 @@ def _own_capital_source(dataset: CapitalResearchDataset) -> _OwnedCapitalSource:
                 dataset.calendar,
                 sessions=tuple(replace(row) for row in dataset.calendar.sessions),
             )
-            owned = replace(dataset, archives=tuple(archives), actions=actions, calendar=calendar)
-            if _validate_originals(owned) != original_hash or dataset.dataset_hash != original_hash:
+            owned: CapitalResearchDataset | CapitalObservedDataset
+            if type(dataset) is CapitalObservedDataset:
+                owned = replace(
+                    dataset,
+                    archives=tuple(archives),
+                    actions=actions,
+                    calendar=calendar,
+                    action_model=replace(dataset.action_model),
+                )
+                namespace = "capital-owned-observed-source-v1"
+            else:
+                owned = replace(
+                    dataset, archives=tuple(archives), actions=actions, calendar=calendar
+                )
+                namespace = "capital-owned-source-v1"
+            if (
+                _validate_source_originals(owned) != original_hash
+                or dataset.dataset_hash != original_hash
+            ):
                 raise ValueError("capital_owned_source_invalid")
-            return _OwnedCapitalSource(
+            return (
                 owned,
                 content_hash(
                     (
-                        "capital-owned-source-v1",
+                        namespace,
                         sha256(owned.canonical_config).hexdigest(),
                         owned.config_hash,
                         original_hash,

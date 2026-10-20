@@ -108,14 +108,14 @@ calculation capabilities only after validating/copying new originals; shared
 preparation accepts a finite exact owned-type union. Legacy public evaluators
 remain v1-only. No caller-supplied prepared cache.
 
-- [ ] Write tests that forge original flags/UTC clocks, mutate aliases, alter
+- [x] Write tests that forge original flags/UTC clocks, mutate aliases, alter
   excluded originals, substitute saved preparation, or mix variant identities.
   Require failure before copying can reset init-false flags.
-- [ ] Observe RED and implement finite type dispatch with distinct observed
+- [x] Observe RED and implement finite type dispatch with distinct observed
   owned-source hash namespace and full before/after identity checks.
-- [ ] Reuse feature/preparation kernels; test history readiness at 199/200 bars,
+- [x] Reuse feature/preparation kernels; test history readiness at 199/200 bars,
   33/117/201/232/232 eligible training closes, and future-mutation independence.
-- [ ] Run new tests and existing owned/prepared/projection-serialization tests;
+- [x] Run new tests and existing owned/prepared/projection-serialization tests;
   preserve literal legacy preimages. Commit only these changes.
 
 ### Task 4: Explicit observed walker/panel
