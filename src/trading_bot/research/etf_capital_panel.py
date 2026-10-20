@@ -16,7 +16,13 @@ from trading_bot.config.capital_research import CapitalResearchAppConfig
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Instrument, require_bounded_decimal
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
-from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
+from trading_bot.market_data.etf_capital_observed import CapitalObservedDataset
+from trading_bot.market_data.etf_capital_owned import (
+    _own_capital_observed_source,
+    _own_capital_source,
+    _OwnedCapitalObservedSource,
+    _OwnedCapitalSource,
+)
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_economic_window import _capital_economic_window
 from trading_bot.research.etf_capital_feasibility import _config
@@ -26,6 +32,12 @@ from trading_bot.research.etf_capital_panel_models import (
     _ROLES,
     _TAGS,
     CapitalEconomicPanelReport,
+    CapitalObservedEconomicPanelReport,
+    CapitalObservedPanelFamily,
+    CapitalObservedPanelFold,
+    CapitalObservedPanelPath,
+    CapitalObservedPanelScenario,
+    CapitalObservedPanelTraining,
     CapitalPanelCriterion,
     CapitalPanelDecision,
     CapitalPanelFamily,
@@ -46,7 +58,7 @@ from trading_bot.research.etf_capital_passive import (
     _LIMITATIONS as _PASSIVE_LIMITATIONS,
 )
 from trading_bot.research.etf_capital_passive import (
-    CapitalPassiveRequest,
+    _capital_owned_passive_request,
     _capital_passive_values,
 )
 from trading_bot.research.etf_capital_path_economics import _ratio
@@ -54,6 +66,7 @@ from trading_bot.research.etf_capital_prepared import (
     _prepare_owned_capital_days,
     _PreparedCapitalInput,
 )
+from trading_bot.research.etf_capital_protocol import CapitalStudyProtocol
 from trading_bot.research.etf_capital_selection import (
     CapitalTrainingOutcome,
     CapitalTrainingSelection,
@@ -73,6 +86,7 @@ from trading_bot.simulation.etf_capital_constrained import (
     CapitalConstrainedDay,
     CapitalConstrainedRequest,
     CapitalConstrainedResult,
+    _CapitalObservedConstrainedRequest,
     _replay_owned_capital_constrained,
 )
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
@@ -80,7 +94,33 @@ from trading_bot.simulation.etf_capital_daily_owner import _Outcome
 from trading_bot.simulation.etf_capital_trajectory import CapitalTrajectoryResult
 
 if TYPE_CHECKING:
-    from trading_bot.simulation.etf_capital_walk_forward import CapitalWalkForwardRequest
+    from trading_bot.simulation.etf_capital_walk_forward import (
+        CapitalObservedWalkForwardRequest,
+        CapitalWalkForwardRequest,
+    )
+
+type _PanelOwnedSource = _OwnedCapitalSource | _OwnedCapitalObservedSource
+type _PanelWalkRequest = CapitalWalkForwardRequest | CapitalObservedWalkForwardRequest
+type _PanelTraining = CapitalPanelTraining | CapitalObservedPanelTraining
+type _PanelFold = CapitalPanelFold | CapitalObservedPanelFold
+type _PanelPath = CapitalPanelPath | CapitalObservedPanelPath
+type _PanelScenario = CapitalPanelScenario | CapitalObservedPanelScenario
+type _PanelFamily = CapitalPanelFamily | CapitalObservedPanelFamily
+type _PanelReport = CapitalEconomicPanelReport | CapitalObservedEconomicPanelReport
+
+_LEGACY_STUDY = CapitalStudyProtocol("legacy-750x126-v1")
+
+
+def _observed_protocol(protocol: CapitalStudyProtocol) -> bool:
+    _check(type(protocol) is CapitalStudyProtocol)
+    protocol.__post_init__()
+    return protocol.name == "observed-252x84-v2"
+
+
+def _variant_hash(protocol: CapitalStudyProtocol, tag: str, *values: object) -> str:
+    if _observed_protocol(protocol):
+        return _panel_hash("observed-" + tag, protocol.protocol_hash, *values)
+    return _panel_hash(tag, *values)
 
 
 def _record[T: _PanelRecord](cls: type[T], *values: object) -> T:
@@ -103,16 +143,48 @@ class CapitalEconomicPanelRequest(_Offline):
     exit_fill_fraction: Decimal = Decimal(1)
 
 
+@dataclass(frozen=True, slots=True)
+class CapitalObservedEconomicPanelRequest(_Offline):
+    dataset: CapitalObservedDataset
+    instruments: tuple[Instrument, ...]
+    episode_fee_bound: Decimal | None
+    entry_fee: Decimal
+    exit_fee: Decimal
+    recurring_usd_per_day: Decimal | None
+    sunk_research_usd: Decimal | None
+    weekly_review_sessions: tuple[date, ...] = ()
+    entry_outcome: _Outcome = "filled"
+    entry_fill_fraction: Decimal = Decimal(1)
+    exit_outcome: _Outcome = "filled"
+    exit_fill_fraction: Decimal = Decimal(1)
+
+
+type _PanelRequest = CapitalEconomicPanelRequest | CapitalObservedEconomicPanelRequest
+
+
 def _panel_inputs(
-    request: CapitalEconomicPanelRequest, owned: _OwnedCapitalSource
-) -> tuple[CapitalResearchAppConfig, LoadedConfig, CapitalWalkForwardRequest]:
+    request: _PanelRequest, owned: _PanelOwnedSource
+) -> tuple[CapitalResearchAppConfig, LoadedConfig, _PanelWalkRequest]:
     from trading_bot.simulation.etf_capital_walk_forward import (
+        CapitalObservedWalkForwardRequest,
         CapitalWalkForwardRequest,
         _walk_forward_inputs,
     )
 
     try:
-        _check(type(request) is CapitalEconomicPanelRequest)
+        _check(
+            (
+                type(request) is CapitalEconomicPanelRequest
+                and type(owned) is _OwnedCapitalSource
+                and type(request.dataset) is CapitalResearchDataset
+            )
+            or (
+                type(request) is CapitalObservedEconomicPanelRequest
+                and type(owned) is _OwnedCapitalObservedSource
+                and type(request.dataset) is CapitalObservedDataset
+            )
+        )
+        _check(request.dataset == owned.dataset)
         _check(_false_flags(request))
         loaded = restore_loaded_config(owned.dataset.canonical_config, owned.dataset.config_hash)
         cfg = _config(loaded)
@@ -122,7 +194,12 @@ def _panel_inputs(
         for expense in (request.recurring_usd_per_day, request.sunk_research_usd):
             if expense is not None:
                 require_bounded_decimal(expense, "declared expense", nonnegative=True)
-        walk = CapitalWalkForwardRequest(
+        walk_type = (
+            CapitalObservedWalkForwardRequest
+            if type(request) is CapitalObservedEconomicPanelRequest
+            else CapitalWalkForwardRequest
+        )
+        walk = cast(Callable[..., _PanelWalkRequest], walk_type)(
             request.dataset,
             cfg.capital_research.capital_tiers[0],
             request.instruments,
@@ -143,12 +220,17 @@ def _panel_inputs(
 
 
 def _paired_column(
-    candidate: tuple[Decimal, ...], reference: tuple[Decimal, ...], capital: Decimal
+    candidate: tuple[Decimal, ...],
+    reference: tuple[Decimal, ...],
+    capital: Decimal,
+    *,
+    protocol: CapitalStudyProtocol = _LEGACY_STUDY,
 ) -> tuple[Decimal, ...]:
     try:
         with localcontext(_CONTEXT):
+            _observed_protocol(protocol)
             _check(type(candidate) is tuple and type(reference) is tuple)
-            _check(len(candidate) == len(reference) == 631)
+            _check(len(candidate) == len(reference) == protocol.test_count + 1)
             require_bounded_decimal(capital, "paired capital", positive=True)
             for value in (*candidate, *reference):
                 require_bounded_decimal(value, "paired NAV")
@@ -170,10 +252,12 @@ def _build_family(
     frictions: tuple[Decimal, ...],
     seed: int,
     draws: int,
-) -> CapitalPanelFamily:
+    protocol: CapitalStudyProtocol = _LEGACY_STUDY,
+) -> _PanelFamily:
     try:
+        observed = _observed_protocol(protocol)
         _check(type(kind) is str and kind in ("trading", "operating"))
-        _check(type(dates) is tuple and len(dates) == 630)
+        _check(type(dates) is tuple and len(dates) == protocol.test_count)
         _check(all(type(day) is date for day in dates) and all(a < b for a, b in pairwise(dates)))
         _check(type(labels) is tuple and type(columns) is tuple)
         _check(len(capitals) == 6 and len(frictions) == 4)
@@ -193,17 +277,20 @@ def _build_family(
         for label, want, column in zip(labels, expected, columns, strict=True):
             _typed(label, CapitalPanelLabel)
             _check(label == want)
-            _check(type(column) is tuple and len(column) == 630)
+            _check(type(column) is tuple and len(column) == protocol.test_count)
             for value in column:
                 require_bounded_decimal(value, "paired increment")
         hashes = tuple(
-            _panel_hash("column", kind, label, dates, column)
+            _variant_hash(protocol, "column", kind, label, dates, column)
             for label, column in zip(labels, columns, strict=True)
         )
         bands = dependent_capital_simultaneous_mean_intervals(
             columns, seed=seed, block_lengths=(20, 100), draws=draws
         )
-        return _record(CapitalPanelFamily, kind, dates, labels, columns, hashes, bands)
+        family_type: type[_PanelFamily] = (
+            CapitalObservedPanelFamily if observed else CapitalPanelFamily
+        )
+        return _record(family_type, kind, dates, labels, columns, hashes, bands)
     except (ValueError, TypeError, AttributeError, ArithmeticError):
         raise ValueError("capital_economic_panel_invalid") from None
 
@@ -249,11 +336,12 @@ def _retain_final(
 def _decide_path(
     capital: Decimal,
     path_index: int,
-    scenarios: tuple[CapitalPanelScenario, ...],
+    scenarios: tuple[_PanelScenario, ...],
     *,
-    operating: CapitalPanelFamily | None,
+    operating: _PanelFamily | None,
     cash_risks: tuple[tuple[EtfBlockRisk, ...], ...] | None,
     cfg: CapitalResearchAppConfig,
+    protocol: CapitalStudyProtocol = _LEGACY_STUDY,
 ) -> CapitalPanelDecision:
     """Private cross-cost screen of freshly assembled, complete panel facts.
 
@@ -261,6 +349,10 @@ def _decide_path(
     Full scenario/family admission belongs to the original-source assembler.
     """
     with localcontext(_CONTEXT):
+        observed = _observed_protocol(protocol)
+        scenario_type = CapitalObservedPanelScenario if observed else CapitalPanelScenario
+        path_type = CapitalObservedPanelPath if observed else CapitalPanelPath
+        family_type = CapitalObservedPanelFamily if observed else CapitalPanelFamily
         tiers = cfg.capital_research.capital_tiers
         costs = cfg.capital_research.round_trip_friction_pct
         _check(type(capital) is Decimal and capital in tiers)
@@ -268,11 +360,11 @@ def _decide_path(
         _check(type(scenarios) is tuple and len(scenarios) == 4)
         windows = []
         for scenario, cost in zip(scenarios, costs, strict=True):
-            _check(type(scenario) is CapitalPanelScenario)
+            _check(type(scenario) is scenario_type)
             _check(scenario.capital == capital and scenario.friction_pct == cost)
             _check(len(scenario.paths) > path_index)
             path = scenario.paths[path_index]
-            _check(type(path) is CapitalPanelPath and path.path_index == path_index)
+            _check(type(path) is path_type and path.path_index == path_index)
             windows.append(path.window)
         research = cfg.research
         thresholds = (
@@ -299,7 +391,7 @@ def _decide_path(
             _check(cash_risks is None)
             _check(all(w.net_nav is None and w.marked_operating_profit is None for w in windows))
         else:
-            _check(type(operating) is CapitalPanelFamily and operating.kind == "operating")
+            _check(type(operating) is family_type and operating.kind == "operating")
             _check(len(operating.columns) == len(operating.labels) == 2784)
             if cash_risks is None:
                 raise ValueError("capital_economic_panel_invalid")
@@ -319,13 +411,14 @@ def _decide_path(
                     or window.operating_metrics is None
                 ):
                     raise ValueError("capital_economic_panel_invalid")
-                _check(len(window.net_nav) == 631)
+                _check(len(window.net_nav) == protocol.test_count + 1)
                 profits.append(window.marked_operating_profit)
                 positives.append(
                     Decimal(
                         sum(
-                            window.net_nav[(fold + 1) * 126] > window.net_nav[fold * 126]
-                            for fold in range(5)
+                            window.net_nav[(fold + 1) * protocol.test_count_per_fold]
+                            > window.net_nav[fold * protocol.test_count_per_fold]
+                            for fold in range(protocol.fold_count)
                         )
                     )
                 )
@@ -362,7 +455,7 @@ def _decide_path(
             ]
             reasons[:6] = [
                 "minimum_observed_marked_operating_profit_across_four_costs",
-                "minimum_positive_consecutive_126_date_folds_across_four_costs",
+                f"minimum_positive_consecutive_{protocol.test_count_per_fold}_date_folds_across_four_costs",
                 "worst_original_operating_drawdown_across_four_costs",
                 "minimum_fixed_capital_paired_excess_across_all_roles_and_costs",
                 "conditional_complete_family_lower_bound_not_adaptive_coverage",
@@ -402,11 +495,16 @@ def _retain_training(
     result: CapitalTrajectoryResult,
     candidate: CapitalCandidate,
     outcome: CapitalTrainingOutcome,
-) -> CapitalPanelTraining:
+    *,
+    protocol: CapitalStudyProtocol = _LEGACY_STUDY,
+) -> _PanelTraining:
     _check(type(result) is CapitalTrajectoryResult)
     _check(_false_flags(result))
+    training_type: type[_PanelTraining] = (
+        CapitalObservedPanelTraining if _observed_protocol(protocol) else CapitalPanelTraining
+    )
     return _record(
-        CapitalPanelTraining,
+        training_type,
         candidate,
         outcome,
         result.input_hash,
@@ -422,13 +520,16 @@ def _retain_path(
     *,
     path_index: int,
     candidate: CapitalCandidate | None,
-    owned: _OwnedCapitalSource,
+    owned: _PanelOwnedSource,
     terms: _CapitalMatchedTerms,
     test_sessions: tuple[date, ...],
     recurring_usd_per_day: Decimal | None,
     sunk_research_usd: Decimal | None,
-) -> CapitalPanelPath:
+    protocol: CapitalStudyProtocol = _LEGACY_STUDY,
+) -> _PanelPath:
     _check(type(result) is CapitalTrajectoryResult)
+    observed = _observed_protocol(protocol)
+    _check(type(owned) is (_OwnedCapitalObservedSource if observed else _OwnedCapitalSource))
     window = _capital_economic_window(
         result,
         initial_cash=terms.initial_cash,
@@ -449,43 +550,46 @@ def _retain_path(
         matched.close_exposures,
         matched.limitations,
     )
-    return _record(
-        CapitalPanelPath, path_index, candidate, result.input_hash, window, final, mathematical
-    )
+    path_type: type[_PanelPath] = CapitalObservedPanelPath if observed else CapitalPanelPath
+    return _record(path_type, path_index, candidate, result.input_hash, window, final, mathematical)
 
 
 @dataclass(frozen=True, slots=True)
 class _CapitalPanelRetention:
     """Invocation-private projection context, never a public callback/token."""
 
-    owned: _OwnedCapitalSource
+    owned: _PanelOwnedSource
     prepared: _PreparedCapitalInput
     terms: _CapitalMatchedTerms
     test_sessions: tuple[date, ...]
     recurring_usd_per_day: Decimal | None
     sunk_research_usd: Decimal | None
+    protocol: CapitalStudyProtocol = _LEGACY_STUDY
 
     def training(
         self,
         result: CapitalTrajectoryResult,
         candidate: CapitalCandidate,
         outcome: CapitalTrainingOutcome,
-    ) -> CapitalPanelTraining:
-        return _retain_training(result, candidate, outcome)
+    ) -> _PanelTraining:
+        return _retain_training(result, candidate, outcome, protocol=self.protocol)
 
     def fold(
         self,
         fold: CapitalWalkForwardFold,
         cutoff: datetime,
         at: datetime,
-        training: tuple[CapitalPanelTraining, ...],
+        training: tuple[_PanelTraining, ...],
         selection: CapitalTrainingSelection,
-    ) -> CapitalPanelFold:
-        return _record(CapitalPanelFold, fold, cutoff, at, training, selection)
+    ) -> _PanelFold:
+        fold_type: type[_PanelFold] = (
+            CapitalObservedPanelFold if _observed_protocol(self.protocol) else CapitalPanelFold
+        )
+        return _record(fold_type, fold, cutoff, at, training, selection)
 
     def path(
         self, result: CapitalTrajectoryResult, index: int, candidate: CapitalCandidate | None
-    ) -> CapitalPanelPath:
+    ) -> _PanelPath:
         return _retain_path(
             result,
             path_index=index,
@@ -495,13 +599,14 @@ class _CapitalPanelRetention:
             test_sessions=self.test_sessions,
             recurring_usd_per_day=self.recurring_usd_per_day,
             sunk_research_usd=self.sunk_research_usd,
+            protocol=self.protocol,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class _CapitalCompactWalkForward:
-    folds: tuple[CapitalPanelFold, ...]
-    paths: tuple[CapitalPanelPath, ...]
+    folds: tuple[_PanelFold, ...]
+    paths: tuple[_PanelPath, ...]
     walker_hash: str
 
 
@@ -524,6 +629,30 @@ _PROTOCOL = (
     "marked-prior-NAV-returns-distinct-from-paired-USD-increments-over-fixed-capital",
     "sunk-declared-once-not-summed_tax-unknown_development-only",
 )
+
+
+def _protocol_values(protocol: CapitalStudyProtocol) -> tuple[object, ...]:
+    if not _observed_protocol(protocol):
+        return _PROTOCOL
+    return (
+        "capital-observed-economic-panel-v2",
+        protocol.used_count,
+        protocol.baseline_index,
+        (protocol.test_start, protocol.test_end),
+        (protocol.test_end, protocol.used_count),
+        (
+            protocol.training_count,
+            protocol.purge_count,
+            protocol.embargo_count,
+            protocol.test_count_per_fold,
+            protocol.fold_count,
+        ),
+        *_PROTOCOL[6:11],
+        "capital-friction-selected-then-grid-role_order_2784x420",
+        *_PROTOCOL[12:],
+    )
+
+
 _LIMITATIONS = (
     "development_only_not_qualified_market_source_or_expected_live_performance",
     "source_actions_access_costs_fractional_terms_and_execution_unqualified",
@@ -541,20 +670,23 @@ _LIMITATIONS = (
 
 
 def _evaluate_scenario(
-    walk: CapitalWalkForwardRequest,
+    walk: _PanelWalkRequest,
     *,
-    owned: _OwnedCapitalSource,
+    owned: _PanelOwnedSource,
     prepared: _PreparedCapitalInput,
     recurring_usd_per_day: Decimal | None,
     sunk_research_usd: Decimal | None,
-) -> CapitalPanelScenario:
+) -> _PanelScenario:
     from trading_bot.simulation.etf_capital_walk_forward import (
         _replay_owned_capital_walk_forward,
         _walk_forward_inputs,
+        _walk_forward_protocol,
     )
 
     _, _, dates, _, reviews = _walk_forward_inputs(walk, owned)
-    tests = dates[770:1400]
+    protocol = _walk_forward_protocol(walk, owned)
+    observed = _observed_protocol(protocol)
+    tests = dates[protocol.test_start : protocol.test_end]
     terms = _CapitalMatchedTerms(
         walk.initial_cash, walk.roundtrip_friction_pct, walk.entry_fee, walk.exit_fee
     )
@@ -563,11 +695,11 @@ def _evaluate_scenario(
         owned=owned,
         prepared=prepared,
         retention=_CapitalPanelRetention(
-            owned, prepared, terms, tests, recurring_usd_per_day, sunk_research_usd
+            owned, prepared, terms, tests, recurring_usd_per_day, sunk_research_usd, protocol
         ),
     )
-    passive_request = CapitalPassiveRequest(
-        owned.dataset,
+    passive_request = _capital_owned_passive_request(
+        owned,
         walk.initial_cash,
         tests,
         walk.roundtrip_friction_pct,
@@ -604,14 +736,22 @@ def _evaluate_scenario(
     schedule = tuple(
         CapitalConstrainedDay(
             day,
-            index < 1399,
-            index < 1400,
+            index < protocol.test_end - 1,
+            index < protocol.test_end,
             day in reviews,
         )
-        for index, day in enumerate(dates[769:1423], start=769)
+        for index, day in enumerate(
+            dates[protocol.baseline_index : protocol.used_count], start=protocol.baseline_index
+        )
+    )
+    managed_request_type = (
+        _CapitalObservedConstrainedRequest if observed else CapitalConstrainedRequest
     )
     managed = _replay_owned_capital_constrained(
-        CapitalConstrainedRequest(
+        cast(
+            Callable[..., CapitalConstrainedRequest | _CapitalObservedConstrainedRequest],
+            managed_request_type,
+        )(
             owned.dataset,
             walk.initial_cash,
             schedule,
@@ -635,10 +775,15 @@ def _evaluate_scenario(
         recurring_usd_per_day=recurring_usd_per_day,
         sunk_research_usd=sunk_research_usd,
     )
-    managed_final = _retain_final(managed, initial_cash=walk.initial_cash, test_count=630)
+    managed_final = _retain_final(
+        managed, initial_cash=walk.initial_cash, test_count=protocol.test_count
+    )
     del managed
+    scenario_type: type[_PanelScenario] = (
+        CapitalObservedPanelScenario if observed else CapitalPanelScenario
+    )
     return _record(
-        CapitalPanelScenario,
+        scenario_type,
         walk.initial_cash,
         walk.roundtrip_friction_pct,
         compact.walker_hash,
@@ -647,35 +792,44 @@ def _evaluate_scenario(
         full,
         managed_window,
         managed_final,
-        (walk.initial_cash,) * 631,
+        (walk.initial_cash,) * (protocol.test_count + 1),
     )
 
 
 def _validate_scenario(
-    scenario: CapitalPanelScenario,
+    scenario: _PanelScenario,
     *,
-    walk: CapitalWalkForwardRequest,
-    owned: _OwnedCapitalSource,
+    walk: _PanelWalkRequest,
+    owned: _PanelOwnedSource,
     recurring_usd_per_day: Decimal | None,
     sunk_research_usd: Decimal | None,
 ) -> None:
     """Admit every retained fact before any whole-panel statistical call."""
-    from trading_bot.simulation.etf_capital_walk_forward import _walk_forward_inputs
+    from trading_bot.simulation.etf_capital_walk_forward import (
+        _walk_forward_inputs,
+        _walk_forward_protocol,
+    )
 
-    _typed(scenario, CapitalPanelScenario)
+    protocol = _walk_forward_protocol(walk, owned)
+    _typed(
+        scenario,
+        CapitalObservedPanelScenario if _observed_protocol(protocol) else CapitalPanelScenario,
+    )
     terms, _, dates, folds, _ = _walk_forward_inputs(walk, owned)
     sessions = {s.session_date: s for s in owned.dataset.calendar.sessions}
     candidates = capital_candidates()
     _check(scenario.capital == walk.initial_cash)
     _check(scenario.friction_pct == walk.roundtrip_friction_pct)
     _check(len(scenario.folds) == 5 and len(scenario.paths) == 29)
-    for actual, expected in zip(scenario.folds, folds, strict=True):
+    for actual, expected in zip(cast(tuple[_PanelFold, ...], scenario.folds), folds, strict=True):
         _check(actual.fold == expected)
         cutoff = sessions[expected.train_sessions[-1]].closes_at + timedelta(seconds=3)
         at = sessions[dates[dates.index(expected.test_sessions[0]) - 1]].closes_at
         _check(actual.training_cutoff == cutoff and actual.selection_at == at)
         _check(len(actual.training) == 28)
-        for value, candidate in zip(actual.training, candidates, strict=True):
+        for value, candidate in zip(
+            cast(tuple[_PanelTraining, ...], actual.training), candidates, strict=True
+        ):
             value.__post_init__()
             _check(value.candidate == candidate)
         selection = select_capital_training(
@@ -693,10 +847,13 @@ def _validate_scenario(
         _typed(value, CapitalEconomicWindow)
         current = cast(CapitalEconomicWindow, value)
         _check(current.initial_cash == walk.initial_cash)
-        _check(current.baseline_session == dates[769])
-        _check(current.session_dates == dates[770:1400])
-        _check(current.tail_sessions == dates[1400:1423])
-        _check(len(current.marked_nav) == 631 and current.baseline_nav == current.marked_nav[0])
+        _check(current.baseline_session == dates[protocol.baseline_index])
+        _check(current.session_dates == dates[protocol.test_start : protocol.test_end])
+        _check(current.tail_sessions == dates[protocol.test_end : protocol.used_count])
+        _check(
+            len(current.marked_nav) == protocol.test_count + 1
+            and current.baseline_nav == current.marked_nav[0]
+        )
         _check(current.marked_pnl == current.marked_nav[-1] - current.baseline_nav)
         _check(current.sunk_research_cost == sunk_research_usd)
         _check(current.independent_opportunities is current.actual_tax_usd is None)
@@ -707,7 +864,8 @@ def _validate_scenario(
             _check(current.operating_metrics is None)
         else:
             costs = tuple(
-                Decimal((day - dates[769]).days) * recurring_usd_per_day for day in dates[769:1400]
+                Decimal((day - dates[protocol.baseline_index]).days) * recurring_usd_per_day
+                for day in dates[protocol.baseline_index : protocol.test_end]
             )
             net = tuple(nav - cost for nav, cost in zip(current.marked_nav, costs, strict=True))
             _check(current.net_nav == net and current.recurring_cost == costs[-1])
@@ -719,21 +877,24 @@ def _validate_scenario(
             _check(current.operating_metrics is not None)
 
     def mathematical(value: CapitalPanelMathematical, *, matched: bool) -> None:
-        _check(len(value.marked_nav) == 631 and len(value.raw_quantities) == 630)
+        _check(
+            len(value.marked_nav) == protocol.test_count + 1
+            and len(value.raw_quantities) == protocol.test_count
+        )
         _check(value.baseline_nav == walk.initial_cash == value.marked_nav[0])
         _check(all(q >= 0 for q in value.raw_quantities))
         if matched:
-            _check(value.exposures is not None and len(value.exposures) == 630)
+            _check(value.exposures is not None and len(value.exposures) == protocol.test_count)
             _check(value.mean_exposure is not None and 0 <= value.mean_exposure <= 1)
         else:
             _check(value.mean_exposure is None and value.exposures is None)
 
     mathematical(scenario.full_spy, matched=False)
-    _check(scenario.cash_nav == (walk.initial_cash,) * 631)
+    _check(scenario.cash_nav == (walk.initial_cash,) * (protocol.test_count + 1))
     window(scenario.managed_spy)
     _check(scenario.managed_spy_final.trajectory_hash == scenario.managed_spy.trajectory_hash)
     for index, (path, path_candidate) in enumerate(
-        zip(scenario.paths, (None, *candidates), strict=True)
+        zip(cast(tuple[_PanelPath, ...], scenario.paths), (None, *candidates), strict=True)
     ):
         _check(path.path_index == index and path.candidate == path_candidate)
         _check(path.trajectory_hash == path.window.trajectory_hash == path.final.trajectory_hash)
@@ -756,26 +917,73 @@ def evaluate_capital_economic_panel(
     No caller winners, scores, balances, observations, cached results or authority
     are accepted. This produces only REJECT or INSUFFICIENT_EVIDENCE.
     """
+    _check(type(request) is CapitalEconomicPanelRequest)
+    return cast(CapitalEconomicPanelReport, _evaluate_original_panel(request))
+
+
+def evaluate_capital_observed_economic_panel(
+    request: CapitalObservedEconomicPanelRequest,
+) -> CapitalObservedEconomicPanelReport:
+    """Evaluate the closed available-history variant, never qualified/live evidence."""
+    _check(type(request) is CapitalObservedEconomicPanelRequest)
+    return cast(CapitalObservedEconomicPanelReport, _evaluate_original_panel(request))
+
+
+def _evaluate_original_panel(request: _PanelRequest) -> _PanelReport:
+    from trading_bot.simulation.etf_capital_walk_forward import (
+        CapitalObservedWalkForwardRequest,
+        CapitalWalkForwardRequest,
+        _walk_forward_protocol,
+    )
+
     try:
         with localcontext(_CONTEXT):
-            _check(type(request) is CapitalEconomicPanelRequest)
+            _check(
+                type(request) in (CapitalEconomicPanelRequest, CapitalObservedEconomicPanelRequest)
+            )
             _check(_false_flags(request))
             implementation = _implementation()
-            owned = _own_capital_source(request.dataset)
+            if type(request) is CapitalObservedEconomicPanelRequest:
+                owned: _PanelOwnedSource = _own_capital_observed_source(request.dataset)
+            else:
+                owned = _own_capital_source(cast(CapitalEconomicPanelRequest, request).dataset)
             cfg, _, base = _panel_inputs(request, owned)
-            request = replace(
-                request,
-                dataset=owned.dataset,
-                instruments=tuple(replace(i) for i in request.instruments),
-            )
-            base = replace(base, dataset=owned.dataset, instruments=request.instruments)
+            # Exact source/request pairing was admitted above; copies stay in that variant.
+            instruments = tuple(replace(i) for i in request.instruments)
+            if type(owned) is _OwnedCapitalObservedSource:
+                request = replace(
+                    cast(CapitalObservedEconomicPanelRequest, request),
+                    dataset=owned.dataset,
+                    instruments=instruments,
+                )
+                base = replace(
+                    cast(CapitalObservedWalkForwardRequest, base),
+                    dataset=owned.dataset,
+                    instruments=instruments,
+                )
+            else:
+                legacy = cast(_OwnedCapitalSource, owned)
+                request = replace(
+                    cast(CapitalEconomicPanelRequest, request),
+                    dataset=legacy.dataset,
+                    instruments=instruments,
+                )
+                base = replace(
+                    cast(CapitalWalkForwardRequest, base),
+                    dataset=legacy.dataset,
+                    instruments=instruments,
+                )
+            protocol = _walk_forward_protocol(base, owned)
+            observed = _observed_protocol(protocol)
             source = owned.dataset
             dates = tuple(
                 s.session_date
                 for s in source.calendar.sessions
                 if source.start <= s.session_date < source.end
             )
-            used, tests, tail = dates[:1423], dates[770:1400], dates[1400:1423]
+            used = dates[: protocol.used_count]
+            tests = dates[protocol.test_start : protocol.test_end]
+            tail = dates[protocol.test_end : protocol.used_count]
             prepared = _prepare_owned_capital_days(owned, sessions=used)
             capitals = cfg.capital_research.capital_tiers
             frictions = cfg.capital_research.round_trip_friction_pct
@@ -819,7 +1027,9 @@ def evaluate_capital_economic_panel(
                                 )
                             )
                             trading_columns.append(
-                                _paired_column(path.window.marked_nav, reference, capital)
+                                _paired_column(
+                                    path.window.marked_nav, reference, capital, protocol=protocol
+                                )
                             )
                         if request.recurring_usd_per_day is not None:
                             _check(path.window.net_nav is not None)
@@ -836,6 +1046,7 @@ def evaluate_capital_economic_panel(
                                         cast(tuple[Decimal, ...], path.window.net_nav),
                                         cast(tuple[Decimal, ...], operating_reference),
                                         capital,
+                                        protocol=protocol,
                                     )
                                 )
             _check(len(scenarios) == 24)
@@ -848,6 +1059,7 @@ def evaluate_capital_economic_panel(
                 frictions=frictions,
                 seed=cfg.research.seed,
                 draws=cfg.research.monte_carlo_iterations,
+                protocol=protocol,
             )
             operating = None
             risks = None
@@ -861,6 +1073,7 @@ def evaluate_capital_economic_panel(
                     frictions=frictions,
                     seed=cfg.research.seed,
                     draws=cfg.research.monte_carlo_iterations,
+                    protocol=protocol,
                 )
                 risks = tuple(
                     dependent_mean_risks(
@@ -880,19 +1093,27 @@ def evaluate_capital_economic_panel(
                     operating=operating,
                     cash_risks=risks,
                     cfg=cfg,
+                    protocol=protocol,
                 )
                 for tier, capital in enumerate(capitals)
                 for index in range(29)
             )
+            report_type: type[_PanelReport] = (
+                CapitalObservedEconomicPanelReport if observed else CapitalEconomicPanelReport
+            )
+
+            def section_hash(tag: str, *values: object) -> str:
+                return _variant_hash(protocol, tag, *values)
+
             report = _record(
-                CapitalEconomicPanelReport,
+                report_type,
                 implementation,
                 owned.source_hash,
                 str(source.config_hash),
                 prepared.input_hash,
                 content_hash(source.calendar),
                 content_hash(source.actions),
-                _panel_hash(
+                section_hash(
                     "terms",
                     base.instruments,
                     request.episode_fee_bound,
@@ -904,24 +1125,25 @@ def evaluate_capital_economic_panel(
                     request.exit_outcome,
                     request.exit_fill_fraction,
                 ),
-                _panel_hash(
+                section_hash(
                     "cost", frictions, request.recurring_usd_per_day, request.sunk_research_usd
                 ),
-                _panel_hash("protocol", _PROTOCOL),
-                _panel_hash(
+                section_hash("protocol", _protocol_values(protocol)),
+                section_hash(
                     "selection",
                     "train-only-complete-positive-USDPNL-at-.40_grid-order-cash-zero",
                     tuple(f.selection for s in recorded for f in s.folds),
                 ),
-                _panel_hash(
+                section_hash(
                     "statistics",
                     tuple(labels),
                     cfg.research.seed,
                     (20, 100),
                     cfg.research.monte_carlo_iterations,
                     "existing-dependent-mean_and-complete-family-max-error-v1",
+                    *((tests,) if observed else ()),
                 ),
-                _panel_hash(
+                section_hash(
                     "criteria",
                     _KEYS,
                     (">", ">=", "<=", ">=", ">", "<="),
@@ -929,8 +1151,8 @@ def evaluate_capital_economic_panel(
                     "last-four-always-unknown_no-GO_conditional-not-independent",
                 ),
                 used,
-                dates[1423:],
-                dates[769],
+                dates[protocol.used_count :],
+                dates[protocol.baseline_index],
                 tests,
                 tail,
                 recorded,
@@ -938,7 +1160,9 @@ def evaluate_capital_economic_panel(
                 operating,
                 risks,
                 decisions,
-                _LIMITATIONS,
+                (*_LIMITATIONS, *source.action_model.limitations)
+                if type(source) is CapitalObservedDataset
+                else _LIMITATIONS,
             )
             _check(_implementation() == implementation)
             return report

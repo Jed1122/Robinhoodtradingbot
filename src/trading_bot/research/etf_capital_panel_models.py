@@ -325,12 +325,14 @@ class _PanelRecord(_Offline):
             _check(type(self) in _TAGS)
             _admit_fields(self)
             _check(_identity(self) == _panel_hash(_TAGS[type(self)], *_values(self)))
-            if type(self) is CapitalPanelTraining:
-                _check(self.candidate == self.outcome.candidate)
-                _check(self.trajectory_hash == self.outcome.input_hash)
-                _check(self.outcome.complete == (self.outcome.net_pnl is not None))
-                _check(self.outcome.roundtrip_friction_pct == Decimal(".40"))
-                _check(self.point_count == 750 and self.event_count >= 0)
+            if type(self) in (CapitalPanelTraining, CapitalObservedPanelTraining):
+                training = cast(CapitalPanelTraining | CapitalObservedPanelTraining, self)
+                _check(training.candidate == training.outcome.candidate)
+                _check(training.trajectory_hash == training.outcome.input_hash)
+                _check(training.outcome.complete == (training.outcome.net_pnl is not None))
+                _check(training.outcome.roundtrip_friction_pct == Decimal(".40"))
+                points = 252 if type(self) is CapitalObservedPanelTraining else 750
+                _check(training.point_count == points and training.event_count >= 0)
             elif type(self) is CapitalPanelCriterion:
                 _check(self.key in _KEYS)
                 _check((self.status == "unknown") == (self.value is None))
@@ -501,6 +503,94 @@ class CapitalEconomicPanelReport(_PanelRecord):
     input_hash: str
 
 
+# Distinct closed graphs: sharing the field-validation kernel must not let an
+# observed record pass as legacy evidence, even with a recomputed outer hash.
+@dataclass(frozen=True, slots=True)
+class CapitalObservedPanelTraining(_PanelRecord):
+    candidate: CapitalCandidate
+    outcome: CapitalTrainingOutcome
+    trajectory_hash: str
+    final_account_hash: str
+    final_risk_hash: str
+    point_count: int
+    event_count: int
+    input_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class CapitalObservedPanelFold(_PanelRecord):
+    fold: CapitalWalkForwardFold
+    training_cutoff: datetime
+    selection_at: datetime
+    training: tuple[CapitalObservedPanelTraining, ...]
+    selection: CapitalTrainingSelection
+    input_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class CapitalObservedPanelPath(_PanelRecord):
+    path_index: int
+    candidate: CapitalCandidate | None
+    trajectory_hash: str
+    window: CapitalEconomicWindow
+    final: CapitalPanelFinal
+    matched_spy: CapitalPanelMathematical
+    input_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class CapitalObservedPanelScenario(_PanelRecord):
+    capital: Decimal
+    friction_pct: Decimal
+    walker_hash: str
+    folds: tuple[CapitalObservedPanelFold, ...]
+    paths: tuple[CapitalObservedPanelPath, ...]
+    full_spy: CapitalPanelMathematical
+    managed_spy: CapitalEconomicWindow
+    managed_spy_final: CapitalPanelFinal
+    cash_nav: tuple[Decimal, ...]
+    input_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class CapitalObservedPanelFamily(_PanelRecord):
+    kind: Literal["trading", "operating"]
+    session_dates: tuple[date, ...]
+    labels: tuple[CapitalPanelLabel, ...]
+    columns: tuple[tuple[Decimal, ...], ...]
+    column_hashes: tuple[str, ...]
+    bands: tuple[EtfSimultaneousBlockIntervals, ...]
+    input_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class CapitalObservedEconomicPanelReport(_PanelRecord):
+    implementation: CodeIdentity
+    source_hash: str
+    config_hash: str
+    preparation_hash: str
+    calendar_hash: str
+    actions_hash: str
+    terms_hash: str
+    cost_hash: str
+    protocol_hash: str
+    selection_hash: str
+    statistics_hash: str
+    criteria_hash: str
+    used_sessions: tuple[date, ...]
+    unused_sessions: tuple[date, ...]
+    baseline_session: date
+    test_sessions: tuple[date, ...]
+    tail_sessions: tuple[date, ...]
+    scenarios: tuple[CapitalObservedPanelScenario, ...]
+    trading: CapitalObservedPanelFamily
+    operating: CapitalObservedPanelFamily | None
+    cash_risks: tuple[tuple[EtfBlockRisk, ...], ...] | None
+    decisions: tuple[CapitalPanelDecision, ...]
+    limitations: tuple[str, ...]
+    input_hash: str
+
+
 _TAGS.update(
     {
         CapitalPanelTraining: "training",
@@ -513,5 +603,11 @@ _TAGS.update(
         CapitalPanelCriterion: "criterion",
         CapitalPanelDecision: "decision",
         CapitalEconomicPanelReport: "report",
+        CapitalObservedPanelTraining: "observed-training",
+        CapitalObservedPanelFold: "observed-fold",
+        CapitalObservedPanelPath: "observed-path",
+        CapitalObservedPanelScenario: "observed-scenario",
+        CapitalObservedPanelFamily: "observed-family",
+        CapitalObservedEconomicPanelReport: "observed-report",
     }
 )

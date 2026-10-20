@@ -126,6 +126,13 @@ remain v1-only. No caller-supplied prepared cache.
 `src/trading_bot/research/etf_capital_panel.py`,
 `src/trading_bot/research/etf_capital_panel_models.py`;
 add observed-specific tests adjacent to existing walker/panel tests.
+Also extend the private exact-type seams in `etf_capital_trajectory.py`,
+`etf_capital_constrained.py`, `etf_capital_passive.py` and `etf_capital_matched.py`.
+Their original public entry points remain legacy-only. This necessary dependency
+correction does not authorize a second engine or changes to financial kernels.
+Also register the new observed source/protocol in the existing 90% critical
+branch gate, using `scripts/check_critical_branch_coverage.py` and its smoke
+tests. No threshold or existing module is removed.
 
 **Interfaces:** add `replay_capital_observed_walk_forward(request)` and
 `evaluate_capital_observed_economic_panel(request)` with exact new dataset
@@ -134,18 +141,18 @@ Extract shared private composition rather than copying the evaluator.
 Add explicitly registered observed training/fold/scenario/report record types
 with distinct hash namespaces and exact 252-point training admission.
 
-- [ ] Write tests for 715 used, baseline271, tests272:692, tail692:715,
+- [x] Write tests for 715 used, baseline271, tests272:692, tail692:715,
   420-point columns, 84-session fold profits, 37 unused dates in a 752 fixture,
   24 scenarios and 174 decisions; preserve old literal v1 tests unchanged.
-- [ ] Observe RED, then replace hardcoded internal slices with the privately
+- [x] Observe RED, then replace hardcoded internal slices with the privately
   selected protocol at every scheduling/retention/statistics/report boundary.
-- [ ] Test close/open handoffs, purged-close denial but earlier pending entry
+- [x] Test close/open handoffs, purged-close denial but earlier pending entry
   submission, global-tail halt, held-policy continuity and incomplete tails.
-- [ ] Test exact 252-vs750 training retention and mixed-v1/v2 graph denial.
+- [x] Test exact 252-vs750 training retention and mixed-v1/v2 graph denial.
   Keep closed field-reader capabilities; no reflection fallback.
-- [ ] Test trading family with operating None; no GO; unchanged 20/100 blocks,
+- [x] Test trading family with operating None; no GO; unchanged 20/100 blocks,
   seed/draw count and criteria; all unknown-support criteria stay unknown.
-- [ ] Run affected selection/walker/panel/statistics/account consumers and
+- [x] Run affected selection/walker/panel/statistics/account consumers and
   architecture tests. Commit only the completed coherent variant.
 
 ### Task 5: Verification, preregistration, one real evaluation and report

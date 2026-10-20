@@ -135,9 +135,16 @@ def _own_capital_observed_source(dataset: CapitalObservedDataset) -> _OwnedCapit
 def _copy_capital_source(
     dataset: CapitalResearchDataset | CapitalObservedDataset,
 ) -> tuple[CapitalResearchDataset | CapitalObservedDataset, str]:
+    def validate(value: CapitalResearchDataset | CapitalObservedDataset) -> str:
+        # Preserve the established legacy validation seam for its callers and
+        # instrumentation, while observed originals use their finite new branch.
+        if type(value) is CapitalResearchDataset:
+            return _validate_originals(value)
+        return _validate_source_originals(value)
+
     try:
         with localcontext(_CONTEXT):
-            original_hash = _validate_source_originals(dataset)
+            original_hash = validate(dataset)
             archives = []
             for archive in dataset.archives:
                 request = replace(archive.request)
@@ -184,10 +191,7 @@ def _copy_capital_source(
                     dataset, archives=tuple(archives), actions=actions, calendar=calendar
                 )
                 namespace = "capital-owned-source-v1"
-            if (
-                _validate_source_originals(owned) != original_hash
-                or dataset.dataset_hash != original_hash
-            ):
+            if validate(owned) != original_hash or dataset.dataset_hash != original_hash:
                 raise ValueError("capital_owned_source_invalid")
             return (
                 owned,
