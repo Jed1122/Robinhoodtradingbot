@@ -67,7 +67,7 @@ No caller-defined dimensions, scores, winners or account state.
 - [x] Implement the closed descriptor and protocol-aware fold construction.
   Preserve the old fold function until the explicit shared-composition step.
 - [x] Run new protocol tests plus existing fold tests; inspect actual output.
-- [ ] Commit only this new increment after checks pass.
+- [x] Commit only this new increment after checks pass.
 
 ### Task 2: Original-preserving observed source
 
@@ -81,19 +81,19 @@ model limitations; `build_capital_observed_dataset(...)`;
 `capital_observed_features(dataset,as_of_session=...)`.
 All full original archive hashes stay distinct from view/dataset hashes.
 
-- [ ] Write fabricated multi-page fixtures spanning both boundaries. Test
+- [x] Write fabricated multi-page fixtures spanning both boundaries. Test
   original row identity preservation, request containment, all selected calendar
   dates exactly once, malformed excluded records/flags, incomplete pagination,
   range/hash sensitivity, immutable false flags, complete action dates and
   duplicate ex-date denial.
-- [ ] Observe new-feature failures, then implement explicit validation and
+- [x] Observe new-feature failures, then implement explicit validation and
   independently derived row selection without altering raw pages or requests.
-- [ ] Add a validated range-source factory supplying selected `raw_rows` to
+- [x] Add a validated range-source factory supplying selected `raw_rows` to
   the existing private feature arithmetic. Bind original archive hash, window,
   selected row identities and conditional model in enclosing hashes.
-- [ ] Verify known split arithmetic and earlier-as-of behavior against literal
+- [x] Verify known split arithmetic and earlier-as-of behavior against literal
   expected values; verify old v1 still rejects range mismatch/post-2023 data.
-- [ ] Run both new tests and affected legacy archive/inventory/feature/dataset
+- [x] Run both new tests and affected legacy archive/inventory/feature/dataset
   tests. Commit the source increment after checks pass.
 
 ### Task 3: Shared owned-source/preparation boundary
