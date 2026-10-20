@@ -486,6 +486,7 @@ async def test_one_page_capture_uses_tools_list_exactly_once_and_ignores_meta() 
     assert record.operation_kind is OperationKind.READ
     assert record.evidence[0].level is EvidenceLevel.SCHEMA_DECLARED
     assert record.evidence[0].authenticated is False
+    assert record.evidence[0].notes == ("sanitized MCP tools/list declaration",)
 
 
 @pytest.mark.asyncio

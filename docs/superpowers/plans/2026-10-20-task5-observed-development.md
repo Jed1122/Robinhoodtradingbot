@@ -170,6 +170,12 @@ The new fixed execution owner binds exact code/input/config/protocol identities.
 - [ ] Run new exact-source Ruff, Mypy, full default suite/coverage, critical
   gates, Bandit, lock/dependency checks and applicable native checks. Retain
   actual per-stage exits; old same-source receipts are not new-source evidence.
+  The operator authorized dependency updates after the fresh advisory gate
+  identified certifi and MCP findings. Update only these dependencies in this
+  new branch and both locks, use separate new environments, verify affected
+  client/capability behavior and both locked dependency sets, then run the
+  complete source gates. Preserve old environments and the failed receipt;
+  do not waive advisories or claim authenticated broker compatibility.
 - [ ] Conduct one independent public-code/fabricated-fixture review of the
   complete change. MAIN rules each finding, reproduces/fixes Important or
   Critical issues through RED/GREEN and verifies affected regression tests.
