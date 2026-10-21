@@ -194,6 +194,11 @@ make existing isolation requirements explicit rather than relying on daemon defa
 No host directory creation is permitted. Request and resolved mount inventories
 must agree exactly, ignoring only array order; the attestation alone is read-only.
 The string-form `/tmp` tmpfs is separate from the six reported binds.
+Docker's image merge can replace the empty request `Config.Volumes` map with a
+null image value. Created inspection accepts only `{}` or `null` on that required
+field; missing, nonempty and mistyped values still deny. This does not permit an
+inherited image volume or an additional resolved mount.
+[Versioned image merge](https://raw.githubusercontent.com/moby/moby/docker-v29.1.3/daemon/commit.go).
 
 Inspect all 69 versioned HostConfig fields with exact JSON types, allowing omission
 only for the seven fields marked optional by that schema. Reject extra fields,

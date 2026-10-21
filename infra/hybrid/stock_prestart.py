@@ -302,7 +302,12 @@ def _verify_config(actual: Any, expected: dict[str, Any]) -> None:
     }
     _require(set(actual).issubset(set(expected) | set(optional)))
     for key, value in actual.items():
-        _require(_exact(value, expected[key] if key in expected else optional[key]))
+        if key == "Volumes":
+            # Docker's image merge can replace the empty request map with nil.
+            # Both mean no declared volumes; every nonempty/mistyped value denies.
+            _require(value is None or _exact(value, {}))
+        else:
+            _require(_exact(value, expected[key] if key in expected else optional[key]))
 
 
 def _network() -> dict[str, Any]:

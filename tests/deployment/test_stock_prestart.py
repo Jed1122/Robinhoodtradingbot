@@ -365,6 +365,20 @@ def test_complete_created_container_returns_only_identity(policy):
     assert "Env" not in repr(result) and "HostConfig" not in repr(result)
 
 
+def test_no_volume_image_merge_may_report_null_config_volumes(policy):
+    changed = record(policy)
+    changed["Config"]["Volumes"] = None
+    assert verify(policy, changed).container_id == CID
+
+
+@pytest.mark.parametrize("volumes", [False, True, [], "", {"/implicit": {}}])
+def test_only_explicit_empty_map_or_null_are_no_config_volumes(policy, volumes):
+    changed = record(policy)
+    changed["Config"]["Volumes"] = volumes
+    with pytest.raises(ValueError, match=r"^stock_container_unavailable$"):
+        verify(policy, changed)
+
+
 def test_unordered_binds_masks_and_readonly_paths_are_semantic_sets(policy):
     value = record(policy)
     value["HostConfig"]["Mounts"].reverse()
