@@ -29,7 +29,7 @@ Add `trading_bot.market_data.stock_capture_manifest`:
   `capture_started_at` (aware UTC datetime). Requests must have one exact symbol
   and distinct chronological sessions. Every declared calendar hash must match an
   original body; bodies must be unique, all referenced and sorted by SHA-256.
-  At most two bodies, each at most 1 MiB, with no repair or normalization.
+  At most two bodies, each nonempty and at most 1 MiB, with no repair or normalization.
 - `dump_stock_capture_manifest(manifest) -> bytes` and
   `parse_stock_capture_manifest(raw: bytes) -> StockMinuteCaptureManifest`:
   strict version-1, closed-schema canonical JSON with one trailing newline,
