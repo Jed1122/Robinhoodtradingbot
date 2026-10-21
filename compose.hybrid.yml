@@ -1,0 +1,30 @@
+name: hybrid-paper
+services:
+  hybrid-paper:
+    image: ${HYBRID_IMAGE:?immutable image ID required}
+    pull_policy: never
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    cpus: 0.5
+    mem_limit: 512m
+    restart: unless-stopped
+    ports: ["127.0.0.1:8081:8000"]
+    volumes:
+      - type: bind
+        source: /var/lib/hybrid-paper
+        target: /state
+        bind:
+          create_host_path: false
+    tmpfs: ["/tmp:size=32m,mode=1777,noexec,nosuid,nodev"]
+    environment:
+      LIVE_TRADING_ENABLED: "false"
+      PREDICTION_LIVE_ENABLED: "false"
+    command: ["--state-dir", "/state", "--config-root", "/app/configs", "serve", "--host", "0.0.0.0", "--container-loopback-publish", "--port", "8000", "--dashboard-dir", "/app/dashboard/dist"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
