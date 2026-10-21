@@ -505,14 +505,14 @@ def build_stock_dossiers(
         try:
             _check(
                 all(
-                    getattr(evidence, name) is False
-                    for name in (
-                        "qualified",
-                        "source_qualified",
-                        "strategy_qualified",
-                        "investment_eligible",
-                        "trading_enabled",
-                        "live_authorized",
+                    value is False
+                    for value in (
+                        evidence.qualified,
+                        evidence.source_qualified,
+                        evidence.strategy_qualified,
+                        evidence.investment_eligible,
+                        evidence.trading_enabled,
+                        evidence.live_authorized,
                     )
                 )
             )
