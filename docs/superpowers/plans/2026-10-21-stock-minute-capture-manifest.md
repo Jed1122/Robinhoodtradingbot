@@ -70,7 +70,8 @@ Add `trading_bot.market_data.stock_capture_manifest`:
   as caller input. Original bytes are never printed or logged.
 
 All datetimes must be UTC. Capture starts at least 15 minutes after every declared
-close and after calendar receipt. The manifest's clocks/code/config/URL/HTTP fields
+close and at or after calendar receipt (matching the existing parser's `<=` rule).
+The manifest's clocks/code/config/URL/HTTP fields
 remain declarations. Do not infer actual elapsed time, permitted SIP access,
 publication/finality, stable security identity, corporate actions, historical
 membership or total returns. Native interpolation stays unknown; local no-fill
