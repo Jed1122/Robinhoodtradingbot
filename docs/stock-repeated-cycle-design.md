@@ -28,34 +28,58 @@ existing version-1 receipts as containing new dispatch evidence.
    The absence of that fence is meaningful only in the new explicitly bound protocol.
    Persistence or readback uncertainty burns dispatch; reopening never adopts START
    or CREATE authority. Preserve all existing one-use and code/release bindings.
-3. Bind a successor intent to its exact predecessor attempt, full CID and immutable
-   stopped-receipt hash. Retain historical identities and terminal evidence. The
-   predecessor must stay active through fresh reconfirmation and durable new admission.
+   The closed mutation transport itself must obtain and acknowledge the durable fence,
+   then recheck it immediately before sending; a composer-only check is insufficient.
+3. Distinguish the logical predecessor from an optional physical retirement target.
+   Every successor intent binds its exact logical predecessor attempt, terminal kind
+   (`stopped` or `abandoned_before_dispatch`) and immutable terminal-record hash.
+   A stopped predecessor also supplies its full CID and stopped-receipt hash as the
+   physical retirement target. An abandoned predecessor has no fabricated CID or
+   stopped proof; its inherited physical cleanup must already be resolved before
+   later admission. Preserve every attempt in lineage. A stopped active predecessor
+   stays present through fresh reconfirmation and durable new admission.
 4. Derive retirement targets internally from that checked handoff, not caller IDs,
    labels alone, a broad daemon list or arbitrary root paths. Verify fresh full-CID
    identity and stopped facts before non-force/no-volume removal. Persist removal
    intent before dispatch and completion only after the selected protocol establishes
-   it. Do not delete the active worker or any unknown container, image or volume.
+   it. Both records bind successor intent/hash, physical predecessor attempt/full CID
+   and stopped-receipt hash. Fresh inspection must match that retained stopped lifetime.
+   Removal evidence remains distinct from terminal stopped evidence. Do not delete
+   the active worker or any unknown container, image or volume.
 5. Resolve removal uncertainty separately from creation uncertainty. A typed scoped
    historical-CID absence may be useful only after durable owned stopped/removal
    evidence. Opaque reader errors and absence of an uncertain CREATE's generated name
    are not quiescence proof and cannot admit another worker.
 6. For a new-protocol successor with no CREATE dispatch fence, define an explicit
    durable abandoned-before-dispatch terminal record. It must not fabricate a CID or
-   stopped-container receipt. Resolve predecessor cleanup before any later admission.
-   Recovery consumes its invocation; it does not execute the reopened attempt.
-7. For a created-but-unfenced worker, verify actual identity and never-started state
+   stopped-container receipt. Absence is usable only after validating the complete
+   new-protocol chain with no created/start or contradictory partial records. Resolve
+   inherited physical cleanup before later admission. The versioned history validator
+   must explicitly accept this terminal kind; the current all-stopped history loop
+   cannot be bypassed or fed a fake stopped record. Example: P(stopped) -> S(admitted,
+   never dispatched) -> P(retired) -> S(abandoned) -> T(admitted). T binds logical S
+   and its abandonment hash, with no unresolved physical retirement target.
+7. For a CREATE-fenced but START-unfenced worker, verify actual identity and never-started state
    before recording resolution. For a start-fenced worker, retain the existing
    bounded cleanup-only supervision. Created state after an uncertain START remains
-   unresolved; no fresh fence or START retry. Partial/corrupt chains remain incidents.
+   unresolved; no fresh fence or START retry. In the new protocol, a created/CID record
+   without its required CREATE fence is a contradiction, never no-dispatch evidence.
+   Partial/corrupt chains remain incidents.
 8. Compose all phases under the actual operations lock with shutdown intent recorded
-   before admission. Shutdown and any recovery branch end that invocation. Every
+   before admission. Every recovery/resolution branch burns admission and dispatch
+   claims before fallible validation, following existing cleanup_target behavior.
+   Shutdown and any recovery branch end that invocation. Every
    blocking daemon operation keeps a finite absolute budget; error handling cannot
    loop into new admission, renew a RUN fence or release uncertain reservations.
 
 Freeze exact schemas, public/internal method names, acknowledgements and per-operation
 budgets in the implementation plan before editing the protected store or transports.
 This checkpoint intentionally does not pretend those interfaces already exist.
+Independent static audit of the initial 90b8f77 draft found the logical/physical
+predecessor ambiguity and the ambiguous word "unfenced". Root clarified both above,
+including explicit abandoned history validation, transport-owned CREATE fencing and
+invocation consumption. This is a root design correction, not independent clearance
+of an implemented protocol or a frozen-schema plan.
 
 ## Verified official API facts and remaining native proof
 
