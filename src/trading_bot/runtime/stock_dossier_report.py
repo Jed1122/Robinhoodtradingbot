@@ -273,35 +273,81 @@ def compile_stock_dossier_report(
 
 
 def publish_stock_dossier_report(
-    *, root: Path, manifest_file: str, as_of: datetime, _directory_fd: int | None = None
+    *,
+    root: Path,
+    manifest_file: str,
+    as_of: datetime,
+    additional_captures: tuple[tuple[Path, str], ...] = (),
+    _directory_fd: int | None = None,
 ) -> dict[str, object]:
     """Rehash committed archive, then privately publish idempotent evidence output."""
-    directory = -1
     cleanup = ExitStack()
     try:
-        if re.fullmatch(r"[0-9a-f]{64}\.stock-capture\.json", manifest_file) is None:
+        require_utc(as_of)
+        if type(additional_captures) is not tuple or len(additional_captures) > 2:
             raise ValueError
-        directory = (
-            _private_directory(root)
-            if _directory_fd is None
-            else _duplicate_directory(_directory_fd)
-        )
-        if _directory_fd is None:
-            from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+        captures = ((root, manifest_file), *additional_captures)
+        roots: set[Path] = set()
+        for capture in captures:
+            if type(capture) is not tuple or len(capture) != 2:
+                raise ValueError
+            source_root, source_manifest = capture
+            if (
+                not isinstance(source_root, Path)
+                or type(source_manifest) is not str
+                or re.fullmatch(r"[0-9a-f]{64}\.stock-capture\.json", source_manifest) is None
+                or source_root in roots
+            ):
+                raise ValueError
+            if additional_captures and (
+                not source_root.is_absolute() or source_root.resolve() != source_root
+            ):
+                raise ValueError
+            roots.add(source_root)
+        directories = []
+        identities: set[tuple[int, int]] = set()
+        for index, (source_root, _) in enumerate(captures):
+            descriptor = (
+                _duplicate_directory(_directory_fd)
+                if index == 0 and _directory_fd is not None
+                else _private_directory(source_root)
+            )
+            cleanup.callback(os.close, descriptor)
+            metadata = os.fstat(descriptor)
+            identity = (metadata.st_dev, metadata.st_ino)
+            if identity in identities:
+                raise ValueError
+            identities.add(identity)
+            directories.append(descriptor)
+        from trading_bot.runtime.stock_archive_lease import StockArchiveLease
 
-            cleanup.enter_context(StockArchiveLease(root, _directory_fd=directory))
-        observations = read_stock_observations(root, manifest_file, _directory_fd=directory)
+        for index, ((source_root, _), descriptor) in enumerate(
+            zip(captures, directories, strict=True)
+        ):
+            if index != 0 or _directory_fd is None:
+                cleanup.enter_context(StockArchiveLease(source_root, _directory_fd=descriptor))
+        observations = tuple(
+            observation
+            for (source_root, source_manifest), descriptor in zip(
+                captures, directories, strict=True
+            )
+            for observation in read_stock_observations(
+                source_root, source_manifest, _directory_fd=descriptor
+            )
+        )
         report = compile_stock_dossier_report(observations=observations, as_of=as_of)
         report["source_manifest_sha256"] = manifest_file[:64]
+        if additional_captures:
+            report["source_manifest_sha256s"] = [manifest[:64] for _, manifest in captures]
         body = canonical_json(report).encode()
         if len(body) > _MAX_REPORT_BYTES:
             raise ValueError("stock_dossier_report_too_large")
         digest = hashlib.sha256(body).hexdigest()
         name = digest + ".stock-dossiers.json"
         try:
-            _publish(directory, body, ".stock-dossiers.json")
+            _publish(directories[0], body, ".stock-dossiers.json")
         except FileExistsError:
-            if _read(directory, name, ".stock-dossiers.json") != report:
+            if _read(directories[0], name, ".stock-dossiers.json") != report:
                 raise ValueError from None
         return {
             "status": "stock_dossier_report_published",
@@ -315,11 +361,7 @@ def publish_stock_dossier_report(
         raise ValueError("stock_dossier_report_invalid") from None
     finally:
         try:
-            try:
-                if directory >= 0:
-                    os.close(directory)
-            finally:
-                cleanup.close()
+            cleanup.close()
         except Exception:
             raise ValueError("stock_dossier_report_invalid") from None
 
@@ -328,11 +370,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive-root", type=Path, required=True)
     parser.add_argument("--manifest", required=True)
+    parser.add_argument(
+        "--additional-capture", nargs=2, action="append", default=[], metavar=("ROOT", "MANIFEST")
+    )
     parser.add_argument("--as-of", type=datetime.fromisoformat, default=datetime.now(UTC))
     args = parser.parse_args()
     try:
         result = publish_stock_dossier_report(
-            root=args.archive_root, manifest_file=args.manifest, as_of=args.as_of
+            root=args.archive_root,
+            manifest_file=args.manifest,
+            as_of=args.as_of,
+            additional_captures=tuple(
+                (Path(root), manifest) for root, manifest in args.additional_capture
+            ),
         )
         print(json.dumps(result, sort_keys=True))
         return 0
