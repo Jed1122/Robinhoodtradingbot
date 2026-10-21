@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -64,9 +65,13 @@ def visible_facts(facts: tuple[SourceFact, ...], as_of: datetime) -> tuple[Sourc
     unique: dict[tuple[str, str, str], SourceFact] = {}
     for fact in facts:
         key = (fact.symbol, fact.metric, fact.event_id)
-        if key in unique and unique[key] != fact:
-            raise ValueError("conflicting duplicate source event")
-        unique[key] = fact
+        existing = unique.get(key)
+        if existing is not None:
+            if replace(existing, available_at=fact.available_at) != fact:
+                raise ValueError("conflicting duplicate source event")
+            unique[key] = min((existing, fact), key=lambda f: f.available_at)
+        else:
+            unique[key] = fact
     return tuple(
         sorted(
             (f for f in unique.values() if f.available_at <= as_of),
@@ -83,15 +88,51 @@ class PublicResearchClient:
     historical decision. No response bodies, free text, credentials or errors persist.
     """
 
-    def __init__(self, transport: httpx.BaseTransport) -> None:
+    def __init__(
+        self,
+        transport: httpx.BaseTransport,
+        *,
+        sec_user_agent: str = "HybridResearch contact-unconfigured",
+        max_response_bytes: int = 10_000_000,
+    ) -> None:
+        if (
+            not sec_user_agent
+            or len(sec_user_agent) > 256
+            or any(ord(c) < 32 or ord(c) > 126 for c in sec_user_agent)
+        ):
+            raise ValueError("invalid SEC User-Agent")
+        if type(max_response_bytes) is not int or not 1 <= max_response_bytes <= 10_000_000:
+            raise ValueError("invalid response bound")
         self._transport = transport
+        self._sec_user_agent = sec_user_agent
+        self._max_response_bytes = max_response_bytes
 
-    def _get(self, url: str) -> dict[str, Any]:
-        with httpx.Client(transport=self._transport, timeout=10, follow_redirects=False) as client:
-            response = client.get(url)
-            if response.status_code != 200 or len(response.content) > 10_000_000:
-                raise ValueError("public source unavailable or oversized")
-            payload = response.json()
+    def _get(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+        headers = {"Accept-Encoding": "identity"}
+        if urlsplit(url).hostname == "data.sec.gov":
+            headers["User-Agent"] = self._sec_user_agent
+        try:
+            with (
+                httpx.Client(
+                    transport=self._transport, timeout=10, follow_redirects=False
+                ) as client,
+                client.stream("GET", url, params=params, headers=headers) as response,
+            ):
+                if response.status_code != 200:
+                    raise ValueError("public source unavailable")
+                if response.headers.get("content-encoding", "identity") != "identity":
+                    raise ValueError("unsupported public source encoding")
+                body = bytearray()
+                chunks = (
+                    response.iter_bytes() if response.is_stream_consumed else response.iter_raw()
+                )
+                for chunk in chunks:
+                    if len(body) + len(chunk) > self._max_response_bytes:
+                        raise ValueError("public source oversized")
+                    body.extend(chunk)
+                payload = json.loads(body)
+        except (httpx.HTTPError, ValueError, UnicodeError):
+            raise ValueError("public source unavailable or invalid") from None
         if not isinstance(payload, dict):
             raise ValueError("invalid public source schema")
         return payload
@@ -174,16 +215,29 @@ class PublicResearchClient:
                 )
         return visible_facts(tuple(result), received_at)
 
-    def fred_observations(self, series: str, received_at: datetime) -> tuple[SourceFact, ...]:
+    def fred_observations(
+        self, series: str, received_at: datetime, *, api_key: str | None = None
+    ) -> tuple[SourceFact, ...]:
         """Optional adapter for transport-supplied FRED responses; credentials are external.
 
         A custom transport may inject authentication outside this layer. This method
-        neither accepts nor stores API keys. Realtime vintage is preserved in identity.
+        accepts an optional key only for request construction, never returned source URLs.
+        No transport exception details escape. Realtime vintage is preserved in identity.
         """
         identifier(series)
         utc(received_at)
         url = "https://api.stlouisfed.org/fred/series/observations"
-        payload = self._get(f"{url}?series_id={series}&file_type=json")
+        params = {"series_id": series, "file_type": "json"}
+        if api_key is not None:
+            if (
+                not api_key
+                or len(api_key) > 256
+                or not api_key.isascii()
+                or not re.fullmatch(r"[A-Za-z0-9_-]+", api_key)
+            ):
+                raise ValueError("invalid FRED authentication input")
+            params["api_key"] = api_key
+        payload = self._get(url, params)
         result = []
         for row in payload.get("observations", []):
             if row["value"] == ".":

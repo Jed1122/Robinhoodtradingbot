@@ -16,11 +16,15 @@ coverage, periods, price basis, universe membership, and freshness before using 
 ## Public-source normalization
 
 `PublicResearchClient` requires an injected `httpx.BaseTransport`; it has no default
-network transport, retries, redirects, credential inputs, or provider writes. Tests use
+network transport, retries, redirects, brokerage credential inputs, or provider writes. Tests use
 only `httpx.MockTransport`. Network use requires separately authorized caller composition,
 including an appropriate SEC identifying User-Agent and provider rate limits. The optional
-FRED adapter leaves any necessary authentication entirely to that external transport.
-No key enters a returned source URL. HTTP failures return a generic error.
+FRED adapter accepts an optional API key only for request construction (an injected transport
+may also supply authentication). No key is stored on the client or enters a returned source URL.
+HTTP errors suppress transport exception details. The streaming parser stops when its configurable
+byte limit would be exceeded (at most 10 MB), rejects compressed bodies, and requests identity
+encoding. SEC User-Agent is a validated configurable header; real authorized callers must supply
+a suitable contact identity. The placeholder is for local fixtures, not an operational identity.
 
 Schema references:
 
@@ -72,7 +76,7 @@ SEC raw financial facts do not supply consensus surprises or analyst revisions. 
 inputs leave those families unavailable. Ratios and changes must be supplied as structured,
 source-backed, period-matched facts by an upstream reviewed derivation. The module does not
 derive ROE from arbitrary mixed-duration SEC amounts. Fundamental ranking requires ROE,
-revenue growth, and debt/equity, and sorts their explicit illustrative combination
+revenue growth, and debt/equity, with matching reporting period ends and sorts their explicit illustrative combination
 `ROE + revenue growth - debt/equity`; missing metrics do not get zero-filled.
 
 ## Comparison limits
@@ -105,3 +109,48 @@ register validation windows and cost assumptions; and run out-of-sample comparis
 adequate sample sizes. Research output cannot automatically select an execution strategy.
 No mandatory paper-duration rule is introduced. Any live authorization remains a separate,
 explicit operator decision governed by the repository's existing controls.
+
+
+## Explicit exit-model comparison
+
+`compare_exit_models` independently simulates six frozen policies on injected bars, starting
+with configurable capital (default $1,000), no contributions, no reinvestment, no borrowing,
+and one fractional-share entry at the second bar open after the first close decision:
+
+- Principal retention: after the first observed +15% price threshold, schedule a sale of
+  close-marked value above the original designated starting capital, once per episode.
+- Partial exits: at +12.5% and +20%, respectively schedule 25% of original shares once per
+  threshold. Thresholds reached together share one next-open sale and fee.
+- Trend trailing: a close 5% below the previously observed peak schedules a full next-open sale.
+- References: buy-and-hold, full exit at the first observed +15% close threshold, and full exit
+  after 20 holding sessions (next open). All residual holdings liquidate at the final close
+  under the predeclared comparison horizon.
+
+These percentages are frozen experimental defaults, not optimized results or runtime risk
+configuration. Open gaps can defeat retention and trailing thresholds: scheduled quantities
+execute at the next actual supplied open with slippage; a threshold is never a guaranteed
+execution price. No intrabar high, low, or stop fill is inferred from daily closes.
+
+Slippage bps, per-order fees, and per-bar operating costs are required explicit assumptions.
+Missing costs return `insufficient_evidence`; they never become zero. The entire declared
+operating budget is reserved in cash before purchase and charged for each post-signal bar.
+Capital that cannot fund entry and this reserve returns `insufficient_capital`. Purchase
+quantity funds entry fees and slippage, and sales must fund fees/taxes without borrowing.
+This fully invested episode is a research convention, not application position sizing.
+
+Tax rate may explicitly be unknown (`None`): after-tax return and taxes paid then remain null,
+and path metrics clearly use the pretax basis. A supplied rate applies to each positive
+realized gain after proportional single-lot cost basis and sale fees, without loss offsets,
+netting, deferral, or jurisdiction-specific treatment. Taxes are illustrative assumptions,
+not tax advice or qualified tax accounting. Gross return adds the explicitly tracked direct
+costs back to terminal equity; it is not a reinvested hypothetical cost-free path.
+
+Each result includes CAGR (elapsed calendar time), maximum drawdown, volatility, Sharpe
+(zero risk-free assumption), Sortino, Calmar, turnover, holding bars, average marked exposure,
+explicit costs/taxes, and the trade timeline. Return ratios use 252 observed bars per year;
+bar cadence and that annualization assumption remain caller responsibilities. Undefined
+ratios remain null (for example no downside deviation or drawdown). Win rate and profit
+factor remain null because one episode, including its correlated partial sales, does not
+supply independent trade evidence. Extreme annualization that cannot produce a finite
+CAGR remains null. Every result is `illustrative_only` with `qualified=False`; calculation
+of a statistic does not validate the strategy, establish expected performance, or promote it.

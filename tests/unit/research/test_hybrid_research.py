@@ -265,3 +265,9 @@ def test_fundamental_ranking_rejects_incompatible_periods() -> None:
 def test_price_magnitude_cannot_produce_nonfinite_feature_scores() -> None:
     with pytest.raises(ValueError):
         PriceBar(NOW, Decimal("1e-1000"), Decimal("1e1000"))
+
+
+def test_repeated_receipt_of_identical_event_preserves_earliest_availability() -> None:
+    early = fact("roe", ".2")
+    later = fact("roe", ".2", NOW + timedelta(days=1))
+    assert visible_facts((early, later), NOW + timedelta(days=1)) == (early,)
