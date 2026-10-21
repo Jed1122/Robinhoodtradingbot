@@ -64,6 +64,7 @@ PYTHONPATH=src uv run python -m trading_bot.runtime.stock_research_worker \
   --database /absolute/private/state/ledger.sqlite3 \
   --oauth-store /absolute/private/oauth-stock-research \
   --archive-dir /absolute/private/archive \
+  --control-dir /absolute/private/stock-controls \
   --export-dir /absolute/private/dashboard-export
 ```
 
@@ -87,7 +88,8 @@ The dashboard displays stock priorities, original timestamps, factors, missing
 company evidence and recorded collector status on desktop and mobile. The existing
 Pause/Resume/Kill controls still govern the hybrid portfolio journal. Labels and
 notices explicitly say they do not control the separate collector. Authoritative
-collector admission controls are the next dependency before unattended scheduling.
+collector's own [CLI admission controls](stock-research-controls.md) are implemented
+locally; their fixed path and deployed behavior must be verified before scheduling.
 
 Central local verification passed 417 tests with 93.63% combined branch coverage over
 the dashboard DTO/export, API, worker and research job store, plus 57 frontend tests
@@ -98,7 +100,7 @@ observed no browser errors, warnings, external requests, storage use or page ove
 It made no provider or credential calls. These checks do not establish deployed
 mounts, scheduled acquisition, market-data qualification or live readiness.
 
-Next: collector controls, immutable executing-image/configuration proof, supervised
+Next: integrated collector-control verification, immutable executing-image/configuration proof, supervised
 completion-relative scheduling, encrypted backup/restore and freshness alerts. Stock
 point-in-time datasets, out-of-sample strategy/cost/tax evidence and nonempty broker
 reconciliation remain separate requirements before live authorization.

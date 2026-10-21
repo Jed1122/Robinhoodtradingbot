@@ -141,6 +141,15 @@ No provider or credential operation was part of this dashboard check. The
 
 ## Outstanding work
 
+The later local collector-control feature passed 290 focused/architecture tests with
+96.09% combined branch coverage over controls, CLI, worker and job store. Independent
+review cleared the implementation after lost-anchor and operation-error regressions.
+It requires explicit active authority for acquisition, preserves budget on suspension,
+and fences old cycles across pause/resume. Its state and operator procedure are in the
+[control contract](stock-research-controls.md). It has not been exercised as a deployed
+supervised collector. The full dashboard baseline at 3cd8e8c is still running separately;
+it does not validate this subsequent feature.
+
 The research acquisition/cache scheduler is not yet a verified persistent background
 service. Natural-expiry/revocation recovery, substantive company research, complete
 raw-session liquidity, stock point-in-time datasets, out-of-sample strategy/cost/tax validation,

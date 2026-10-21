@@ -16,8 +16,8 @@ ROOT = Path(__file__).resolve().parents[3]
 IDENTITY = CodeIdentity(CodeHash("b" * 64), "a" * 40, False, None, False)
 
 
-def arguments(root):
-    return [
+def arguments(root, *, control=True):
+    result = [
         "--config-root",
         str(ROOT / "configs"),
         "--database",
@@ -27,6 +27,9 @@ def arguments(root):
         "--archive-dir",
         str(root / "unused-archive"),
     ]
+    if control:
+        result += ["--control-dir", str(root / "unused-controls")]
+    return result
 
 
 @pytest.mark.parametrize(
@@ -73,6 +76,19 @@ def test_cli_validated_existing_ledger_reaches_fake_sdk_and_retains_charge(
     path = root / "ledger.sqlite3"
     migrate_sqlite_ledger(
         path, alembic_ini=ROOT / "alembic.ini", migrations_dir=ROOT / "migrations"
+    )
+    from trading_bot.runtime.stock_research_controls import StockResearchControls
+
+    control_root = root / "unused-controls"
+    control_root.mkdir(mode=0o700)
+    controls = StockResearchControls(control_root)
+    paused = controls.initialize()
+    loaded, code = module.load_stock_worker_identity(ROOT / "configs")
+    controls.change(
+        "resume",
+        expected_sha256=paused.sha256,
+        config_hash=str(loaded.config_hash),
+        code_hash=str(code),
     )
     calls = []
 
@@ -315,7 +331,12 @@ def test_export_only_cli_reads_migrated_ledger_without_sdk_or_new_claim(
     )
     assert (
         module.main(
-            [*arguments(root), "--export-only", "--export-dir", str(root / "dashboard-export")]
+            [
+                *arguments(root, control=False),
+                "--export-only",
+                "--export-dir",
+                str(root / "dashboard-export"),
+            ]
         )
         == 0
     )
@@ -327,6 +348,18 @@ def test_export_only_cli_reads_migrated_ledger_without_sdk_or_new_claim(
     with sqlite3.connect(root / "ledger.sqlite3") as connection:
         assert connection.execute("SELECT count(*) FROM audit_events").fetchone() == (0,)
     assert not (root / "unused-oauth").exists()
+
+
+def test_acquisition_cli_requires_control_path_before_identity_or_resource_access(
+    tmp_path, monkeypatch, capsys
+):
+    module = importlib.import_module("trading_bot.runtime.stock_research_worker")
+    monkeypatch.setattr(
+        module, "resolve_code_identity", lambda *a: pytest.fail("missing required control")
+    )
+    assert module.main(arguments(tmp_path.resolve(), control=False)) == 2
+    assert json.loads(capsys.readouterr().out)["reason"] == "worker_startup_blocked"
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_export_failure_preserves_separate_completed_acquisition_result(

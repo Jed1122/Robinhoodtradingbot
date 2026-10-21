@@ -150,3 +150,63 @@ no browser errors, warnings or page overflow were observed. See the
 [export contract](../../stock-dashboard-export.md). Collector admission controls,
 deployed mount/identity proofs and supervised scheduling remain next; no 24/7 operation
 or live readiness follows from this checkpoint.
+
+## Collector admission controls continuation
+
+Base: reviewed dashboard integration 3cd8e8c. Root owns this protected continuation;
+the primary checkout stays frozen while its full suite runs. Add one dedicated,
+strict private control-state store, separate from the archive's whole-cycle lease
+and the hybrid account journal. Reuse canonical private path validation, bounded
+canonical records and fsync/atomic-publication patterns. This is operational state,
+not a second strategy/risk configuration system. Missing or ambiguous state denies
+acquisition. Initialization is explicit and paused; kill is sticky with no initial
+clear operation. Resume requires compare-and-swap against the observed state digest
+and binds the verified current code and full canonical stock configuration.
+
+- [x] Write and observe failing tests for private explicit initialization, active
+  grants, generation fencing, sticky kill, identity/config/code mismatch, invalid
+  metadata/records, concurrent control acknowledgement and publication failure.
+- [x] Implement `runtime/stock_research_controls.py`: strict current state with
+  stable collector identity, monotonically increasing generation, previous-state
+  digest, fixed action/time and optional active code/config binding. Keep paths,
+  provider prose and credentials out of status output. The current state records
+  the latest transition; CLI structured output must be retained by the eventual
+  supervisor for the complete operational transition log.
+- [x] Add a separate nonblocking dispatch mutex. A control transition may report
+  success only after it owns that mutex, persists/fsyncs and reads back the new
+  state. Busy/uncertain operations cannot claim pause or kill acknowledgement.
+  A previously admitted operation may complete before acknowledgement. Recheck
+  the named root and lock identity at both boundaries; never repair/delete an
+  unsafe anchor or use the archive lock for controls.
+- [x] Require a control store for acquisition and fence one immutable grant at
+  startup. Hold an admitted permit through claim commit, bounded SDK entry/schema
+  setup, each actual awaited data call, and successful terminal commit. Avoid the
+  pre-call-hook scheduling gap by wrapping the transport itself. Cleanup, partial
+  or blocked recording, and export-only must remain possible after suspension.
+  No paused cycle constructs credentials, submits a new call or promotes cache.
+- [x] Provide explicit local initialize/status/pause/kill/resume commands. Resume
+  reuses the existing clean-Git or root-attested image/config identity verifier;
+  there is no arbitrary hash or live-mode option. `--control-dir` is required for
+  worker acquisition; export-only does not read it. No UI writer or deployment is
+  added in this step; existing dashboard control labels remain truthful.
+- [ ] Exercise real migrated fictional ledgers and separate processes: pause before
+  reserve/credentials, pause between admission and transport, pause during a call,
+  pause+resume while an old cycle waits, cancellation, restart, lock contention,
+  namespace replacement, failed publication and retained reservations/cache heads.
+  Run focused coverage, architecture, Ruff/mypy/Bandit/lock checks and independent
+  integrated review. Only integrate after checking the frozen full-suite result.
+
+No control command grants brokerage execution or proves supervised deployment. Next
+remain the actual timer/deadline/image/mount/backup/authentication/source checks.
+
+
+Control continuation source checkpoint: 290 focused/architecture tests passed with
+96.09% combined branch coverage; another 178 shared job/capture/identity/hybrid/export
+regressions passed. Ruff, strict mypy (439 source files), Bandit, lock and diff checks
+passed. Independent source/fixture and documentation reviews are READY_FOR_INTEGRATION.
+The lost-anchor repair and permit exception-classification bugs were observed failing
+and corrected with regressions. The separate-process fixture now shares its explicit
+fictional UTC clock with the parent; no production clock guard was relaxed. The primary
+3cd8e8c full suite remains in progress and frozen; final branch integration must wait
+for its terminal result. No provider, credential, deployment or live operation was
+performed for this feature.

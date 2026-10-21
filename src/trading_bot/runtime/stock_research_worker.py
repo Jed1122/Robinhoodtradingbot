@@ -10,13 +10,15 @@ import math
 import os
 import stat
 import time
-from collections.abc import Awaitable, Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Awaitable, Callable, Iterator, Mapping
+from contextlib import AsyncExitStack, contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from trading_bot.brokers.robinhood_mcp_schema_gate import JsonValue
 from trading_bot.brokers.robinhood_mcp_sdk import RobinhoodMcpSdkConnection
+from trading_bot.brokers.robinhood_mcp_transport import McpToolResult, McpToolSession
 from trading_bot.brokers.stock_research_mcp import PROFILE_SHA256, StockResearchTransport
 from trading_bot.clock import require_utc
 from trading_bot.code_identity import resolve_code_identity, verify_deployed_image_attestation
@@ -51,6 +53,11 @@ from trading_bot.runtime.stock_capture import (
 from trading_bot.runtime.stock_dossier_report import (
     compile_stock_dossier_report,
     publish_stock_dossier_report,
+)
+from trading_bot.runtime.stock_research_controls import (
+    StockControlGrant,
+    StockResearchControlError,
+    StockResearchControls,
 )
 
 
@@ -260,6 +267,19 @@ def _blocked(reason: str) -> dict[str, object]:
     return {"status": "blocked", "reason": reason, "live_enabled": False}
 
 
+class _ControlledStockTransport(StockResearchTransport):
+    def __init__(
+        self, session: McpToolSession, controls: StockResearchControls, grant: StockControlGrant
+    ) -> None:
+        super().__init__(session)
+        self._controls, self._grant = controls, grant
+
+    async def call_tool(self, name: str, arguments: Mapping[str, JsonValue]) -> McpToolResult:
+        # This barrier spans the awaited dispatch, not merely its earlier admission hook.
+        with self._controls.permit(self._grant):
+            return await super().call_tool(name, arguments)
+
+
 async def run_stock_research_cycle(
     *,
     loaded: LoadedConfig,
@@ -267,6 +287,7 @@ async def run_stock_research_cycle(
     factory: object,
     oauth_store: Path,
     output_dir: Path,
+    controls: StockResearchControls | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     monotonic: Callable[[], float] = time.monotonic,
@@ -283,6 +304,9 @@ async def run_stock_research_cycle(
         restored = restore_loaded_config(loaded.canonical_json, loaded.config_hash)
         _check(restored == loaded and type(restored.config) is StockWorkerAppConfig)
         policy = StockWorkerAppConfig.model_validate(restored.config.model_dump())
+        if type(controls) is not StockResearchControls:
+            return _blocked("control_denied")
+        grant = controls.grant(config_hash=str(loaded.config_hash), code_hash=str(code_hash))
         jobs = SqlStockResearchJobs(factory, loaded=loaded, code_hash=code_hash, clock=clock)
         deadline = started + policy.stock_worker.max_run_seconds
         active_claim: StockResearchClaim | None = None
@@ -322,13 +346,14 @@ async def run_stock_research_cycle(
             plan_sha256 = _plan_hash(plan)
             archive.admit(remaining_calls=len(plan), policy=policy.stock_worker)
             gate()
-            claim = await jobs.reserve(
-                phase=phase,
-                plan_sha256=plan_sha256,
-                planned_calls=len(plan),
-                expected_state_hash=state.state_hash,
-                source_result_sha256=source,
-            )
+            with controls.permit(grant):
+                claim = await jobs.reserve(
+                    phase=phase,
+                    plan_sha256=plan_sha256,
+                    planned_calls=len(plan),
+                    expected_state_hash=state.state_hash,
+                    source_result_sha256=source,
+                )
             active_claim = claim
             captured: dict[str, object] | None = None
             capture_started = terminal_attempted = False
@@ -341,19 +366,23 @@ async def run_stock_research_cycle(
                 reason = "auth_unavailable"
                 async with asyncio.timeout(deadline - monotonic()):
                     with _suppress_untrusted_dependency_logs():
-                        async with RobinhoodMcpSdkConnection(
-                            oauth_store_dir=oauth_store
-                        ) as connection:
-                            session = connection.stock_research_session
-                            gate()
-                            reason = "schema_mismatch"
-                            _check(await session.validate_tools() == PROFILE_SHA256, reason)
+                        async with AsyncExitStack() as connections:
+                            with controls.permit(grant):
+                                connection = await connections.enter_async_context(
+                                    RobinhoodMcpSdkConnection(oauth_store_dir=oauth_store)
+                                )
+                                session = connection.stock_research_session
+                                gate()
+                                reason = "schema_mismatch"
+                                _check(await session.validate_tools() == PROFILE_SHA256, reason)
                             gate()
                             reason = "runtime_failure"
                             next_index = 0
 
                             async def before_call(index: int, request: StockCaptureRequest) -> None:
                                 nonlocal next_index
+                                with controls.permit(grant):
+                                    pass
                                 gate()
                                 _check(index == next_index and request == plan[index])
                                 _check(_plan_hash(plan) == claim.plan_sha256)
@@ -368,7 +397,7 @@ async def run_stock_research_cycle(
 
                             capture_started = True
                             captured = await capture_stock_observations(
-                                transport=StockResearchTransport(session),
+                                transport=_ControlledStockTransport(session, controls, grant),
                                 requests=plan,
                                 output_dir=output_dir,
                                 clock=clock,
@@ -378,6 +407,8 @@ async def run_stock_research_cycle(
                                 _directory_fd=archive.directory_fd,
                             )
                         gate()  # Transport closed before report publication or cache promotion.
+                    with controls.permit(grant):
+                        pass
                     reason = "artifact_unavailable"
                     manifest, observations = _verified_capture(
                         archive=archive,
@@ -436,24 +467,27 @@ async def run_stock_research_cycle(
                         claim, plan_sha256=plan_sha256, planned_calls=len(plan)
                     )
                     gate()
-                    terminal_attempted = True
-                    result = await jobs.finish(
-                        claim,
-                        status="succeeded" if report_sha256 is not None else "blocked",
-                        reason="complete" if report_sha256 is not None else reason,
-                        capture_plan_sha256=manifest["request_plan_sha256"],
-                        attempted_calls=manifest["attempted_calls"],
-                        successful_calls=manifest["successful_calls"],
-                        manifest_sha256=str(captured["manifest_sha256"]),
-                        report_sha256=report_sha256,
-                        require_active_before_success=True,
-                    )
+                    with controls.permit(grant) if report_sha256 is not None else nullcontext():
+                        terminal_attempted = True
+                        result = await jobs.finish(
+                            claim,
+                            status="succeeded" if report_sha256 is not None else "blocked",
+                            reason="complete" if report_sha256 is not None else reason,
+                            capture_plan_sha256=manifest["request_plan_sha256"],
+                            attempted_calls=manifest["attempted_calls"],
+                            successful_calls=manifest["successful_calls"],
+                            manifest_sha256=str(captured["manifest_sha256"]),
+                            report_sha256=report_sha256,
+                            require_active_before_success=True,
+                        )
                     return _summary(result, claim)
             except asyncio.CancelledError:
                 # The capture may have published a cancellation manifest but did
                 # not return its identity. Keep the charged claim; never guess.
                 raise
-            except Exception:
+            except Exception as exc:
+                if isinstance(exc, StockResearchControlError):
+                    reason = "control_denied"
                 _raise_pending_cancellation()
                 if terminal_attempted or (capture_started and captured is None):
                     return _blocked(reason)
@@ -494,6 +528,8 @@ async def run_stock_research_cycle(
         return _blocked("storage_full")
     except StockResearchJobError:
         return _blocked("ledger_unavailable")
+    except StockResearchControlError:
+        return _blocked("control_denied")
     except Exception:
         return _blocked("artifact_unavailable")
 
@@ -530,6 +566,34 @@ def _existing_private_ledger(path: Path) -> Iterator[int]:
                 os.close(directory)
 
 
+def load_stock_worker_identity(
+    root: Path, *, image_digest: str | None = None, image_attestation: Path | None = None
+) -> tuple[LoadedConfig, CodeHash]:
+    """Shared startup/resume identity; no arbitrary hash, credential or provider operation."""
+    _check((image_digest is None) == (image_attestation is None), "worker_startup_blocked")
+    loaded = load_config(
+        root / "base.yaml",
+        root / "hybrid/paper.yaml",
+        root / "hybrid/safety-envelope.yaml",
+        os.environ,
+        hybrid_policy_path=root / "hybrid/policy.yaml",
+        stock_research_policy_path=root / "hybrid/stock-research.yaml",
+        stock_worker_policy_path=root / "hybrid/stock-worker.yaml",
+    )
+    if image_digest is not None:
+        if image_attestation is None:
+            raise StockWorkerError("worker_startup_blocked")
+        deployed = verify_deployed_image_attestation(
+            image_attestation,
+            expected_image_digest=image_digest,
+        )
+        _check(deployed.deployment_config_hash == str(loaded.config_hash))
+        return loaded, deployed.code_hash
+    identity = resolve_code_identity(Path(__file__).resolve().parents[3], None)
+    _check(not identity.dirty and not identity.non_promotable and identity.git_commit is not None)
+    return loaded, identity.code_hash
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     repository = Path(__file__).resolve().parents[3]
@@ -537,6 +601,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--oauth-store", type=Path, required=True)
     parser.add_argument("--archive-dir", type=Path, required=True)
+    parser.add_argument("--control-dir", type=Path, help="Required explicit collector authority")
     parser.add_argument(
         "--export-dir", type=Path, help="Separate private dashboard projection directory"
     )
@@ -550,34 +615,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         _check(not args.export_only or args.export_dir is not None, "worker_startup_blocked")
-        _check(
-            (args.image_digest is None) == (args.image_attestation is None),
-            "worker_startup_blocked",
+        _check(args.export_only or args.control_dir is not None, "worker_startup_blocked")
+        loaded, code_hash = load_stock_worker_identity(
+            args.config_root,
+            image_digest=args.image_digest,
+            image_attestation=args.image_attestation,
         )
-        root = args.config_root
-        loaded = load_config(
-            root / "base.yaml",
-            root / "hybrid/paper.yaml",
-            root / "hybrid/safety-envelope.yaml",
-            os.environ,
-            hybrid_policy_path=root / "hybrid/policy.yaml",
-            stock_research_policy_path=root / "hybrid/stock-research.yaml",
-            stock_worker_policy_path=root / "hybrid/stock-worker.yaml",
-        )
-        if args.image_digest is not None:
-            deployed = verify_deployed_image_attestation(
-                args.image_attestation, expected_image_digest=args.image_digest
-            )
-            _check(deployed.deployment_config_hash == str(loaded.config_hash))
-            code_hash = deployed.code_hash
-        else:
-            identity = resolve_code_identity(repository, None)
-            _check(
-                not identity.dirty
-                and not identity.non_promotable
-                and identity.git_commit is not None
-            )
-            code_hash = identity.code_hash
         from trading_bot.logging import _install_logging_settings, configure_logging
 
         _install_logging_settings(loaded.config.logging, loaded.safety_envelope.logging)
@@ -598,6 +641,7 @@ def main(argv: list[str] | None = None) -> int:
                             factory=factory,
                             oauth_store=args.oauth_store,
                             output_dir=args.archive_dir,
+                            controls=StockResearchControls(args.control_dir),
                         )
                     )
                     if args.export_dir is not None:

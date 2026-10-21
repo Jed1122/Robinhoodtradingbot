@@ -18,6 +18,7 @@ from trading_bot.domain import CodeHash
 from trading_bot.persistence import async_session_factory
 from trading_bot.persistence.stock_research_jobs import SqlStockResearchJobs
 from trading_bot.research.stock_screen import TURNOVER_COLUMN
+from trading_bot.runtime.stock_research_controls import StockResearchControls
 
 ROOT = Path(__file__).parents[3]
 NOW = datetime(2026, 10, 21, 12, tzinfo=UTC)
@@ -42,6 +43,7 @@ class Scenario:
         self.truncated = False
         self.entered = asyncio.Event()
         self.waiting = asyncio.Event()
+        self.on_sleep = None
 
     def connection(self, **kwargs):
         self.events.append("constructed")
@@ -159,13 +161,26 @@ def worker(tmp_path, sqlite_engine, alembic_config, monkeypatch):
     root = tmp_path.resolve() / "archive"
     root.mkdir(mode=0o700)
     clock, scenario = Clock(), Scenario()
+    control_root = tmp_path.resolve() / "controls"
+    control_root.mkdir(mode=0o700)
+    controls = StockResearchControls(control_root, clock=clock.now)
+    paused = controls.initialize()
+    controls.change(
+        "resume",
+        expected_sha256=paused.sha256,
+        config_hash=str(loaded.config_hash),
+        code_hash=str(CODE),
+    )
+    scenario.controls = controls
     monkeypatch.setattr(module, "RobinhoodMcpSdkConnection", scenario.connection)
     factory = async_session_factory(sqlite_engine)
 
     async def pause(seconds):
-        pass
+        if scenario.on_sleep is not None:
+            scenario.on_sleep()
 
     async def cycle(**kwargs):
+        authority = kwargs.pop("controls", controls)
         return await module.run_stock_research_cycle(
             loaded=loaded,
             code_hash=CODE,
@@ -174,11 +189,133 @@ def worker(tmp_path, sqlite_engine, alembic_config, monkeypatch):
             output_dir=root,
             clock=clock.now,
             sleep=pause,
+            controls=authority,
             **kwargs,
         )
 
     owner = SqlStockResearchJobs(factory, loaded=loaded, code_hash=CODE, clock=clock.now)
     return module, root, clock, scenario, cycle, owner, loaded
+
+
+@pytest.mark.asyncio
+async def test_acquisition_requires_explicit_active_collector_authority(worker):
+    _, _, _, scenario, cycle, owner, _ = worker
+    result = await cycle(controls=None)
+    assert result == {"status": "blocked", "reason": "control_denied", "live_enabled": False}
+    assert scenario.events == [] and scenario.calls == []
+    assert (await owner.snapshot()).claims == ()
+
+
+def suspend(scenario, action="pause"):
+    current = scenario.controls.read()
+    return scenario.controls.change(action, expected_sha256=current.sha256)
+
+
+@pytest.mark.asyncio
+async def test_paused_and_killed_collector_never_reserves_or_constructs_sdk(worker):
+    _, _, _, scenario, cycle, owner, _ = worker
+    suspend(scenario)
+    assert (await cycle())["reason"] == "control_denied"
+    suspend(scenario, "kill")
+    assert (await cycle())["reason"] == "control_denied"
+    assert scenario.events == [] and scenario.calls == []
+    assert (await owner.snapshot()).claims == ()
+
+
+@pytest.mark.asyncio
+async def test_pause_before_reservation_preserves_zero_charge(worker, monkeypatch):
+    module, _, _, scenario, cycle, owner, _ = worker
+    original = module._cached
+
+    def pause_first(**kwargs):
+        suspend(scenario)
+        return original(**kwargs)
+
+    monkeypatch.setattr(module, "_cached", pause_first)
+    assert (await cycle())["reason"] == "control_denied"
+    assert scenario.events == [] and (await owner.snapshot()).claims == ()
+
+
+@pytest.mark.asyncio
+async def test_pause_after_reservation_prevents_credential_construction(worker, monkeypatch):
+    module, _, _, scenario, cycle, owner, _ = worker
+    original = module.SqlStockResearchJobs.assert_active
+
+    async def pause_first(self, *args, **kwargs):
+        await original(self, *args, **kwargs)
+        suspend(scenario)
+
+    monkeypatch.setattr(module.SqlStockResearchJobs, "assert_active", pause_first)
+    assert (await cycle())["reason"] == "control_denied"
+    assert scenario.events == [] and scenario.calls == []
+    state = await owner.snapshot()
+    assert state.reserved_today == 2 and state.discovery_head is None
+    assert state.results[-1].reason == "control_denied"
+
+
+@pytest.mark.asyncio
+async def test_pause_after_before_call_hook_cannot_race_actual_provider_dispatch(
+    worker, monkeypatch
+):
+    module, _, _, scenario, cycle, owner, _ = worker
+    original = module.capture_stock_observations
+
+    async def race(**kwargs):
+        before = kwargs["before_call"]
+
+        async def pause_after_hook(index, request):
+            await before(index, request)
+            suspend(scenario)
+
+        kwargs["before_call"] = pause_after_hook
+        return await original(**kwargs)
+
+    monkeypatch.setattr(module, "capture_stock_observations", race)
+    assert (await cycle())["reason"] == "control_denied"
+    assert scenario.calls == [] and scenario.events[-1] == "closed"
+    state = await owner.snapshot()
+    assert state.reserved_today == 2 and state.discovery_head is None
+
+
+@pytest.mark.asyncio
+async def test_pause_and_resume_between_calls_fences_the_existing_cycle(worker):
+    _, _, _, scenario, cycle, owner, loaded = worker
+
+    def pause_resume():
+        state = suspend(scenario)
+        scenario.controls.change(
+            "resume",
+            expected_sha256=state.sha256,
+            config_hash=str(loaded.config_hash),
+            code_hash=str(CODE),
+        )
+
+    scenario.on_sleep = pause_resume
+    result = await cycle()
+    assert result["reason"] == "control_denied"
+    assert len(scenario.calls) == 1 and scenario.events[-1] == "closed"
+    assert (await owner.snapshot()).discovery_head is None
+    assert scenario.controls.read().record.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_inflight_operation_cannot_be_reported_paused_and_cancellation_releases_permit(
+    worker,
+):
+    _, _, _, scenario, cycle, owner, _ = worker
+    scenario.fail = "hang"
+    running = asyncio.create_task(cycle())
+    await asyncio.wait_for(scenario.entered.wait(), timeout=5)
+    with pytest.raises(ValueError, match="stock_control_busy"):
+        suspend(scenario)
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+    assert suspend(scenario).record.status == "paused"
+    assert scenario.events[-1] == "closed"
+    state = await owner.snapshot()
+    assert state.reserved_today == 2 and state.pending_count == 1
+    assert (await cycle())["reason"] == "control_denied"
 
 
 @pytest.mark.asyncio

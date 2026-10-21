@@ -39,8 +39,18 @@ viewports. Independent backend/UI reviews cleared this bounded integration. No b
 credential or deployment operation was performed for that check. The dashboard's
 existing controls explicitly remain scoped to the hybrid portfolio journal.
 
-Next: authoritative research pause/kill admission,
-deployed image/config verification and a completion-relative timer with an actual process
+The subsequent collector gate is implemented locally with a private paused-by-default
+authority, sticky kill, code/config-bound explicit resume, generation fencing and a
+separate dispatch mutex spanning reservation, setup, actual calls and successful commit.
+Its focused/architecture checks passed 290 tests with 96.09% combined branch coverage;
+independent review cleared the corrected lost-anchor and operation-exception boundaries.
+This later feature is not covered by the frozen dashboard baseline, which is still
+running separately at 3cd8e8c. Collector actuation is CLI-only; the dashboard still
+shows recorded cycle state and retains its separate hybrid controls. See the
+[control contract](docs/stock-research-controls.md).
+
+Next: complete integrated verification, deployed image/config/control-path verification
+and a completion-relative timer with an actual process
 deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,
 restore and watchdog alerts. Stock data/strategy qualification and nonempty brokerage
 reconciliation remain incomplete. Live execution remains disabled. See the

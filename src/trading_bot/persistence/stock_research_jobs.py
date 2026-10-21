@@ -65,6 +65,7 @@ _REASONS = frozenset(
         "artifact_unavailable",
         "report_failed",
         "storage_full",
+        "control_denied",
     }
 )
 # Exact whitespace-normalized audit guards from immutable migration0002. Merely

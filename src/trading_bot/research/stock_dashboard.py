@@ -36,6 +36,7 @@ _REASONS = {
     "artifact_unavailable",
     "report_failed",
     "storage_full",
+    "control_denied",
 }
 _UNAVAILABLE = {"export_unavailable", "stale_export", "future_export", "budget_day_changed"}
 

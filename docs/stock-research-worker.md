@@ -57,9 +57,12 @@ Python cancellation is cooperative. Production operation also requires a supervi
 hard process limit and observed cleanup/restart behavior; that deployment is not yet
 verified.
 
-The existing dashboard Pause/Kill controls affect its hybrid journal. They are not yet
-wired to this separate acquisition command. An authoritative research control gate
-before reservation, credentials and every data call is required before scheduling it.
+The existing dashboard Pause/Kill controls affect its hybrid journal. Collector
+actuation is a separate explicit CLI. Acquisition now requires its private active
+code/configuration-bound grant, checked through reservation, session setup, actual
+data dispatch and successful result commit. Missing or stopped authority fails closed.
+See the [collector control contract](stock-research-controls.md). Its fixed path/mount
+identity and deployed behavior still require verification before scheduling.
 
 ## Research selection
 
@@ -96,6 +99,10 @@ checkout. Select the separately authorized official OAuth store explicitly. The
 command never creates a missing ledger, repairs permissions, opens browser login,
 chooses another credential store or enables live mode.
 
+Select a separately initialized collector control directory explicitly with
+`--control-dir`. Initialization is paused; only an explicit current-code/current-policy
+resume authorizes acquisition. Export-only may omit this option and never reads it.
+
 The CLI retains the validated file descriptor through engine disposal. Its opt-in
 SQLite engine uses existing-file-only `mode=rw` and checks held/named inode identity,
 private ownership and path metadata before connection and pooled-checkout policy
@@ -109,6 +116,7 @@ PYTHONPATH=src uv run python -m trading_bot.runtime.stock_research_worker \
   --config-root configs \
   --database /absolute/private/research/state/ledger.sqlite3 \
   --archive-dir /absolute/private/research/archive \
+  --control-dir /absolute/private/research/controls \
   --oauth-store /absolute/private/authorized-oauth
 ```
 
@@ -153,8 +161,10 @@ Separate process tests exercise lock contention; fault tests verify lock release
 when closing a writer directory fails. These tests establish local behavior only.
 
 The authenticated dashboard projection and stock UI are implemented and locally verified
-as described in the export contract. Next: the research pause/kill gate,
-resource-bounded external timer and deployed identity checks; verify actual scheduled collection, authentication
+as described in the export contract. The independent collector gate is implemented
+locally with explicit CLI actuation. Next: inspect integrated verification, implement
+the resource-bounded external timer and deployed identity/control-path checks, then
+verify actual scheduled collection, authentication
 expiry/revocation, encrypted backup/restore and watchdog alerts. Market-data qualification,
 out-of-sample stock-strategy validation, costs/taxes, nonempty brokerage reconciliation
 and separate live authorization remain required.
