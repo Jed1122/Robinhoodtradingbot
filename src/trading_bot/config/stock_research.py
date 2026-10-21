@@ -69,3 +69,22 @@ class StockResearchAppConfig(HybridAppConfig):
 
 class StockResearchSafetyEnvelope(HybridSafetyEnvelope):
     stock_research: StockResearchSettings
+
+
+class StockWorkerSettings(StrictModel):
+    """Opt-in operational bounds; existing stock-v1 evidence keeps its exact graph."""
+
+    policy_id: Literal["stock-worker-v1"] = "stock-worker-v1"
+    live_enabled: StrictFalse = False
+    max_run_seconds: StrictInt = Field(default=450, ge=60, le=450)
+    enrichment_refresh_minutes: StrictInt = Field(default=360, ge=60, le=1440)
+    max_archive_bytes: StrictInt = Field(default=1073741824, ge=335544320, le=8589934592)
+    max_archive_files: StrictInt = Field(default=10000, ge=128, le=100000)
+
+
+class StockWorkerAppConfig(StockResearchAppConfig):
+    stock_worker: StockWorkerSettings
+
+
+class StockWorkerSafetyEnvelope(StockResearchSafetyEnvelope):
+    stock_worker: StockWorkerSettings

@@ -20,7 +20,12 @@ from trading_bot.config.capital_research import (
 from trading_bot.config.hashing import hash_loaded_config
 from trading_bot.config.hybrid import HybridAppConfig, HybridSafetyEnvelope
 from trading_bot.config.models import AppConfig, SafetyEnvelope
-from trading_bot.config.stock_research import StockResearchAppConfig, StockResearchSafetyEnvelope
+from trading_bot.config.stock_research import (
+    StockResearchAppConfig,
+    StockResearchSafetyEnvelope,
+    StockWorkerAppConfig,
+    StockWorkerSafetyEnvelope,
+)
 from trading_bot.domain import ConfigHash, ExecutionMode
 from trading_bot.domain.decimal_utils import _require_sha256_hex
 
@@ -100,8 +105,13 @@ def restore_loaded_config(canonical_json: bytes, expected_hash: ConfigHash) -> L
         stocks = "stock_research" in config_body
         if stocks != ("stock_research" in envelope_body) or (stocks and not hybrid):
             raise ConfigLoadError("canonical configuration invalid")
+        worker = "stock_worker" in config_body
+        if worker != ("stock_worker" in envelope_body) or (worker and not stocks):
+            raise ConfigLoadError("canonical configuration invalid")
         config_model = (
-            StockResearchAppConfig
+            StockWorkerAppConfig
+            if worker
+            else StockResearchAppConfig
             if stocks
             else HybridAppConfig
             if hybrid
@@ -110,7 +120,9 @@ def restore_loaded_config(canonical_json: bytes, expected_hash: ConfigHash) -> L
             else AppConfig
         )
         envelope_model = (
-            StockResearchSafetyEnvelope
+            StockWorkerSafetyEnvelope
+            if worker
+            else StockResearchSafetyEnvelope
             if stocks
             else HybridSafetyEnvelope
             if hybrid
@@ -355,7 +367,19 @@ def _require_not_enabled(name: str, actual: bool, permitted: bool) -> None:
 def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None:
     """Reject every resolved value that weakens release-level safety."""
 
-    stock_pair = (
+    worker_pair = (
+        type(config) is StockWorkerAppConfig and type(envelope) is StockWorkerSafetyEnvelope
+    )
+    if (
+        isinstance(config, StockWorkerAppConfig)
+        or isinstance(envelope, StockWorkerSafetyEnvelope)
+    ) and (
+        not worker_pair
+        or cast(StockWorkerAppConfig, config).stock_worker
+        != cast(StockWorkerSafetyEnvelope, envelope).stock_worker
+    ):
+        raise UnsafeConfiguration("stock worker policy/envelope mismatch")
+    stock_pair = worker_pair or (
         type(config) is StockResearchAppConfig and type(envelope) is StockResearchSafetyEnvelope
     )
     if (
@@ -924,6 +948,7 @@ def load_config(
     research_policy_path: Path | None = None,
     hybrid_policy_path: Path | None = None,
     stock_research_policy_path: Path | None = None,
+    stock_worker_policy_path: Path | None = None,
 ) -> LoadedConfig:
     """Load base, one named mode, environment, and immutable safety envelope."""
 
@@ -931,6 +956,8 @@ def load_config(
         raise ConfigLoadError("select only one canonical policy extension")
     if stock_research_policy_path is not None and hybrid_policy_path is None:
         raise ConfigLoadError("stock research requires canonical hybrid policy")
+    if stock_worker_policy_path is not None and stock_research_policy_path is None:
+        raise ConfigLoadError("stock worker requires canonical stock policy")
     if (research_policy_path is not None or hybrid_policy_path is not None) and any(
         key.upper().startswith(ENV_PREFIX) or key.upper() in ENV_ALIASES for key in environ
     ):
@@ -959,8 +986,15 @@ def load_config(
                 stock_policy = _load_yaml(stock_research_policy_path)
                 merged["stock_research"] = stock_policy
                 envelope_body["stock_research"] = stock_policy
-                config = StockResearchAppConfig.model_validate(merged)
-                envelope = StockResearchSafetyEnvelope.model_validate(envelope_body)
+                if stock_worker_policy_path is not None:
+                    worker_policy = _load_yaml(stock_worker_policy_path)
+                    merged["stock_worker"] = worker_policy
+                    envelope_body["stock_worker"] = worker_policy
+                    config = StockWorkerAppConfig.model_validate(merged)
+                    envelope = StockWorkerSafetyEnvelope.model_validate(envelope_body)
+                else:
+                    config = StockResearchAppConfig.model_validate(merged)
+                    envelope = StockResearchSafetyEnvelope.model_validate(envelope_body)
             else:
                 config = HybridAppConfig.model_validate(merged)
                 envelope = HybridSafetyEnvelope.model_validate(envelope_body)
