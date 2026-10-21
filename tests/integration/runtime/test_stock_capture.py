@@ -484,8 +484,105 @@ def test_capture_rejects_borrowed_non_directory_before_dispatch(capture):
         os.close(descriptor)
 
 
+def test_manual_capture_connection_is_not_constructed_while_archive_owned(capture, monkeypatch):
+    module, root = capture
+    from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+
+    constructed = []
+    monkeypatch.setattr(module, "RobinhoodMcpSdkConnection", lambda **kw: constructed.append(kw))
+    with StockArchiveLease(root), pytest.raises(module.StockCaptureError):
+        module.run_stock_capture(
+            oauth_store=root,
+            plan=[{"tool": "get_scanner_filter_specs", "arguments": {}}],
+            output_dir=root,
+        )
+    assert constructed == []
+
+
+def test_direct_capture_and_report_writers_share_worker_archive_lock(capture):
+    module, root = capture
+    from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+    from trading_bot.runtime.stock_dossier_report import publish_stock_dossier_report
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    captured, _, _ = run(module, root, [request])
+    transport = Transport()
+    with StockArchiveLease(root):
+        with pytest.raises(module.StockCaptureError):
+            run(module, root, [request], transport)
+        with pytest.raises(ValueError):
+            publish_stock_dossier_report(
+                root=root, manifest_file=captured["manifest_file"], as_of=NOW + timedelta(minutes=1)
+            )
+    assert transport.calls == []
+    assert list(root.glob("*.stock-dossiers.json")) == []
+
+
+def test_owned_handle_allows_capture_and_report_without_nested_lock(capture):
+    module, root = capture
+    from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+    from trading_bot.runtime.stock_dossier_report import publish_stock_dossier_report
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    with StockArchiveLease(root) as lease:
+        captured, _, _ = run(module, root, [request], _directory_fd=lease.directory_fd)
+        result = publish_stock_dossier_report(
+            root=root,
+            manifest_file=captured["manifest_file"],
+            as_of=NOW + timedelta(minutes=1),
+            _directory_fd=lease.directory_fd,
+        )
+        assert result["report_file"]
+        assert lease.directory_fd >= 0
+
+
+@pytest.mark.parametrize("writer", ["capture", "report"])
+def test_directory_close_failure_still_releases_internal_archive_lock(
+    capture, monkeypatch, writer
+):
+    module, root = capture
+    from trading_bot.runtime import stock_dossier_report as reports
+    from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    captured, _, _ = run(module, root, [request])
+    target = module if writer == "capture" else reports
+    original_open = target._private_directory
+    original_close = module.os.close
+    primary = []
+    failed = []
+
+    def opening(path):
+        descriptor = original_open(path)
+        primary.append(descriptor)
+        return descriptor
+
+    def uncertain_close(descriptor):
+        original_close(descriptor)
+        if primary and descriptor == primary[-1] and not failed:
+            failed.append(True)
+            raise OSError("private-close-detail")
+
+    monkeypatch.setattr(target, "_private_directory", opening)
+    monkeypatch.setattr(module.os, "close", uncertain_close)
+    with pytest.raises(Exception) as error:
+        if writer == "capture":
+            run(module, root, [request])
+        else:
+            reports.publish_stock_dossier_report(
+                root=root, manifest_file=captured["manifest_file"], as_of=NOW + timedelta(minutes=1)
+            )
+    monkeypatch.setattr(module.os, "close", original_close)
+    assert failed == [True]
+    with StockArchiveLease(root):
+        pass
+    assert isinstance(error.value, module.StockCaptureError if writer == "capture" else ValueError)
+    assert "private-close-detail" not in str(error.value)
+
+
 def test_publication_sync_failure_removes_only_new_artifact(capture, monkeypatch):
     module, root = capture
+    from trading_bot.runtime.stock_archive_lease import LOCK_NAME, StockArchiveLease
     kept = root / "keep"
     kept.write_text("preserved")
     kept.chmod(0o600)
@@ -498,16 +595,19 @@ def test_publication_sync_failure_removes_only_new_artifact(capture, monkeypatch
             raise OSError("secret-fsync-error")
         return real_fsync(fd)
 
-    monkeypatch.setattr(module.os, "fsync", fail_directory)
     request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
-    with pytest.raises(module.StockCaptureError) as error:
-        run(module, root, [request])
+    with StockArchiveLease(root) as lease:
+        monkeypatch.setattr(module.os, "fsync", fail_directory)
+        with pytest.raises(module.StockCaptureError) as error:
+            run(module, root, [request], _directory_fd=lease.directory_fd)
     assert "secret" not in str(error.value)
-    assert list(root.iterdir()) == [kept]
+    assert set(root.iterdir()) == {kept, root / LOCK_NAME}
+    assert kept.read_text() == "preserved"
 
 
 def test_reversed_clock_does_not_publish_success(capture):
     module, root = capture
+    from trading_bot.runtime.stock_archive_lease import LOCK_NAME
     times = iter([NOW, NOW - timedelta(seconds=1)])
     request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
     with pytest.raises(module.StockCaptureError):
@@ -520,7 +620,7 @@ def test_reversed_clock_does_not_publish_success(capture):
                 transport_authenticated=False,
             )
         )
-    assert not list(root.iterdir())
+    assert [path.name for path in root.iterdir()] == [LOCK_NAME]
 
 
 def test_oversize_plan_rejected_before_read_or_connection(capture, monkeypatch):

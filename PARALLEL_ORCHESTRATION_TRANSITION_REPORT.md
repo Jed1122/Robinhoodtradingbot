@@ -1,6 +1,28 @@
 # Parallel Orchestration Transition Report
 
-## Current architecture and panel — October 11
+## Individual-stock research checkpoint — October 21
+
+The current investment workstream prioritizes individual companies. A local one-shot
+research owner now composes complete scanner plans, numerical screening, company
+dossiers, durable call reservations, cache verification and a shared private archive
+lease. It never invokes account or order tools. Failed/cancelled/ambiguous runs retain
+their full reserved budget. Runtime clocks, source age and exact request identities
+are checked before data calls and successful terminal persistence.
+
+Independent local review cleared the integrated worker after clock-boundary and
+existing-ledger opening fixes. Central checks passed 650 tests with 89.97% combined
+branch coverage over the changed runtime/persistence surface. These are fictional
+session and local database tests; they do not establish deployed collection or an
+investment advantage. The older 7cd644d full baseline remains in progress separately.
+
+Next: authenticated stock-dashboard export, authoritative research pause/kill admission,
+deployed image/config attestation and a completion-relative timer with an actual process
+deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,
+restore and watchdog alerts. Stock data/strategy qualification and nonempty brokerage
+reconciliation remain incomplete. Live execution remains disabled. See the
+[worker contract](docs/stock-research-worker.md) for current scope and limitations.
+
+## Historical architecture and panel — October 11
 
 Architecture resolution and implementation are complete: invocation-owned
 original-account continuation and private consumers reuse the SAME canonical

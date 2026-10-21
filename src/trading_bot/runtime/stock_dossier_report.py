@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+from contextlib import ExitStack
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -186,6 +187,7 @@ def publish_stock_dossier_report(
 ) -> dict[str, object]:
     """Rehash committed archive, then privately publish idempotent evidence output."""
     directory = -1
+    cleanup = ExitStack()
     try:
         if re.fullmatch(r"[0-9a-f]{64}\.stock-capture\.json", manifest_file) is None:
             raise ValueError
@@ -194,6 +196,10 @@ def publish_stock_dossier_report(
             if _directory_fd is None
             else _duplicate_directory(_directory_fd)
         )
+        if _directory_fd is None:
+            from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+
+            cleanup.enter_context(StockArchiveLease(root, _directory_fd=directory))
         observations = read_stock_observations(root, manifest_file, _directory_fd=directory)
         report = compile_stock_dossier_report(observations=observations, as_of=as_of)
         report["source_manifest_sha256"] = manifest_file[:64]
@@ -218,8 +224,14 @@ def publish_stock_dossier_report(
     except Exception:
         raise ValueError("stock_dossier_report_invalid") from None
     finally:
-        if directory >= 0:
-            os.close(directory)
+        try:
+            try:
+                if directory >= 0:
+                    os.close(directory)
+            finally:
+                cleanup.close()
+        except Exception:
+            raise ValueError("stock_dossier_report_invalid") from None
 
 
 def main() -> int:

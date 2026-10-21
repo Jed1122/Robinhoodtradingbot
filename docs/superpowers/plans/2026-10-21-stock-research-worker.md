@@ -87,5 +87,8 @@ Do not claim 24/7 operation from source code or a healthy paused container.
 - Existing canonical hybrid hashes, paused account journal and live denial remain intact.
 - A deployed scheduled run, backup restore and alerts are observed independently of tests.
 
-The next implementation step is the durable claim/budget/cache ledger plus the one-shot
-runtime owner. No approval pause is required for that already-authorized development.
+The durable claim/budget/cache ledger and one-shot owner are implemented locally; see
+[the current worker contract](../../stock-research-worker.md). The next implementation
+step is the dashboard read projection and external timer, followed by actual deployed
+identity, authentication, backup/restore and monitoring evidence. Source code and fake
+sessions do not establish scheduled production operation.

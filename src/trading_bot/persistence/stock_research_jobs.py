@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from trading_bot.clock import require_utc
 from trading_bot.config import LoadedConfig
@@ -338,14 +338,14 @@ class SqlStockResearchJobs:
 
     def __init__(
         self,
-        factory: async_sessionmaker[AsyncSession],
+        factory: object,
         *,
         loaded: LoadedConfig,
         code_hash: CodeHash,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._factory = _require_validated_session_factory(factory)
-        self._engine = factory.kw["bind"]
+        self._engine = self._factory.kw["bind"]
         restored = restore_loaded_config(loaded.canonical_json, loaded.config_hash)
         _check(
             restored == loaded and type(restored.config) is StockWorkerAppConfig,
@@ -637,10 +637,12 @@ class SqlStockResearchJobs:
         successful_calls: int,
         manifest_sha256: str | None,
         report_sha256: str | None,
+        require_active_before_success: bool = False,
     ) -> StockResearchResult:
         self._factory_check()
         try:
             _check(type(claim) is StockResearchClaim and _hash_record(claim) == claim.record_sha256)
+            _check(type(require_active_before_success) is bool)
             async with self._factory() as session:
                 await session.execute(text("BEGIN IMMEDIATE"))
                 records, now = await self._read(session)
@@ -673,6 +675,10 @@ class SqlStockResearchJobs:
                     _check(compare == original, "stock_job_result_conflict")
                     await session.rollback()
                     return original
+                if status == "succeeded" and require_active_before_success:
+                    _check(now < claim.deadline_at, "stock_job_deadline_denied")
+                    if claim.phase == "enrichment":
+                        self._require_source(state, claim.source_result_sha256, now)
                 result = StockResearchResult(
                     claim.claim_id,
                     len(records) + 1,

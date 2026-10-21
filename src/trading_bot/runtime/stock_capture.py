@@ -11,7 +11,7 @@ import stat
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -172,6 +172,7 @@ async def capture_stock_observations(
     Its denial preserves the existing sanitized partial-manifest contract.
     """
     directory = -1
+    cleanup = ExitStack()
     try:
         if (
             type(transport_authenticated) is not bool
@@ -186,6 +187,10 @@ async def capture_stock_observations(
             if _directory_fd is None
             else _duplicate_directory(_directory_fd)
         )
+        if _directory_fd is None:
+            from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+
+            cleanup.enter_context(StockArchiveLease(output_dir, _directory_fd=directory))
         started = require_utc(clock())
         last_received = started
         deadline = time.monotonic() + 300
@@ -307,8 +312,14 @@ async def capture_stock_observations(
     except Exception:
         raise StockCaptureError("stock research capture failed safely") from None
     finally:
-        if directory >= 0:
-            os.close(directory)
+        try:
+            try:
+                if directory >= 0:
+                    os.close(directory)
+            finally:
+                cleanup.close()
+        except Exception:
+            raise StockCaptureError("stock research capture failed safely") from None
 
 
 def run_stock_capture(*, oauth_store: Path, plan: object, output_dir: Path) -> dict[str, object]:
@@ -332,7 +343,12 @@ def run_stock_capture(*, oauth_store: Path, plan: object, output_dir: Path) -> d
 
     try:
         # No callback is installed: expired/revoked grants cannot silently open login.
-        with _suppress_untrusted_dependency_logs():
+        from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+
+        with (
+            StockArchiveLease(output_dir, _directory_fd=descriptor),
+            _suppress_untrusted_dependency_logs(),
+        ):
             return asyncio.run(capture())
     except Exception:
         raise StockCaptureError("stock research capture failed safely") from None

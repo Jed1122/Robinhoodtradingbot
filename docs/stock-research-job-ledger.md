@@ -100,7 +100,8 @@ hook has a maximum 45-second wait within the existing 300-second capture budget.
 An independent monotonic deadline check also rejects late completion, including a
 hook that suppresses timeout cancellation. Pending owner cancellation is checked
 before dispatch and after transport completion, so a dependency cannot swallow it
-and publish a completed run. This seam is not yet wired to a job claim.
+and publish a completed run. The one-shot owner wires this seam to its durable
+claim, frozen request plan, current discovery source and remaining storage checks.
 
 Capture, archive verification and dossier publication can borrow one caller-owned
 private directory descriptor. Each validates and duplicates the handle, closes only
@@ -109,11 +110,12 @@ reuse the existing component-wise no-symlink directory walk. Report reads and wr
 use the same opened directory. Every stock publication also enforces the archive
 reader's 9,000,000-byte body ceiling before creating a temporary file.
 
-The planned storage admission reserves `(calls + 3) * 9,000,000` bytes and `calls + 3`
+The one-shot worker's storage admission reserves `(calls + 3) * 9,000,000` bytes and `calls + 3`
 path entries for observations, manifest, report and publication scratch, in addition
 to existing files and any stable lock. Orphans receive no capacity credit. The shared
-worker lock, inventory/free-space checks and whole-job quota enforcement remain to be
-implemented; a body ceiling and directory handle alone do not enforce those controls.
+worker lock, inventory/free-space checks and whole-job quota enforcement are now wired
+through the [local one-shot owner](stock-research-worker.md). No external timer or
+production collection has been verified.
 
 Fictional migrated-database tests cover competition, restart reconstruction, failed
 and cancelled commit acknowledgements, same-slot denial, full budget retention,
@@ -123,9 +125,8 @@ idempotence, late cache results and strict capture-plan replay. Independent revi
 cleared the corrected config/job-store scope. These tests do not prove real provider
 calls, physical power-loss durability, scheduled operation or live readiness.
 
-Next: wire the bounded one-shot runtime owner to private artifact quotas and the
-capture pre-call check; verify exact plan/manifest/report identities and recovery;
-then add the authenticated dashboard projection and resource-bounded external timer.
+The one-shot owner now wires quotas, pre-call checks, artifact identities and recovery.
+Next: add the authenticated dashboard projection and resource-bounded external timer.
 A completion-relative timer must respect the persisted cadence; do not replay missed
 UTC slots or assume a fixed wall-clock timer's jitter guarantees elapsed eligibility.
 Encrypted backup/restore and actual deployed collection remain separate requirements.
