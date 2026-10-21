@@ -1,0 +1,43 @@
+[Unit]
+Description=Private hybrid paper operational observations and local incident outbox
+After=docker.service network.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/hybrid-paper-operations/watchdog.py --manifest /etc/hybrid-paper-operations/watchdog.json --state-dir /var/lib/hybrid-paper-operations/watchdog
+StateDirectory=hybrid-paper-operations/watchdog
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/hybrid-paper-operations/watchdog
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+TimeoutStartSec=30
+Restart=no
+TasksMax=32
+MemoryMax=96M
+CPUQuota=10%
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=300s
+LogRateLimitBurst=5
