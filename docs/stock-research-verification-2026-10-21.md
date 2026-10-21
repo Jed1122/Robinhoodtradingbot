@@ -86,6 +86,25 @@ and heuristic. Current membership is not historical survivorship-free membership
 
 ## Engineering evidence
 
+The stock deployment request/prestart gate is implemented locally and independently
+reviewed. It passed 129 fictional tests with 100% branch coverage after a source-backed
+RED-to-GREEN correction for Docker's permitted null-versus-empty no-volume map.
+The GET-only Engine reader passed 53 fictional/socketpair tests with 97.40% branch
+coverage after review's shared-transport route finding was reproduced RED and fixed.
+Independent combined deployment regression passed 427 tests with four optional local
+age skips; those skips do not prove encrypted backup or recovery. Ruff, strict mypy
+(444 source files), expanded Bandit and dependency-lock checks passed locally.
+
+A separately authorized read-only check ran the exact reviewed reader/version-parser
+source at `6d6b8c0a6a77f6522a92fe6ac213a0c9f8df63f9` in memory on the existing host.
+One `/version` GET succeeded through the fixed root-owned Unix socket and UID-0 peer,
+yielding an accepted API 1.52/Linux amd64 profile. There was no host installation,
+Docker mutation, image/container inspection, broker request or credential operation.
+This proves only that bounded metadata transport path. Native immutable-image and
+created-CID verification, applied hardening, deadline/recovery supervision, scheduled
+stock acquisition and operational backups remain incomplete. The primary full suite
+at frozen a63a475 is still pending; this later source increment remains separate.
+
 The schema/profile/bootstrap correction passed 607 relevant checks plus repository
 Ruff, strict mypy, Bandit and dependency-lock verification at its reviewed checkpoint.
 The new capture/reader/screen/config correction passed 51 focused checks, including

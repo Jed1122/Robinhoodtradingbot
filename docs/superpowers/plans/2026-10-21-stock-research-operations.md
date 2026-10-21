@@ -152,7 +152,16 @@ responses and fixed sanitized errors. It cannot mutate Docker or retry. Its 42
 fictional/socketpair tests passed at 98.48% branch coverage; root/peer validation
 is exercised with fictional system metadata. Missing peer support was observed
 RED before its guard was implemented. Ruff, strict mypy (444 files) and expanded
-Bandit passed. Independent review and native compatibility remain pending.
+Bandit passed. Review found the private shared transport accepted unchecked paths
+despite safe public methods. A RED pre-connection regression reproduced it; the
+transport now independently enforces all four exact route forms before opening a
+socket. All 53 reader cases passed at 97.40% branch coverage. Independent review is
+READY_FOR_INTEGRATION after 427 deployment tests and four optional age skips.
+A separately authorized read-only native run of the exact reviewed reader/version
+parser source completed one `/version` GET through the fixed root Unix socket,
+confirming API 1.52/Linux amd64. No host installation, Docker mutation, image/CID
+inspection, broker call or credential operation occurred. This is metadata transport
+compatibility only; actual image/container proof and the supervisor remain pending.
 
 ## Task 3: Supervised timer, paused installation and native checks
 

@@ -125,7 +125,8 @@ and hardening compatibility remain unverified. The official versioned schema sup
 `Entrypoint`/`Cmd` arrays and create followed by inspect; an accepted create or ignored
 request property is not hardening evidence. A future launcher may use that documented
 Engine API over the fixed local Unix socket while retaining Compose's whole resolved
-model for release identity. No Engine client or write operation is implemented here.
+model for release identity. The separate bounded GET-only reader below implements
+metadata transport; no Engine write or launcher operation is implemented here.
 [Official API 1.52 schema](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/swagger.yaml).
 
 The initial local source profile required API 1.55 and correctly rejected the observed
@@ -186,7 +187,12 @@ malformed headers, transfer encoding, truncation, excess bytes already buffered,
 non-success status and read/connection failures return the fixed
 `stock_engine_unavailable` error without response text. Response JSON and policy
 identity still require the separate Engine/image/prestart verifiers. Native
-HTTP/socket compatibility is not established by socketpair fixtures.
+HTTP/socket compatibility is not established by socketpair fixtures. A separately
+authorized October 21 read-only host check executed the reviewed source in memory
+and performed one `/version` GET. Fixed-socket/root-peer/HTTP observation and the
+version parser succeeded with API 1.52/Linux amd64. No host file was installed and no
+Docker mutation, image/container inspection or broker call occurred. This bounded
+proof does not establish worker/image compatibility, ownership or applied hardening.
 
 ### Source profile for created-container admission
 

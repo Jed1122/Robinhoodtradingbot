@@ -87,8 +87,15 @@ this source increment is developed separately.
 The local GET-only Engine metadata reader now adds fixed Linux/root/socket/peer
 checks, immutable-image/full-CID/generated-attempt routes and a non-renewable bounded
 HTTP read budget. Its 42 fictional/socketpair tests passed with 98.48% branch coverage;
-independent review and native compatibility remain pending. It has no Docker write
-or retry operation and cannot start the worker. The supervisor remains unimplemented.
+review found the private shared transport needed its own closed route check. A RED
+regression reproduced the gap; that guard now rejects every unsupported path before
+connection. Independent review cleared the corrected 53 tests at 97.40% branch
+coverage and 427 deployment tests with four optional age skips. One separately
+authorized native `/version` GET then succeeded using the exact reviewed source,
+confirming API 1.52/Linux amd64 and the fixed-socket/root-peer/HTTP path. No host
+installation, Docker mutation, image/CID inspection or broker operation occurred.
+The reader has no write/retry operation and cannot start the worker; the supervisor
+remains unimplemented.
 
 Next: complete integrated verification, deployed image/config/control-path verification
 and a completion-relative timer with an actual process
