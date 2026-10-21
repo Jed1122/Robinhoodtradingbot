@@ -45,14 +45,20 @@ Alpaca documents raw adjustments, inclusive boundaries, symbol remapping control
 and the requirement to follow pagination even after a short page.
 [Official historical bars reference](https://docs.alpaca.markets/us/reference/stockbarsingle-1).
 
-Alpaca documents historical SIP access without a subscription when `end` is at
-least 15 minutes old. This contract conservatively requires capture start at
-least 15 minutes after the declared close. The Basic plan lists zero cost and
-200 historical API calls/minute. Actual account access, applicable retention
-rights and successful data coverage have not been verified here. No paid upgrade,
+Alpaca's generic FAQ describes historical SIP access without a subscription when
+`end` is at least 15 minutes old. Its Paper Trading documentation separately limits
+Paper Only accounts to IEX data; the generic statement does not establish this
+account's permitted SIP access. The existing
+[provider-response checkpoint](etf-data-source-checkpoint-2026-09-30.md) retains that
+restriction. This contract conservatively requires capture start at least 15 minutes
+after the declared close, but delay alone does not resolve entitlement or finality.
+The Basic plan lists zero cost and 200 historical API calls/minute. Actual permitted
+account access, applicable retention rights and successful data coverage have not
+been verified here. No paid upgrade,
 automatic IEX fallback or entitlement assertion is part of this module.
 [Official FAQ](https://docs.alpaca.markets/us/docs/market-data-faq),
 [official plan limits](https://docs.alpaca.markets/us/docs/about-market-data-api).
+[Paper Only access restriction](https://docs.alpaca.markets/us/docs/paper-trading).
 
 The proof accepts one symbol and one or two distinct chronological sessions,
 at most two pages per session/four pages overall, at most 1,048,576 bytes/page
@@ -61,8 +67,10 @@ receipts must increase strictly and fall within its 60-second deadline. Calendar
 receipt must precede capture start, and every required receipt must be at or
 before injected UTC `as_of`. Per-window and aggregate `available_at` are
 conservatively the assessment's `as_of`, never a bar's left edge or session end.
-All supplied timestamps must be aware with UTC offset zero. These checks attest
-clock consistency only; the clocks themselves remain caller declarations.
+All caller-supplied context datetimes must be aware with UTC offset zero. Native
+RFC3339 bar timestamps can contain known offsets; their exact source bytes remain
+retained while parsing derives the UTC minute. These checks attest clock consistency
+only; the context clocks themselves remain caller declarations.
 
 A future transport would additionally need a ten-second I/O timeout, fixed HTTPS
 host/path, no redirects, no environment proxies, no automatic retries and a
