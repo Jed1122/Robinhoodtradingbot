@@ -93,6 +93,28 @@ enter job events.
 
 ## Verified scope and next steps
 
+The capture layer now exposes an optional `before_call(index, frozen_request)`
+admission hook. It must finish with `None` before the request is counted or sent;
+denial retains the existing sanitized partial manifest and successful prefix. Each
+hook has a maximum 45-second wait within the existing 300-second capture budget.
+An independent monotonic deadline check also rejects late completion, including a
+hook that suppresses timeout cancellation. Pending owner cancellation is checked
+before dispatch and after transport completion, so a dependency cannot swallow it
+and publish a completed run. This seam is not yet wired to a job claim.
+
+Capture, archive verification and dossier publication can borrow one caller-owned
+private directory descriptor. Each validates and duplicates the handle, closes only
+its duplicate, and avoids reopening a changed path. Public path-based entry points
+reuse the existing component-wise no-symlink directory walk. Report reads and writes
+use the same opened directory. Every stock publication also enforces the archive
+reader's 9,000,000-byte body ceiling before creating a temporary file.
+
+The planned storage admission reserves `(calls + 3) * 9,000,000` bytes and `calls + 3`
+path entries for observations, manifest, report and publication scratch, in addition
+to existing files and any stable lock. Orphans receive no capacity credit. The shared
+worker lock, inventory/free-space checks and whole-job quota enforcement remain to be
+implemented; a body ceiling and directory handle alone do not enforce those controls.
+
 Fictional migrated-database tests cover competition, restart reconstruction, failed
 and cancelled commit acknowledgements, same-slot denial, full budget retention,
 the 512-call boundary, midnight, changed configuration/code, rollback clocks, stale

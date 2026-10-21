@@ -26,6 +26,7 @@ from trading_bot.brokers.stock_research_mcp import (
     _profile,
 )
 from trading_bot.clock import require_utc
+from trading_bot.market_data.bundle_store import _open_root
 from trading_bot.runtime.capability_capture import _suppress_untrusted_dependency_logs
 
 
@@ -33,8 +34,17 @@ class StockCaptureError(RuntimeError):
     """Sanitized failure boundary; never contains provider text."""
 
 
+_MAX_ARTIFACT_BYTES = 9_000_000
+
+
 def _json(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+
+
+def _raise_pending_cancellation() -> None:
+    task = asyncio.current_task()
+    if task is not None and task.cancelling():
+        raise asyncio.CancelledError
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -82,15 +92,38 @@ def _private_directory(root: Path) -> int:
         raise StockCaptureError("private stock artifact directory required")
     if root.is_relative_to(Path(__file__).resolve().parents[3]):
         raise StockCaptureError("stock observations must remain outside source checkout")
-    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    metadata = os.fstat(descriptor)
-    if metadata.st_uid != os.geteuid() or stat.S_IMODE(metadata.st_mode) != 0o700:
-        os.close(descriptor)
-        raise StockCaptureError("private stock artifact directory required")
-    return descriptor
+    try:
+        # Reuse the component-wise O_NOFOLLOW walk; a parent swap cannot make a
+        # checked path follow a newly introduced symlink during the final open.
+        return _open_root(root, Path(__file__).resolve().parents[3])
+    except Exception:
+        raise StockCaptureError("private stock artifact directory required") from None
+
+
+def _duplicate_directory(directory: int) -> int:
+    """Borrow an internal verified handle without reopening its mutable path."""
+    descriptor = -1
+    try:
+        if type(directory) is not int or directory < 0:
+            raise ValueError
+        descriptor = os.dup(directory)
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+        ):
+            raise ValueError
+        return descriptor
+    except Exception:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise StockCaptureError("private stock artifact directory required") from None
 
 
 def _publish(directory: int, body: bytes, suffix: str) -> tuple[str, str]:
+    if len(body) > _MAX_ARTIFACT_BYTES:
+        raise StockCaptureError("stock research artifact exceeds bound")
     digest = hashlib.sha256(body).hexdigest()
     name = digest + suffix
     temporary = ".pending-" + uuid.uuid4().hex
@@ -127,6 +160,7 @@ async def capture_stock_observations(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     transport_authenticated: bool,
+    before_call: Callable[[int, StockCaptureRequest], Awaitable[object]] | None = None,
     _directory_fd: int | None = None,
 ) -> dict[str, object]:
     """No retries. Partial acquisitions retain observations and an explicit manifest.
@@ -134,15 +168,23 @@ async def capture_stock_observations(
     The caller owns schema validation and authenticated transport construction. These
     are SDK-level native results, not retained HTTP wire frames or historical data
     qualification. External text is stored as data and never interpreted as commands.
+    An optional caller-owned admission hook completes before each attempted send.
+    Its denial preserves the existing sanitized partial-manifest contract.
     """
     directory = -1
     try:
-        if type(transport_authenticated) is not bool or not 1 <= len(requests) <= 32:
+        if (
+            type(transport_authenticated) is not bool
+            or not 1 <= len(requests) <= 32
+            or (before_call is not None and not callable(before_call))
+        ):
             raise StockCaptureError("stock research plan invalid")
         # Validate the complete immutable request graph before any provider call.
         plan = tuple(StockCaptureRequest(item.tool, item.arguments) for item in requests)
         directory = (
-            _private_directory(output_dir) if _directory_fd is None else os.dup(_directory_fd)
+            _private_directory(output_dir)
+            if _directory_fd is None
+            else _duplicate_directory(_directory_fd)
         )
         started = require_utc(clock())
         last_received = started
@@ -159,15 +201,35 @@ async def capture_stock_observations(
                 if remaining <= 0:
                     failure = "research_run_budget_exhausted"
                     break
+                if before_call is not None:
+                    guard_deadline = time.monotonic() + min(45, remaining)
+                    try:
+                        admitted = await asyncio.wait_for(
+                            before_call(index, request), timeout=min(45, remaining)
+                        )
+                        if admitted is not None:
+                            raise ValueError("stock research admission invalid")
+                    except Exception:
+                        failure = "research_call_failed"
+                        break
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        failure = "research_run_budget_exhausted"
+                        break
+                    if time.monotonic() >= guard_deadline:
+                        failure = "research_call_failed"
+                        break
                 request_started = require_utc(clock())
                 if request_started < last_received:
                     raise StockCaptureError("stock research receipt clock invalid")
+                _raise_pending_cancellation()
                 attempted += 1
                 try:
                     result = await asyncio.wait_for(
                         transport.call_tool(request.tool, request.arguments),
                         timeout=min(45, remaining),
                     )
+                    _raise_pending_cancellation()
                     received = require_utc(clock())
                     if received < request_started:
                         raise StockCaptureError("stock research receipt clock invalid")

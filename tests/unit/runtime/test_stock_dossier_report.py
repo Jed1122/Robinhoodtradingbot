@@ -144,7 +144,7 @@ def test_publish_uses_rehashed_archive_and_private_content_addressing(tmp_path, 
     root.chmod(0o700)
     calls = []
 
-    def read(actual_root, manifest_file):
+    def read(actual_root, manifest_file, *, _directory_fd):
         calls.append((actual_root, manifest_file))
         return (facts(),)
 
@@ -165,7 +165,7 @@ def test_report_size_boundary_denies_before_publication(tmp_path, monkeypatch):
     module = importlib.import_module("trading_bot.runtime.stock_dossier_report")
     root = tmp_path.resolve()
     root.chmod(0o700)
-    monkeypatch.setattr(module, "read_stock_observations", lambda *args: (facts(),))
+    monkeypatch.setattr(module, "read_stock_observations", lambda *args, **kwargs: (facts(),))
     manifest = "a" * 64 + ".stock-capture.json"
     result = module.publish_stock_dossier_report(root=root, manifest_file=manifest, as_of=AS_OF)
     size = (root / result["report_file"]).stat().st_size

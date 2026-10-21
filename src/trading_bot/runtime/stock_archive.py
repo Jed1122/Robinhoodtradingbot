@@ -18,6 +18,7 @@ from trading_bot.brokers.stock_research_mcp import (
     _profile,
 )
 from trading_bot.clock import require_utc
+from trading_bot.runtime.stock_capture import _duplicate_directory, _private_directory
 
 
 def _read(directory: int, name: str, suffix: str) -> dict[str, Any]:
@@ -46,7 +47,9 @@ def _read(directory: int, name: str, suffix: str) -> dict[str, Any]:
         os.close(descriptor)
 
 
-def read_stock_observations(root: Path, manifest_file: str) -> tuple[dict[str, Any], ...]:
+def read_stock_observations(
+    root: Path, manifest_file: str, *, _directory_fd: int | None = None
+) -> tuple[dict[str, Any], ...]:
     """Only manifest-committed observations count; crash orphans are ignored.
 
     Rehashing proves retained-byte integrity, not independent vendor attestation or
@@ -54,11 +57,16 @@ def read_stock_observations(root: Path, manifest_file: str) -> tuple[dict[str, A
     """
     directory = -1
     try:
-        if not root.is_absolute() or root.resolve() != root:
-            raise ValueError("stock_archive_invalid")
-        directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        if _directory_fd is None:
+            directory = _private_directory(root)
+        else:
+            directory = _duplicate_directory(_directory_fd)
         metadata = os.fstat(directory)
-        if metadata.st_uid != os.geteuid() or stat.S_IMODE(metadata.st_mode) != 0o700:
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+        ):
             raise ValueError("stock_archive_invalid")
         manifest = _read(directory, manifest_file, ".stock-capture.json")
         rows = manifest["observations"]
@@ -142,7 +150,7 @@ def read_stock_observations(root: Path, manifest_file: str) -> tuple[dict[str, A
                 raise ValueError("stock_archive_invalid")
             result.append(item | {"observation_sha256": row["sha256"]})
         return tuple(result)
-    except (OSError, ValueError, KeyError, TypeError, OverflowError, RecursionError):
+    except (OSError, ValueError, KeyError, TypeError, OverflowError, RecursionError, RuntimeError):
         raise ValueError("stock_archive_invalid") from None
     finally:
         if directory >= 0:

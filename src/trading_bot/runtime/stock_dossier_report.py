@@ -34,7 +34,7 @@ from trading_bot.market_data.stock_history_projection import (
 from trading_bot.research.stock_dossiers import build_stock_dossiers
 from trading_bot.research.stock_technicals import compute_stock_technicals
 from trading_bot.runtime.stock_archive import _read, read_stock_observations
-from trading_bot.runtime.stock_capture import _private_directory, _publish
+from trading_bot.runtime.stock_capture import _duplicate_directory, _private_directory, _publish
 
 _MAX_REPORT_BYTES = 9_000_000
 
@@ -182,15 +182,19 @@ def compile_stock_dossier_report(
 
 
 def publish_stock_dossier_report(
-    *, root: Path, manifest_file: str, as_of: datetime
+    *, root: Path, manifest_file: str, as_of: datetime, _directory_fd: int | None = None
 ) -> dict[str, object]:
     """Rehash committed archive, then privately publish idempotent evidence output."""
     directory = -1
     try:
         if re.fullmatch(r"[0-9a-f]{64}\.stock-capture\.json", manifest_file) is None:
             raise ValueError
-        directory = _private_directory(root)
-        observations = read_stock_observations(root, manifest_file)
+        directory = (
+            _private_directory(root)
+            if _directory_fd is None
+            else _duplicate_directory(_directory_fd)
+        )
+        observations = read_stock_observations(root, manifest_file, _directory_fd=directory)
         report = compile_stock_dossier_report(observations=observations, as_of=as_of)
         report["source_manifest_sha256"] = manifest_file[:64]
         body = canonical_json(report).encode()

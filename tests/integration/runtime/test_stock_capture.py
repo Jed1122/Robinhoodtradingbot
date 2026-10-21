@@ -190,6 +190,300 @@ def test_cancellation_keeps_explicit_partial_manifest(capture):
     assert manifest["attempted_calls"] == 2
 
 
+@pytest.mark.parametrize("deny_at", [0, 1])
+def test_pre_send_guard_denial_preserves_partial_evidence_without_dispatch(capture, deny_at):
+    module, root = capture
+    from trading_bot.runtime.stock_archive import read_stock_observations
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    checked = []
+
+    async def guard(index, frozen_request):
+        checked.append((index, frozen_request.tool, frozen_request.arguments))
+        if index == deny_at:
+            raise RuntimeError("private-ledger-detail")
+
+    report, transport, _ = run(module, root, [request] * 2, before_call=guard)
+    assert report["status"] == "partial"
+    assert report["failure_code"] == "research_call_failed"
+    assert report["attempted_calls"] == report["successful_calls"] == deny_at
+    assert len(transport.calls) == deny_at
+    assert [row[0] for row in checked] == list(range(deny_at + 1))
+    assert len(read_stock_observations(root, report["manifest_file"])) == deny_at
+    assert "private-ledger-detail" not in str(report)
+    assert all("private-ledger-detail" not in path.read_text() for path in root.iterdir())
+
+
+def test_pre_send_guard_runs_in_order_before_each_call_with_immutable_arguments(capture):
+    module, root = capture
+    events = []
+
+    class Ordered(Transport):
+        async def call_tool(self, name, arguments):
+            events.append(("send", arguments))
+            return await super().call_tool(name, arguments)
+
+    async def guard(index, request):
+        events.append(("guard", index))
+        request.arguments["symbols"].append("MUTATED")
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    report, transport, _ = run(module, root, [request] * 2, Ordered(), before_call=guard)
+    assert report["status"] == "complete"
+    assert events == [
+        ("guard", 0), ("send", {"symbols": ["ACME"]}),
+        ("guard", 1), ("send", {"symbols": ["ACME"]}),
+    ]
+    assert len(transport.calls) == 2
+
+
+def test_pre_send_guard_cancellation_records_no_unsent_attempt(capture):
+    module, root = capture
+
+    async def guard(index, request):
+        raise asyncio.CancelledError()
+
+    transport = Transport()
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    with pytest.raises(asyncio.CancelledError):
+        run(module, root, [request], transport, before_call=guard)
+    assert not transport.calls
+    manifest = json.loads(next(root.glob("*.stock-capture.json")).read_bytes())
+    assert manifest["failure_code"] == "research_capture_cancelled"
+    assert manifest["attempted_calls"] == manifest["successful_calls"] == 0
+
+
+@pytest.mark.parametrize("returned", [False, True, 0, "ok"])
+def test_pre_send_guard_requires_explicit_none_completion(capture, returned):
+    module, root = capture
+
+    async def guard(index, request):
+        return returned
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    report, transport, _ = run(module, root, [request], before_call=guard)
+    assert report["failure_code"] == "research_call_failed"
+    assert report["attempted_calls"] == 0
+    assert not transport.calls
+
+
+def test_pre_send_guard_cannot_use_time_left_before_its_own_delay(capture, monkeypatch):
+    module, root = capture
+    monotonic = [100.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: monotonic[0])
+
+    async def guard(index, request):
+        monotonic[0] += 301
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    report, transport, _ = run(module, root, [request], before_call=guard)
+    assert report["failure_code"] == "research_run_budget_exhausted"
+    assert report["attempted_calls"] == 0
+    assert not transport.calls
+
+
+def test_pre_send_guard_returning_after_its_own_deadline_cannot_dispatch(capture, monkeypatch):
+    module, root = capture
+    monotonic = [100.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: monotonic[0])
+
+    async def guard(index, request):
+        monotonic[0] += 46
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    report, transport, _ = run(module, root, [request], before_call=guard)
+    assert report["failure_code"] == "research_call_failed"
+    assert report["attempted_calls"] == 0
+    assert not transport.calls
+
+
+def test_pre_send_guard_suppressing_timeout_cancellation_cannot_dispatch(capture, monkeypatch):
+    module, root = capture
+    original_wait = asyncio.wait_for
+    original_monotonic = module.time.monotonic
+    offset = [0.0]
+    cleaned = []
+
+    async def bounded_wait(awaitable, *, timeout):
+        return await original_wait(awaitable, timeout=min(timeout, 0.01))
+
+    async def guard(index, request):
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cleaned.append(True)
+            offset[0] += 46
+
+    monkeypatch.setattr(module.asyncio, "wait_for", bounded_wait)
+    monkeypatch.setattr(module.time, "monotonic", lambda: original_monotonic() + offset[0])
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    report, transport, _ = run(module, root, [request], before_call=guard)
+    assert cleaned == [True]
+    assert report["failure_code"] == "research_call_failed"
+    assert report["attempted_calls"] == 0
+    assert not transport.calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_at", [0, 1])
+async def test_pre_send_guard_cannot_suppress_owner_cancellation(capture, cancel_at):
+    module, root = capture
+    entered = asyncio.Event()
+    waiting = asyncio.Event()
+    transport = Transport()
+
+    async def guard(index, request):
+        if index == cancel_at:
+            entered.set()
+            try:
+                await waiting.wait()
+            except asyncio.CancelledError:
+                return None
+
+    async def pause(seconds):
+        pass
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    task = asyncio.create_task(
+        module.capture_stock_observations(
+            transport=transport,
+            requests=[request] * 2,
+            output_dir=root,
+            clock=lambda: NOW,
+            sleep=pause,
+            transport_authenticated=False,
+            before_call=guard,
+        )
+    )
+    await entered.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(transport.calls) == cancel_at
+    manifest = json.loads(next(root.glob("*.stock-capture.json")).read_bytes())
+    assert manifest["failure_code"] == "research_capture_cancelled"
+    assert manifest["attempted_calls"] == manifest["successful_calls"] == cancel_at
+
+
+@pytest.mark.asyncio
+async def test_transport_cannot_suppress_owner_cancellation_into_completed_evidence(capture):
+    module, root = capture
+    entered = asyncio.Event()
+    waiting = asyncio.Event()
+
+    class Suppressing(Transport):
+        async def call_tool(self, name, arguments):
+            entered.set()
+            try:
+                await waiting.wait()
+            except asyncio.CancelledError:
+                return await super().call_tool(name, arguments)
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    transport = Suppressing()
+    task = asyncio.create_task(
+        module.capture_stock_observations(
+            transport=transport,
+            requests=[request],
+            output_dir=root,
+            clock=lambda: NOW,
+            transport_authenticated=False,
+        )
+    )
+    await entered.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(transport.calls) == 1
+    manifest = json.loads(next(root.glob("*.stock-capture.json")).read_bytes())
+    assert manifest["failure_code"] == "research_capture_cancelled"
+    assert manifest["attempted_calls"] == 1 and manifest["successful_calls"] == 0
+
+
+def test_publication_body_ceiling_matches_archive_reader_before_creating_files(capture):
+    import os
+
+    module, root = capture
+    descriptor = module._private_directory(root)
+    try:
+        with pytest.raises(module.StockCaptureError):
+            module._publish(descriptor, b"x" * 9_000_001, ".stock-observation.json")
+        assert list(root.iterdir()) == []
+        name, _ = module._publish(descriptor, b"x" * 9_000_000, ".stock-observation.json")
+        assert (root / name).stat().st_size == 9_000_000
+    finally:
+        os.close(descriptor)
+
+
+def test_report_keeps_reads_and_publication_on_the_opened_archive(capture, monkeypatch):
+    module, root = capture
+    from trading_bot.runtime import stock_dossier_report as reports
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    captured, _, _ = run(module, root, [request])
+    moved = root.with_name("retained-archive")
+    original_open = reports._private_directory
+
+    def opened_then_swapped(path):
+        descriptor = original_open(path)
+        path.rename(moved)
+        path.mkdir(mode=0o700)
+        return descriptor
+
+    monkeypatch.setattr(reports, "_private_directory", opened_then_swapped)
+    result = reports.publish_stock_dossier_report(
+        root=root,
+        manifest_file=captured["manifest_file"],
+        as_of=NOW + timedelta(minutes=1),
+    )
+    assert (moved / result["report_file"]).is_file()
+    assert list(root.iterdir()) == []
+
+
+def test_report_reuses_worker_directory_without_reopening_replaced_path(capture):
+    import os
+
+    module, root = capture
+    from trading_bot.runtime import stock_dossier_report as reports
+
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    captured, _, _ = run(module, root, [request])
+    descriptor = module._private_directory(root)
+    moved = root.with_name("retained-archive")
+    root.rename(moved)
+    root.mkdir(mode=0o700)
+    try:
+        result = reports.publish_stock_dossier_report(
+            root=root,
+            manifest_file=captured["manifest_file"],
+            as_of=NOW + timedelta(minutes=1),
+            _directory_fd=descriptor,
+        )
+        assert (moved / result["report_file"]).is_file()
+        assert list(root.iterdir()) == []
+        assert os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def test_capture_rejects_borrowed_non_directory_before_dispatch(capture):
+    import os
+
+    module, root = capture
+    path = root / "private-file"
+    path.touch(mode=0o600)
+    descriptor = os.open(path, os.O_RDONLY)
+    transport = Transport()
+    request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
+    try:
+        with pytest.raises(module.StockCaptureError):
+            run(module, root, [request], transport, _directory_fd=descriptor)
+        assert transport.calls == []
+        assert os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def test_publication_sync_failure_removes_only_new_artifact(capture, monkeypatch):
     module, root = capture
     kept = root / "keep"
