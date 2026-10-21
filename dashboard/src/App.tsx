@@ -19,12 +19,15 @@ import {
 } from "lucide-react";
 import {
   ApiError,
+  isStockOpportunity,
   money,
   requestSnapshot,
+  stockMetricLabels,
   textValue,
   type Action,
   type Row,
   type Snapshot,
+  type StockWorker,
 } from "./api";
 const pages = [
   "Overview",
@@ -140,6 +143,245 @@ function Metric({
     </div>
   );
 }
+function SourceTime({ value }: { value: string | null }) {
+  return value ? (
+    <time dateTime={value}>
+      {value.replace("T", " ").replace(/(?:Z|\+00:00)$/, " UTC")}
+    </time>
+  ) : (
+    <span>Unknown</span>
+  );
+}
+function ResearchOpportunities({
+  research,
+}: {
+  research: Snapshot["research"] | undefined;
+}) {
+  const rows = research?.opportunities ?? [];
+  const stockRows = rows.filter(isStockOpportunity);
+  const stockView =
+    research?.stock_worker !== undefined || stockRows.length > 0;
+  if (!stockView)
+    return (
+      <Panel title="Research opportunities" note={`${rows.length} recorded`}>
+        <DataTable
+          rows={rows}
+          columns={[
+            ["symbol", "Symbol"],
+            ["strategy", "Strategy"],
+            ["status", "Status"],
+            ["reason", "Rationale"],
+          ]}
+          empty="No qualified opportunities yet"
+          detail
+        />
+      </Panel>
+    );
+  return (
+    <Panel
+      title="Stock research priorities"
+      note={`${stockRows.length} recorded · unqualified`}
+    >
+      <p className="plain-note">
+        Research priority is a screening rank from 0 to 100. It is not a return
+        forecast, probability of success, or approval to invest.
+      </p>
+      {stockRows.length ? (
+        <div
+          className="table-scroll"
+          tabIndex={0}
+          role="region"
+          aria-label="Stock research priorities table, scroll horizontally for all columns"
+        >
+          <table style={{ minWidth: 640 }}>
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Research priority</th>
+                <th>Observed (UTC)</th>
+                <th>Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stockRows.map((row) => (
+                <tr key={row.symbol}>
+                  <td>
+                    <strong>{row.symbol}</strong>
+                    <p>Unqualified research</p>
+                  </td>
+                  <td>{row.research_priority_score} / 100</td>
+                  <td>
+                    <SourceTime value={row.available_at} />
+                  </td>
+                  <td>
+                    <details>
+                      <summary>Company evidence</summary>
+                      <p>{row.reason}</p>
+                      <p>
+                        Dossier as of: <SourceTime value={row.dossier_as_of} />
+                      </p>
+                      <dl>
+                        {Object.entries(stockMetricLabels).map(
+                          ([key, label]) => (
+                            <div key={key}>
+                              <dt>{label} (source value)</dt>
+                              <dd>
+                                {row.metrics[
+                                  key as keyof typeof stockMetricLabels
+                                ] ?? "Unknown"}
+                              </dd>
+                            </div>
+                          ),
+                        )}
+                      </dl>
+                      <p>
+                        Source values retain their reported units; missing
+                        metrics remain unknown.
+                      </p>
+                      <strong>Evidence gaps</strong>
+                      {row.gaps.length ? (
+                        <ul>
+                          {row.gaps.map((gap) => (
+                            <li key={gap}>{gap}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p>
+                          No gaps supplied; completeness is not established.
+                        </p>
+                      )}
+                    </details>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty title="No current stock research priorities">
+          A fresh, valid discovery report is required before candidates can
+          appear.
+        </Empty>
+      )}
+      {stockRows.length > 0 && (
+        <p className="panel-footnote">
+          Scroll the table horizontally to view all evidence.
+        </p>
+      )}
+    </Panel>
+  );
+}
+function StockCollector({
+  worker,
+  stale,
+}: {
+  worker: StockWorker;
+  stale: boolean;
+}) {
+  const statuses: Record<StockWorker["status"], string> = {
+    never_run: "No cycle recorded",
+    pending: "Pending claim",
+    succeeded: "Succeeded (last cycle)",
+    blocked: "Blocked (last cycle)",
+    failed: "Failed (last cycle)",
+    cancelled: "Cancelled (last cycle)",
+    unavailable: "Unavailable",
+  };
+  return (
+    <Panel title="Stock collector" note="Separate collector · recorded state">
+      <div className="control-content">
+        {worker.status === "unavailable" ? (
+          <div role="status" className="alert">
+            <strong>Collector evidence unavailable</strong>
+            <p>Its current activity cannot be established from this export.</p>
+          </div>
+        ) : stale ? (
+          <div role="status" className="alert">
+            Dashboard snapshot is stale. Collector activity is not current.
+          </div>
+        ) : null}
+        <dl className="safety-values">
+          <div>
+            <dt>Last recorded status</dt>
+            <dd>{statuses[worker.status]}</dd>
+          </div>
+          <div>
+            <dt>Research phase</dt>
+            <dd>
+              {worker.phase === "discovery"
+                ? "Discovery"
+                : worker.phase === "enrichment"
+                  ? "Company enrichment"
+                  : "Unknown"}
+            </dd>
+          </div>
+          <div>
+            <dt>Daily reservations</dt>
+            <dd>
+              {worker.reserved_today === null || worker.daily_limit === null
+                ? "Call budget unknown"
+                : `${worker.reserved_today} / ${worker.daily_limit} calls reserved today`}
+            </dd>
+          </div>
+          <div>
+            <dt>Remaining budget</dt>
+            <dd>
+              {worker.remaining_calls === null
+                ? "Remaining calls unknown"
+                : `${worker.remaining_calls} calls remaining`}
+            </dd>
+          </div>
+          <div>
+            <dt>Exported (UTC)</dt>
+            <dd>
+              <SourceTime value={worker.exported_at} />
+            </dd>
+          </div>
+          <div>
+            <dt>Next eligible (UTC)</dt>
+            <dd>
+              <SourceTime value={worker.next_eligible_at} />
+            </dd>
+          </div>
+          <div>
+            <dt>Discovery as of (UTC)</dt>
+            <dd>
+              <SourceTime value={worker.discovery_as_of} />
+            </dd>
+          </div>
+          <div>
+            <dt>Company research as of (UTC)</dt>
+            <dd>
+              <SourceTime value={worker.enrichment_as_of} />
+            </dd>
+          </div>
+        </dl>
+        <p>
+          {worker.pending_claims === null
+            ? "Pending claims unknown"
+            : `${worker.pending_claims} pending claims`}
+          . Reservations are charged plans, not confirmed provider calls.
+          Recorded cycles do not establish continuous operation.
+        </p>
+        {worker.reason && (
+          <p>
+            Reported reason:{" "}
+            <span style={{ overflowWrap: "anywhere" }}>{worker.reason}</span>
+          </p>
+        )}
+        <details>
+          <summary>Cycle timestamps</summary>
+          <p>
+            Last claim: <SourceTime value={worker.last_claim_at} />
+          </p>
+          <p>
+            Last result: <SourceTime value={worker.last_result_at} />
+          </p>
+        </details>
+      </div>
+    </Panel>
+  );
+}
 export default function App() {
   const [page, setPage] = useState<Page>("Overview");
   const [token, setToken] = useState("");
@@ -180,11 +422,17 @@ export default function App() {
       setNow(Date.now());
       if (action)
         setNotice(
-          action === "kill"
-            ? "Kill switch activated."
-            : action === "pause"
-              ? "Research paused."
-              : "Research resumed. Live trading remains disabled.",
+          data.research.stock_worker
+            ? action === "kill"
+              ? "Hybrid kill switch activated. The separate stock collector is unaffected."
+              : action === "pause"
+                ? "Hybrid research paused. The separate stock collector is unaffected."
+                : "Hybrid research resumed. The separate stock collector is unaffected. Live trading remains disabled."
+            : action === "kill"
+              ? "Kill switch activated."
+              : action === "pause"
+                ? "Research paused."
+                : "Research resumed. Live trading remains disabled.",
         );
     } catch (err) {
       if (generation.current !== request) return;
@@ -508,26 +756,18 @@ export default function App() {
                   />
                 </Panel>
               </div>
-              <Panel
-                title="Research opportunities"
-                note={`${research?.opportunities.length ?? 0} recorded`}
-              >
-                <DataTable
-                  rows={research?.opportunities ?? []}
-                  columns={[
-                    ["symbol", "Symbol"],
-                    ["strategy", "Strategy"],
-                    ["status", "Status"],
-                    ["reason", "Rationale"],
-                  ]}
-                  empty="No qualified opportunities yet"
-                  detail
-                />
-              </Panel>
+              <ResearchOpportunities research={research} />
             </>
           )}
           {page === "Research" && (
             <>
+              {research?.stock_worker && (
+                <StockCollector worker={research.stock_worker} stale={stale} />
+              )}
+              {(research?.stock_worker ||
+                research?.opportunities.some(isStockOpportunity)) && (
+                <ResearchOpportunities research={research} />
+              )}
               <div className="regime">
                 <span>Market regime</span>
                 <strong>
@@ -683,11 +923,21 @@ export default function App() {
           )}
           {page === "Settings" && (
             <>
-              <Panel title="Safety controls">
+              <Panel
+                title={
+                  research?.stock_worker
+                    ? "Hybrid portfolio controls"
+                    : "Safety controls"
+                }
+              >
                 <div className="control-content">
                   <dl className="safety-values">
                     <div>
-                      <dt>Research state</dt>
+                      <dt>
+                        {research?.stock_worker
+                          ? "Hybrid research state"
+                          : "Research state"}
+                      </dt>
                       <dd>
                         {safety
                           ? safety.paused
@@ -697,7 +947,11 @@ export default function App() {
                       </dd>
                     </div>
                     <div>
-                      <dt>Kill switch</dt>
+                      <dt>
+                        {research?.stock_worker
+                          ? "Hybrid kill switch"
+                          : "Kill switch"}
+                      </dt>
                       <dd>
                         {safety
                           ? safety.kill_switch
@@ -722,8 +976,9 @@ export default function App() {
                     </div>
                   </dl>
                   <p>
-                    Resume affects research only. A kill switch cannot be
-                    cleared from this dashboard.
+                    {research?.stock_worker
+                      ? "These controls affect hybrid portfolio research only. The stock collector uses a separate control scope and cannot be paused or stopped here. A hybrid kill switch cannot be cleared from this dashboard."
+                      : "Resume affects research only. A kill switch cannot be cleared from this dashboard."}
                   </p>
                   <div className="controls">
                     <button
@@ -732,7 +987,9 @@ export default function App() {
                       onClick={() => void load(token, "pause")}
                     >
                       <CirclePause size={16} />
-                      Pause research
+                      {research?.stock_worker
+                        ? "Pause hybrid research"
+                        : "Pause research"}
                     </button>
                     <button
                       className="button secondary"
@@ -742,7 +999,9 @@ export default function App() {
                       onClick={() => void load(token, "resume_research")}
                     >
                       <Activity size={16} />
-                      Resume research
+                      {research?.stock_worker
+                        ? "Resume hybrid research"
+                        : "Resume research"}
                     </button>
                     <button
                       className="button danger"
@@ -750,7 +1009,9 @@ export default function App() {
                       onClick={() => void load(token, "kill")}
                     >
                       <Square size={14} />
-                      Activate kill switch
+                      {research?.stock_worker
+                        ? "Activate hybrid kill switch"
+                        : "Activate kill switch"}
                     </button>
                   </div>
                 </div>

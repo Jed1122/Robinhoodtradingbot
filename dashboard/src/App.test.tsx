@@ -2,10 +2,91 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
-import { fixture } from "./testFixture";
+import { fixture, stockFixture } from "./testFixture";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+it("renders stock research priorities with original times and separate collector controls", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue({ ok: true, json: async () => stockFixture() });
+  vi.stubGlobal("fetch", fetcher);
+  const user = userEvent.setup();
+  render(<App />);
+  await user.type(
+    screen.getByLabelText("Dashboard access token"),
+    "synthetic-session",
+  );
+  await user.click(screen.getByRole("button", { name: "Connect workspace" }));
+  await screen.findByText("Connected");
+  await user.click(screen.getByRole("button", { name: "Research" }));
+  expect(
+    screen.getByRole("heading", { name: "Stock research priorities" }),
+  ).toBeTruthy();
+  expect(screen.getByText("FICT")).toBeTruthy();
+  expect(screen.getByText("78.25 / 100")).toBeTruthy();
+  expect(screen.getAllByText("2026-10-21 12:00:00 UTC").length).toBeGreaterThan(
+    0,
+  );
+  expect(
+    screen.getByText(/Research priority is a screening rank/),
+  ).toBeTruthy();
+  expect(screen.getByText("17 / 128 calls reserved today")).toBeTruthy();
+  expect(screen.getByText("111 calls remaining")).toBeTruthy();
+  expect(screen.getByText("Succeeded (last cycle)")).toBeTruthy();
+  await user.click(screen.getByText("Company evidence"));
+  expect(screen.getByText("historical_fundamentals_unavailable")).toBeTruthy();
+  expect(screen.getByText("0.18")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  expect(
+    screen.getByText(/The stock collector uses a separate control scope/),
+  ).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Resume research" })).toBeNull();
+  await user.click(
+    screen.getByRole("button", { name: "Resume hybrid research" }),
+  );
+  await screen.findByText(
+    "Hybrid research resumed. The separate stock collector is unaffected. Live trading remains disabled.",
+  );
+  expect(fetcher).toHaveBeenLastCalledWith(
+    "/api/hybrid/controls",
+    expect.objectContaining({ body: '{"action":"resume_research"}' }),
+  );
+});
+
+it("shows unavailable collector budgets as unknown and does not imply continuous operation", async () => {
+  const data = stockFixture();
+  data.research.opportunities = [];
+  Object.assign(data.research.stock_worker!, {
+    status: "unavailable",
+    reason: "stale_export",
+    exported_at: null,
+    pending_claims: null,
+    reserved_today: null,
+    daily_limit: null,
+    remaining_calls: null,
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, json: async () => data }),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await user.type(
+    screen.getByLabelText("Dashboard access token"),
+    "synthetic-session",
+  );
+  await user.click(screen.getByRole("button", { name: "Connect workspace" }));
+  await screen.findByText("Connected");
+  await user.click(screen.getByRole("button", { name: "Research" }));
+  expect(screen.getByText("Collector evidence unavailable")).toBeTruthy();
+  expect(screen.getByText("stale_export")).toBeTruthy();
+  expect(screen.getByText("Call budget unknown")).toBeTruthy();
+  expect(screen.getByText("Remaining calls unknown")).toBeTruthy();
+  expect(screen.getByText("No current stock research priorities")).toBeTruthy();
+  expect(screen.queryByText("0 calls remaining")).toBeNull();
 });
 it("connects, navigates, submits research controls, then clears the session", async () => {
   const fetcher = vi
@@ -43,6 +124,43 @@ it("connects, navigates, submits research controls, then clears the session", as
     screen.getByLabelText("Dashboard access token").getAttribute("value"),
   ).toBe("");
 });
+it("labels a stale dashboard response as recorded collector evidence and blocks its controls", async () => {
+  const data = { ...stockFixture(), generated_at: "2000-01-01T00:00:00Z" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, json: async () => data }),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await user.type(
+    screen.getByLabelText("Dashboard access token"),
+    "synthetic-session",
+  );
+  await user.click(screen.getByRole("button", { name: "Connect workspace" }));
+  await screen.findByText("Snapshot stale");
+  await user.click(screen.getByRole("button", { name: "Research" }));
+  expect(
+    screen.getByText(
+      "Dashboard snapshot is stale. Collector activity is not current.",
+    ),
+  ).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Resume hybrid research",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Activate hybrid kill switch",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+});
+
 it("disables controls when snapshots become invalid or stale", async () => {
   const data = { ...fixture(), generated_at: "2000-01-01T00:00:00Z" };
   vi.stubGlobal(
