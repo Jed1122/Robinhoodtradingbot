@@ -83,6 +83,8 @@ def reserve_order(
     drawdown = (account.high_watermark - equity) / account.high_watermark * 100
     daily_loss = (account.daily_reference - equity) / account.daily_reference * 100
     if order.side == "buy":
+        if order.sleeve == "tactical" and any(lot.symbol == order.symbol for lot in account.lots):
+            raise ValueError("tactical averaging down or pyramiding is prohibited")
         if any(episode.id == (order.episode_id or order.id) for episode in account.episodes):
             raise ValueError("additional capital requires a new allocation episode")
         if order.sleeve == "tactical" and (

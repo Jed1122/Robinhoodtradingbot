@@ -194,3 +194,17 @@ def test_limit_order_reserves_its_executable_limit():
         Account(paused=False), order(sleeve="long_term", limit_price=D(11)), quote(), NOW, POLICY
     )
     assert a.reserved_cash >= D("33.01")
+
+
+def test_tactical_entry_cannot_average_down_an_existing_position():
+    a = Account(
+        paused=False, cash=D(980), lots=(buy_lot("old", "XYZ", "tactical", D(1), D(20), NOW),)
+    )
+    with pytest.raises(ValueError):
+        reserve_order(
+            a,
+            order("add", quantity=D(1), risk_stop=D(17)),
+            quote(bid=D(18), ask=D("18.01")),
+            NOW,
+            POLICY,
+        )
