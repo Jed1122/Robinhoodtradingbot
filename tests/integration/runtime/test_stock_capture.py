@@ -269,7 +269,7 @@ def test_retained_reader_rehashes_manifest_and_payload(capture):
     module, root = capture
     request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
     report, _, _ = run(module, root, [request])
-    reader = importlib.import_module("trading_bot.research.stock_archive")
+    reader = importlib.import_module("trading_bot.runtime.stock_archive")
     loaded = reader.read_stock_observations(root, report["manifest_file"])
     assert loaded[0]["tool"] == request.tool
     assert len(loaded[0]["observation_sha256"]) == 64
@@ -293,7 +293,7 @@ def test_retained_reader_rehashes_manifest_and_payload(capture):
 )
 def test_retained_reader_rejects_rehashed_incoherent_manifest(capture, mutation):
     module, root = capture
-    reader = importlib.import_module("trading_bot.research.stock_archive")
+    reader = importlib.import_module("trading_bot.runtime.stock_archive")
     request = module.StockCaptureRequest("get_equity_fundamentals", {"symbols": ["ACME"]})
     report, _, _ = run(module, root, [request])
     manifest = json.loads((root / report["manifest_file"]).read_bytes())
