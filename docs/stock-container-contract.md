@@ -341,6 +341,9 @@ a fresh-start acknowledgement and a reader error is not proof of 404 absence.
 No native mutation has been exercised. Signal/stop/removal, ambiguous-outcome recovery,
 actual ownership observations, the trusted release producer, deadline supervisor and
 paused timer are still required before this library can be composed into a worker.
+The source assumes one sequential owning store session with trusted release and
+observation inputs; copying/forking the owner or altering private state is unsupported.
+Python values describe local consistency and do not independently grant authority.
 
 Use a root-owned standard-library launcher, fixed local Docker Unix socket and
 scrubbed environment; do not inherit a remote context, proxy, user env file or shell
@@ -365,6 +368,26 @@ verified CID. On deadline/signal, send TERM with at most ten seconds' grace, the
 if needed, and inspect stopped state with bounded cleanup. A Docker CLI timeout alone
 is not a stopped-container result. Collect bounded status/exit/OOM evidence before
 removal, without collecting provider payloads or arbitrary logs.
+
+The future supervisor must retain the last active stopped container for the next
+session's fresh stopped-state reconfirmation. Only after that acknowledgement and
+durable admission of a new attempt may it remove the previous completed CID.
+Cleanup must reconcile that exact stored CID, retain its immutable receipts and use
+non-force/no-volume removal; unresolved cleanup blocks the next creation. Do not
+delete the current active CID and then replace required stopped evidence with a
+lookup failure. An unexpectedly missing active container is an incident. Ambiguous
+never-created/never-started recovery requires a separate explicit protocol; it cannot
+be silently treated as successful termination or refunded capacity.
+
+The versioned Engine source resolves an inspect identifier by exact ID, exact name
+and then ID prefix, so every 200 still needs returned full-CID validation. Name
+absence can reflect rename, and 404 is lookup absence at one observation. Start and
+removal share a mutex; successful ordinary removal marks the object dead before
+deregistration, preventing a retained start reference from newly starting it. These
+facts do not prove independent kernel/containerd quiescence or native recovery.
+[Lookup](https://github.com/moby/moby/blob/docker-v29.1.3/daemon/container.go#L29-L65),
+[start locking](https://github.com/moby/moby/blob/docker-v29.1.3/daemon/start.go#L21-L88),
+[removal](https://github.com/moby/moby/blob/docker-v29.1.3/daemon/delete.go#L109-L167).
 
 Persist boot/clock domain and owned CID receipt for signal, host-process death and
 reboot recovery. An unfinished attempt must be inspected and safely stopped before

@@ -210,8 +210,21 @@ before adding the fresh create claim and final receipt/fence checks; the missing
 mutation implementation was separately observed RED. The corrected store/transport
 passed 144 fictional filesystem/socket tests, with 100% combined statement/branch
 coverage over the mutation library and 98.93% across both modules. All 571 deployment
-regressions passed with four optional age skips. Independent source review is pending;
-no native mutation or launcher composition is established.
+regressions passed with four optional age skips. The combined deployment/architecture
+check passed 756 tests with those same four skips. Independent store and transport
+reviews cleared 7af0a33, including direct shared-exchange replay, post-connect boot
+drift, failed stop validation and segmented-response probes. Ruff, strict mypy
+(446 files), expanded Bandit and lock checks passed. No native mutation or launcher
+composition is established.
+
+For supervisor recovery, retain the active stopped CID until the next session has
+freshly reconfirmed it and durably begun the next attempt. Remove only older completed
+CIDs after exact fresh inspection; preserve receipts and block new creation when
+cleanup is unresolved. Missing active-container lookup must remain an incident,
+not substitute for stopped evidence. Define never-dispatched/absent recovery explicitly
+before enabling unattended creation; do not infer absence from the current reader's
+opaque error. The contract records versioned source facts and their kernel/native
+limitations. This sequencing decision is not an implemented supervisor.
 
 ## Task 3: Supervised timer, paused installation and native checks
 

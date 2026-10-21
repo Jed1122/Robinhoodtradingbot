@@ -101,11 +101,24 @@ operations namespace was initialized. Supplied inspection objects establish loca
 consistency only; actual ownership/stopped provenance, native recovery and the
 supervisor remain unverified.
 
+The later scoped create/start library is implemented locally, without a CLI or
+service composition. Its shared exchange obtains the one-use fresh create claim
+or durable start fence internally and rechecks state immediately before sending.
+Separate 201/204 response handling preserves uncertainty without retries; the
+GET-only reader is unchanged. Independent reviews cleared 7af0a33 after 144
+focused filesystem/socket tests and additional negative probes. Central deployment
+and architecture checks passed 756 tests with four optional age skips; the mutation
+module has 100% combined statement/branch coverage. No native mutation occurred.
+
 The frozen dashboard full run ended with 11,597 passed, 33 optional skips and two
 test-context failures. Reviewed test-only fixes and a 131-test ordered regression
 resolved the demonstrated interactions without changing production secret/logging
-guards. The corrected integrated full suite remains required; no current full-suite
-pass or deployment readiness is claimed.
+guards. The corrected a63a475 full baseline then passed 11,810 tests with 33 optional
+skips, one dependency deprecation warning and 88.77% combined branch coverage in
+4,258.53 seconds. The primary now runs a separate full check at f04a63f, covering
+later operations/reconciliation work. This subsequent dispatch increment is outside
+that frozen candidate and still requires its eventual full integration check; no
+deployment readiness is claimed.
 
 ## Next implementation and proof
 

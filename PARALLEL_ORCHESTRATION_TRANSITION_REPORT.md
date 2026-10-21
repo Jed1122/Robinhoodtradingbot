@@ -126,8 +126,11 @@ store-owned fresh-create claim/final dispatch checks. Its shared exchange derive
 all routes/bodies and owns claim/fence issuance, including when called directly;
 another transport cannot replay a consumed permission. It passed 144 fictional
 tests at 100% combined coverage for the mutation library (98.93% across it and the
-attempt store), plus 571 deployment tests with four optional age skips. Independent
-review is pending. No CLI/service imports it and no native mutation occurred.
+attempt store), plus 571 deployment tests with four optional age skips. The combined
+deployment/architecture check passed 756 tests with those four skips. Independent
+store and transport reviews cleared 7af0a33, including additional replay, boot-drift,
+failed-validation and framing probes. Ruff, strict mypy (446 files), expanded Bandit
+and lock checks passed. No CLI/service imports it and no native mutation occurred.
 Signal/stop/removal, actual ownership/recovery, supervision and deployment remain
 unimplemented or unverified.
 
