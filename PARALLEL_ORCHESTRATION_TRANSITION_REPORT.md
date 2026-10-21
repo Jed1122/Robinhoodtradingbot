@@ -118,7 +118,11 @@ wrong-scope account snapshots/rows, changed position economics, changed executab
 order terms, changed fill times and duplicate rows within one order view. Twenty-seven
 regressions failed before root corrected account scoping, comparison fields and the
 cross-view-only overlap rule. Fifty focused service tests now pass with 100% combined
-statement/branch coverage; broader checks and independent review are pending. Native
+statement/branch coverage. The integrated reconciliation, execution, persistence,
+risk, adapter and architecture check passed 1,891 tests with 99.03% combined coverage
+over reconciliation. Ruff, strict mypy (445 files), expanded Bandit and lock checks
+passed. Independent review cleared ca31b24 after 70 targeted tests, a 7,225-case
+order-view oracle and ten foreign-data retention probes. Native
 Robinhood nonempty/paginated mappings remain blocked; no provider schema or successful
 native reconciliation is inferred from these fixtures.
 

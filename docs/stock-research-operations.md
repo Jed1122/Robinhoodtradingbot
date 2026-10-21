@@ -89,6 +89,18 @@ verification, durable recovery, installation, timer, actual scheduled acquisitio
 and encrypted backup/restore remain pending. See the
 [exact verification record](stock-research-verification-2026-10-21.md).
 
+The root-private operations attempt store is now implemented locally. It uses a
+permanent host lock, exclusive durable intent/CID/start/stop receipts, a bound active
+pointer and single-use start fences. Reopening never adopts an unfinished attempt
+for execution. Fresh stopped-state reconfirmation and successful file/directory
+flushes are required before admitting a later attempt. Review-found persistence,
+identity and failed-validation acknowledgement gaps were reproduced and fixed;
+independent review cleared the final source at e485be8. Its 72 filesystem tests and
+499 deployment regressions passed, with four optional local-age skips. No production
+operations namespace was initialized. Supplied inspection objects establish local
+consistency only; actual ownership/stopped provenance, native recovery and the
+supervisor remain unverified.
+
 The frozen dashboard full run ended with 11,597 passed, 33 optional skips and two
 test-context failures. Reviewed test-only fixes and a 131-test ordered regression
 resolved the demonstrated interactions without changing production secret/logging

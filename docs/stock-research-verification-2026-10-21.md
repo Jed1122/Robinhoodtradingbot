@@ -202,6 +202,10 @@ A broker-neutral reconciliation audit used only fictional records. Twenty-seven
 regressions reproduced false-clean results before account/row scoping, position
 economics, order terms, fill-time comparisons and duplicate-view handling were fixed.
 The corrected service passes 50 focused tests at 100% combined statement/branch
-coverage; independent review and broader validation remain pending. This does not
+coverage. The integrated reconciliation, execution, persistence, risk, adapter and
+architecture check passed 1,891 tests in 295.27 seconds, with 99.03% combined coverage
+over reconciliation. Ruff, strict mypy (445 files), expanded Bandit and lock checks
+passed. Independent review cleared ca31b24 after 70 targeted tests, a 7,225-case
+order-view oracle and ten foreign-data retention probes. This does not
 verify native Robinhood positions/orders/fills: unverified nonempty and paginated
 provider response shapes still deny.
