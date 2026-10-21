@@ -248,6 +248,50 @@ ownership still need separate native verification after an authorized inert star
 [HostConfig types](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/types/container/hostconfig.go),
 [inspect types](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/types/container/container.go).
 
+### Durable attempt protocol
+
+`infra/hybrid/stock_attempts.py` implements a root-private operations store at
+`/var/lib/hybrid-stock-operations`, separate from worker-writable state. This is
+local source with fictional-filesystem evidence; no production namespace has been
+initialized by this work. It makes no Docker, broker or control call. Inputs must
+come from the trusted release loader and actual observation pipeline.
+Initialization is explicit and refuses existing/partial namespaces. Acquisition
+never creates or repairs the namespace or its permanent `launcher.lock`. The
+root-owned mode-0700 directory and mode-0600 single-link files are traversed without
+symlinks. A canonical namespace record binds a random namespace ID plus the actual
+root and lock device/inode identities. Hold the same nonblocking flock throughout
+the attempt, including observed termination; cleanup must release all handles.
+
+Each fresh random 32-hex attempt has its own mode-0700 directory. Protocol-immutable
+canonical records are written exclusively, bounded to 4096 bytes, fsynced and read
+back. The intent binds namespace, attempt, release/image/config/Compose identities,
+canonical duration, actual boot ID, UTC and monotonic timestamp. Publish an atomic
+`active.json` pointer to its hash and fsync the parent before returning admission.
+Unknown files, lost anchors, altered identities or ambiguous writes deny admission.
+Unfinished attempts prevent new ones; completed receipts are retained.
+
+Persist the verified full CID separately before start. Write an exclusive start
+fence before the single start request, including boot/clock domain and the absolute
+monotonic TERM deadline derived from canonical duration. Persistence overhead counts
+against that bound. Fencing is one-use even following an uncertain local write.
+Only the store session that acknowledged a fresh intent can prepare a start;
+reopening the store never adopts an unfinished attempt for execution. Recovery may
+only inspect and stop the owned container, including lookup by the generated name
+when create acknowledgement was lost.
+
+A terminal receipt requires supplied actual inspection to match the owned identity,
+image/name/labels, no restart/removal policy, non-running/non-paused/non-restarting
+state and zero PID. Preserve exit/OOM/error-presence and separate local observation
+time; do not retain Docker diagnostic text or infer successful research from exit
+code zero. Only its durable acknowledgement permits a later fresh attempt.
+This store is sequencing/consistency evidence, not a substitute for native
+observations, control authority, authentication or the process supervisor.
+Each opened owner session admits at most one fresh attempt. At most 8192 retained
+attempt directories fit the bounded inventory; an explicit completed-receipt
+retention procedure is required before that limit, without deleting active receipts
+or replacing namespace/lock anchors. Public functions fix root UID and production
+path; only private filesystem-test helpers accept a fictional root/owner.
+
 Use a root-owned standard-library launcher, fixed local Docker Unix socket and
 scrubbed environment; do not inherit a remote context, proxy, user env file or shell
 expansion. The launcher holds a separate stable host flock across creation through

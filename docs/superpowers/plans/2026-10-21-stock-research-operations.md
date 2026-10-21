@@ -163,6 +163,20 @@ confirming API 1.52/Linux amd64. No host installation, Docker mutation, image/CI
 inspection, broker call or credential operation occurred. This is metadata transport
 compatibility only; actual image/container proof and the supervisor remain pending.
 
+The next local source increment adds the explicit root operations namespace,
+permanent independent host flock, exclusive durable intent/CID/start/stop records
+and atomic active pointer in `infra/hybrid/stock_attempts.py`. A reopened session
+cannot adopt an unfinished attempt for execution. Stopped observations are scoped
+to the owned image/name/labels/CID and require non-running, non-paused,
+non-restarting state, PID zero and no restart/removal policy. No Docker/provider or
+control operation is performed. Two root self-review regressions were observed RED
+and fixed: preparing a start after a terminal receipt, and returning a start fence
+whose deadline expired during persistence. The store passed 58 fictional/local-FS
+tests at 98.74% combined statement/branch coverage and 485 deployment regression
+tests with four optional age skips. Ruff, strict mypy (445 files), expanded Bandit
+and lock checks passed; independent review is pending. Production initialization,
+write transport, controller/deadline handling and native recovery remain pending.
+
 ## Task 3: Supervised timer, paused installation and native checks
 
 Add stock-specific oneshot service/timer files, fixture tests and installation procedure.

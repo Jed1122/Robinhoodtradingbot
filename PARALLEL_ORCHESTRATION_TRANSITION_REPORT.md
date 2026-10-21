@@ -97,6 +97,15 @@ installation, Docker mutation, image/CID inspection or broker operation occurred
 The reader has no write/retry operation and cannot start the worker; the supervisor
 remains unimplemented.
 
+The root operations attempt store is now local source, with explicit namespace
+initialization, stable nonblocking host flock, durable intent/CID/start/stop receipts
+and an atomic active pointer. Reopening never grants start authority; unfinished
+attempts block new ones. Root reproduced and corrected post-terminal-start and
+persistence-expired-fence cases before review. It passed 58 fictional/filesystem
+tests at 98.74% combined statement/branch coverage, plus 485 deployment regressions
+with four optional age skips. Independent review is pending. No production
+operations namespace, Docker writer, controller or native recovery is established.
+
 Next: complete integrated verification, deployed image/config/control-path verification
 and a completion-relative timer with an actual process
 deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,
