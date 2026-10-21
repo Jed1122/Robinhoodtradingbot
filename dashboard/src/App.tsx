@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
   ArrowDownLeft,
@@ -401,7 +401,11 @@ export default function App() {
   const busy = useRef(false);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      generation.current++;
+      busy.current = false;
+    };
   }, []);
   const sourceTime = snapshot?.generated_at
     ? Date.parse(snapshot.generated_at)
@@ -410,16 +414,19 @@ export default function App() {
     fetched !== null &&
     (now - fetched > 60000 ||
       (Number.isFinite(sourceTime) && now - sourceTime > 60000));
-  async function load(activeToken = token, action?: Action) {
+  const load = useCallback(async (activeToken: string, action?: Action, background = false) => {
     if (busy.current) return;
     busy.current = true;
     const request = ++generation.current;
     setPending(true);
-    setError("");
-    setNotice("");
+    if (!background) {
+      setError("");
+      setNotice("");
+    }
     try {
       const data = await requestSnapshot(activeToken, action);
       if (generation.current !== request) return;
+      setError("");
       setSnapshot(data);
       setToken(activeToken);
       setDraft("");
@@ -457,7 +464,14 @@ export default function App() {
         setPending(false);
       }
     }
-  }
+  }, []);
+  useEffect(() => {
+    if (!token) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load(token, undefined, true);
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [token, load]);
   function disconnect() {
     generation.current++;
     busy.current = false;
@@ -579,7 +593,7 @@ export default function App() {
               {token && (
                 <button
                   className="button secondary"
-                  onClick={() => void load()}
+                  onClick={() => void load(token)}
                   disabled={pending}
                 >
                   <RefreshCw size={15} className={pending ? "spin" : ""} />

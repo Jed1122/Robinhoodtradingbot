@@ -1,11 +1,218 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import App from "./App";
 import { fixture, stockFixture } from "./testFixture";
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+function snapshotResponse(data = fixture()) {
+  return { ok: true, json: async () => data };
+}
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+function pollingClock() {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-21T12:00:00Z"));
+  return vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+}
+async function connectPollingSession() {
+  fireEvent.change(screen.getByLabelText("Dashboard access token"), {
+    target: { value: "synthetic-session" },
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Connect workspace" }));
+  });
+  expect(screen.getByText("Connected")).toBeTruthy();
+}
+async function tick(milliseconds: number) {
+  await act(async () => { await vi.advanceTimersByTimeAsync(milliseconds); });
+}
+
+it("automatically fetches only authenticated GET snapshots on the 30-second cadence after connection", async () => {
+  pollingClock();
+  const updated = fixture();
+  updated.research.regime = "New observed regime";
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(snapshotResponse())
+    .mockResolvedValue(snapshotResponse(updated));
+  vi.stubGlobal("fetch", fetcher);
+  render(<StrictMode><App /></StrictMode>);
+  await tick(90000);
+  expect(fetcher).not.toHaveBeenCalled();
+  await connectPollingSession();
+  fireEvent.click(screen.getByRole("button", { name: "Research" }));
+  await tick(29999);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await tick(1);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("New observed regime")).toBeTruthy();
+  await tick(30000);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  for (const [url, options] of fetcher.mock.calls) {
+    expect(url).toBe("/api/hybrid/snapshot");
+    expect(options.method).toBe("GET");
+    expect(options.headers.Authorization).toBe("Bearer synthetic-session");
+    expect(options.body).toBeUndefined();
+  }
+});
+
+it("does not poll for a typed token or a failed initial connection", async () => {
+  pollingClock();
+  const fetcher = vi.fn().mockRejectedValue(new Error("Fictional offline service"));
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Dashboard access token"), {
+    target: { value: "synthetic-session" },
+  });
+  await tick(60000);
+  expect(fetcher).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Connect workspace" }));
+  });
+  expect(screen.getByText("Disconnected")).toBeTruthy();
+  await tick(90000);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("skips hidden ticks and waits until the next cadence after visibility returns", async () => {
+  const visibility = pollingClock();
+  const fetcher = vi.fn().mockResolvedValue(snapshotResponse());
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  await connectPollingSession();
+  visibility.mockReturnValue("hidden");
+  await tick(60000);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  visibility.mockReturnValue("visible");
+  fireEvent(document, new Event("visibilitychange"));
+  await tick(29999);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await tick(1);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("skips overlapping poll requests and retries only on a later tick after completion", async () => {
+  pollingClock();
+  const pending = deferred<ReturnType<typeof snapshotResponse>>();
+  const fetcher = vi.fn().mockResolvedValueOnce(snapshotResponse())
+    .mockReturnValueOnce(pending.promise).mockResolvedValue(snapshotResponse());
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  await connectPollingSession();
+  await tick(30000);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await tick(60000);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await act(async () => { pending.resolve(snapshotResponse()); });
+  await tick(30000);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+it.each([401, 403])("stops polling and clears the token after a background %s denial", async (status) => {
+  pollingClock();
+  const fetcher = vi.fn().mockResolvedValueOnce(snapshotResponse())
+    .mockResolvedValue({ ok: false, status });
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  await connectPollingSession();
+  await tick(30000);
+  expect(screen.getByText("Disconnected")).toBeTruthy();
+  expect(screen.getByLabelText("Dashboard access token").getAttribute("value")).toBe("");
+  expect(screen.getByRole("alert").textContent).toContain("Access denied");
+  await tick(90000);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("retains the last snapshot and disabled controls on transient failures until a later successful poll", async () => {
+  pollingClock();
+  const pending = deferred<ReturnType<typeof snapshotResponse>>();
+  const fetcher = vi.fn().mockResolvedValueOnce(snapshotResponse())
+    .mockResolvedValueOnce({ ok: false, status: 503 }).mockReturnValueOnce(pending.promise);
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  await connectPollingSession();
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  await tick(30000);
+  expect(screen.getByText("Connection lost")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain("Last verified values remain visible");
+  expect((screen.getByRole("button", { name: "Resume research" }) as HTMLButtonElement).disabled).toBe(true);
+  await tick(29999);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await tick(1);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  expect(screen.getByRole("alert").textContent).toContain("503");
+  await act(async () => { pending.resolve(snapshotResponse()); });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("Connected")).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Resume research" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it("preserves control action notices across background success and failure without replaying the action", async () => {
+  pollingClock();
+  const fetcher = vi.fn().mockResolvedValueOnce(snapshotResponse())
+    .mockResolvedValueOnce(snapshotResponse()).mockResolvedValueOnce(snapshotResponse())
+    .mockResolvedValueOnce({ ok: false, status: 503 });
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  await connectPollingSession();
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Resume research" }));
+  });
+  const notice = "Research resumed. Live trading remains disabled.";
+  expect(screen.getByRole("status").textContent).toContain(notice);
+  await tick(30000);
+  expect(screen.getByRole("status").textContent).toContain(notice);
+  await tick(30000);
+  expect(screen.getByRole("status").textContent).toContain(notice);
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+    "/api/hybrid/snapshot", "/api/hybrid/controls", "/api/hybrid/snapshot", "/api/hybrid/snapshot",
+  ]);
+  for (const [, options] of fetcher.mock.calls.slice(2)) {
+    expect(options.method).toBe("GET");
+    expect(options.body).toBeUndefined();
+  }
+});
+
+it("disconnects during an in-flight poll without restoring the snapshot or scheduling more requests", async () => {
+  pollingClock();
+  const pending = deferred<ReturnType<typeof snapshotResponse>>();
+  const fetcher = vi.fn().mockResolvedValueOnce(snapshotResponse()).mockReturnValueOnce(pending.promise);
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  await connectPollingSession();
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  await tick(30000);
+  fireEvent.click(screen.getByRole("button", { name: "Disconnect & clear token" }));
+  await act(async () => { pending.resolve(snapshotResponse()); });
+  expect(screen.getByText("Disconnected")).toBeTruthy();
+  expect(screen.getByLabelText("Dashboard access token").getAttribute("value")).toBe("");
+  await tick(90000);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("removes refresh timers on unmount and ignores late pending responses", async () => {
+  pollingClock();
+  const pending = deferred<ReturnType<typeof snapshotResponse>>();
+  const fetcher = vi.fn().mockResolvedValueOnce(snapshotResponse()).mockReturnValueOnce(pending.promise);
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(<App />);
+  await connectPollingSession();
+  await tick(30000);
+  view.unmount();
+  await act(async () => { pending.resolve(snapshotResponse()); });
+  await tick(90000);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 it("renders stock research priorities with original times and separate collector controls", async () => {
