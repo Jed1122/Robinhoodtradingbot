@@ -66,13 +66,24 @@ no native image probe, producer or deployment is claimed. See the
 
 ## Task 2: Release description, container barrier and hard deadline
 
-Add `compose.stock-research.yml`, `infra/hybrid/stock-runner.py`, focused deployment tests
-and a stock operations runbook. Reuse `Dockerfile` and the trusted-root attestation schema.
+Add `compose.stock-research.yml`, `infra/hybrid/stock_release.py`,
+`infra/hybrid/stock-runner.py`, focused deployment tests and a stock operations runbook.
+Reuse `Dockerfile` and the trusted-root attestation schema. Keep the read-only release
+verifier separate from actual Docker orchestration so its trust/identity contract can
+be independently tested first. Public `load_release(path)` enforces the fixed production
+root and UID 0; only private test helpers may inject a fictional root/owner. It performs
+no Docker, credential, ledger, control mutation or activation operation.
 
-- [ ] Freeze the root-owned release manifest format, canonical resolved Compose identity,
+- [x] Freeze the root-owned release manifest format, canonical resolved Compose identity,
   fixed paths, image/config identities and resource/deadline bounds before implementation.
   Avoid circular identity by using a source-release path independent of the attestation's
   image/config/Compose release key.
+- [x] Implement/read-only verify the exact closed manifest, observation, resolved policy
+  and attestation schemas in [the container contract](../../stock-container-contract.md).
+  Require canonical bounded bytes, owner/mode/link/path checks, all companion hashes,
+  exact type-sensitive worker policy and matching observed bounds. Exercise rehashed
+  hostile model changes, malformed records and filesystem substitutions with fictional
+  files. No trusted image/deployment proof follows from internally consistent fixtures.
 - [ ] Write RED fixture tests for malformed/untrusted manifest, wrong image/config/command,
   unexpected mounts/environment/network/restart policy, unknown existing container,
   duplicate launcher, time rollback, interrupted Docker commands and orphan ownership.
@@ -85,6 +96,13 @@ and a stock operations runbook. Reuse `Dockerfile` and the trusted-root attestat
 - [ ] Produce root-owned immutable attestation only after inert actual image/config
   observations. Verify the executing worker mount/argument/config binding separately.
   Keep installation, credential transfer and production probes as explicit operations.
+
+Task 2 partial local checkpoint: the isolated Compose policy rendered successfully with
+the local reviewed Compose tool and fictional release values, without creating/starting
+a container. The read-only verifier and policy passed 102 fictional tests; verifier
+branch coverage is 99%. Independent review found a descriptor-cleanup error; two RED
+regressions reproduced it and passed after the fix. Launcher, producer, actual container
+inspection and hard termination remain unimplemented/unverified. Task 2 is not complete.
 
 ## Task 3: Supervised timer, paused installation and native checks
 

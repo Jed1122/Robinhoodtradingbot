@@ -31,12 +31,34 @@ review cleared the extraction. An actual local command returned the unchanged fu
 stock configuration hash and bounded defaults without any provider operation. No
 native container or deployed configuration proof is claimed.
 
+## Retained release verification
+
+`compose.stock-research.yml` defines the isolated worker policy. The local Compose tool
+rendered it successfully using fictional image/release values, without creating or
+starting a container. `infra/hybrid/stock_release.py` now verifies the four canonical
+retained release artifacts described in the [container contract](stock-container-contract.md).
+Its public loader fixes the production namespace and root ownership; it performs no
+Docker, provider, credential, ledger, control or activation operation.
+
+The verifier and Compose policy passed 102 fictional tests with 99% branch coverage over
+the verifier. Tests include type-equivalent policy substitutions, jointly invalid bounds,
+independently altered attestations, unsafe files/parents, namespace replacement and
+operating-system cleanup failures. The latter review finding was reproduced with two
+failing tests and corrected. Ruff, strict mypy and the lock check passed; the expanded
+Bandit check separately reviews the host verifier as well as application source. Its
+Docker tmpfs comparison string has a documented B108 false-positive annotation; no host
+temporary file is created and no scanner rule was disabled globally.
+
+This is retained-record verification, not trusted release production, actual container
+inspection, deadline enforcement, installation or continuous-operation evidence.
+
 ## Next implementation and proof
 
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).
-Freeze the resolved Compose hash preimage, hard deadline/termination semantics,
-paused installation precondition and owned orphan-container recovery receipt before
-the root launcher implementation. Use a sibling stock namespace outside the dashboard's
+The container contract freezes the resolved Compose hash preimage, hard deadline and
+termination semantics, paused installation precondition and owned orphan-container
+recovery receipt. Implement and test the root launcher and trusted release producer next.
+Use a sibling stock namespace outside the dashboard's
 whole-parent state mount, and keep credentials worker-only. Never initialize or resume
 controls from the timer or launcher.
 

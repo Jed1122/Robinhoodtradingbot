@@ -1,8 +1,9 @@
 # Stock container and supervisor contract
 
-This freezes the next deployment implementation, based on source `48914f6`. It is a
-design contract, not an installed launcher or verified container. Existing services,
-broker adapters, portfolio controls and live-disabled defaults remain unchanged.
+This freezes the deployment implementation, based on source `48914f6`. The Compose
+definition and read-only release verifier are implemented locally; the actual launcher,
+producer and container deployment remain unverified. Existing services, broker adapters,
+portfolio controls and live-disabled defaults remain unchanged.
 
 ## Release identity
 
@@ -37,11 +38,24 @@ The filename is `manifest.json` under the matching release-ID directory. Derive 
 three companion paths locally: `stock-compose.resolved.json`, `stock-configuration.json`
 and `runtime-image-attestation.json`. No arbitrary companion path is accepted. All
 records use canonical compact JSON plus newline, regular single-link root-owned mode
-0444 files, trusted non-writable parents and no symlink traversal. Manifest, observation
+0444 files and no symlink traversal. Production parents are root-owned with no group or
+world write permission; owner-write permission is allowed. The private filesystem-test
+helper permits a fictional owner/root and begins ownership/permission checks at that
+selected root, while still traversing every ancestor without following symlinks. The
+public loader always enforces UID 0 and the fixed production root including its ancestors.
+Manifest, observation
 and attestation are each bounded to 4096 bytes; resolved Compose is bounded to 65536.
 The producer normalizes the probe's parsed closed result before storing/hashing it;
 its emitted whitespace is not a second identity format. Manifest run/cadence values
 must equal that retained canonical policy observation, not CLI overrides.
+
+`infra/hybrid/stock_release.py` verifies these retained records without Docker, network,
+credential, ledger or control operations. It returns immutable policy bytes only after
+checking file and namespace identities again. It refuses malformed or replaced artifacts
+and does not create missing files, repair permissions or select an alternate production
+root. Read/cleanup errors return the fixed `stock_release_unavailable` denial; ambiguous
+file-descriptor closes are not retried. Internally consistent fictional records do not
+prove who produced them or which container is executing.
 
 Before attestation production, create an inert network-disabled container with no
 mounts or credentials, inspect its actual image ID and exact configuration-only
