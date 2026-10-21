@@ -197,3 +197,11 @@ raw-session liquidity, stock point-in-time datasets, out-of-sample strategy/cost
 nonempty broker reconciliation and encrypted operational backup/watchdog installation
 remain outstanding. No stock strategy has qualified for capital allocation. There is
 no mandatory paper waiting period; live activation still requires separate authorization.
+
+A broker-neutral reconciliation audit used only fictional records. Twenty-seven
+regressions reproduced false-clean results before account/row scoping, position
+economics, order terms, fill-time comparisons and duplicate-view handling were fixed.
+The corrected service passes 50 focused tests at 100% combined statement/branch
+coverage; independent review and broader validation remain pending. This does not
+verify native Robinhood positions/orders/fills: unverified nonempty and paginated
+provider response shapes still deny.

@@ -1,7 +1,8 @@
 """Broker/local comparison with no generic drift tolerance."""
 
 import uuid
-from datetime import timedelta
+from collections import Counter
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 
@@ -25,6 +26,55 @@ class ReconciliationStore(Protocol):
 
 def _decimal(value: Decimal) -> str:
     return canonical_decimal_text(value)
+
+
+def _account_rows[AccountRecord: (Position, BrokerOrder, Fill)](
+    rows: tuple[AccountRecord, ...],
+    *,
+    account_id: AccountId,
+    source: str,
+    code: str,
+    differences: list[ReconciliationDifference],
+) -> tuple[AccountRecord, ...]:
+    scoped = []
+    for index, item in enumerate(rows):
+        if item.account_id == account_id:
+            scoped.append(item)
+        else:
+            # Do not retain foreign account identities or their economic details.
+            differences.append(
+                ReconciliationDifference(
+                    f"{source}_{code}_account_mismatch",
+                    f"row:{index}",
+                    "wrong_account" if source == "local" else None,
+                    "wrong_account" if source == "broker" else None,
+                )
+            )
+    return tuple(scoped)
+
+
+def _merge_order_views(
+    open_orders: tuple[BrokerOrder, ...], recent_orders: tuple[BrokerOrder, ...]
+) -> tuple[BrokerOrder, ...]:
+    """Elide only one identical row shared by two individually unique views."""
+    open_counts = Counter(item.broker_order_id for item in open_orders)
+    recent_counts = Counter(item.broker_order_id for item in recent_orders)
+    unique_open = {
+        item.broker_order_id: item
+        for item in open_orders
+        if open_counts[item.broker_order_id] == 1
+    }
+    return (
+        *open_orders,
+        *(
+            item
+            for item in recent_orders
+            if not (
+                recent_counts[item.broker_order_id] == 1
+                and unique_open.get(item.broker_order_id) == item
+            )
+        ),
+    )
 
 
 def _compare_by_key(
@@ -135,8 +185,21 @@ class ReconciliationService:
                     f"matching_count:{len(matching_accounts)}",
                 )
             )
+            return await self._persist_result(account_id, now, differences)
         local_account = await self._local.account(account_id)
         broker_account = await self._broker.get_account_state(account_id)
+        for source, snapshot in (("local", local_account), ("broker", broker_account)):
+            if snapshot.account_id != account_id:
+                differences.append(
+                    ReconciliationDifference(
+                        f"{source}_account_identity_mismatch",
+                        str(account_id),
+                        "wrong_account" if source == "local" else None,
+                        "wrong_account" if source == "broker" else None,
+                    )
+                )
+        if differences:
+            return await self._persist_result(account_id, now, differences)
         for field in ("provider_state", "restricted", "equity", "cash"):
             if getattr(local_account, field) != getattr(broker_account, field):
                 differences.append(
@@ -147,49 +210,96 @@ class ReconciliationService:
                         str(getattr(broker_account, field)),
                     )
                 )
-        local_positions = await self._local.positions(account_id)
-        broker_positions = await self._broker.get_positions(account_id)
+        local_positions = _account_rows(
+            await self._local.positions(account_id),
+            account_id=account_id,
+            source="local",
+            code="position",
+            differences=differences,
+        )
+        broker_positions = _account_rows(
+            await self._broker.get_positions(account_id),
+            account_id=account_id,
+            source="broker",
+            code="position",
+            differences=differences,
+        )
         _compare_by_key(
             local_positions,
             broker_positions,
             key="instrument_id",
             code="position",
-            values=("quantity",),
+            values=("quantity", "asset_class", "average_price", "market_value"),
             differences=differences,
         )
-        local_orders = await self._local.orders(account_id)
-        raw_broker_orders = (
-            *await self._broker.get_open_orders(account_id),
-            *await self._broker.get_recent_orders(account_id, now - timedelta(days=1)),
+        local_orders = _account_rows(
+            await self._local.orders(account_id),
+            account_id=account_id,
+            source="local",
+            code="order",
+            differences=differences,
         )
-        broker_orders = tuple(
-            item
-            for index, item in enumerate(raw_broker_orders)
-            if item not in raw_broker_orders[:index]
+        open_orders = _account_rows(
+            await self._broker.get_open_orders(account_id),
+            account_id=account_id,
+            source="broker",
+            code="order",
+            differences=differences,
+        )
+        recent_orders = _account_rows(
+            await self._broker.get_recent_orders(account_id, now - timedelta(days=1)),
+            account_id=account_id,
+            source="broker",
+            code="order",
+            differences=differences,
         )
         _compare_by_key(
             local_orders,
-            tuple(broker_orders),
+            _merge_order_views(open_orders, recent_orders),
             key="broker_order_id",
             code="order",
             values=(
                 "instrument_id",
                 "side",
                 "purpose",
+                "order_type",
+                "time_in_force",
                 "requested_quantity",
                 "filled_quantity",
+                "limit_price",
+                "stop_price",
                 "state",
             ),
             differences=differences,
         )
-        local_fills = await self._local.fills(account_id)
-        broker_fills = await self._broker.get_fills(account_id, now - timedelta(days=1))
+        local_fills = _account_rows(
+            await self._local.fills(account_id),
+            account_id=account_id,
+            source="local",
+            code="fill",
+            differences=differences,
+        )
+        broker_fills = _account_rows(
+            await self._broker.get_fills(account_id, now - timedelta(days=1)),
+            account_id=account_id,
+            source="broker",
+            code="fill",
+            differences=differences,
+        )
         _compare_by_key(
             local_fills,
             broker_fills,
             key="id",
             code="fill",
-            values=("broker_order_id", "instrument_id", "side", "quantity", "price", "fee"),
+            values=(
+                "broker_order_id",
+                "instrument_id",
+                "side",
+                "quantity",
+                "price",
+                "fee",
+                "occurred_at",
+            ),
             differences=differences,
         )
         for asset_class in self._enabled_asset_classes:
@@ -212,6 +322,14 @@ class ReconciliationService:
                         _decimal(broker_power),
                     )
                 )
+        return await self._persist_result(account_id, now, differences)
+
+    async def _persist_result(
+        self,
+        account_id: AccountId,
+        now: datetime,
+        differences: list[ReconciliationDifference],
+    ) -> ReconciliationResult:
         result = ReconciliationResult(
             str(uuid.uuid4()), account_id, not differences, tuple(differences), now
         )

@@ -109,9 +109,18 @@ fresh terminal-reconfirmation fixes. Follow-up review confirmed those fixes and 
 that failure of the first validation retained an earlier session acknowledgement.
 Two observed RED regressions now pass after acknowledgement invalidation was moved
 before validation. The store now passes 72 filesystem tests at 98.57% combined
-statement/branch coverage and 499 deployment tests with four optional age skips;
-review of this final correction is pending. No production
+statement/branch coverage and 499 deployment tests with four optional age skips.
+Independent review cleared the final entry-order correction at e485be8. No production
 operations namespace, Docker writer, controller or native recovery is established.
+
+A separate fictional audit reproduced false-clean broker-neutral reconciliation for
+wrong-scope account snapshots/rows, changed position economics, changed executable
+order terms, changed fill times and duplicate rows within one order view. Twenty-seven
+regressions failed before root corrected account scoping, comparison fields and the
+cross-view-only overlap rule. Fifty focused service tests now pass with 100% combined
+statement/branch coverage; broader checks and independent review are pending. Native
+Robinhood nonempty/paginated mappings remain blocked; no provider schema or successful
+native reconciliation is inferred from these fixtures.
 
 Next: complete integrated verification, deployed image/config/control-path verification
 and a completion-relative timer with an actual process

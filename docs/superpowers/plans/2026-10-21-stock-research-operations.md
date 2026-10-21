@@ -186,7 +186,7 @@ an entry-order gap: failure of the first filesystem validation preserved prior s
 acknowledgements. Two additional regressions failed before moving all stop-related
 latch invalidation before validation. The corrected store passes 72 local filesystem
 tests and 499 deployment regressions with four optional age skips. Independent review
-of this final entry-order correction is pending.
+cleared the final entry-order correction at e485be8.
 Production initialization,
 write transport, controller/deadline handling and native recovery remain pending.
 
