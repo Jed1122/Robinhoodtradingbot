@@ -15,8 +15,13 @@ branch coverage over the changed runtime/persistence surface. These are fictiona
 session and local database tests; they do not establish deployed collection or an
 investment advantage. The older 7cd644d full baseline remains in progress separately.
 
+The CLI also accepts the existing root-controlled deployed-image attestation through
+a required option pair, checks its full stock configuration hash and passes only the
+image-derived code hash to acquisition. This has local fictional-attestation tests;
+the stock deployment's attestation producer and executing-image proof remain absent.
+
 Next: authenticated stock-dashboard export, authoritative research pause/kill admission,
-deployed image/config attestation and a completion-relative timer with an actual process
+deployed image/config verification and a completion-relative timer with an actual process
 deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,
 restore and watchdog alerts. Stock data/strategy qualification and nonempty brokerage
 reconciliation remain incomplete. Live execution remains disabled. See the

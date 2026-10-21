@@ -109,8 +109,19 @@ PYTHONPATH=src uv run python -m trading_bot.runtime.stock_research_worker \
 
 The CLI derives identity from the actual clean checkout using the existing code-identity
 resolver. Dirty, uncommitted or non-promotable source is rejected. No caller-provided
-code-hash flag exists. This local source check is not deployed-image attestation; an
-image-only environment without the required source identity fails closed.
+code-hash flag exists.
+
+For an image without Git, provide both `--image-digest sha256:...` and
+`--image-attestation /absolute/root-controlled/release.json`. The existing canonical
+verifier requires a root-owned immutable attestation, matching image digest, release
+key and full stock configuration hash. The worker uses its image-derived code hash.
+An incomplete pair or failed verification blocks before opening research resources;
+it never falls back to local Git. With neither option, clean-Git checks still apply.
+
+The operator/deployment process must independently verify the executing image and
+produce the attestation outside the unprivileged worker. These startup arguments do
+not prove that verification occurred. The stock deployment's attestation producer,
+mounts and exact executing-image checks have not been implemented or run yet.
 
 Output is a sanitized JSON status with counts and artifact digests. Successful cycles
 and ordinary `not_due` return exit 0; other blocked outcomes return exit 2. Credentials,

@@ -92,3 +92,16 @@ The durable claim/budget/cache ledger and one-shot owner are implemented locally
 step is the dashboard read projection and external timer, followed by actual deployed
 identity, authentication, backup/restore and monitoring evidence. Source code and fake
 sessions do not establish scheduled production operation.
+
+## Container identity continuation
+
+Extend the existing one-shot CLI with paired `--image-digest` and
+`--image-attestation` operator arguments. Reuse the canonical root-owned immutable
+attestation verifier and its image-derived code hash; require the attestation's
+configuration identity to match the complete canonical stock configuration. Reject
+an incomplete pair, malformed/untrusted/mismatched attestation or wrong configuration
+before ledger/archive access or credential construction. Keep clean-Git local startup
+as the default and provide no arbitrary code-hash override. Tests use local fictional
+attestations with an injected trusted owner only through the existing verifier test
+seam. This adds startup capability, not an attestation producer, timer, control gate,
+executing-image verification, deployment or permission to run provider calls.

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from trading_bot.code_identity import CodeIdentity
+from trading_bot.code_identity import CodeIdentity, _verify_deployed_image_attestation
 from trading_bot.domain import CodeHash
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -143,3 +143,140 @@ def test_cli_pins_existing_ledger_through_connection(tmp_path, monkeypatch, caps
         with pytest.raises(OSError):
             os.fstat(descriptor)
     assert not (root / "unused-oauth").exists()
+
+
+@pytest.mark.parametrize("flag", ["--image-digest", "--image-attestation"])
+def test_cli_rejects_incomplete_deployed_identity_pair(tmp_path, monkeypatch, capsys, flag):
+    module = importlib.import_module("trading_bot.runtime.stock_research_worker")
+    monkeypatch.setattr(
+        module, "resolve_code_identity", lambda *args: pytest.fail("incomplete image identity")
+    )
+    assert module.main([*arguments(tmp_path.resolve()), flag, "unused"]) == 2
+    assert json.loads(capsys.readouterr().out)["reason"] == "worker_startup_blocked"
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("variant", ["valid", "wrong_config", "wrong_image", "writable"])
+def test_cli_attested_startup_uses_real_verifier_before_any_resources(
+    tmp_path, monkeypatch, capsys, variant
+):
+    from trading_bot.config import load_config
+
+    module = importlib.import_module("trading_bot.runtime.stock_research_worker")
+    loaded = load_config(
+        ROOT / "configs/base.yaml",
+        ROOT / "configs/hybrid/paper.yaml",
+        ROOT / "configs/hybrid/safety-envelope.yaml",
+        {},
+        hybrid_policy_path=ROOT / "configs/hybrid/policy.yaml",
+        stock_research_policy_path=ROOT / "configs/hybrid/stock-research.yaml",
+        stock_worker_policy_path=ROOT / "configs/hybrid/stock-worker.yaml",
+    )
+    root = tmp_path.resolve()
+    root.chmod(0o700)
+    document = {
+        "schema_version": 1,
+        "image_digest": "sha256:" + "a" * 64,
+        "deployment_config_hash": "b" * 64
+        if variant == "wrong_config"
+        else str(loaded.config_hash),
+        "compose_sha256": "c" * 64,
+    }
+    document["release_key"] = "-".join(["a" * 64, document["deployment_config_hash"], "c" * 64])
+    attestation = root / "image.json"
+    attestation.write_text(json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n")
+    attestation.chmod(0o600 if variant == "writable" else 0o400)
+    monkeypatch.setattr(
+        module,
+        "resolve_code_identity",
+        lambda *args: pytest.fail("deployed path must not depend on Git"),
+    )
+    observed = []
+
+    def verify(path, *, expected_image_digest):
+        observed.append(True)
+        return _verify_deployed_image_attestation(
+            path, expected_image_digest=expected_image_digest, trusted_owner_uid=os.geteuid()
+        )
+
+    monkeypatch.setattr(module, "verify_deployed_image_attestation", verify, raising=False)
+
+    def ledger(path):
+        observed.append("ledger")
+        raise ValueError("stop before data or credentials")
+
+    monkeypatch.setattr(module, "_existing_private_ledger", ledger)
+    try:
+        outcome = module.main(
+            [
+                *arguments(root),
+                "--image-digest",
+                "sha256:" + ("d" if variant == "wrong_image" else "a") * 64,
+                "--image-attestation",
+                str(attestation),
+            ]
+        )
+    except SystemExit as stopped:
+        pytest.fail(f"deployed identity options are missing: exit {stopped.code}")
+    assert outcome == 2
+    assert observed == ([True, "ledger"] if variant == "valid" else [True])
+    assert json.loads(capsys.readouterr().out)["reason"] == "worker_startup_blocked"
+    assert list(root.iterdir()) == [attestation]
+
+
+def test_cli_passes_only_image_derived_hash_to_cycle_without_git(tmp_path, monkeypatch, capsys):
+    from trading_bot.code_identity import deployed_image_code_hash
+    from trading_bot.config import load_config
+
+    module = importlib.import_module("trading_bot.runtime.stock_research_worker")
+    loaded = load_config(
+        ROOT / "configs/base.yaml",
+        ROOT / "configs/hybrid/paper.yaml",
+        ROOT / "configs/hybrid/safety-envelope.yaml",
+        {},
+        hybrid_policy_path=ROOT / "configs/hybrid/policy.yaml",
+        stock_research_policy_path=ROOT / "configs/hybrid/stock-research.yaml",
+        stock_worker_policy_path=ROOT / "configs/hybrid/stock-worker.yaml",
+    )
+    root = tmp_path.resolve()
+    root.chmod(0o700)
+    path = root / "ledger.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE sentinel (value TEXT)")
+    path.chmod(0o600)
+    image = "sha256:" + "a" * 64
+    document = {
+        "schema_version": 1,
+        "image_digest": image,
+        "deployment_config_hash": str(loaded.config_hash),
+        "compose_sha256": "c" * 64,
+        "release_key": "-".join(["a" * 64, str(loaded.config_hash), "c" * 64]),
+    }
+    attestation = root / "image.json"
+    attestation.write_text(json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n")
+    attestation.chmod(0o400)
+    monkeypatch.setattr(
+        module,
+        "verify_deployed_image_attestation",
+        lambda path, *, expected_image_digest: _verify_deployed_image_attestation(
+            path, expected_image_digest=expected_image_digest, trusted_owner_uid=os.geteuid()
+        ),
+    )
+    monkeypatch.setattr(
+        module, "resolve_code_identity", lambda *args: pytest.fail("must not fall back to Git")
+    )
+    observed = []
+
+    async def cycle(**kwargs):
+        observed.append((kwargs["code_hash"], kwargs["loaded"]))
+        return {"status": "blocked", "reason": "not_due", "live_enabled": False}
+
+    monkeypatch.setattr(module, "run_stock_research_cycle", cycle)
+    assert (
+        module.main(
+            [*arguments(root), "--image-digest", image, "--image-attestation", str(attestation)]
+        )
+        == 0
+    )
+    assert observed == [(deployed_image_code_hash(image), loaded)]
+    assert json.loads(capsys.readouterr().out)["live_enabled"] is False

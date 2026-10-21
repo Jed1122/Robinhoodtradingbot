@@ -19,7 +19,7 @@ from typing import Any
 from trading_bot.brokers.robinhood_mcp_sdk import RobinhoodMcpSdkConnection
 from trading_bot.brokers.stock_research_mcp import PROFILE_SHA256, StockResearchTransport
 from trading_bot.clock import require_utc
-from trading_bot.code_identity import resolve_code_identity
+from trading_bot.code_identity import resolve_code_identity, verify_deployed_image_attestation
 from trading_bot.config import LoadedConfig, load_config
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.config.stock_research import StockWorkerAppConfig
@@ -537,11 +537,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--oauth-store", type=Path, required=True)
     parser.add_argument("--archive-dir", type=Path, required=True)
+    parser.add_argument("--image-digest", help="Operator-verified executing immutable image digest")
+    parser.add_argument("--image-attestation", type=Path, help="Root-owned release attestation")
     args = parser.parse_args(argv)
     try:
-        identity = resolve_code_identity(repository, None)
         _check(
-            not identity.dirty and not identity.non_promotable and identity.git_commit is not None
+            (args.image_digest is None) == (args.image_attestation is None),
+            "worker_startup_blocked",
         )
         root = args.config_root
         loaded = load_config(
@@ -553,6 +555,20 @@ def main(argv: list[str] | None = None) -> int:
             stock_research_policy_path=root / "hybrid/stock-research.yaml",
             stock_worker_policy_path=root / "hybrid/stock-worker.yaml",
         )
+        if args.image_digest is not None:
+            deployed = verify_deployed_image_attestation(
+                args.image_attestation, expected_image_digest=args.image_digest
+            )
+            _check(deployed.deployment_config_hash == str(loaded.config_hash))
+            code_hash = deployed.code_hash
+        else:
+            identity = resolve_code_identity(repository, None)
+            _check(
+                not identity.dirty
+                and not identity.non_promotable
+                and identity.git_commit is not None
+            )
+            code_hash = identity.code_hash
         from trading_bot.logging import _install_logging_settings, configure_logging
 
         _install_logging_settings(loaded.config.logging, loaded.safety_envelope.logging)
@@ -565,7 +581,7 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     return await run_stock_research_cycle(
                         loaded=loaded,
-                        code_hash=identity.code_hash,
+                        code_hash=code_hash,
                         factory=async_session_factory(engine),
                         oauth_store=args.oauth_store,
                         output_dir=args.archive_dir,
