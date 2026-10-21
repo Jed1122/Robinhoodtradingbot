@@ -76,11 +76,19 @@ consistency from native image/runtime evidence and records the fixed API profile
 The subsequent local data-only prestart gate builds a fixed raw API 1.52 worker
 request and compares supplied created-container metadata against complete identity,
 command, environment, request/resolved mounts, fresh state and resource policies.
-It passed 123 fictional cases with 100% branch coverage and 368 deployment regression
-tests with four optional age skips. Independent review is pending. This gate performs
+It initially passed 123 fictional cases. Review found Docker can normalize an allowed
+empty image volume map to null. The field-specific RED-to-GREEN fix and denial tests
+passed 129 cases with 100% branch coverage, and independent review cleared the gate
+after 374 deployment regression tests with four optional age skips. This gate performs
 no Docker call and does not establish actual CID inspection, applied hardening or
 permission to start. Primary a63a475 remains frozen for its running full test suite;
 this source increment is developed separately.
+
+The local GET-only Engine metadata reader now adds fixed Linux/root/socket/peer
+checks, immutable-image/full-CID/generated-attempt routes and a non-renewable bounded
+HTTP read budget. Its 42 fictional/socketpair tests passed with 98.48% branch coverage;
+independent review and native compatibility remain pending. It has no Docker write
+or retry operation and cannot start the worker. The supervisor remains unimplemented.
 
 Next: complete integrated verification, deployed image/config/control-path verification
 and a completion-relative timer with an actual process

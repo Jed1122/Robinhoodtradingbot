@@ -139,8 +139,20 @@ resources and all 69 versioned HostConfig fields. They never create or start any
 Initial missing-implementation RED was observed; 123 fictional cases then passed with
 100% branch coverage. Deployment regression passed 368 tests with four optional age
 skips; Ruff, strict mypy (443 files), expanded Bandit and lock checks passed. Independent
-review is pending. Actual daemon I/O, trusted production and supervisor remain pending;
+review initially found a no-volume normalization mismatch: Docker image merge may
+replace the empty request map with null. A RED regression reproduced it; the
+field-specific fix and five denial cases passed, producing 129 tests at 100% branch
+coverage. Independent review is READY_FOR_INTEGRATION after 374 deployment tests
+with four optional age skips. Trusted production and supervisor remain pending;
 the actual-CID inspection task above is not checked complete by supplied JSON tests.
+
+The next local increment implements the fixed root/Linux Unix-socket GET-only
+metadata reader, with a single absolute five-second budget, bounded HTTP/1.0
+responses and fixed sanitized errors. It cannot mutate Docker or retry. Its 42
+fictional/socketpair tests passed at 98.48% branch coverage; root/peer validation
+is exercised with fictional system metadata. Missing peer support was observed
+RED before its guard was implemented. Ruff, strict mypy (444 files) and expanded
+Bandit passed. Independent review and native compatibility remain pending.
 
 ## Task 3: Supervised timer, paused installation and native checks
 

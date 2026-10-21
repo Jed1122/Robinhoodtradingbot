@@ -168,6 +168,26 @@ reviewed profile change, not an unsafe fallback.
 
 ## Launcher and deadline
 
+### Local Engine metadata reader
+
+`infra/hybrid/stock_engine.py` implements GET-only version, immutable-image and
+full-CID/generated-attempt inspection routes. It has no Docker mutation, retry,
+CLI, remote context, endpoint override or configuration/credential operation.
+The production connector requires Linux UID 0, a root-owned non-world-accessible
+socket at `/var/run/docker.sock`, and a positive-PID UID-0 Unix peer. Missing peer
+credential support denies. This does not prove how the daemon is configured or
+make any returned container owned by the launcher.
+
+Each new connection has one five-second monotonic operation deadline, including
+connect/send/headers/body. Repeated reads cannot reset it. Requests use HTTP/1.0
+and `Connection: close`; only a 200 response with explicit length or EOF framing
+is accepted. Headers are bounded to 8192 bytes and body to 1 MiB. Duplicate or
+malformed headers, transfer encoding, truncation, excess bytes already buffered,
+non-success status and read/connection failures return the fixed
+`stock_engine_unavailable` error without response text. Response JSON and policy
+identity still require the separate Engine/image/prestart verifiers. Native
+HTTP/socket compatibility is not established by socketpair fixtures.
+
 ### Source profile for created-container admission
 
 `infra/hybrid/stock_prestart.py` implements a data-only API 1.52 request and inspection gate. Its
