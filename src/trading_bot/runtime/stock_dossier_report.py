@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+from collections import Counter
 from contextlib import ExitStack
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -28,16 +29,71 @@ from trading_bot.market_data.stock_facts import (
     normalize_financials,
     normalize_fundamentals,
 )
+from trading_bot.market_data.stock_filing_facts import (
+    StockFilingCatalog,
+    StockFilingEvidence,
+    StockFilingFacts,
+    bind_filing_evidence,
+    normalize_filing_catalog,
+    normalize_filing_facts,
+)
 from trading_bot.market_data.stock_history_projection import (
     StockHistoryProjectionBatch,
     normalize_history_by_symbol,
 )
-from trading_bot.research.stock_dossiers import build_stock_dossiers
+from trading_bot.research.stock_dossiers import build_stock_dossiers, stock_dossier_document
 from trading_bot.research.stock_technicals import compute_stock_technicals
 from trading_bot.runtime.stock_archive import _read, read_stock_observations
 from trading_bot.runtime.stock_capture import _duplicate_directory, _private_directory, _publish
 
 _MAX_REPORT_BYTES = 9_000_000
+
+
+def _filing_chains(
+    filings: list[StockFilingCollection],
+    catalogs: list[StockFilingCatalog],
+    facts: list[StockFilingFacts],
+    cutoff: datetime,
+) -> tuple[tuple[StockFilingEvidence, ...], list[dict[str, object]]]:
+    evidence: list[StockFilingEvidence] = []
+    denials: list[dict[str, object]] = []
+    requested = {row.requested_filing_id for row in catalogs} | {
+        identity for row in facts for identity in row.requested_filing_ids
+    }
+    for identity in sorted(requested):
+        indexes = [row for row in filings if any(f.filing_id == identity for f in row.records)]
+        # A second index collection for the same company is also ambiguous even
+        # when it contains a different ID. Never select its preferred vintage.
+        symbols = {row.requested_symbol for row in indexes}
+        indexes = [row for row in filings if row.requested_symbol in symbols]
+        selected_catalogs = [row for row in catalogs if row.requested_filing_id == identity]
+        selected_facts = [row for row in facts if identity in row.requested_filing_ids]
+        sources: tuple[StockFilingCollection | StockFilingCatalog | StockFilingFacts, ...] = (
+            *indexes,
+            *selected_catalogs,
+            *selected_facts,
+        )
+        lengths = (len(indexes), len(selected_catalogs), len(selected_facts))
+        reason = "stock_filing_evidence_incomplete"
+        if any(length > 1 for length in lengths):
+            reason = "stock_filing_evidence_ambiguous"
+        elif lengths == (1, 1, 1):
+            try:
+                evidence.append(
+                    bind_filing_evidence(
+                        indexes[0], selected_catalogs[0], selected_facts[0], as_of=cutoff
+                    )
+                )
+                continue
+            except (ValueError, TypeError, OverflowError):
+                reason = "stock_filing_evidence_binding_denied"
+        denials.append(
+            {
+                "reason": reason,
+                "observation_sha256s": tuple(row.receipt.observation_sha256 for row in sources),
+            }
+        )
+    return tuple(evidence), denials
 
 
 def compile_stock_dossier_report(
@@ -60,6 +116,9 @@ def compile_stock_dossier_report(
         history: list[StockHistoryProjectionBatch] = []
         earnings: list[StockEarningsCollection] = []
         filings: list[StockFilingCollection] = []
+        catalogs: list[StockFilingCatalog] = []
+        filing_facts: list[StockFilingFacts] = []
+        filing_aware = False
         denials = []
         skipped: list[dict[str, str]] = []
         future = 0
@@ -81,6 +140,8 @@ def compile_stock_dossier_report(
                 continue
             visible.append(row)
             tool, arguments, payload = row["tool"], row["arguments"], row["payload"]
+            if tool in ("get_sec_filing_facts_catalog", "get_sec_filing_facts"):
+                filing_aware = True
             common: dict[str, Any] = {"received_at": received, "observation_sha256": digest}
             try:
                 if tool == "get_equity_fundamentals":
@@ -123,6 +184,24 @@ def compile_stock_dossier_report(
                             payload, **common, requested_symbol=arguments["symbol"]
                         )
                     )
+                elif tool == "get_sec_filing_facts_catalog":
+                    catalogs.append(
+                        normalize_filing_catalog(
+                            payload,
+                            **common,
+                            requested_filing_id=arguments["filing_id"],
+                            requested_offset=arguments.get("offset", 0),
+                        )
+                    )
+                elif tool == "get_sec_filing_facts":
+                    filing_facts.append(
+                        normalize_filing_facts(
+                            payload,
+                            **common,
+                            requested_filing_ids=tuple(arguments["filing_ids"]),
+                            requested_concepts=tuple(arguments["concepts"]),
+                        )
+                    )
                 else:
                     skipped.append({"tool": tool, "observation_sha256": digest})
             except (ValueError, KeyError, TypeError, OverflowError):
@@ -133,12 +212,18 @@ def compile_stock_dossier_report(
                         "reason": "stock_observation_normalization_denied",
                     }
                 )
+        evidence, filing_denials = _filing_chains(filings, catalogs, filing_facts, cutoff)
+        index_counts = Counter(row.requested_symbol for row in filings)
+        dossier_filings = tuple(
+            row for row in filings if not filing_aware or index_counts[row.requested_symbol] == 1
+        )
         dossiers = build_stock_dossiers(
             as_of=cutoff,
             facts=tuple(facts),
             history=tuple(history),
             earnings=tuple(earnings),
-            filings=tuple(filings),
+            filings=dossier_filings,
+            filing_evidence=evidence,
         )
         technical_summaries = []
         for feature in compute_stock_technicals(as_of=cutoff, history=tuple(history)):
@@ -154,7 +239,7 @@ def compile_stock_dossier_report(
         result: dict[str, Any] = json.loads(
             canonical_json(
                 {
-                    "schema_version": 2,
+                    "schema_version": 3 if filing_aware else 2,
                     "status": "descriptive_evidence_with_gaps",
                     "as_of": cutoff,
                     "company_count": len(dossiers),
@@ -166,7 +251,10 @@ def compile_stock_dossier_report(
                     "normalization_denials": denials,
                     "unprojected_observations": skipped,
                     "future_observations_excluded": future,
-                    "dossiers": dossiers,
+                    "dossiers": tuple(
+                        stock_dossier_document(row, include_empty_filing_evidence=filing_aware)
+                        for row in dossiers
+                    ),
                     "dossier_hashes": tuple(row.dossier_hash for row in dossiers),
                     "technical_features": technical_summaries,
                     "native_http_wire_receipt": False,
@@ -177,6 +265,8 @@ def compile_stock_dossier_report(
                 }
             )
         )
+        if filing_aware:
+            result["filing_evidence_denials"] = json.loads(canonical_json(filing_denials))
         return result
     except (ValueError, KeyError, TypeError, OverflowError):
         raise ValueError("stock_dossier_report_invalid") from None

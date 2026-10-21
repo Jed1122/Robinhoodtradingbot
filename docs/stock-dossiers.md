@@ -16,6 +16,7 @@ build_stock_dossiers(
     history: tuple[StockHistoryProjectionBatch, ...],
     earnings: tuple[StockEarningsCollection, ...],
     filings: tuple[StockFilingCollection, ...],
+    filing_evidence: tuple[StockFilingEvidence, ...] = (),
 ) -> tuple[StockDossier, ...]
 ```
 
@@ -51,7 +52,7 @@ Repeated original hashes for the same company/tool reject even for unknown
 periods. This permits separate retained annual/quarterly null observations
 without inventing which one supplied a company-specific period label.
 
-All four input groups must be exact tuples of their declared collection family.
+All input groups must be exact tuples of their declared collection family.
 Local denial bounds are 256 total input collections, 1,000 visible companies and
 100,000 visible records, including retained history omissions. Invalid inputs
 raise `ValueError("stock_dossiers_invalid")`; no partially assembled result is
@@ -94,8 +95,25 @@ provenance and source reason codes. No partial quarantined series is returned.
 Financial periods and source references have deterministic ordering, independent
 of input collection order. Price bars and source event records retain their
 existing order and values. `dossier_hash` binds the complete dossier under the
-`stock-dossier-v1` namespace. It supplies reproducible identity, not source
+`stock-dossier-v1` namespace when no filing facts are attached. It supplies reproducible identity, not source
 authenticity or a confidence assessment.
+
+Optional native filing evidence binds an exact filing-index record, catalog page
+and fact response through `market_data.stock_filing_facts.bind_filing_evidence`.
+The assembler repeats that validation at its cutoff and requires the exact index
+collection among its inputs. It cannot attach facts using a company-name guess or
+an unrelated index. Duplicate evidence and mutated qualifying flags are rejected.
+Each attachment retains its three receipts, raw optional states, reported units,
+native periods and entity text; availability is the latest contributing receipt.
+Reported units and entity mapping remain explicit unqualified gaps. Existing
+aggregate currency, history and source gaps are retained.
+
+Dossiers with this evidence use `stock-dossier-v2`. The filing-only document
+encodes parsed Decimal values as exact strings, including scientific notation,
+and retains their original raw strings. No scaling by decimals metadata occurs.
+Empty evidence is omitted from legacy documents and hashes, preserving cached
+schema-2 reports exactly. `stock_dossier_document` supplies this version-aware
+document representation; ordinary portfolio-number serialization is unchanged.
 
 ## Questions and research gaps
 

@@ -1,9 +1,10 @@
 """Pure receipt-visible stock dossiers; structured evidence and questions, no investment view."""
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Literal
+from decimal import Decimal
+from typing import Any, Literal
 
 from trading_bot.clock import require_utc
 from trading_bot.market_data.recording import content_hash
@@ -20,6 +21,7 @@ from trading_bot.market_data.stock_facts import (
     StockFundamentals,
     StockObservationReceipt,
 )
+from trading_bot.market_data.stock_filing_facts import StockFilingEvidence, bind_filing_evidence
 from trading_bot.market_data.stock_history_projection import (
     StockHistoryProjectionBatch,
     StockHistoryProjectionContext,
@@ -126,6 +128,7 @@ class StockDossier:
     filing_index: tuple[StockFiling, ...]
     sources: tuple[StockDossierSource, ...]
     gaps: tuple[str, ...]
+    filing_evidence: tuple[StockFilingEvidence, ...] = ()
     questions: tuple[StockResearchQuestion, ...] = field(default=_QUESTIONS, init=False)
     qualified: Literal[False] = field(default=False, init=False)
     source_qualified: Literal[False] = field(default=False, init=False)
@@ -136,7 +139,38 @@ class StockDossier:
 
     @property
     def dossier_hash(self) -> str:
-        return str(content_hash(("stock-dossier-v1", self)))
+        version = "stock-dossier-v2" if self.filing_evidence else "stock-dossier-v1"
+        return str(content_hash((version, stock_dossier_document(self))))
+
+
+def _filing_numbers(value: Any) -> Any:
+    """Exact filing decimals may exceed the shared portfolio-number display range."""
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _filing_numbers(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return tuple(_filing_numbers(item) for item in value)
+    return value
+
+
+def stock_dossier_document(
+    dossier: StockDossier, *, include_empty_filing_evidence: bool = False
+) -> dict[str, Any]:
+    """Keep legacy documents exact; expose filing availability and content identities."""
+    document = asdict(dossier)
+    if dossier.filing_evidence:
+        document["filing_evidence"] = tuple(
+            {
+                **_filing_numbers(asdict(evidence)),
+                "available_at": evidence.available_at,
+                "evidence_hash": evidence.evidence_hash,
+            }
+            for evidence in dossier.filing_evidence
+        )
+    elif not include_empty_filing_evidence:
+        document.pop("filing_evidence")
+    return document
 
 
 @dataclass(slots=True)
@@ -147,6 +181,7 @@ class _Parts:
     earnings: tuple[StockEarningsEvent, ...] = ()
     filings: tuple[StockFiling, ...] = ()
     sources: list[StockDossierSource] = field(default_factory=list)
+    filing_evidence: list[StockFilingEvidence] = field(default_factory=list)
 
 
 def _visible(receipt: _Receipt, as_of: datetime) -> bool:
@@ -170,6 +205,8 @@ def _gaps(parts: _Parts) -> tuple[str, ...]:
         "exact_publication_times_unknown",
         "source_authenticity_unqualified",
     }
+    if parts.filing_evidence:
+        gaps.update({"filing_units_unqualified", "filing_entity_mapping_unknown"})
     if parts.fundamentals is None:
         gaps.add("fundamentals_absent")
     elif parts.fundamentals.missing_metrics:
@@ -235,14 +272,17 @@ def build_stock_dossiers(
     history: tuple[StockHistoryProjectionBatch, ...],
     earnings: tuple[StockEarningsCollection, ...],
     filings: tuple[StockFilingCollection, ...],
+    filing_evidence: tuple[StockFilingEvidence, ...] = (),
 ) -> tuple[StockDossier, ...]:
     """Join normalized observations by exact symbol, retaining unknowns and receipt visibility."""
     try:
         cutoff = require_utc(as_of)
     except ValueError:
         raise ValueError("stock_dossiers_invalid") from None
-    _check(all(type(group) is tuple for group in (facts, history, earnings, filings)))
-    _check(sum(len(group) for group in (facts, history, earnings, filings)) <= 256)
+    _check(
+        all(type(group) is tuple for group in (facts, history, earnings, filings, filing_evidence))
+    )
+    _check(sum(len(group) for group in (facts, history, earnings, filings, filing_evidence)) <= 256)
     _check(all(isinstance(row, StockFactCollection) for row in facts))
     _check(all(isinstance(row, StockHistoryProjectionBatch) for row in history))
     _check(all(isinstance(row, StockEarningsCollection) for row in earnings))
@@ -459,6 +499,25 @@ def build_stock_dossiers(
         else:
             company.filings = event_collection.records
 
+    evidence_seen: set[str] = set()
+    for evidence in filing_evidence:
+        _check(type(evidence) is StockFilingEvidence)
+        try:
+            checked = bind_filing_evidence(
+                evidence.index, evidence.catalog, evidence.facts, as_of=cutoff
+            )
+        except (ValueError, TypeError, OverflowError):
+            raise ValueError("stock_dossiers_invalid") from None
+        _check(checked == evidence)
+        _check(sum(collection == checked.index for collection in filings) == 1)
+        _check(checked.evidence_hash not in evidence_seen)
+        evidence_seen.add(checked.evidence_hash)
+        record_count += len(checked.facts.records)
+        _check(record_count <= 100000)
+        symbol = checked.filing.symbol
+        _check(symbol in parts)
+        parts[symbol].filing_evidence.append(checked)
+
     return tuple(
         StockDossier(
             symbol,
@@ -474,6 +533,7 @@ def build_stock_dossiers(
             company.filings,
             tuple(sorted(company.sources, key=_source_key)),
             _gaps(company),
+            tuple(company.filing_evidence),
         )
         for symbol, company in sorted(parts.items())
     )
