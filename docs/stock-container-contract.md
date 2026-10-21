@@ -298,6 +298,11 @@ does not rewrite, repair or initialize records.
 Stop processing revokes prior CID/start/terminal acknowledgements before its first
 filesystem validation, so even an entry-validation failure cannot preserve an earlier
 permission to start or admit a later attempt.
+A `created` state cannot acknowledge termination once a start fence exists: a
+queued or uncertain start may still act on it. Reject that combination both before
+writing a new terminal receipt and when validating retained receipts. Preserve
+never-started `created` observations with `start_fence_present=false`. Existing
+incompatible receipts are incidents; do not rewrite them or use them for admission.
 This store is sequencing/consistency evidence, not a substitute for native
 observations, control authority, authentication or the process supervisor.
 Each opened owner session admits at most one fresh attempt. At most 8192 retained

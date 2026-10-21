@@ -140,6 +140,14 @@ mypy (448 files), expanded Bandit and lock checks passed. Independent review is
 pending. Actual ownership/termination, polling, recovery, removal, supervision and
 deployment remain unverified or unimplemented.
 
+Independent transport review cleared 34ce7ba, including five extra in-memory probes.
+Store review returned NOT_READY for a pre-existing terminal-admission gap: `created`
+plus a start fence could acknowledge termination. Four regressions were observed RED;
+root now rejects new and retained receipts with that combination. Never-started
+`created` remains accepted. The corrected 239 focused and 1,051 central tests passed,
+with four optional age skips in the latter; Ruff/mypy448/Bandit/lock checks passed.
+The exact corrected store candidate still needs follow-up review before integration.
+
 The parallel pure stock-minute manifest adapter at ae991be passed independent review,
 200 focused tests and 58 negative probes. Root merged its three owned files at
 63a988e after exact diff review and reran 956 central checks with four optional age

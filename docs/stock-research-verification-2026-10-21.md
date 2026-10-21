@@ -235,3 +235,13 @@ and diff checks passed. Independent review remains pending. No native Docker
 mutation, new provider/authentication operation, deployment or live activation occurred.
 The actual supervisor, deadline/grace enforcement, observed termination, incomplete
 attempt recovery, inactive-container removal and scheduled operation remain pending.
+
+Transport review cleared 34ce7ba after 74 tests and five independent in-memory
+framing/partial-send probes. Store review found an existing unsupported terminal
+admission: a start-fenced `created` observation could acknowledge termination.
+The initial candidate is NOT_READY. Four RED regressions demonstrated new/retained
+receipt, reopened and historical-admission cases. Root added both new-write and
+retained-receipt guards; never-started `created` observations remain valid. The
+corrected focused suite passed 239 tests at 98% combined store/termination coverage;
+central regression passed 1,051 with four optional age skips. Ruff, strict mypy
+(448 files), expanded Bandit, lock and diff checks passed. Follow-up review is pending.

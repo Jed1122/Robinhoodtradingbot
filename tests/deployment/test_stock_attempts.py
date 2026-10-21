@@ -988,3 +988,74 @@ def test_cleanup_revokes_terminal_admission_before_failed_validation(operations,
         (root / "launcher.lock").chmod(0o600)
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
             store.begin(policy)
+
+
+@pytest.mark.parametrize("reopened", [False, True])
+def test_start_fenced_created_state_cannot_acknowledge_termination(operations, policy, reopened):
+    _, root, _ = operations
+
+    def reject(store, intent, fence):
+        observation = stopped(intent, status="created")
+        observation["State"]["StartedAt"] = "0001-01-01T00:00:00Z"
+        observation["State"]["FinishedAt"] = "0001-01-01T00:00:00Z"
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_stopped(encoded(observation))
+        assert not (root / intent.attempt_id / "stopped.json").exists()
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.check_start_fence(fence)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.begin(policy)
+
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        fence = store.prepare_start()
+        if not reopened:
+            reject(store, intent, fence)
+    if reopened:
+        with opened(operations) as store:
+            reject(store, intent, fence)
+
+
+def retained_created_receipt(root, intent):
+    path = root / intent.attempt_id / "stopped.json"
+    receipt = json.loads(path.read_bytes())
+    receipt["status"] = "created"
+    receipt["container_started_at"] = "0001-01-01T00:00:00Z"
+    receipt["container_finished_at"] = "0001-01-01T00:00:00Z"
+    path.write_bytes(encoded(receipt))
+
+
+def test_snapshot_rejects_preexisting_created_terminal_receipt_with_start(operations, policy):
+    _, root, _ = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        store.prepare_start()
+        store.record_stopped(encoded(stopped(intent)))
+    retained_created_receipt(root, intent)
+    with (
+        opened(operations) as store,
+        pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+    ):
+        snapshot(store)
+
+
+def test_historical_start_fenced_created_receipt_blocks_later_admission(operations, policy):
+    _, root, _ = operations
+    with opened(operations) as store:
+        first = store.begin(policy)
+        store.record_created(created(first))
+        store.prepare_start()
+        store.record_stopped(encoded(stopped(first)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(first)))
+        second = store.begin(policy)
+        store.record_created(created(second))
+        store.prepare_start()
+        store.record_stopped(encoded(stopped(second)))
+    retained_created_receipt(root, first)
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(second)))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.begin(policy)

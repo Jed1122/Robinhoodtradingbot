@@ -138,6 +138,17 @@ stock-data regression passed 1,047 tests with four optional local-age skips. Ruf
 strict mypy (448 files), expanded Bandit, lock and diff checks passed. Independent
 review is still required. No native signal or controller is claimed.
 
+Independent transport review cleared 34ce7ba after all 74 cases and five additional
+framing/partial-send probes. The protected-store review found an adjacent existing
+terminal-admission gap: a start-fenced container still showing `created` could be
+acknowledged as stopped and allow a later attempt. The candidate was NOT_READY.
+Four observed RED regressions covered new observations, reopening, retained snapshots
+and historical receipts during later admission. Root now rejects that combination
+before a new stopped receipt and during retained-receipt validation, while keeping
+never-started `created` valid. The corrected focused suite passed 239 tests and the
+central regression passed 1,051 with four optional age skips. Ruff, strict mypy (448
+files), expanded Bandit and lock checks passed. Follow-up store review remains required.
+
 ## Next implementation and proof
 
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).

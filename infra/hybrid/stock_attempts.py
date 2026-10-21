@@ -499,6 +499,7 @@ class AttemptStore:
                     for key in ("oom_killed", "error_present", "start_fence_present")
                 )
             )
+            _require(value["status"] != "created" or value["start_fence_present"] is False)
             _timestamp(value["container_started_at"], zero=True)
             _timestamp(value["container_finished_at"], zero=True)
         else:
@@ -884,16 +885,19 @@ class AttemptStore:
                 known_created = self._created_and_start(directory, attempt)
                 expected_cid = known_created["container_id"] if known_created is not None else None
                 facts = _stopped(raw, attempt, expected_cid)
+                has_start = _exists(directory, "start.json")
+                # A queued/uncertain START may still act on a presently created container.
+                _require(facts["status"] != "created" or not has_start)
                 if _exists(directory, "stopped.json"):
                     value = self._receipt(directory, "stopped.json", attempt)
                     _require(_exact({key: value[key] for key in facts}, facts))
-                    _require(value["start_fence_present"] is _exists(directory, "start.json"))
+                    _require(value["start_fence_present"] is has_start)
                     digest = _reconfirm_durability(directory, "stopped.json", value, self._uid)
                 else:
                     value = {
                         **self._base(attempt, "stopped", facts.pop("container_id"), _clock()),
                         **facts,
-                        "start_fence_present": _exists(directory, "start.json"),
+                        "start_fence_present": has_start,
                     }
                     digest = _write_new(directory, "stopped.json", value, self._uid)
                 self._receipt(directory, "stopped.json", attempt)
