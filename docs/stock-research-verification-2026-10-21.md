@@ -6,6 +6,34 @@ The existing deployed paused services were unchanged during this work.
 
 ## Latest local integration evidence
 
+The later runtime candidate 10a27f4 combines the independently reviewed first-attempt
+launcher and SEC companyfacts binding. Central verification passed 1,563 tests with
+four optional local-age skips in 16.91 seconds. Ruff, strict mypy (452 source files),
+expanded Bandit, lock and diff checks passed. This candidate is local and is not
+installed; the separately frozen primary 1537d7e full run remains pending and does
+not cover the later launcher/companyfacts source.
+
+The first-attempt launcher passed 586 focused checks, with 28 new cases and 100%
+combined launcher coverage. Fresh independent review cleared af65699 with no
+Critical/Important findings and 28 independent passes. One minor remains deferred:
+its fictional loader fixture uses a release directory, whereas the unchanged actual
+loader requires the manifest.json file. The trusted producer's future filesystem
+composition must align that fixture and input documentation before native use.
+
+The pure companyfacts candidate 7c8a4dc passed 147 new cases at 100% statement/branch
+coverage. Independent review passed 422 combined checks, 59 negative probes and
+10 controls with no substantive findings. Root read the complete adapter/document
+and integrated the three owned files. The fixed extraction covers four reported USD
+concepts, exact same-CIK/accession binding, metadata contradictions and explicit
+unmatched rows; both receipts gate availability. No source or strategy qualification,
+issuer/security mapping or actual financial data acquisition follows.
+
+The [repeated-cycle recovery design](stock-repeated-cycle-design.md) records the
+next protected dependency: a versioned durable CREATE dispatch fence and predecessor
+handoff, then scoped non-force removal and explicit recovery. It changes no current
+receipt or transport. Continuous collection, the trusted producer, native image/
+recovery proof, paused deployment and credential/backup operations remain outstanding.
+
 The frozen f04a63f baseline completed successfully: 12,110 tests passed, 33 optional
 checks skipped, one Starlette/httpx dependency warning, and 88.80% combined
 statement/branch coverage in 4,379.19 seconds. The actual session 65998 returned

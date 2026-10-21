@@ -2,6 +2,17 @@
 
 ## Individual-stock research checkpoint — October 21
 
+Latest local continuation: runtime 10a27f4 integrates the reviewed first-attempt
+launcher and pure SEC companyfacts-to-filing binding. Central verification passed
+1,563 tests with four optional age skips; Ruff, mypy (452 files), expanded Bandit,
+lock and diff checks passed. The launcher is explicitly first-attempt-only; its
+review cleared with one deferred fixture/documentation minor (the actual loader
+requires manifest.json). The SEC binder preserves receipt-time visibility and
+permanent unqualified flags. Neither is deployed. The primary is frozen at1537d7e
+for full verification; that earlier source excludes these latest changes.
+The [repeated-cycle design](docs/stock-repeated-cycle-design.md) documents the next
+root-owned durable dispatch/handoff/removal/recovery work, not an implemented timer.
+
 The corrected full baseline at a63a475 finished with 11,810 passed, 33 optional
 skips, one dependency deprecation warning and 88.77% combined branch coverage in
 4,258.53 seconds. Reviewed local integration advanced the primary to f04a63f;

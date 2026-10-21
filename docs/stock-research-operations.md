@@ -37,6 +37,9 @@ The later [first-attempt composition](stock-fresh-attempt.md) connects these ver
 components locally. It permits only an empty initialized operations namespace and
 returns actual supervisor lifecycle evidence. It does not implement repeated cycles,
 incident resolution, old-CID deletion or installed operations.
+The current [repeated-cycle design](stock-repeated-cycle-design.md) records the
+required durable CREATE dispatch fence, predecessor handoff and explicit recovery
+before scheduling can be implemented. It introduces no current protocol change.
 
 `compose.stock-research.yml` defines the isolated worker policy. The local Compose tool
 rendered it successfully using fictional image/release values, without creating or
