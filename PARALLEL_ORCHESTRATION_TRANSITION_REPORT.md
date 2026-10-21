@@ -49,6 +49,13 @@ running separately at 3cd8e8c. Collector actuation is CLI-only; the dashboard st
 shows recorded cycle state and retains its separate hybrid controls. See the
 [control contract](docs/stock-research-controls.md).
 
+The next local source increment adds a configuration-only observation command sharing
+the worker/resume loader. It passed 285 focused/architecture tests with 97.77% combined
+branch coverage over probe/worker and independent review. It reports policy identity
+and bounds without code attestation or provider access. Actual inert-container
+observation, attestation production and runtime inspection remain unverified; see
+[operations status](docs/stock-research-operations.md).
+
 Next: complete integrated verification, deployed image/config/control-path verification
 and a completion-relative timer with an actual process
 deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,

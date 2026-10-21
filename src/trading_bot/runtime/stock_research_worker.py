@@ -566,12 +566,9 @@ def _existing_private_ledger(path: Path) -> Iterator[int]:
                 os.close(directory)
 
 
-def load_stock_worker_identity(
-    root: Path, *, image_digest: str | None = None, image_attestation: Path | None = None
-) -> tuple[LoadedConfig, CodeHash]:
-    """Shared startup/resume identity; no arbitrary hash, credential or provider operation."""
-    _check((image_digest is None) == (image_attestation is None), "worker_startup_blocked")
-    loaded = load_config(
+def load_stock_worker_configuration(root: Path) -> LoadedConfig:
+    """One canonical graph for startup, resume and inert image policy observation."""
+    return load_config(
         root / "base.yaml",
         root / "hybrid/paper.yaml",
         root / "hybrid/safety-envelope.yaml",
@@ -580,6 +577,14 @@ def load_stock_worker_identity(
         stock_research_policy_path=root / "hybrid/stock-research.yaml",
         stock_worker_policy_path=root / "hybrid/stock-worker.yaml",
     )
+
+
+def load_stock_worker_identity(
+    root: Path, *, image_digest: str | None = None, image_attestation: Path | None = None
+) -> tuple[LoadedConfig, CodeHash]:
+    """Shared startup/resume identity; no arbitrary hash, credential or provider operation."""
+    _check((image_digest is None) == (image_attestation is None), "worker_startup_blocked")
+    loaded = load_stock_worker_configuration(root)
     if image_digest is not None:
         if image_attestation is None:
             raise StockWorkerError("worker_startup_blocked")
