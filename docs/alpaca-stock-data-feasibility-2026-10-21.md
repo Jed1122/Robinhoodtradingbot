@@ -43,12 +43,28 @@ A successful HTTP response cannot override a usage restriction. There is no auto
 IEX fallback, account upgrade or alternate-key discovery in this design.
 [Paper Only restriction](https://docs.alpaca.markets/us/docs/paper-trading).
 
+The repository's last actually observed selected setup is Paper Only, and the
+retained provider reply expressly rejected that SIP route. There is no verified
+later entitlement change. Treat SIP capture as blocked under that evidence;
+do not request another data response as a permission test or assume account funding.
+A separately versioned IEX research contract could be considered without silently
+changing this SIP request, but IEX would not establish consolidated volume or
+liquidity. No such alternate connector is implemented by this work.
+
 Terms describe personal/noncommercial use and restrict redistribution. Public provider
 clarification supports local retention/replay within entitlement, but does not establish
 the selected agreement, retention duration, cancellation effect or cloud/third-party
 sharing permission. Resolve the applicable scope before actual acquisition or transfer.
 [Terms](https://files.alpaca.markets/disclosures/library/TermsAndConditions.pdf),
 [provider clarification](https://forum.alpaca.markets/t/sip-data-collection/19863).
+
+A further public-only audit rechecked those FAQ/Paper Only descriptions and the
+four-page public terms. It did not establish the selected agreement versions or
+specific retention/non-display/private-hosting provisions. The disclosure library's
+linked Nasdaq and NYSE subscriber PDFs returned HTTP 403, so they were not reviewed.
+This is unresolved scope, not evidence that private hosting is prohibited. No
+credential, authenticated endpoint, agreement acceptance, support contact or purchase
+was involved. Resolve the applicable existing setup before authenticated capture.
 
 ## Calendar, gaps and revisions
 

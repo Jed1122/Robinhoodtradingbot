@@ -253,3 +253,11 @@ bit with actual record presence, including older attempts. Central regression pa
 1,053 tests with four optional age skips; Ruff, strict mypy448, expanded Bandit,
 lock and diff checks passed. Exact follow-up review is pending; the earlier
 NOT_READY dispositions are not integration acceptance.
+
+Independent follow-up review cleared 05557e8 with 241 focused passes, 12 extra
+active/historical presence-mismatch denials and two valid controls. Receipt bytes
+remained unchanged on rejection and fresh reconfirmation remained mandatory.
+Both reported store blockers are closed. The termination module is unchanged
+from its separately reviewed 34ce7ba source. These clearances do not certify the
+still-unimplemented controller or native operation. The primary f04a63f full run
+remains pending, so no later primary integration has occurred.

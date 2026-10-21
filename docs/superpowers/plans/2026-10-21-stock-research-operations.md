@@ -226,6 +226,17 @@ before enabling unattended creation; do not infer absence from the current reade
 opaque error. The contract records versioned source facts and their kernel/native
 limitations. This sequencing decision is not an implemented supervisor.
 
+The scoped recovery/termination library from the
+[bounded follow-up plan](2026-10-21-stock-worker-termination.md) is now locally
+implemented and independently cleared. Read-only snapshots preserve recorded timing
+without authority, and TERM/KILL obtain fresh owned-CID inspection internally.
+Review-found `created`/start-fence admission and historical presence-flag gaps were
+reproduced RED and closed. Final store review is READY_FOR_INTEGRATION at 05557e8
+after 241 focused tests and additional negative/valid-control probes; central
+deployment/architecture/stock-data checks passed 1,053 with four optional age skips.
+There is still no controller, actual deadline/grace enforcement, observed native
+termination, ambiguous never-started recovery, removal or deployed scheduled path.
+
 ## Task 3: Supervised timer, paused installation and native checks
 
 Add stock-specific oneshot service/timer files, fixture tests and installation procedure.

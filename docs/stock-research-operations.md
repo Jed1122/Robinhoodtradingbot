@@ -157,6 +157,15 @@ admission receives the same chain check as current snapshots. Central regression
 passes 1,053 tests with four optional age skips; Ruff/mypy448/Bandit/lock checks pass.
 The exact correction still requires independent review.
 
+Independent protected-store review cleared 05557e8: 241 focused tests passed,
+12 extra active/historical presence-mismatch probes rejected unchanged receipts,
+and two valid never-started/start-fenced controls retained fresh-reconfirmation
+requirements. Both reported blockers are closed. The separate termination source
+remains the exact transport reviewed at 34ce7ba. These are local integration
+clearances, not native supervision or deployment evidence. The primary remains
+frozen at f04a63f for its still-running full regression; no new primary merge or
+duplicate full run was performed.
+
 ## Next implementation and proof
 
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).

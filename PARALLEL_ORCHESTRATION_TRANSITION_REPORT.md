@@ -155,6 +155,13 @@ compares the bit with actual start-record presence for every reader. The integra
 check passes 1,053 tests with four optional age skips; static/lock checks pass.
 Independent review of this exact final correction is pending.
 
+The final protected-store follow-up is READY_FOR_INTEGRATION at 05557e8 after
+241 focused tests, 12 extra mismatch denials and two valid controls. Both reported
+store blockers are closed without receipt repair or a new authority grant. The
+transport remains the exact source reviewed at 34ce7ba. The primary full process
+at f04a63f is still running; subsequent code has not been merged into that frozen
+worktree. Supervisor, native lifecycle proof and deployment remain outstanding.
+
 The parallel pure stock-minute manifest adapter at ae991be passed independent review,
 200 focused tests and 58 negative probes. Root merged its three owned files at
 63a988e after exact diff review and reran 956 central checks with four optional age
