@@ -60,6 +60,18 @@ def opened(operations):
     return api._open_operations(root, trusted_uid=os.geteuid())
 
 
+def snapshot(store):
+    accessor = getattr(store, "snapshot", None)
+    assert callable(accessor), "Recovery snapshots must validate persisted container/start identity"
+    return accessor()
+
+
+def cleanup_target(store):
+    accessor = getattr(store, "cleanup_target", None)
+    assert callable(accessor), "Cleanup must revoke launch authority before recovery validation"
+    return accessor()
+
+
 def created(intent):
     return CreatedContainer(CID, intent.attempt_id, RELEASE, IMAGE, "c" * 64, intent.compose_sha256)
 
@@ -813,3 +825,166 @@ def test_final_start_check_requires_issued_unchanged_unexpired_fence(operations,
             store.record_stopped(encoded(stopped(intent)))
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
             store.check_start_fence(fence)
+
+
+def test_snapshot_empty_and_each_stage_preserve_receipts_and_authority(operations, policy):
+    _, root, _ = operations
+    with opened(operations) as store:
+        assert snapshot(store) is None
+        intent = store.begin(policy)
+        initial = snapshot(store)
+        assert initial.attempt == intent and initial.container_id is None
+        assert initial.start_fence is None
+        assert (initial.created_sha256, initial.start_sha256, initial.stopped_sha256) == (
+            None,
+            None,
+            None,
+        )
+        store.record_created(created(intent))
+        recorded = snapshot(store)
+        assert recorded.container_id == CID and recorded.start_fence is None
+        assert (
+            recorded.created_sha256
+            == hashlib.sha256((root / intent.attempt_id / "created.json").read_bytes()).hexdigest()
+        )
+        fence = store.prepare_start()
+        store.check_start_fence(fence)
+        before = {path.name: path.read_bytes() for path in (root / intent.attempt_id).iterdir()}
+        launched = snapshot(store)
+        assert launched.start_fence == fence and launched.start_fence is not fence
+        assert launched.start_sha256 == hashlib.sha256(before["start.json"]).hexdigest()
+        store.check_start_fence(fence)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.check_start_fence(launched.start_fence)
+        assert before == {
+            path.name: path.read_bytes() for path in (root / intent.attempt_id).iterdir()
+        }
+        store.record_stopped(encoded(stopped(intent)))
+        terminal = snapshot(store)
+        assert terminal.container_id == CID and terminal.start_fence == fence
+        assert (
+            terminal.stopped_sha256
+            == hashlib.sha256((root / intent.attempt_id / "stopped.json").read_bytes()).hexdigest()
+        )
+    with opened(operations) as store:
+        assert snapshot(store) == terminal
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.begin(policy)
+
+
+def test_snapshot_retains_stopped_cid_after_lost_create_ack(operations, policy):
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_stopped(encoded(stopped(intent, status="created")))
+        view = snapshot(store)
+        assert view.container_id == CID and view.created_sha256 is None
+        assert view.start_sha256 is None and view.start_fence is None
+        assert view.stopped_sha256 is not None
+
+
+@pytest.mark.parametrize(
+    "change", ["created_missing", "start_cid", "start_clock", "stop_cid", "stop_flag"]
+)
+def test_snapshot_rejects_inconsistent_receipt_chain(operations, policy, change):
+    _, root, _ = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        store.prepare_start()
+        store.record_stopped(encoded(stopped(intent)))
+        if change == "created_missing":
+            (root / intent.attempt_id / "created.json").unlink()
+        else:
+            name = "start.json" if change.startswith("start") else "stopped.json"
+            path = root / intent.attempt_id / name
+            value = json.loads(path.read_bytes())
+            if change == "start_clock":
+                value["monotonic_ns"] -= 1
+                value["term_deadline_ns"] -= 1
+            elif change == "stop_flag":
+                value["start_fence_present"] = False
+            else:
+                value["container_id"] = "a" * 64
+            path.write_bytes(encoded(value))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            snapshot(store)
+
+
+@pytest.mark.parametrize("change", ["reopened", "expired", "old_boot", "rollback"])
+def test_cleanup_recovers_original_target_without_new_launch_authority(operations, policy, change):
+    _, root, clock = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        fence = store.prepare_start()
+    before = {path.name: path.read_bytes() for path in (root / intent.attempt_id).iterdir()}
+    if change == "expired":
+        clock["monotonic_ns"] = fence.term_deadline_ns + 1
+    elif change == "old_boot":
+        clock["boot_id"] = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        clock["monotonic_ns"] = 1
+    elif change == "rollback":
+        clock["monotonic_ns"] = 1
+    with opened(operations) as store:
+        target = cleanup_target(store)
+        assert target.attempt == intent and target.container_id == CID
+        assert target.start_fence == fence and target.start_fence is not fence
+        assert target.stopped_sha256 is None
+        for operation in [
+            store.prepare_start,
+            lambda: store.claim_create(policy),
+            lambda: store.begin(policy),
+        ]:
+            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+                operation()
+    assert before == {path.name: path.read_bytes() for path in (root / intent.attempt_id).iterdir()}
+
+
+@pytest.mark.parametrize("stage", ["empty", "intent", "created", "stopped"])
+def test_cleanup_rejects_unfenced_or_terminal_stage(operations, policy, stage):
+    with opened(operations) as store:
+        if stage != "empty":
+            intent = store.begin(policy)
+            if stage != "intent":
+                store.record_created(created(intent))
+            if stage == "stopped":
+                store.prepare_start()
+                store.record_stopped(encoded(stopped(intent)))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            cleanup_target(store)
+        if stage != "empty":
+            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+                store.prepare_start()
+            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+                store.claim_create(policy)
+
+
+def test_cleanup_revokes_start_before_failed_namespace_validation(operations, policy):
+    _, root, _ = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        fence = store.prepare_start()
+        (root / "launcher.lock").chmod(0o640)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            cleanup_target(store)
+        (root / "launcher.lock").chmod(0o600)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.check_start_fence(fence)
+
+
+def test_cleanup_revokes_terminal_admission_before_failed_validation(operations, policy):
+    _, root, _ = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        store.prepare_start()
+        store.record_stopped(encoded(stopped(intent)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(intent)))
+        (root / "launcher.lock").chmod(0o640)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            cleanup_target(store)
+        (root / "launcher.lock").chmod(0o600)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.begin(policy)

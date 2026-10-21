@@ -395,6 +395,42 @@ any new creation; never restart it. Unknown container ownership blocks with an i
 Future retries use a new eligible worker cycle, preserve the ledger/reservation and
 cannot replay an old slot. Loss of a terminal acknowledgment is not a refunded call.
 
+### Cleanup snapshots and scoped signals
+
+The local `AttemptStore.snapshot()` returns copied durable attempt/CID/start timing
+and canonical receipt hashes. It validates the entire active chain and stopped
+start-presence agreement, but does not flush, repair or acknowledge it. Its copied
+`StartFence` cannot substitute for the exact issued launch object. A stopped CID is
+retained even when the create acknowledgement was lost. Snapshot presence alone
+cannot admit a later attempt.
+
+`cleanup_target()` revokes fresh create/start and terminal acknowledgements before
+validation, and consumes this session's fresh admission. It requires an active,
+nonterminal, durably CID-bound start. It works after reopening, deadline expiry or
+boot change without renewing or interpreting an incomparable original deadline.
+No execution adoption or new on-disk schema is introduced.
+
+`infra/hybrid/stock_engine_termination.py` is an uncomposed root-only library.
+`StockEngineTerminator.signal_active(store, signal)` accepts only exact TERM or KILL
+strings. It obtains the target internally, inspects that full CID through the fixed
+socket and checks returned CID/image/name/three labels/Linux/no restart/no auto-remove.
+Only ordinary first-running state is supported; paused, restarting, stopped, missing,
+unknown or drifted observations deny. Immediately before signal send it rechecks the
+unchanged validated receipt snapshot. One five-second budget covers both connections,
+all store work and response parsing. No caller CID, route, body, observation or socket
+is accepted. Only a complete 200 inspection and empty 204 signal acknowledgement
+followed by EOF succeed. Errors are sanitized; there are no retries.
+
+Signals can deliberately abort research before the deadline for emergency shutdown.
+Acknowledgement does not record termination or permit another attempt. Original timing
+is preserved; old-boot cleanup is possible without pretending its clock is comparable.
+Docker can continue KILL processing after a client timeout, so a fresh actual stopped
+observation remains mandatory. This library implements no polling, deadline/grace
+controller, never-started/name recovery, 404-to-absence, removal or service composition.
+No native signal was exercised. See the
+[bounded implementation plan](superpowers/plans/2026-10-21-stock-worker-termination.md)
+and [versioned signal behavior](https://github.com/moby/moby/blob/docker-v29.1.3/daemon/kill.go).
+
 ## Installation, timer and rollback
 
 Installation requires an explicitly initialized paused collector, intact dedicated

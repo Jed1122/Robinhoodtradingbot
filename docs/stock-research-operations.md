@@ -120,6 +120,24 @@ later operations/reconciliation work. This subsequent dispatch increment is outs
 that frozen candidate and still requires its eventual full integration check; no
 deployment readiness is claimed.
 
+The pure stock-minute manifest/reconstruction adapter was independently reviewed at
+ae991be and merged locally at 63a988e. It preserves original calendar/response bytes,
+canonical hashes and declared clock/request context, and reparses every page through
+the existing minute parser. Its 108 new tests plus 92 existing data/technical/screen
+tests passed independently; 58 additional negative probes passed. Central deployment,
+architecture and stock-data checks passed 956 tests with four optional age skips.
+All source/strategy/investment/live flags stay false. There is no private capture
+archive, authenticated acquisition or source qualification in this adapter.
+
+The next root-owned increment adds read-only recovery snapshots and a separate scoped
+TERM/KILL library. Seventeen missing-behavior snapshot tests and 74 missing-library
+tests were observed RED. The complete store/create-start/termination subset then
+passed 235 tests, at 98% combined statement/branch coverage over the store and
+termination library (97% for termination alone). Central deployment/architecture and
+stock-data regression passed 1,047 tests with four optional local-age skips. Ruff,
+strict mypy (448 files), expanded Bandit, lock and diff checks passed. Independent
+review is still required. No native signal or controller is claimed.
+
 ## Next implementation and proof
 
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).

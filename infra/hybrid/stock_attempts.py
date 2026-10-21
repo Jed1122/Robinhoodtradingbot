@@ -312,6 +312,18 @@ class StartFence:
     term_deadline_ns: int
 
 
+@dataclass(frozen=True, slots=True)
+class AttemptSnapshot:
+    """Copied durable identity/timing, with no execution or durability authority."""
+
+    attempt: Attempt
+    container_id: str | None
+    start_fence: StartFence | None
+    created_sha256: str | None
+    start_sha256: str | None
+    stopped_sha256: str | None
+
+
 def _intent(value: dict[str, Any], digest: str, namespace_id: str, attempt_id: str) -> Attempt:
     _require(
         set(value) == _INTENT_KEYS
@@ -516,6 +528,73 @@ class AttemptStore:
                 and start["monotonic_ns"] >= created["monotonic_ns"]
             )
         return created
+
+    def snapshot(self) -> AttemptSnapshot | None:
+        """Read the checked active receipt chain without acknowledging or repairing it."""
+        with _sanitized():
+            self._validate()
+            attempt = self._active()
+            result = None
+            if attempt is not None:
+                with self._attempt_directory(attempt.attempt_id) as directory:
+                    created = self._created_and_start(directory, attempt)
+                    container_id = created["container_id"] if created is not None else None
+                    created_hash = (
+                        hashlib.sha256(_canonical(created)).hexdigest()
+                        if created is not None
+                        else None
+                    )
+                    fence = None
+                    start_hash = stopped_hash = None
+                    if _exists(directory, "start.json"):
+                        start = self._receipt(directory, "start.json", attempt)
+                        if created is None or start["container_id"] != container_id:
+                            _deny()
+                        _require(start["monotonic_ns"] >= created["monotonic_ns"])
+                        fence = StartFence(
+                            attempt.attempt_id,
+                            start["container_id"],
+                            start["boot_id"],
+                            start["monotonic_ns"],
+                            start["term_deadline_ns"],
+                        )
+                        start_hash = hashlib.sha256(_canonical(start)).hexdigest()
+                    if _exists(directory, "stopped.json"):
+                        stopped = self._receipt(directory, "stopped.json", attempt)
+                        _require(container_id is None or stopped["container_id"] == container_id)
+                        _require(stopped["start_fence_present"] is (fence is not None))
+                        container_id = stopped["container_id"]
+                        stopped_hash = hashlib.sha256(_canonical(stopped)).hexdigest()
+                    result = AttemptSnapshot(
+                        attempt, container_id, fence, created_hash, start_hash, stopped_hash
+                    )
+            self._validate()
+            _require(self._active() == attempt)
+            return result
+
+    def cleanup_target(self) -> AttemptSnapshot:
+        """Revoke fresh execution before obtaining a start-fenced cleanup target."""
+        with _sanitized():
+            self._used_begin = True
+            self._create_issued = True
+            self._create_claim = None
+            self._cid_record_issued = True
+            self._created_acknowledged = None
+            self._start_issued = True
+            self._start_fence = None
+            self._start_acknowledged = None
+            self._terminal_acknowledged = None
+            result = self.snapshot()
+            if result is None:
+                _deny()
+            _require(
+                result.container_id is not None
+                and result.created_sha256 is not None
+                and result.start_sha256 is not None
+                and result.start_fence is not None
+                and result.stopped_sha256 is None
+            )
+            return result
 
     def begin(self, release: StockRelease) -> Attempt:
         with _sanitized():
@@ -772,10 +851,8 @@ class AttemptStore:
                 _require(created is not None)
                 start = self._receipt(directory, "start.json", attempt)
                 _require(
-                    hashlib.sha256(_canonical(created)).hexdigest()
-                    == self._created_acknowledged
-                    and hashlib.sha256(_canonical(start)).hexdigest()
-                    == self._start_acknowledged
+                    hashlib.sha256(_canonical(created)).hexdigest() == self._created_acknowledged
+                    and hashlib.sha256(_canonical(start)).hexdigest() == self._start_acknowledged
                 )
                 _require(
                     start["container_id"] == fence.container_id

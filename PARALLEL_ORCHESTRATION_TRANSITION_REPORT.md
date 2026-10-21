@@ -131,8 +131,21 @@ deployment/architecture check passed 756 tests with those four skips. Independen
 store and transport reviews cleared 7af0a33, including additional replay, boot-drift,
 failed-validation and framing probes. Ruff, strict mypy (446 files), expanded Bandit
 and lock checks passed. No CLI/service imports it and no native mutation occurred.
-Signal/stop/removal, actual ownership/recovery, supervision and deployment remain
-unimplemented or unverified.
+The subsequent root increment adds copied validated active receipt snapshots and
+scoped TERM/KILL dispatch, without a controller or service composition. Seventeen
+snapshot and 74 transport tests were observed RED; 235 focused tests then passed
+at 98% combined store/termination coverage. Central deployment/architecture and
+stock-data checks passed 1,047 tests with four optional age skips. Ruff, strict
+mypy (448 files), expanded Bandit and lock checks passed. Independent review is
+pending. Actual ownership/termination, polling, recovery, removal, supervision and
+deployment remain unverified or unimplemented.
+
+The parallel pure stock-minute manifest adapter at ae991be passed independent review,
+200 focused tests and 58 negative probes. Root merged its three owned files at
+63a988e after exact diff review and reran 956 central checks with four optional age
+skips. It preserves raw bytes and false qualification flags without I/O. Private
+capture persistence, authenticated bounded acquisition, entitlement/retention and
+data/strategy acceptance are still outstanding.
 
 A separate fictional audit reproduced false-clean broker-neutral reconciliation for
 wrong-scope account snapshots/rows, changed position economics, changed executable

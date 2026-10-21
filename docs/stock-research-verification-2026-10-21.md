@@ -209,3 +209,29 @@ passed. Independent review cleared ca31b24 after 70 targeted tests, a 7,225-case
 order-view oracle and ten foreign-data retention probes. This does not
 verify native Robinhood positions/orders/fills: unverified nonempty and paginated
 provider response shapes still deny.
+
+## Later local integration and recovery-library checkpoint
+
+The corrected full baseline at a63a475 terminated successfully: 11,810 passed,
+33 optional skips, one dependency deprecation warning, 88.77% combined branch
+coverage in 4,258.53 seconds. The primary was then fast-forwarded locally to
+f04a63f after review and 641 focused tests with four optional age skips. Its new
+actual full-suite process is still pending; it must finish before another primary
+integration. Neither full run covers the later dispatch/manifest/termination source.
+
+Root integrated the independently reviewed pure stock manifest ae991be at 63a988e
+and reran 956 deployment/architecture/stock-data checks, with four optional age skips.
+The first command used a nonexistent screen-test path and collected no tests; only
+the corrected terminal run supplies that evidence. Ruff, strict mypy (447 files),
+expanded Bandit, lock and diff checks passed. The adapter independently passed
+200 focused tests and 58 additional negative probes, with false qualification flags.
+
+The root-only cleanup increment exposes copied validated receipt snapshots and
+fresh owned-container TERM/KILL dispatch. Seventeen snapshot and 74 missing-library
+RED cases were followed by 235 focused passes at 98% combined store/termination
+coverage. Central deployment/architecture/stock-data regression passed 1,047 tests
+with four optional age skips. Ruff, strict mypy (448 files), expanded Bandit, lock
+and diff checks passed. Independent review remains pending. No native Docker
+mutation, new provider/authentication operation, deployment or live activation occurred.
+The actual supervisor, deadline/grace enforcement, observed termination, incomplete
+attempt recovery, inactive-container removal and scheduled operation remain pending.
