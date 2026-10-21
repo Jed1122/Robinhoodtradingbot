@@ -6,15 +6,20 @@ export interface Snapshot {
   generated_at?: string;
   portfolio: {
     starting_capital: string;
-    equity: string;
+    equity: string | null;
     cash: string;
     buying_power: string;
     reserved_cash: string;
     tax_reserve: string;
     realized_gain: string;
-    unrealized_gain: string;
-    drawdown_pct: string;
-    allocations: { long_term: string; tactical: string; reserve: string };
+    unrealized_gain: string | null;
+    drawdown_pct: string | null;
+    valuation_status?: string;
+    allocations: {
+      long_term: string | null;
+      tactical: string | null;
+      reserve: string;
+    };
     positions: Row[];
     orders: Row[];
     lots: Row[];
@@ -66,14 +71,11 @@ export function validateSnapshot(value: unknown): Snapshot {
   const { portfolio, research, safety, costs } = value;
   for (const key of [
     "starting_capital",
-    "equity",
     "cash",
     "buying_power",
     "reserved_cash",
     "tax_reserve",
     "realized_gain",
-    "unrealized_gain",
-    "drawdown_pct",
   ])
     if (
       typeof portfolio[key] !== "string" ||
@@ -81,12 +83,31 @@ export function validateSnapshot(value: unknown): Snapshot {
       !Number.isFinite(Number(portfolio[key]))
     )
       throw new Error("Invalid portfolio data. Controls are unavailable.");
+  for (const key of ["equity", "unrealized_gain", "drawdown_pct"]) {
+    const field = portfolio[key];
+    if (
+      field !== null &&
+      (typeof field !== "string" ||
+        !/^-?\d+(\.\d+)?$/.test(field) ||
+        !Number.isFinite(Number(field)))
+    ) {
+      throw new Error("Invalid valuation data. Controls are unavailable.");
+    }
+  }
+  if (
+    portfolio.valuation_status !== undefined &&
+    typeof portfolio.valuation_status !== "string"
+  ) {
+    throw new Error("Invalid valuation status. Controls are unavailable.");
+  }
   if (
     !isObject(portfolio.allocations) ||
     !["long_term", "tactical", "reserve"].every(
       (key) =>
-        typeof (portfolio.allocations as Row)[key] === "string" &&
-        /^\d+(\.\d+)?$/.test((portfolio.allocations as Row)[key] as string),
+        (key !== "reserve" && (portfolio.allocations as Row)[key] === null) ||
+        (typeof (portfolio.allocations as Row)[key] === "string" &&
+          /^\d+(\.\d+)?$/.test((portfolio.allocations as Row)[key] as string) &&
+          Number.isFinite(Number((portfolio.allocations as Row)[key]))),
     )
   )
     throw new Error("Invalid allocation data. Controls are unavailable.");

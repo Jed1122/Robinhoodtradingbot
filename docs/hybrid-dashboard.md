@@ -4,7 +4,7 @@ The React + TypeScript Vite application in `dashboard/` is a local paper-researc
 
 ## Run and build
 
-Use Node.js 20.19+ or 22.12+ (Vite 7 requirement):
+Use Node.js 20.19+ in the 20.x line, 22.12+ in 22.x, or >=24 (combined Vite 7 and Vitest 4 engine requirements):
 
 ```sh
 cd dashboard
@@ -25,9 +25,9 @@ Enter an existing **dashboard access token**, not a brokerage credential, in the
 - Both use `Authorization: Bearer <dashboard token>` and return the full snapshot.
 - Fetches omit cookies, disallow redirects, bypass cache, and time out after 15 seconds.
 
-Types and runtime checks are in `dashboard/src/api.ts`. Snapshots must report `mode: "paper"`, top-level and safety `live_enabled: false`, `authorization_status: "not_authorized"`, boolean pause/kill/paper-period states, valid decimal-string money and drawdown values, and the required collections. The extra-spending field must represent zero. Unsupported responses fail closed at the UI boundary. Backend authentication, state validation, serialization, cache headers, and controls remain authoritative and must independently enforce these rules.
+Types and runtime checks are in `dashboard/src/api.ts`. Snapshots must report `mode: "paper"`, top-level and safety `live_enabled: false`, `authorization_status: "not_authorized"`, boolean pause/kill/paper-period states, valid decimal-string money and drawdown values (or the explicit unknown valuations described below), and the required collections. The extra-spending field must represent zero. Unsupported responses fail closed at the UI boundary. Backend authentication, state validation, serialization, cache headers, and controls remain authoritative and must independently enforce these rules.
 
-Portfolio money fields: `starting_capital`, `equity`, `cash`, `buying_power`, `reserved_cash`, `tax_reserve`, `realized_gain`, `unrealized_gain`; `drawdown_pct` is a percentage. Allocations `long_term`, `tactical`, and `reserve` are USD decimal strings, not weights. Costs include `monthly_usd`, `annual_pct_of_starting_capital`, and zero `additional_budget_usd`. Values such as starting capital and monthly cost appear only when returned by the service; they have no client default.
+Portfolio money fields: `starting_capital`, `equity`, `cash`, `buying_power`, `reserved_cash`, `tax_reserve`, `realized_gain`, `unrealized_gain`; `drawdown_pct` is a percentage. Equity, unrealized gain, drawdown, and allocations `long_term`/`tactical` may be explicitly `null` when current marks are missing. The UI preserves these unknowns as an em dash and shows `valuation_status: marks_unavailable`; it never substitutes zero. Undefined or malformed values are rejected. Cash, starting capital, buying power, reserved cash, tax reserve, realized gain, and the reserve allocation must remain known decimal strings. Allocations are USD amounts, not weights. Costs include `monthly_usd`, `annual_pct_of_starting_capital`, and zero `additional_budget_usd`. Values such as starting capital and monthly cost appear only when returned by the service; they have no client default.
 
 Optional row fields rendered by the UI:
 
@@ -52,8 +52,10 @@ The client records retrieval time. Optional top-level `generated_at` is an ISO t
 
 Overview shows capital, costs, allocation and jobs. Research shows regime, sources, strategy evidence and limitations. Trades shows paper positions/orders/lots. Analytics shows returned gain/loss, reserves, drawdown, reports and comparisons. Settings provides research pause/resume, kill activation, readiness and session disconnect. All pages render truthful empty states before evidence arrives.
 
-Seven deterministic Vitest tests cover rejection of live/invalid snapshots, decimal display, safe request transport, session-only credentials, navigation/control requests, disconnect clearing, authorization revocation, and stale control denial. `npm test` and `npm run build` passed in the isolated dashboard worktree. A connected-backend acceptance pass remains necessary after integration.
+Nine deterministic Vitest tests cover rejection of live/invalid snapshots, decimal display, safe request transport, session-only credentials, navigation/control requests, disconnect clearing, authorization revocation, stale control denial, and explicit unknown valuation rendering. `npm test` and `npm run build` passed in the isolated dashboard worktree. A connected-backend acceptance pass remains necessary after integration.
 
 Visual implementation uses local system typography, white surfaces, muted green controls, a desktop navigation rail and a mobile tab strip. Image generation was intentionally omitted under the no-added-spending constraint. Browser visual QA was blocked in this agent session: CUA exposed no browser surface, IAB returned “Browser is not available,” and native Chrome initialization timed out. No screenshot comparison or mobile browser verification is claimed. The implementation has responsive CSS breakpoints and semantic navigation/forms, visible keyboard focus, a skip link, scrollable data tables, live status/error announcements and reduced-motion support; these require rendered verification before release.
 
 Next integration steps: serve the built assets on the API origin, run the backend with dashboard-safe sanitized snapshots, authenticate with a dashboard-only token, verify the five pages and research controls on desktop and mobile, and run the repository's broader regression checks. Deployment and live trading remain outside this implementation.
+
+Dependency audit: `vitest` is pinned to patched version `4.1.11` to remove the vulnerable Vitest 3 mocker and tinypool dependency chain. The final full and production-only `npm audit --json` checks both reported zero vulnerabilities with this lockfile; no credentials or production service were needed for these checks.

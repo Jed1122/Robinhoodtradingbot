@@ -76,12 +76,10 @@ it("disables controls when snapshots become invalid or stale", async () => {
 it("rejects live snapshots without presenting them as connected", async () => {
   vi.stubGlobal(
     "fetch",
-    vi
-      .fn()
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({ ...fixture(), live_enabled: true }),
-      }),
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...fixture(), live_enabled: true }),
+    }),
   );
   const user = userEvent.setup();
   render(<App />);
@@ -114,4 +112,40 @@ it("clears connected evidence and the token after authorization is revoked", asy
     screen.getByLabelText("Dashboard access token").getAttribute("value"),
   ).toBe("");
   expect(screen.queryByText("$1,000.00")).toBeNull();
+});
+it("shows unavailable marks as unknown valuations without fabricating zero returns", async () => {
+  const data = fixture();
+  data.portfolio.equity = null;
+  data.portfolio.unrealized_gain = null;
+  data.portfolio.drawdown_pct = null;
+  data.portfolio.valuation_status = "marks_unavailable";
+  data.portfolio.allocations.long_term = null;
+  data.portfolio.allocations.tactical = null;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, json: async () => data }),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await user.type(
+    screen.getByLabelText("Dashboard access token"),
+    "synthetic-session",
+  );
+  await user.click(screen.getByRole("button", { name: "Connect workspace" }));
+  await screen.findByText("Connected");
+  expect(screen.getByText(/valuation_status: marks_unavailable/)).toBeTruthy();
+  const equity = screen.getByText("Portfolio equity", {
+    selector: "div.metric-label",
+  }).parentElement!;
+  const gains = screen.getByText("Unrealized gain / loss").parentElement!;
+  expect(equity.querySelector("strong")?.textContent).toBe("—");
+  expect(gains.querySelector("strong")?.textContent).toBe("—");
+  expect(
+    screen.getByText("Available cash").parentElement?.querySelector("strong")
+      ?.textContent,
+  ).toBe("$1,000.00");
+  await user.click(screen.getByRole("button", { name: "Analytics" }));
+  const drawdown = screen.getByText("Drawdown").parentElement!;
+  expect(drawdown.querySelector("strong")?.textContent).toBe("—");
+  expect(screen.queryByText("null%")).toBeNull();
 });

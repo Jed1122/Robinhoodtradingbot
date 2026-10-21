@@ -394,6 +394,19 @@ export default function App() {
             </div>
             <span className="safety-tag">Protected</span>
           </div>
+          {p &&
+            (p.valuation_status === "marks_unavailable" ||
+              p.equity === null ||
+              p.unrealized_gain === null ||
+              p.drawdown_pct === null ||
+              p.allocations.long_term === null ||
+              p.allocations.tactical === null) && (
+              <div role="status" className="alert">
+                Current marks unavailable (valuation_status: marks_unavailable).
+                Unknown equity, gains, drawdown, or allocations are shown as —.
+                Cash values remain as reported.
+              </div>
+            )}
           {page === "Overview" && (
             <>
               <div className="metrics">
@@ -420,7 +433,11 @@ export default function App() {
                 <Metric
                   label="Unrealized gain / loss"
                   value={money(p?.unrealized_gain)}
-                  note="Paper portfolio only"
+                  note={
+                    p?.unrealized_gain === null
+                      ? "Current marks unavailable"
+                      : "Paper portfolio only"
+                  }
                   icon={BarChart3}
                 />
                 <Metric
@@ -630,8 +647,12 @@ export default function App() {
                 />
                 <Metric
                   label="Drawdown"
-                  value={p ? `${p.drawdown_pct}%` : "—"}
-                  note="From the current snapshot"
+                  value={p?.drawdown_pct != null ? `${p.drawdown_pct}%` : "—"}
+                  note={
+                    p?.drawdown_pct === null
+                      ? "Current marks unavailable"
+                      : "From the current snapshot"
+                  }
                   icon={ArrowDownLeft}
                 />
               </div>

@@ -54,13 +54,11 @@ describe("paper snapshot boundary", () => {
   it("never surfaces response body or unsafe decimal values", async () => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: false,
-          status: 500,
-          json: async () => ({ secret: "private" }),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ secret: "private" }),
+      }),
     );
     await expect(requestSnapshot("synthetic-session")).rejects.toThrow(
       "Dashboard request failed (500)",
@@ -69,4 +67,47 @@ describe("paper snapshot boundary", () => {
     expect(money(undefined)).toBe("—");
     expect(money("12.00")).toBe("$12.00");
   });
+});
+it("accepts explicit unknown valuations but rejects unknown cash-state fields", () => {
+  const unknown = fixture();
+  unknown.portfolio.equity = null;
+  unknown.portfolio.unrealized_gain = null;
+  unknown.portfolio.drawdown_pct = null;
+  unknown.portfolio.valuation_status = "marks_unavailable";
+  unknown.portfolio.allocations.long_term = null;
+  unknown.portfolio.allocations.tactical = null;
+  const verified = validateSnapshot(unknown);
+  expect(verified.portfolio.equity).toBeNull();
+  expect(verified.portfolio.allocations.long_term).toBeNull();
+  expect(money(verified.portfolio.equity)).toBe("—");
+  for (const key of [
+    "cash",
+    "starting_capital",
+    "buying_power",
+    "reserved_cash",
+    "tax_reserve",
+    "realized_gain",
+  ]) {
+    expect(() =>
+      validateSnapshot({
+        ...unknown,
+        portfolio: { ...unknown.portfolio, [key]: null },
+      }),
+    ).toThrow();
+  }
+  expect(() =>
+    validateSnapshot({
+      ...unknown,
+      portfolio: {
+        ...unknown.portfolio,
+        allocations: { ...unknown.portfolio.allocations, reserve: null },
+      },
+    }),
+  ).toThrow();
+  expect(() =>
+    validateSnapshot({
+      ...unknown,
+      portfolio: { ...unknown.portfolio, equity: undefined },
+    }),
+  ).toThrow();
 });
