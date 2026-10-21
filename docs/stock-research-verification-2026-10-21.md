@@ -4,6 +4,34 @@ This is a development checkpoint, not deployment readiness, strategy qualificati
 live authorization. No real-money orders, reviews, cancellations or transfers occurred.
 The existing deployed paused services were unchanged during this work.
 
+## Latest local integration evidence
+
+The frozen f04a63f baseline completed successfully: 12,110 tests passed, 33 optional
+checks skipped, one Starlette/httpx dependency warning, and 88.80% combined
+statement/branch coverage in 4,379.19 seconds. The actual session 65998 returned
+exit zero; its log is `/tmp/stock-operations-full-suite-f04a63f.log`. This result
+does not certify later source, native deployment or an investment advantage.
+
+The later isolated runtime increment adds durable attempt/create-start fencing,
+identity-checked termination and fixed-phase active supervision. Fresh independent
+review found active-run cleanup caps could renew after a scheduling stall. Nine
+RED cases reproduced late successful/failed reads and wakeups; c891a94 restricts
+replacement cleanup budgets to initially overdue recovery. All 362 focused tests
+then passed with 97% combined coverage over reader/termination/supervisor.
+
+The reviewed pure SEC submissions receipt adapter cb15c70 was merged at dce6c4f.
+It retains original bytes, correlated filing rows and receipt-time availability;
+acceptance text does not acquire publication semantics. Native SEC profile
+compatibility and exact-filing financial-fact integration remain unverified.
+
+Central integration at dce6c4f passed 1,359 deployment/architecture/stock-data tests
+with four optional local-age skips, plus 26 existing source/policy tests. Ruff,
+strict mypy (450 source files), expanded Bandit, lock and diff checks passed.
+The exact successor needs its own full repository run before release readiness.
+No daemon mutation, provider/authentication operation or production installation
+occurred in this local increment. See [supervision](stock-active-supervision.md)
+for fixed R/K/C/Q caps and the remaining launcher/recovery/deployment work.
+
 ## Official source observations
 
 A separately authorized dedicated research browser grant captured 83 selected-server

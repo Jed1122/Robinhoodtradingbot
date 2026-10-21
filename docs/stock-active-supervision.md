@@ -89,8 +89,10 @@ suite passed 362 tests, at 97% combined coverage across reader/termination/super
 The root integrated deployment/architecture/stock-data check passed 1,359 tests with
 four optional local-age skips. Existing research/source-policy checks passed another
 26 tests. Ruff, strict mypy (450 source files), expanded Bandit, lock and diff checks
-passed. The separate older full primary run remains pending and does not validate
-this later source. No native Docker mutation or provider/authentication operation
+passed. The separate older f04a63f full primary run finished with 12,110 passed,
+33 optional skips, one dependency warning and 88.80% combined coverage. It does
+not validate this later source; its integrated full run remains required.
+No native Docker mutation or provider/authentication operation
 occurred in this implementation.
 
 Next: compose complete fresh-cycle launch/recovery, explicit ambiguous-attempt

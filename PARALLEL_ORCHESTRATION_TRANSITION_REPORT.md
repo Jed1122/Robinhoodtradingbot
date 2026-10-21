@@ -7,8 +7,10 @@ skips, one dependency deprecation warning and 88.77% combined branch coverage in
 4,258.53 seconds. Reviewed local integration advanced the primary to f04a63f;
 its 641 central deployment/reconciliation/adapter tests passed with four optional
 age skips, plus Ruff, strict mypy (445 files), expanded Bandit and lock checks.
-Primary is now frozen at f04a63f for a new full run. Later dispatch-source work
-remains separate and is not covered by either baseline result.
+The f04a63f full run subsequently finished with 12,110 passed, 33 optional skips,
+one dependency warning and 88.80% combined coverage in 4,379.19 seconds. Later
+dispatch-source work remains separate until reviewed local integration and is
+not covered by either baseline result.
 
 The current investment workstream prioritizes individual companies. A local one-shot
 research owner now composes complete scanner plans, numerical screening, company
