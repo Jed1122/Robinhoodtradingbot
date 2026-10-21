@@ -44,8 +44,13 @@ authority, sticky kill, code/config-bound explicit resume, generation fencing an
 separate dispatch mutex spanning reservation, setup, actual calls and successful commit.
 Its focused/architecture checks passed 290 tests with 96.09% combined branch coverage;
 independent review cleared the corrected lost-anchor and operation-exception boundaries.
-This later feature is not covered by the frozen dashboard baseline, which is still
-running separately at 3cd8e8c. Collector actuation is CLI-only; the dashboard still
+This later feature is not covered by the dashboard baseline at 3cd8e8c. That full
+run ended with 11,597 passed, 33 optional skips, two test-context failures and 88.74%
+combined branch coverage. Both failures were reproduced with narrow ordered cases:
+a placeholder digest matched a registered fictional credential, and a logger test
+assumed an unconfigured manager. Test-only corrections preserve all production guards;
+independent reviews and the ordered 131-test regression passed. A corrected integrated
+full run is still required. Collector actuation is CLI-only; the dashboard still
 shows recorded cycle state and retains its separate hybrid controls. See the
 [control contract](docs/stock-research-controls.md).
 

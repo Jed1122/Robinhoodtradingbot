@@ -73,6 +73,12 @@ coverage. No image was built, no container was created or started, and no servic
 broker credential or trading setting changed. An advertised API range is not
 executing-container or capacity evidence.
 
+The frozen dashboard full run ended with 11,597 passed, 33 optional skips and two
+test-context failures. Reviewed test-only fixes and a 131-test ordered regression
+resolved the demonstrated interactions without changing production secret/logging
+guards. The corrected integrated full suite remains required; no current full-suite
+pass or deployment readiness is claimed.
+
 ## Next implementation and proof
 
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).

@@ -1312,14 +1312,23 @@ def test_safe_logger_boundaries_preserve_application_caller_metadata() -> None:
     ]
 
 
-def test_existing_structlog_logger_preserves_application_caller_metadata() -> None:
+@pytest.mark.parametrize("preconfigured", [False, True])
+def test_existing_structlog_logger_preserves_application_caller_metadata(
+    preconfigured: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     captured: list[str | None] = []
 
     class CapturingHandler(stdlib_logging.Handler):
         def emit(self, record: stdlib_logging.LogRecord) -> None:
             captured.append(record.funcName)
 
-    logger = structlog.stdlib.LoggerFactory()("structlog-caller-metadata-test")
+    if preconfigured:
+        configure_logging("INFO")
+    # Arrange an existing third-party structlog logger even when an earlier app
+    # startup installed the manager's higher-priority safe logger class.
+    with monkeypatch.context() as context:
+        context.setattr(stdlib_logging.getLogger().manager, "loggerClass", None)
+        logger = structlog.stdlib.LoggerFactory()("structlog-caller-metadata-test")
     assert type(logger) is logging_module._STRUCTLOG_LOGGER_TYPE
     configure_logging("INFO")
     logger.handlers = [CapturingHandler()]

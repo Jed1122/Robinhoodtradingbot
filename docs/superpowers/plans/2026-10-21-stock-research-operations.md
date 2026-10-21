@@ -13,8 +13,10 @@ launcher and completion-relative systemd timer. The launcher verifies the create
 container before starting it and enforces the deadline on that actual container.
 
 **Base:** `3d32b62ce26f095cf383c693738a3020a895721f`, after local collector controls.
-The primary `3cd8e8c` full suite remains frozen/running separately. Local source work
-may proceed in the runtime worktree; integration waits for the terminal baseline.
+The primary `3cd8e8c` full suite ended with 11,597 passed, 33 optional skips and two
+test-context failures (88.74% coverage). Narrow RED reproductions, reviewed test-only
+corrections and the final ordered 131-test regression passed; production guards remain
+unchanged. Local integration and a corrected integrated full run remain required.
 
 **Contracts:** [worker](../../stock-research-worker.md),
 [controls](../../stock-research-controls.md),

@@ -147,8 +147,21 @@ review cleared the implementation after lost-anchor and operation-error regressi
 It requires explicit active authority for acquisition, preserves budget on suspension,
 and fences old cycles across pause/resume. Its state and operator procedure are in the
 [control contract](stock-research-controls.md). It has not been exercised as a deployed
-supervised collector. The full dashboard baseline at 3cd8e8c is still running separately;
-it does not validate this subsequent feature.
+supervised collector. The full dashboard baseline at 3cd8e8c terminated with 11,597
+passed, 33 optional skips, two failures and 88.74% combined branch coverage in 4,780.71
+seconds. It does not validate this subsequent feature.
+
+Both failures were test-context interactions, reproduced with small cases. A printable
+fictional authentication seed matched the dashboard's repeated-character placeholder
+digest; the production secret guard correctly denied it. The fixture now uses real
+deterministic SHA-256 values and exercises both registered-seed and ordinary contexts.
+A logging test assumed the logger manager had never been configured; it now explicitly
+arranges its existing third-party logger under a scoped patch and exercises configured
+and unconfigured contexts. Exact type/caller assertions remain intact. A review-found
+test teardown leak was reproduced and corrected; ambient manager state is preserved.
+No production logging/model/secret guard changed. Independent reviews and the final
+provider-to-dashboard-to-logging ordered regression passed 131 tests. The corrected
+integrated full run remains required; the failed run is not a full-suite pass.
 
 The configuration-only command, isolated Compose source and immutable retained-release
 verifier are also implemented locally. The verifier/policy passed 102 fictional checks

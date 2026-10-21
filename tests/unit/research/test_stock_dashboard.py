@@ -1,5 +1,6 @@
 """Bounded descriptive exports cannot turn missing/stale data into authority."""
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -105,13 +106,23 @@ def test_current_export_cannot_relabel_old_discovery_as_fresh():
     assert view["sources"][0]["as_of"] == NOW.isoformat()
 
 
-def test_enrichment_gaps_only_join_matching_fresh_company():
+@pytest.mark.parametrize("registered_auth_seed", [False, True])
+def test_enrichment_gaps_only_join_matching_fresh_company(registered_auth_seed, monkeypatch):
+    if registered_auth_seed:
+        from trading_bot import logging as logging_module
+
+        monkeypatch.setattr(logging_module, "_REGISTRY_STATE", logging_module._RegistryState())
+        logging_module.SecretRegistry().register(b"1" * 32)
     value = document()
     value["enrichment"] = {
         "claimed_at": NOW - timedelta(seconds=20),
         "as_of": NOW,
-        "report_sha256": "1" * 64,
-        "manifest_sha256": "2" * 64,
+        # Realistic fixture digests do not echo printable fake credential seeds
+        # registered by earlier authentication tests in a shared pytest process.
+        "report_sha256": hashlib.sha256(b"stock-dashboard-enrichment-report-fixture").hexdigest(),
+        "manifest_sha256": hashlib.sha256(
+            b"stock-dashboard-enrichment-manifest-fixture"
+        ).hexdigest(),
         "dossiers": [{"symbol": "ALFA", "gaps": ["history_interpolation_unknown"]}],
     }
     export = StockDashboardExport.model_validate(value)
