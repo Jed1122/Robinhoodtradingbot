@@ -20,6 +20,7 @@ from trading_bot.config.capital_research import (
 from trading_bot.config.hashing import hash_loaded_config
 from trading_bot.config.hybrid import HybridAppConfig, HybridSafetyEnvelope
 from trading_bot.config.models import AppConfig, SafetyEnvelope
+from trading_bot.config.stock_research import StockResearchAppConfig, StockResearchSafetyEnvelope
 from trading_bot.domain import ConfigHash, ExecutionMode
 from trading_bot.domain.decimal_utils import _require_sha256_hex
 
@@ -96,11 +97,22 @@ def restore_loaded_config(canonical_json: bytes, expected_hash: ConfigHash) -> L
         hybrid = "hybrid" in config_body
         if hybrid != ("hybrid" in envelope_body) or (hybrid and research):
             raise ConfigLoadError("canonical configuration invalid")
+        stocks = "stock_research" in config_body
+        if stocks != ("stock_research" in envelope_body) or (stocks and not hybrid):
+            raise ConfigLoadError("canonical configuration invalid")
         config_model = (
-            HybridAppConfig if hybrid else CapitalResearchAppConfig if research else AppConfig
+            StockResearchAppConfig
+            if stocks
+            else HybridAppConfig
+            if hybrid
+            else CapitalResearchAppConfig
+            if research
+            else AppConfig
         )
         envelope_model = (
-            HybridSafetyEnvelope
+            StockResearchSafetyEnvelope
+            if stocks
+            else HybridSafetyEnvelope
             if hybrid
             else CapitalResearchSafetyEnvelope
             if research
@@ -343,10 +355,24 @@ def _require_not_enabled(name: str, actual: bool, permitted: bool) -> None:
 def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None:
     """Reject every resolved value that weakens release-level safety."""
 
+    stock_pair = (
+        type(config) is StockResearchAppConfig and type(envelope) is StockResearchSafetyEnvelope
+    )
+    if (
+        isinstance(config, StockResearchAppConfig)
+        or isinstance(envelope, StockResearchSafetyEnvelope)
+    ) and (
+        not stock_pair
+        or cast(StockResearchAppConfig, config).stock_research
+        != cast(StockResearchSafetyEnvelope, envelope).stock_research
+    ):
+        raise UnsafeConfiguration("stock research policy/envelope mismatch")
     if (isinstance(config, HybridAppConfig) or isinstance(envelope, HybridSafetyEnvelope)) and (
-        type(config) is not HybridAppConfig
-        or type(envelope) is not HybridSafetyEnvelope
-        or config.hybrid != envelope.hybrid
+        (
+            not stock_pair
+            and (type(config) is not HybridAppConfig or type(envelope) is not HybridSafetyEnvelope)
+        )
+        or cast(HybridAppConfig, config).hybrid != cast(HybridSafetyEnvelope, envelope).hybrid
         or envelope.live_trading_permitted
     ):
         raise UnsafeConfiguration("hybrid policy/envelope mismatch or live authority")
@@ -897,11 +923,14 @@ def load_config(
     *,
     research_policy_path: Path | None = None,
     hybrid_policy_path: Path | None = None,
+    stock_research_policy_path: Path | None = None,
 ) -> LoadedConfig:
     """Load base, one named mode, environment, and immutable safety envelope."""
 
     if research_policy_path is not None and hybrid_policy_path is not None:
         raise ConfigLoadError("select only one canonical policy extension")
+    if stock_research_policy_path is not None and hybrid_policy_path is None:
+        raise ConfigLoadError("stock research requires canonical hybrid policy")
     if (research_policy_path is not None or hybrid_policy_path is not None) and any(
         key.upper().startswith(ENV_PREFIX) or key.upper() in ENV_ALIASES for key in environ
     ):
@@ -926,8 +955,15 @@ def load_config(
             policy = _load_yaml(hybrid_policy_path)
             merged["hybrid"] = policy
             envelope_body["hybrid"] = policy
-            config = HybridAppConfig.model_validate(merged)
-            envelope = HybridSafetyEnvelope.model_validate(envelope_body)
+            if stock_research_policy_path is not None:
+                stock_policy = _load_yaml(stock_research_policy_path)
+                merged["stock_research"] = stock_policy
+                envelope_body["stock_research"] = stock_policy
+                config = StockResearchAppConfig.model_validate(merged)
+                envelope = StockResearchSafetyEnvelope.model_validate(envelope_body)
+            else:
+                config = HybridAppConfig.model_validate(merged)
+                envelope = HybridSafetyEnvelope.model_validate(envelope_body)
         elif research_policy_path is None:
             config = AppConfig.model_validate(merged)
             envelope = SafetyEnvelope.model_validate(envelope_body)
