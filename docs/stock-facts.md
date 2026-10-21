@@ -37,9 +37,21 @@ unverified; null rows also prevent a verified scope claim. Batches are bounded
 to 10 fundamentals/history symbols and 20 financial symbols. An unexplained
 missing requested symbol denies normalization rather than shrinking the scope.
 
+Financial results follow the tool's declared one-to-one request order. When
+`requested_symbols` is supplied, the results length must match it and every
+nonnull row's symbol must equal the symbol at that position. A null slot adds
+that requested symbol to `unavailable_symbols`, never `not_found`, and retains
+the null count with `scope_verified=False`. It creates no financial records or
+metrics. Without request order, a null slot retains only its unknown-null count;
+no symbol identity is guessed. Reordered, shifted and length-mismatched results
+reject, including reorderings that preserve the same set of symbols.
+
 `observation_hash` binds the normalized collection, receipts, explicit request
 context, missingness and false qualification flags under a distinct namespace.
-It is reproducible evidence identity, not an authenticity or confidence score.
+The namespace is `stock-facts-normalized-v2`, reflecting the additional omission
+fields. It is reproducible evidence identity, not an authenticity or confidence
+score. The added collection fields have empty/zero defaults, preserving existing
+constructor calls.
 
 ## Decimal metrics and financial periods
 
@@ -73,12 +85,23 @@ cross-company comparisons require separately verified units and filing periods.
 History must declare `interval="day"` and `bounds="regular"`. Bars retain
 strictly increasing UTC `begins_at`, positive consistent Decimal OHLC and exact
 nonnegative integer share volume converted to Decimal. Duplicate/conflicting
-timestamps, reverse order, future left edges, interpolated bars and explicit
-nonregular sessions reject. An absent interpolation or session marker remains
+timestamps, reverse order, future left edges and explicit nonregular sessions
+reject. An absent interpolation or session marker remains
 unknown rather than becoming a verified false/regular declaration. Null bars
 are counted; missing sessions are never interpolated or calendar-certified.
 The output retains the UTC `left_edge_date`, not an inferred exchange-session
 date. Bounds are at most 10,000 rows per symbol and 30,000 total.
+
+An explicitly `interpolated=True` bar carries no new source information and is
+omitted after its timestamp, OHLC, volume and session validations. Every omission
+retains immutable `StockInterpolatedBarOmission(symbol, begins_at)` provenance
+with reason `source_declared_interpolated` in `omitted_interpolated_bars` and the
+explicit `omitted_interpolated_count`. Chronology and duplicate checks include
+omitted rows. The total-row bound includes retained bars and omissions. A series
+containing only such rows has no price records and its symbol is unavailable.
+Omissions can leave gaps; neither their absence nor an exact symbol-scope match
+certifies contiguous history or full calendar/session coverage. No missing bar
+is synthesized, and omitted left edges receive no completion claim.
 
 The response does not echo adjustment type. Without caller request evidence,
 `price_basis="unknown"`. Only the explicit reviewed request enum `"none"`

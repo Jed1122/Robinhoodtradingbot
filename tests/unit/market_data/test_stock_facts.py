@@ -216,6 +216,56 @@ def test_null_financial_values_and_empty_series_never_become_zeros():
     assert empty.records == () and empty.unavailable_symbols == ("ALFA",)
 
 
+def test_financial_null_slots_are_positional_unavailable_without_invented_metrics():
+    result = normalize(
+        "normalize_financials",
+        envelope(
+            [
+                None,
+                {"symbol": "BETA", "period": "quarterly", "financials": [financial()]},
+                None,
+            ]
+        ),
+        requested_symbols=("ALFA", "BETA", "GAMMA"),
+    )
+    assert result.unavailable_symbols == ("ALFA", "GAMMA")
+    assert result.not_found == () and result.null_row_count == 2
+    assert result.reported_symbols == ("BETA",) and not result.scope_verified
+    assert tuple(record.symbol for record in result.records) == ("BETA",)
+    assert not result.qualified and not result.trading_enabled
+    unknown = normalize("normalize_financials", envelope([None]))
+    assert unknown.null_row_count == 1 and unknown.unavailable_symbols == ()
+    assert not unknown.scope_verified
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [{"symbol": "BETA", "period": "quarterly", "financials": []}, None],
+        [None, {"symbol": "ALFA", "period": "quarterly", "financials": []}],
+        [None],
+        [None, None, None],
+    ],
+)
+def test_financial_requested_scope_rejects_shifted_reordered_and_wrong_length_rows(rows):
+    with pytest.raises(ValueError, match="stock_facts_invalid"):
+        normalize("normalize_financials", envelope(rows), requested_symbols=("ALFA", "BETA"))
+
+
+def test_financial_nonnull_rows_must_preserve_request_order():
+    with pytest.raises(ValueError, match="stock_facts_invalid"):
+        normalize(
+            "normalize_financials",
+            envelope(
+                [
+                    {"symbol": "BETA", "period": "quarterly", "financials": []},
+                    {"symbol": "ALFA", "period": "quarterly", "financials": []},
+                ]
+            ),
+            requested_symbols=("ALFA", "BETA"),
+        )
+
+
 def test_daily_bars_do_not_guess_price_basis_or_completion():
     result = normalize("normalize_daily_bars", bars())
     row = result.records[0]
@@ -254,7 +304,6 @@ def test_raw_request_and_completion_are_explicit_unqualified_declarations():
         ([price(low_price="23")], {}, {}),
         ([price(volume=True)], {}, {}),
         ([price(volume=-1)], {}, {}),
-        ([price(interpolated=True)], {}, {}),
         ([price(session="pre")], {}, {}),
         ([price(session=None)], {}, {}),
         ([price(begins_at="2026-10-22T04:00:00Z")], {}, {}),
@@ -279,6 +328,66 @@ def test_missing_interpolation_or_session_markers_remain_unknown():
     result = normalize("normalize_daily_bars", bars([row]))
     assert result.records[0].interpolated is None
     assert result.records[0].session is None
+
+
+def test_interpolated_bars_are_omitted_with_immutable_gap_provenance():
+    result = normalize(
+        "normalize_daily_bars",
+        bars(
+            [
+                price(begins_at="2026-10-16T04:00:00Z"),
+                price(interpolated=True),
+                price(begins_at="2026-10-20T04:00:00Z"),
+            ]
+        ),
+        requested_symbols=("ALFA",),
+    )
+    assert tuple(record.left_edge_date for record in result.records) == (
+        date(2026, 10, 16),
+        date(2026, 10, 20),
+    )
+    assert result.omitted_interpolated_count == 1
+    assert len(result.omitted_interpolated_bars) == 1
+    omission = result.omitted_interpolated_bars[0]
+    assert omission.symbol == "ALFA"
+    assert omission.begins_at == datetime(2026, 10, 19, 4, tzinfo=UTC)
+    assert omission.reason == "source_declared_interpolated"
+    with pytest.raises(AttributeError):
+        omission.symbol = "BETA"
+    assert all(record.completion_status == "unknown" for record in result.records)
+    assert result.scope_verified and not result.qualified
+    assert "bar_omissions_do_not_certify_contiguous_or_calendar_coverage" in result.limitations
+    assert (
+        result.observation_hash
+        != normalize(
+            "normalize_daily_bars",
+            bars(
+                [price(begins_at="2026-10-16T04:00:00Z"), price(begins_at="2026-10-20T04:00:00Z")]
+            ),
+            requested_symbols=("ALFA",),
+        ).observation_hash
+    )
+    assert normalize("normalize_fundamentals", envelope([])).omitted_interpolated_bars == ()
+
+
+def test_all_interpolated_bars_leave_explicit_unavailable_symbol_and_no_prices():
+    result = normalize("normalize_daily_bars", bars([price(interpolated=True)]))
+    assert result.records == () and result.unavailable_symbols == ("ALFA",)
+    assert result.omitted_interpolated_count == 1 and result.null_row_count == 0
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [price(interpolated=True, session="pre")],
+        [price(interpolated=True, low_price="23")],
+        [price(interpolated=True), price()],
+        [price(), price(interpolated=True, begins_at="2026-10-18T04:00:00Z")],
+    ],
+)
+def test_omitted_interpolated_rows_still_validate_values_sessions_and_chronology(rows):
+    with pytest.raises(ValueError, match="stock_facts_invalid"):
+        normalize("normalize_daily_bars", bars(rows))
 
 
 def test_declarations_survive_empty_and_not_yet_completed_bar_collections():

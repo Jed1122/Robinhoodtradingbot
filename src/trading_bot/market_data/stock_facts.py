@@ -71,6 +71,7 @@ _LIMITATIONS = (
     "missing_metrics_are_not_zero",
     "source_coverage_corporate_actions_and_units_unqualified",
     "no_average_dollar_volume_inferred_from_share_volume",
+    "bar_omissions_do_not_certify_contiguous_or_calendar_coverage",
 )
 _Tool = Literal["get_equity_fundamentals", "get_financials", "get_equity_historicals"]
 
@@ -229,6 +230,15 @@ class StockDailyBar:
 
 
 @dataclass(frozen=True, slots=True)
+class StockInterpolatedBarOmission:
+    symbol: str
+    begins_at: datetime
+    reason: Literal["source_declared_interpolated"] = field(
+        default="source_declared_interpolated", init=False
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class StockFactCollection[T: (StockFundamentals, StockFinancialPeriod, StockDailyBar)]:
     receipt: StockObservationReceipt
     records: tuple[T, ...]
@@ -241,6 +251,8 @@ class StockFactCollection[T: (StockFundamentals, StockFinancialPeriod, StockDail
     requested_symbols: tuple[str, ...] | None
     request_adjustment_type: Literal["none"] | None = None
     completed_before: datetime | None = None
+    omitted_interpolated_count: int = 0
+    omitted_interpolated_bars: tuple[StockInterpolatedBarOmission, ...] = ()
     qualified: Literal[False] = field(default=False, init=False)
     source_qualified: Literal[False] = field(default=False, init=False)
     strategy_qualified: Literal[False] = field(default=False, init=False)
@@ -250,7 +262,7 @@ class StockFactCollection[T: (StockFundamentals, StockFinancialPeriod, StockDail
 
     @property
     def observation_hash(self) -> str:
-        return str(content_hash(("stock-facts-normalized-v1", self)))
+        return str(content_hash(("stock-facts-normalized-v2", self)))
 
 
 def _envelope(
@@ -267,20 +279,30 @@ def _envelope(
     return rows, absent, data["results"] is None
 
 
+def _requested(requested: tuple[str, ...] | None, maximum: int) -> tuple[str, ...] | None:
+    if requested is None:
+        return None
+    _check(type(requested) is tuple and 1 <= len(requested) <= maximum)
+    symbols = tuple(_symbol(item) for item in requested)
+    _check(len(set(symbols)) == len(symbols))
+    return symbols
+
+
 def _scope(
     reported: list[str],
     absent: tuple[str, ...],
     requested: tuple[str, ...] | None,
     maximum: int,
     nulls: int,
+    *,
+    positional_unavailable: tuple[str, ...] = (),
 ) -> bool:
-    _check(len(set(reported)) == len(reported) and not set(reported).intersection(absent))
-    _check(len(reported) + len(absent) <= maximum)
-    if requested is None:
+    known = (*reported, *absent, *positional_unavailable)
+    _check(len(set(known)) == len(known) and len(known) <= maximum)
+    symbols = _requested(requested, maximum)
+    if symbols is None:
         return False
-    _check(type(requested) is tuple and 1 <= len(requested) <= maximum)
-    symbols = tuple(_symbol(item) for item in requested)
-    _check(len(set(symbols)) == len(symbols) and set(symbols) == set(reported).union(absent))
+    _check(set(symbols) == set(known))
     return nulls == 0
 
 
@@ -377,15 +399,22 @@ def normalize_financials(
 ) -> StockFactCollection[StockFinancialPeriod]:
     receipt = StockObservationReceipt("get_financials", _utc(received_at), observation_sha256)
     rows, absent, missing = _envelope(payload, 20, not_found=False)
+    requested = _requested(requested_symbols, 20)
+    _check(requested is None or len(rows) == len(requested))
     records: list[StockFinancialPeriod] = []
     reported, unavailable = [], []
+    positional_unavailable = []
     nulls = 0
-    for item in rows:
+    for index, item in enumerate(rows):
         if item is None:
             nulls += 1
+            if requested is not None:
+                unavailable.append(requested[index])
+                positional_unavailable.append(requested[index])
             continue
         row = _mapping(item, {"symbol", "period", "financials"})
         symbol = _symbol(row.get("symbol"))
+        _check(requested is None or symbol == requested[index])
         reported.append(symbol)
         period = row.get("period")
         _check(period in ("annual", "quarterly"))
@@ -424,7 +453,14 @@ def normalize_financials(
             count += 1
         if count == 0:
             unavailable.append(symbol)
-    verified = _scope(reported, absent, requested_symbols, 20, nulls)
+    verified = _scope(
+        reported,
+        absent,
+        requested,
+        20,
+        nulls,
+        positional_unavailable=tuple(positional_unavailable),
+    )
     return StockFactCollection(
         receipt,
         tuple(records),
@@ -458,6 +494,7 @@ def normalize_daily_bars(
     _check(cutoff is None or cutoff <= receipt.received_at)
     rows, absent, missing = _envelope(payload, 10)
     records: list[StockDailyBar] = []
+    omissions: list[StockInterpolatedBarOmission] = []
     reported, unavailable = [], []
     nulls = 0
     for item in rows:
@@ -491,7 +528,7 @@ def normalize_daily_bars(
             interpolated, session = bar.get("interpolated"), bar.get("session")
             _check("interpolated" not in bar or type(interpolated) is bool)
             _check("session" not in bar or type(session) is str)
-            _check(interpolated is not True and (session is None or session == "reg"))
+            _check(session is None or session == "reg")
             opened, high, low, close = (
                 _decimal(bar.get(name), name)
                 for name in ("open_price", "high_price", "low_price", "close_price")
@@ -501,6 +538,10 @@ def normalize_daily_bars(
             _check(type(volume) is int and 0 <= volume <= 2**63 - 1)
             if not isinstance(volume, int):
                 raise ValueError("stock_facts_invalid")
+            _check(len(records) + len(omissions) < 30000)
+            if interpolated is True:
+                omissions.append(StockInterpolatedBarOmission(symbol, starts))
+                continue
             complete = cutoff is not None and starts < cutoff
             records.append(
                 StockDailyBar(
@@ -520,7 +561,6 @@ def normalize_daily_bars(
                     cutoff if complete else None,
                 )
             )
-            _check(len(records) <= 30000)
             count += 1
         if count == 0:
             unavailable.append(symbol)
@@ -537,4 +577,6 @@ def normalize_daily_bars(
         requested_symbols,
         request_adjustment_type,
         cutoff,
+        omitted_interpolated_count=len(omissions),
+        omitted_interpolated_bars=tuple(omissions),
     )
