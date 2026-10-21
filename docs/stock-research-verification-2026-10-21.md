@@ -9,7 +9,10 @@ The existing deployed paused services were unchanged during this work.
 A separately authorized dedicated research browser grant captured 83 selected-server
 tool declarations. A new process then reused the encrypted saved credential without a
 browser. The credential remains trading-capable despite local research restrictions.
-Natural expiry, refresh rotation/persistence and owner-revoked denial remain unverified.
+One later official refresh succeeded and persisted absolute lifetime metadata. A fresh
+process reused that new generation without a callback and retrieved all 83 declarations;
+schema artifact SHA-256 `d7e31092ac39b56350cac907769916f17bdd95d5cb89e3d4c1f1126e1ee8f1dc`.
+Natural expiry, owner-revoked denial and deployed background authentication remain unverified.
 
 The reviewed 13-tool stock-only profile has SHA-256
 `f95f313e2187326c610032029be438839536c6da69de30f17b1d1fe642d235f1`.
@@ -48,10 +51,34 @@ financial results were null; this means no returned financial data for those slo
 not zero revenue. Of 2,650 returned daily bars, 193 were labeled interpolated. Synthetic
 bars cannot supply genuine trading activity or establish liquidity. The corrected
 normalizer retained 10 fundamental records, 38 annual financial periods and 60 quarterly
-periods while explicitly preserving the five unavailable companies. One non-interpolated
-historical row violated its OHLC range, so the strict history normalization correctly
+periods while explicitly preserving the five unavailable companies. One historical row
+not marked interpolated violated its OHLC range, so the strict history normalization correctly
 denied that batch. The bad row remains in the original capture; no price was repaired,
-zero-filled or silently accepted. No qualifying strategy result follows.
+zero-filled or silently accepted. Subsequent whole-company projection quarantined the
+affected company's entire history while retaining nine valid histories with 2,385 bars.
+All 193 rows marked interpolated belonged to the quarantined company; none of the
+nine accepted histories contained a bar marked interpolated. Ordinary retained bars
+omit the optional interpolation flag, so their interpolation state remains unknown.
+Projection context retains original batch/index/hash and
+separate local projected hashes. Twenty earnings and filing-index collections also
+normalized successfully. No qualifying strategy result follows.
+
+The integrated archive-to-dossier report rehashed the actual 25-call enrichment capture,
+normalized source facts, retained the whole-company history quarantine, and published
+10 company dossiers with zero collection normalization denials. Every dossier explicitly
+retains data gaps and disabled investment eligibility. The private report SHA-256 is
+`53df6a2c1f21ec96a2724a85fc643c40c86f8569345b3e4589e456f6aa8ab8a8`.
+The company dossiers are evidence inventories; filing contents and investment theses
+have not yet been substantively evaluated.
+
+Schema-v2 technical binding retained nine `ineligible` histories and one quarantined
+history, producing zero technical metric values. All 2,385 retained ordinary bars had
+an omitted interpolation flag. The reviewed output schema permits omission but supplies
+no default, and the response guide does not establish one. No unknown flag was coerced
+to false. The dossier exposes `history_interpolation_unknown`; resolving source semantics
+or obtaining a permitted dataset with explicit evidence is an outstanding qualification
+step. Synthetic fixtures verify the technical formulas; they do not supply missing actual
+market evidence. The earlier v1 and initial v2 reports remain retained separately.
 
 A separate public Nasdaq directory capture retained 13,293 rows and 5,176 tentatively
 eligible common-stock listings. Name-based security classification remains conservative
@@ -70,15 +97,23 @@ new capture, archive, screen, stock configuration and fact normalizers, not the 
 application; the capture module individually measured 79%. Independent review also
 cleared positional financial nulls and interpolated-bar omission provenance.
 
-A broader central regression and final static checks are recorded in the ongoing
-implementation ledger. Earlier full-suite evidence applies to an older executable;
-it is not silently reused as final verification of this checkpoint.
+The earlier broad selected suite terminated with 4,386 passed, 18 skipped and one
+architecture failure: this work had placed broker-bound archive I/O under research.
+Moving it into runtime corrected that boundary; targeted architecture checks passed.
+The current integrated broker/runtime/architecture and stock evidence regression then
+passed 723 tests after technical integration and the interpolation-gap regression.
+The renewal/lifecycle/provider/SDK subset passed 89 tests, including
+17 filesystem, cancellation, single-POST and no-replay renewal cases. Two independent
+reviews cleared those protected paths. Repository Ruff and strict mypy (430 source files)
+passed. Bandit, offline lock and diff
+checks also passed. These source/fixture checks remain distinct from actual official refresh and
+schema-reuse evidence. No complete all-repository test pass is claimed for this revision.
 
 ## Outstanding work
 
 The research acquisition/cache scheduler is not yet a verified persistent background
-service. Authentication lifecycle recovery, company dossiers, complete raw-session
-liquidity, stock point-in-time datasets, out-of-sample strategy/cost/tax validation,
+service. Natural-expiry/revocation recovery, substantive company research, complete
+raw-session liquidity, stock point-in-time datasets, out-of-sample strategy/cost/tax validation,
 nonempty broker reconciliation and encrypted operational backup/watchdog installation
 remain outstanding. No stock strategy has qualified for capital allocation. There is
 no mandatory paper waiting period; live activation still requires separate authorization.

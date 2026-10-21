@@ -197,6 +197,8 @@ def _gaps(parts: _Parts) -> tuple[str, ...]:
         ):
             gaps.add("raw_price_basis_unknown")
         normalized = history.outcome.normalized
+        if normalized is not None and any(row.interpolated is None for row in normalized.records):
+            gaps.add("history_interpolation_unknown")
         if normalized is not None and normalized.completed_before is not None:
             gaps.add("history_completion_caller_declared")
         if normalized is not None and normalized.request_adjustment_type == "none":
