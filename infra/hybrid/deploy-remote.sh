@@ -55,6 +55,10 @@ base=$(cat "$release/.docker-base-image")
 printf '%s\n' "$base" | grep -Eq '^python:3\.12-slim-bookworm@sha256:[0-9a-f]{64}$' || exit 2
 [ -f "$release/dashboard/dist/index.html" ] || exit 2
 [ -f "$release/src/trading_bot/hybrid/cli.py" ] || exit 2
+# Classic builders ignore per-Dockerfile ignore files. Normalize only this isolated
+# extracted release to the same reviewed allowlist; never change the existing app.
+[ -f "$release/Dockerfile.hybrid.dockerignore" ] || exit 2
+install -m 0600 "$release/Dockerfile.hybrid.dockerignore" "$release/.dockerignore"
 # No registry publication. Build dependencies/base may be downloaded within existing host capacity.
 /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin docker build \
     --build-arg "PYTHON_BASE_IMAGE=$base" --iidfile "$release/image" \

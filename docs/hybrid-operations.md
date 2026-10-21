@@ -110,3 +110,9 @@ prepare the clean archive, deploy only the isolated paper service, verify the au
 and persistence, rehearse restore, then qualify representative source-backed paper behavior. Research,
 out-of-sample validation and live authorization remain separate gates. These artifacts do not enable
 live execution.
+# Builder compatibility
+
+The existing host uses the classic Docker builder, which ignores per-Dockerfile
+ignore files. The deploy helper normalizes `.dockerignore` only inside its new,
+isolated extracted release using the reviewed `Dockerfile.hybrid.dockerignore`.
+The source checkout's default ignore file and existing service remain unchanged.
