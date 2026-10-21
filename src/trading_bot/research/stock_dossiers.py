@@ -503,12 +503,29 @@ def build_stock_dossiers(
     for evidence in filing_evidence:
         _check(type(evidence) is StockFilingEvidence)
         try:
-            checked = bind_filing_evidence(
-                evidence.index, evidence.catalog, evidence.facts, as_of=cutoff
+            _check(
+                all(
+                    getattr(evidence, name) is False
+                    for name in (
+                        "qualified",
+                        "source_qualified",
+                        "strategy_qualified",
+                        "investment_eligible",
+                        "trading_enabled",
+                        "live_authorized",
+                    )
+                )
             )
-        except (ValueError, TypeError, OverflowError):
+            _check(evidence.publication_at is None)
+            original = bind_filing_evidence(
+                evidence.index, evidence.catalog, evidence.facts, as_of=evidence.as_of
+            )
+            _check(original == evidence)
+            checked = bind_filing_evidence(
+                original.index, original.catalog, original.facts, as_of=cutoff
+            )
+        except (ValueError, TypeError, OverflowError, AttributeError):
             raise ValueError("stock_dossiers_invalid") from None
-        _check(checked == evidence)
         _check(sum(collection == checked.index for collection in filings) == 1)
         _check(checked.evidence_hash not in evidence_seen)
         evidence_seen.add(checked.evidence_hash)

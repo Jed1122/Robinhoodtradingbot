@@ -214,6 +214,19 @@ def compile_stock_dossier_report(
                 )
         evidence, filing_denials = _filing_chains(filings, catalogs, filing_facts, cutoff)
         index_counts = Counter(row.requested_symbol for row in filings)
+        if filing_aware:
+            for symbol, count in sorted(index_counts.items()):
+                if count > 1:
+                    filing_denials.append(
+                        {
+                            "reason": "stock_filing_evidence_ambiguous",
+                            "observation_sha256s": tuple(
+                                row.receipt.observation_sha256
+                                for row in filings
+                                if row.requested_symbol == symbol
+                            ),
+                        }
+                    )
         dossier_filings = tuple(
             row for row in filings if not filing_aware or index_counts[row.requested_symbol] == 1
         )

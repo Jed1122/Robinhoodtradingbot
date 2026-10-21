@@ -103,6 +103,10 @@ and fact response through `market_data.stock_filing_facts.bind_filing_evidence`.
 The assembler repeats that validation at its cutoff and requires the exact index
 collection among its inputs. It cannot attach facts using a company-name guess or
 an unrelated index. Duplicate evidence and mutated qualifying flags are rejected.
+Evidence created at an earlier cutoff is checked at that original cutoff, then
+rebound at the requested cutoff. The source receipts keep their actual timestamps;
+only the evaluation cutoff and its versioned evidence identity change. Outer flags
+must be exact false booleans, and the checked original filing must still match.
 Each attachment retains its three receipts, raw optional states, reported units,
 native periods and entity text; availability is the latest contributing receipt.
 Reported units and entity mapping remain explicit unqualified gaps. Existing

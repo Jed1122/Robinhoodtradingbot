@@ -230,17 +230,13 @@ def test_earlier_filing_date_does_not_backdate_combined_receipt_availability():
     assert earlier["filing_evidence_denials"][0]["reason"] == "stock_filing_evidence_incomplete"
 
 
-@pytest.mark.parametrize(
-    "kind", ["missing_index", "wrong_index", "duplicate_evidence", "forged_flag", "future_cutoff"]
-)
-def test_direct_dossier_boundary_revalidates_filing_evidence(kind):
+def direct_evidence():
     from trading_bot.market_data.stock_events import normalize_filing_index
     from trading_bot.market_data.stock_filing_facts import (
         bind_filing_evidence,
         normalize_filing_catalog,
         normalize_filing_facts,
     )
-    from trading_bot.research.stock_dossiers import build_stock_dossiers
 
     i, c, f = index(), catalog(), filing_facts()
     common = {"received_at": AS_OF}
@@ -266,6 +262,25 @@ def test_direct_dossier_boundary_revalidates_filing_evidence(kind):
     evidence = bind_filing_evidence(
         normalized_index, normalized_catalog, normalized_facts, as_of=AS_OF
     )
+    return normalized_index, evidence
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "missing_index",
+        "wrong_index",
+        "duplicate_evidence",
+        "forged_flag",
+        "forged_false_scalar",
+        "future_cutoff",
+    ],
+)
+def test_direct_dossier_boundary_revalidates_filing_evidence(kind):
+    from trading_bot.market_data.stock_events import normalize_filing_index
+    from trading_bot.research.stock_dossiers import build_stock_dossiers
+
+    normalized_index, evidence = direct_evidence()
     indexes = (normalized_index,)
     supplied = (evidence,)
     cutoff = AS_OF
@@ -276,7 +291,7 @@ def test_direct_dossier_boundary_revalidates_filing_evidence(kind):
         indexes = (
             normalize_filing_index(
                 other["payload"],
-                **common,
+                received_at=AS_OF,
                 observation_sha256=other["observation_sha256"],
                 requested_symbol="BETA",
             ),
@@ -285,6 +300,8 @@ def test_direct_dossier_boundary_revalidates_filing_evidence(kind):
         supplied = (evidence, evidence)
     elif kind == "forged_flag":
         object.__setattr__(evidence, "investment_eligible", True)
+    elif kind == "forged_false_scalar":
+        object.__setattr__(evidence, "investment_eligible", 0)
     else:
         cutoff -= timedelta(seconds=1)
     with pytest.raises(ValueError, match="stock_dossiers_invalid"):
@@ -296,6 +313,42 @@ def test_direct_dossier_boundary_revalidates_filing_evidence(kind):
             filings=indexes,
             filing_evidence=supplied,
         )
+
+
+def test_valid_earlier_evidence_is_revalidated_and_attached_at_the_current_cutoff():
+    from trading_bot.research.stock_dossiers import build_stock_dossiers
+
+    normalized_index, evidence = direct_evidence()
+    cutoff = AS_OF + timedelta(seconds=1)
+    (dossier,) = build_stock_dossiers(
+        as_of=cutoff,
+        facts=(),
+        history=(),
+        earnings=(),
+        filings=(normalized_index,),
+        filing_evidence=(evidence,),
+    )
+    (attached,) = dossier.filing_evidence
+    assert attached.as_of == cutoff
+    assert evidence.as_of == AS_OF
+    assert attached.available_at == evidence.available_at == AS_OF
+    assert attached.evidence_hash != evidence.evidence_hash
+    assert attached.filing == evidence.filing
+    assert attached.investment_eligible is False
+
+
+def test_unrelated_ambiguous_indexes_are_withheld_with_explicit_safe_receipt_denial():
+    beta_a, beta_b = index("BETA", "filing-b"), index("BETA", "filing-c")
+    report = compile_rows(index(), catalog(), filing_facts(), beta_a, beta_b)
+    assert [row["symbol"] for row in report["dossiers"]] == ["ALFA"]
+    assert len(report["dossiers"][0]["filing_evidence"]) == 1
+    assert any(
+        denial["reason"] == "stock_filing_evidence_ambiguous"
+        and set(denial["observation_sha256s"])
+        == {beta_a["observation_sha256"], beta_b["observation_sha256"]}
+        for denial in report["filing_evidence_denials"]
+    )
+    assert "BETA" not in json.dumps(report["filing_evidence_denials"])
 
 
 @pytest.fixture
