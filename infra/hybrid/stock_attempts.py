@@ -201,6 +201,34 @@ def _namespace(root_info: os.stat_result, lock_info: os.stat_result) -> dict[str
     }
 
 
+def _reconfirm_durability(directory: int, name: str, value: dict[str, Any], uid: int) -> str:
+    """Flush an unchanged valid receipt only after a fresh explicit observation."""
+    descriptor = os.open(name, _READ, dir_fd=directory)
+    try:
+        before = os.fstat(descriptor)
+        _file_info(before, uid)
+        expected = _canonical(value)
+        raw = b""
+        while len(raw) <= 4096:
+            chunk = os.read(descriptor, 4097 - len(raw))
+            if not chunk:
+                break
+            raw += chunk
+        _require(raw == expected and len(raw) == before.st_size)
+        os.fsync(descriptor)
+        _require(_fingerprint(before) == _fingerprint(os.fstat(descriptor)))
+        _require(
+            _fingerprint(before)
+            == _fingerprint(os.stat(name, dir_fd=directory, follow_symlinks=False))
+        )
+    finally:
+        _close_all((descriptor,))
+    os.fsync(directory)
+    retained, digest = _read(directory, name, uid)
+    _require(_exact(retained, value))
+    return digest
+
+
 def _validate_namespace(value: dict[str, Any], root: os.stat_result, lock: os.stat_result) -> None:
     _require(
         set(value)
@@ -321,6 +349,9 @@ class AttemptStore:
         self._used_begin = False
         self._owned_attempt: str | None = None
         self._start_issued = False
+        self._cid_record_issued = False
+        self._created_acknowledged: str | None = None
+        self._terminal_acknowledged: tuple[str, str] | None = None
 
     def _validate(self) -> None:
         _require(not self._closed and os.geteuid() == self._uid)
@@ -415,11 +446,19 @@ class AttemptStore:
             "container_id",
             *_CLOCK_KEYS,
         }
-        extra = (
-            {"status", "exit_code", "oom_killed", "error_present", "start_fence_present"}
-            if name == "stopped.json"
-            else set()
-        )
+        extra = set()
+        if name == "stopped.json":
+            extra = {
+                "status",
+                "exit_code",
+                "oom_killed",
+                "error_present",
+                "start_fence_present",
+                "container_started_at",
+                "container_finished_at",
+            }
+        elif name == "start.json":
+            extra = {"term_deadline_ns"}
         _require(
             set(value) == common | extra
             and type(value["schema_version"]) is int
@@ -444,23 +483,61 @@ class AttemptStore:
                     for key in ("oom_killed", "error_present", "start_fence_present")
                 )
             )
+            _timestamp(value["container_started_at"], zero=True)
+            _timestamp(value["container_finished_at"], zero=True)
         else:
             _require(
                 value["boot_id"] == attempt.boot_id
                 and value["monotonic_ns"] >= attempt.created_monotonic_ns
             )
+            if name == "start.json":
+                _require(
+                    _integer(value["term_deadline_ns"])
+                    and value["term_deadline_ns"]
+                    == value["monotonic_ns"] + attempt.max_run_seconds * 1000000000
+                )
         return value
+
+    def _created_and_start(self, directory: int, attempt: Attempt) -> dict[str, Any] | None:
+        has_start = _exists(directory, "start.json")
+        if not _exists(directory, "created.json"):
+            _require(not has_start)
+            return None
+        created = self._receipt(directory, "created.json", attempt)
+        if has_start:
+            start = self._receipt(directory, "start.json", attempt)
+            _require(
+                start["container_id"] == created["container_id"]
+                and start["boot_id"] == created["boot_id"]
+                and start["monotonic_ns"] >= created["monotonic_ns"]
+            )
+        return created
 
     def begin(self, release: StockRelease) -> Attempt:
         with _sanitized():
             self._validate()
             _require(not self._used_begin and type(release) is StockRelease)
             active = self._active()
+            if active is not None:
+                if self._terminal_acknowledged is None:
+                    _deny()
+                _require(self._terminal_acknowledged[0] == active.attempt_id)
             for old_id in self._inventory():
                 with self._attempt_directory(old_id) as directory:
                     raw, digest = _read(directory, "intent.json", self._uid)
                     old = _intent(raw, digest, self._namespace["namespace_id"], old_id)
-                    self._receipt(directory, "stopped.json", old)
+                    known_created = self._created_and_start(directory, old)
+                    stopped = self._receipt(directory, "stopped.json", old)
+                    _require(
+                        known_created is None
+                        or stopped["container_id"] == known_created["container_id"]
+                    )
+                    if active is not None and old_id == active.attempt_id:
+                        _require(
+                            self._terminal_acknowledged is not None
+                            and self._terminal_acknowledged[1]
+                            == hashlib.sha256(_canonical(stopped)).hexdigest()
+                        )
             _require(active is None or active.attempt_id in self._inventory())
             self._used_begin = True
             attempt_id = secrets.token_hex(16)
@@ -510,6 +587,10 @@ class AttemptStore:
                 _deny()
             self._validate()
             self._owned_attempt = attempt_id
+            self._created_acknowledged = None
+            self._terminal_acknowledged = None
+            self._cid_record_issued = False
+            self._start_issued = False
             return result
 
     def _owned(self) -> Attempt:
@@ -539,6 +620,9 @@ class AttemptStore:
     def record_created(self, verified: CreatedContainer) -> None:
         with _sanitized():
             attempt = self._owned()
+            _require(not self._cid_record_issued)
+            self._cid_record_issued = True
+            self._created_acknowledged = None
             _require(type(verified) is CreatedContainer and _matches(verified.container_id, _HEX))
             _require(
                 _exact(
@@ -564,15 +648,19 @@ class AttemptStore:
                 and value["monotonic_ns"] >= attempt.created_monotonic_ns
             )
             with self._attempt_directory(attempt.attempt_id) as directory:
-                _write_new(directory, "created.json", value, self._uid)
+                digest = _write_new(directory, "created.json", value, self._uid)
             self._validate()
+            self._created_acknowledged = digest
 
     def prepare_start(self) -> StartFence:
         with _sanitized():
             attempt = self._owned()
-            _require(not self._start_issued)
+            _require(not self._start_issued and self._created_acknowledged is not None)
             with self._attempt_directory(attempt.attempt_id) as directory:
                 created = self._receipt(directory, "created.json", attempt)
+                _require(
+                    hashlib.sha256(_canonical(created)).hexdigest() == self._created_acknowledged
+                )
                 clock = _clock()
                 _check_clock(clock)
                 _require(
@@ -605,24 +693,31 @@ class AttemptStore:
     def record_stopped(self, raw: bytes) -> dict[str, Any]:
         with _sanitized():
             self._validate()
+            self._created_acknowledged = None
+            self._terminal_acknowledged = None
+            self._start_issued = True
             attempt = self._active()
             if attempt is None:
                 _deny()
             with self._attempt_directory(attempt.attempt_id) as directory:
-                expected_cid = (
-                    self._receipt(directory, "created.json", attempt)["container_id"]
-                    if _exists(directory, "created.json")
-                    else None
-                )
+                known_created = self._created_and_start(directory, attempt)
+                expected_cid = known_created["container_id"] if known_created is not None else None
                 facts = _stopped(raw, attempt, expected_cid)
-                value = {
-                    **self._base(attempt, "stopped", facts.pop("container_id"), _clock()),
-                    **facts,
-                    "start_fence_present": _exists(directory, "start.json"),
-                }
-                _write_new(directory, "stopped.json", value, self._uid)
+                if _exists(directory, "stopped.json"):
+                    value = self._receipt(directory, "stopped.json", attempt)
+                    _require(_exact({key: value[key] for key in facts}, facts))
+                    _require(value["start_fence_present"] is _exists(directory, "start.json"))
+                    digest = _reconfirm_durability(directory, "stopped.json", value, self._uid)
+                else:
+                    value = {
+                        **self._base(attempt, "stopped", facts.pop("container_id"), _clock()),
+                        **facts,
+                        "start_fence_present": _exists(directory, "start.json"),
+                    }
+                    digest = _write_new(directory, "stopped.json", value, self._uid)
                 self._receipt(directory, "stopped.json", attempt)
             self._validate()
+            self._terminal_acknowledged = (attempt.attempt_id, digest)
             return value
 
 
@@ -689,6 +784,8 @@ def _stopped(raw: bytes, attempt: Attempt, expected_cid: str | None) -> dict[str
         "exit_code": state["ExitCode"],
         "oom_killed": state["OOMKilled"],
         "error_present": bool(state["Error"]),
+        "container_started_at": state["StartedAt"],
+        "container_finished_at": state["FinishedAt"],
     }
 
 

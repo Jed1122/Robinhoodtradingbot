@@ -174,7 +174,15 @@ and fixed: preparing a start after a terminal receipt, and returning a start fen
 whose deadline expired during persistence. The store passed 58 fictional/local-FS
 tests at 98.74% combined statement/branch coverage and 485 deployment regression
 tests with four optional age skips. Ruff, strict mypy (445 files), expanded Bandit
-and lock checks passed; independent review is pending. Production initialization,
+and lock checks passed. Independent review then reproduced three gaps: readable CID
+bytes after failed fsync could fence a start, a missing created receipt could relax a
+persisted start CID, and readable terminal bytes after failed fsync could admit another
+attempt. Four RED regressions reproduced those cases. Root added same-session CID
+acknowledgement/hash checks, validated created/start CID/clock linkage, and mandatory
+fresh stopped reconfirmation plus durability acknowledgement after reopen. Terminal
+receipts now retain container lifetime timestamps and reject changed lifetimes. The
+corrected tests and regression pass; independent follow-up review is pending.
+Production initialization,
 write transport, controller/deadline handling and native recovery remain pending.
 
 ## Task 3: Supervised timer, paused installation and native checks

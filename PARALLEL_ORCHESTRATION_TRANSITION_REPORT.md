@@ -103,7 +103,10 @@ and an atomic active pointer. Reopening never grants start authority; unfinished
 attempts block new ones. Root reproduced and corrected post-terminal-start and
 persistence-expired-fence cases before review. It passed 58 fictional/filesystem
 tests at 98.74% combined statement/branch coverage, plus 485 deployment regressions
-with four optional age skips. Independent review is pending. No production
+with four optional age skips. Review reproduced three durability/identity gaps;
+four RED cases failed before root's acknowledgement/hash, created/start linkage and
+fresh terminal-reconfirmation fixes. Corrected source is awaiting independent
+follow-up. No production
 operations namespace, Docker writer, controller or native recovery is established.
 
 Next: complete integrated verification, deployed image/config/control-path verification

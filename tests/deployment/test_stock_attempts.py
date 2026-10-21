@@ -173,6 +173,7 @@ def test_terminal_ack_allows_later_fresh_attempt_not_replay(operations, policy):
         result = store.record_stopped(encoded(stopped(old)))
         assert result["container_id"] == CID and result["exit_code"] == 0
     with opened(operations) as later:
+        later.record_stopped(encoded(stopped(old)))
         fresh = later.begin(policy)
         assert fresh.attempt_id != old.attempt_id
 
@@ -516,3 +517,157 @@ def test_unexpected_namespace_file_and_unreferenced_attempt_block_admission(oper
         pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
     ):
         store.begin(policy)
+
+
+def test_failed_cid_fsync_never_becomes_dispatch_ack(operations, policy, monkeypatch):
+    api, _, _ = operations
+    original = api.os.fsync
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        monkeypatch.setattr(
+            api.os, "fsync", lambda _fd: (_ for _ in ()).throw(OSError("fictional"))
+        )
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_created(created(intent))
+        monkeypatch.setattr(api.os, "fsync", original)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.prepare_start()
+
+
+def test_lost_cid_anchor_cannot_relax_durable_start_identity(operations, policy):
+    _, root, _ = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        store.prepare_start()
+    (root / intent.attempt_id / "created.json").unlink()
+    with (
+        opened(operations) as recovered,
+        pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+    ):
+        recovered.record_stopped(encoded(stopped(intent, cid="a" * 64)))
+
+
+@pytest.mark.parametrize("failed_fsync", [False, True])
+def test_reopened_terminal_bytes_require_fresh_reconfirmation(
+    operations, policy, monkeypatch, failed_fsync
+):
+    api, _, _ = operations
+    original = api.os.fsync
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        if failed_fsync:
+            monkeypatch.setattr(
+                api.os, "fsync", lambda _fd: (_ for _ in ()).throw(OSError("fictional"))
+            )
+            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+                store.record_stopped(encoded(stopped(intent)))
+            monkeypatch.setattr(api.os, "fsync", original)
+        else:
+            store.record_stopped(encoded(stopped(intent)))
+    with opened(operations) as recovered:
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovered.begin(policy)
+        recovered.record_stopped(encoded(stopped(intent)))
+        fresh = recovered.begin(policy)
+        assert fresh.attempt_id != intent.attempt_id
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("container_id", "a" * 64),
+        ("boot_id", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"),
+        ("term_deadline_ns", True),
+    ],
+)
+def test_persisted_start_and_created_receipts_must_agree(operations, policy, field, value):
+    _, root, _ = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        store.prepare_start()
+    path = root / intent.attempt_id / "start.json"
+    record = json.loads(path.read_bytes())
+    record[field] = value
+    path.write_bytes(encoded(record))
+    with (
+        opened(operations) as recovered,
+        pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+    ):
+        recovered.record_stopped(encoded(stopped(intent)))
+
+
+def test_start_clock_cannot_precede_acknowledged_created_clock(operations, policy):
+    _, root, clock = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        clock["monotonic_ns"] += 100
+        store.record_created(created(intent))
+        store.prepare_start()
+    path = root / intent.attempt_id / "start.json"
+    record = json.loads(path.read_bytes())
+    record["monotonic_ns"] -= 1
+    record["term_deadline_ns"] -= 1
+    path.write_bytes(encoded(record))
+    with (
+        opened(operations) as recovered,
+        pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+    ):
+        recovered.record_stopped(encoded(stopped(intent)))
+
+
+def test_cid_receipt_must_still_equal_the_acknowledged_bytes(operations, policy):
+    _, root, _ = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        path = root / intent.attempt_id / "created.json"
+        record = json.loads(path.read_bytes())
+        record["utc"] = "2026-10-21T21:00:01+00:00"
+        path.write_bytes(encoded(record))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.prepare_start()
+
+
+def test_fresh_reconfirmation_rejects_changed_container_lifetime(operations, policy):
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_stopped(encoded(stopped(intent)))
+    with opened(operations) as recovered:
+        changed = stopped(intent)
+        changed["State"]["FinishedAt"] = "2026-10-21T21:00:03Z"
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovered.record_stopped(encoded(changed))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovered.begin(policy)
+
+
+def test_failed_reconfirmation_clears_earlier_terminal_ack(operations, policy, monkeypatch):
+    api, _, _ = operations
+    original = api.os.fsync
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_stopped(encoded(stopped(intent)))
+    with opened(operations) as recovered:
+        recovered.record_stopped(encoded(stopped(intent)))
+        monkeypatch.setattr(
+            api.os, "fsync", lambda _fd: (_ for _ in ()).throw(OSError("fictional"))
+        )
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovered.record_stopped(encoded(stopped(intent)))
+        monkeypatch.setattr(api.os, "fsync", original)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovered.begin(policy)
+
+
+def test_recovery_ack_then_new_attempt_can_complete_new_start_protocol(operations, policy):
+    with opened(operations) as store:
+        old = store.begin(policy)
+        store.record_created(created(old))
+    with opened(operations) as recovered:
+        recovered.record_stopped(encoded(stopped(old)))
+        fresh = recovered.begin(policy)
+        recovered.record_created(created(fresh))
+        fence = recovered.prepare_start()
+        assert fence.attempt_id == fresh.attempt_id and fresh.attempt_id != old.attempt_id

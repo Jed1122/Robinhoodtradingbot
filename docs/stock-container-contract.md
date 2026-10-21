@@ -273,17 +273,28 @@ Unfinished attempts prevent new ones; completed receipts are retained.
 Persist the verified full CID separately before start. Write an exclusive start
 fence before the single start request, including boot/clock domain and the absolute
 monotonic TERM deadline derived from canonical duration. Persistence overhead counts
-against that bound. Fencing is one-use even following an uncertain local write.
+against that bound. Start also requires the same owner session's successful CID
+durability acknowledgement and the exact acknowledged receipt hash. Readable bytes
+after a failed file/directory flush never supply that acknowledgement. Fencing is
+one-use even following an uncertain local write.
 Only the store session that acknowledged a fresh intent can prepare a start;
 reopening the store never adopts an unfinished attempt for execution. Recovery may
 only inspect and stop the owned container, including lookup by the generated name
 when create acknowledgement was lost.
 
+A retained start fence requires a valid created receipt with matching CID and
+ordered same-boot monotonic timestamps; loss or corruption of that anchor denies.
+Generated-name recovery is available only when no persisted start identifies a CID.
 A terminal receipt requires supplied actual inspection to match the owned identity,
 image/name/labels, no restart/removal policy, non-running/non-paused/non-restarting
 state and zero PID. Preserve exit/OOM/error-presence and separate local observation
-time; do not retain Docker diagnostic text or infer successful research from exit
-code zero. Only its durable acknowledgement permits a later fresh attempt.
+time, plus Docker's start/finish timestamps; do not retain diagnostic text or infer
+successful research from exit code zero. A reopened session requires a fresh actual
+stopped observation and successful explicit durability reconfirmation of the unchanged
+terminal receipt before admitting a later attempt. Readable terminal bytes alone
+cannot grant admission after a failed flush. A changed CID/lifetime, unsafe state or
+uncertain reconfirmation denies and clears the session's acknowledgement. Reconfirmation
+does not rewrite, repair or initialize records.
 This store is sequencing/consistency evidence, not a substitute for native
 observations, control authority, authentication or the process supervisor.
 Each opened owner session admits at most one fresh attempt. At most 8192 retained
