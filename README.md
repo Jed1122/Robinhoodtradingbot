@@ -270,3 +270,11 @@ successful default paused deployment has a healthy `/healthz`, a `503` `/readyz`
 `trading_bot_live_enabled 0.0`. The default service has no host volumes and cannot access OAuth or
 evidence state. The connected-shadow profile is explicit and locally write-incapable; its evidence
 ledger does not by itself authorize or activate live execution.
+# Hybrid equity extension
+
+The opt-in [hybrid equity application](docs/hybrid-equity.md) adds exact tax-lot and
+exit accounting, deterministic experimental execution, source-aware research,
+comparison commands and an authenticated responsive dashboard. Paper trading is
+optional, with no mandatory waiting period. Live execution remains unavailable
+pending strategy qualification, broker verification and separate user authorization.
+See [brokerage/security boundaries](docs/hybrid-broker-and-security.md).
