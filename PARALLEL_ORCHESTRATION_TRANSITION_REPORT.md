@@ -189,6 +189,18 @@ restore and watchdog alerts. Stock data/strategy qualification and nonempty brok
 reconciliation remain incomplete. Live execution remains disabled. See the
 [worker contract](docs/stock-research-worker.md) for current scope and limitations.
 
+Latest local continuation: active supervision now has fixed phase caps, scoped fresh
+observations, durable stopped recording and host-shutdown handling. Whole-increment
+review at a589e3b found a budget-renewal bug; nine RED tests preceded c891a94's fix.
+Corrected focused checks passed 362 tests (97% combined coverage, supervisor 96%).
+The independently reviewed pure SEC receipt adapter cb15c70 was merged at dce6c4f;
+it preserves receipt-time availability and all false qualification/compatibility
+flags without I/O. Root central verification passed 1,359 tests with four optional
+age skips plus 26 source/policy tests. Ruff/mypy450/Bandit/lock checks passed. The
+primary f04a63f full run remains pending; subsequent code is outside that frozen run.
+See [active supervision](docs/stock-active-supervision.md). Full fresh-cycle launch,
+older cleanup, producer, native proof and paused installation remain outstanding.
+
 ## Historical architecture and panel — October 11
 
 Architecture resolution and implementation are complete: invocation-owned

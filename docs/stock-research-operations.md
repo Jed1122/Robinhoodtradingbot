@@ -166,6 +166,25 @@ clearances, not native supervision or deployment evidence. The primary remains
 frozen at f04a63f for its still-running full regression; no new primary merge or
 duplicate full run was performed.
 
+The active-worker supervisor is now implemented locally, with fixed RUN, TERM/grace,
+KILL and final-observation phases and earlier-only transport caps. Fresh review found
+an active-budget renewal path; nine observed RED cases reproduced it before the
+recovery-only correction. The corrected focused suite passed 362 tests at 97%
+combined reader/termination/supervisor coverage; the supervisor alone is 96%.
+The integrated deployment/architecture/stock-data check passed 1,359 tests with
+four optional age skips; source/policy checks passed another 26. Ruff, strict
+mypy450, expanded Bandit and lock checks passed. This source supervises existing
+start-fenced workers only; fresh-cycle orchestration, cleanup, installation and native
+operation remain pending. See the [supervision contract](stock-active-supervision.md).
+
+The independently reviewed declared-profile SEC submissions adapter at cb15c70 was
+integrated locally at dce6c4f. It retains original bytes, issuer/column correlations,
+accessions, amendments and untrusted history references. Availability remains receipt
+time; acceptance text is uninterpreted and native API compatibility remains false.
+The new module passed 114 tests at 100% coverage; independent review passed 275
+combined tests plus negative/control probes. No data acquisition or SourceFact
+integration occurred. See the [SEC adapter contract](sec-submissions.md).
+
 ## Next implementation and proof
 
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).
