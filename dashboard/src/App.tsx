@@ -152,6 +152,12 @@ function SourceTime({ value }: { value: string | null }) {
     <span>Unknown</span>
   );
 }
+function hasStockResearch(research: Snapshot["research"] | undefined): boolean {
+  return (
+    research?.stock_worker !== undefined ||
+    research?.opportunities.some(isStockOpportunity) === true
+  );
+}
 function ResearchOpportunities({
   research,
 }: {
@@ -159,8 +165,7 @@ function ResearchOpportunities({
 }) {
   const rows = research?.opportunities ?? [];
   const stockRows = rows.filter(isStockOpportunity);
-  const stockView =
-    research?.stock_worker !== undefined || stockRows.length > 0;
+  const stockView = hasStockResearch(research);
   if (!stockView)
     return (
       <Panel title="Research opportunities" note={`${rows.length} recorded`}>
@@ -422,7 +427,7 @@ export default function App() {
       setNow(Date.now());
       if (action)
         setNotice(
-          data.research.stock_worker
+          hasStockResearch(data.research)
             ? action === "kill"
               ? "Hybrid kill switch activated. The separate stock collector is unaffected."
               : action === "pause"
@@ -471,6 +476,7 @@ export default function App() {
   const safeControls = !!snapshot && !pending && !error && !stale;
   const p = snapshot?.portfolio;
   const research = snapshot?.research;
+  const stockResearch = hasStockResearch(research);
   const safety = snapshot?.safety;
   return (
     <div className="workspace">
@@ -764,10 +770,7 @@ export default function App() {
               {research?.stock_worker && (
                 <StockCollector worker={research.stock_worker} stale={stale} />
               )}
-              {(research?.stock_worker ||
-                research?.opportunities.some(isStockOpportunity)) && (
-                <ResearchOpportunities research={research} />
-              )}
+              {stockResearch && <ResearchOpportunities research={research} />}
               <div className="regime">
                 <span>Market regime</span>
                 <strong>
@@ -925,7 +928,7 @@ export default function App() {
             <>
               <Panel
                 title={
-                  research?.stock_worker
+                  stockResearch
                     ? "Hybrid portfolio controls"
                     : "Safety controls"
                 }
@@ -934,7 +937,7 @@ export default function App() {
                   <dl className="safety-values">
                     <div>
                       <dt>
-                        {research?.stock_worker
+                        {stockResearch
                           ? "Hybrid research state"
                           : "Research state"}
                       </dt>
@@ -948,9 +951,7 @@ export default function App() {
                     </div>
                     <div>
                       <dt>
-                        {research?.stock_worker
-                          ? "Hybrid kill switch"
-                          : "Kill switch"}
+                        {stockResearch ? "Hybrid kill switch" : "Kill switch"}
                       </dt>
                       <dd>
                         {safety
@@ -976,7 +977,7 @@ export default function App() {
                     </div>
                   </dl>
                   <p>
-                    {research?.stock_worker
+                    {stockResearch
                       ? "These controls affect hybrid portfolio research only. The stock collector uses a separate control scope and cannot be paused or stopped here. A hybrid kill switch cannot be cleared from this dashboard."
                       : "Resume affects research only. A kill switch cannot be cleared from this dashboard."}
                   </p>
@@ -987,7 +988,7 @@ export default function App() {
                       onClick={() => void load(token, "pause")}
                     >
                       <CirclePause size={16} />
-                      {research?.stock_worker
+                      {stockResearch
                         ? "Pause hybrid research"
                         : "Pause research"}
                     </button>
@@ -999,7 +1000,7 @@ export default function App() {
                       onClick={() => void load(token, "resume_research")}
                     >
                       <Activity size={16} />
-                      {research?.stock_worker
+                      {stockResearch
                         ? "Resume hybrid research"
                         : "Resume research"}
                     </button>
@@ -1009,7 +1010,7 @@ export default function App() {
                       onClick={() => void load(token, "kill")}
                     >
                       <Square size={14} />
-                      {research?.stock_worker
+                      {stockResearch
                         ? "Activate hybrid kill switch"
                         : "Activate kill switch"}
                     </button>

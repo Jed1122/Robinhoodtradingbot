@@ -56,6 +56,73 @@ it("renders stock research priorities with original times and separate collector
   );
 });
 
+it.each([
+  [
+    "pause",
+    "Pause hybrid research",
+    "Hybrid research paused. The separate stock collector is unaffected.",
+  ],
+  [
+    "resume_research",
+    "Resume hybrid research",
+    "Hybrid research resumed. The separate stock collector is unaffected. Live trading remains disabled.",
+  ],
+  [
+    "kill",
+    "Activate hybrid kill switch",
+    "Hybrid kill switch activated. The separate stock collector is unaffected.",
+  ],
+])(
+  "keeps %s scoped to hybrid research when stock priorities omit collector metadata",
+  async (action, label, notice) => {
+    const data = stockFixture();
+    delete data.research.stock_worker;
+    data.safety.paused = action === "resume_research";
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => data });
+    vi.stubGlobal("fetch", fetcher);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(
+      screen.getByLabelText("Dashboard access token"),
+      "synthetic-session",
+    );
+    await user.click(screen.getByRole("button", { name: "Connect workspace" }));
+    await screen.findByText("Connected");
+    await user.click(screen.getByRole("button", { name: "Research" }));
+    expect(
+      screen.getByRole("heading", { name: "Stock research priorities" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Stock collector" }),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(
+      screen.getByRole("heading", { name: "Hybrid portfolio controls" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/The stock collector uses a separate control scope/),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Pause hybrid research" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Resume hybrid research" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Activate hybrid kill switch" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: label }));
+    await screen.findByText(notice);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenLastCalledWith(
+      "/api/hybrid/controls",
+      expect.objectContaining({ body: JSON.stringify({ action }) }),
+    );
+  },
+);
+
 it("shows unavailable collector budgets as unknown and does not imply continuous operation", async () => {
   const data = stockFixture();
   data.research.opportunities = [];
