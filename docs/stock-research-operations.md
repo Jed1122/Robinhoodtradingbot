@@ -73,6 +73,22 @@ coverage. No image was built, no container was created or started, and no servic
 broker credential or trading setting changed. An advertised API range is not
 executing-container or capacity evidence.
 
+The subsequent data-only worker request/prestart comparison is implemented and
+independently reviewed: 129 tests passed with 100% branch coverage after Docker's
+documented null-versus-empty volume normalization was reproduced and corrected.
+The fixed GET-only Unix-socket reader passed 53 cases at 97.40% branch coverage;
+its shared transport independently rejects unsupported routes before connection.
+Independent and central deployment regression passed 427 tests with four optional
+age skips. Ruff, strict mypy (444 files), expanded Bandit and lock checks passed.
+
+One separately authorized native `/version` GET through that reviewed reader and
+version parser succeeded on the existing host with API 1.52/Linux amd64. No host
+file was installed, image/CID inspected, container mutated or broker called.
+This is bounded metadata compatibility; worker supervision, immutable-image/CID
+verification, durable recovery, installation, timer, actual scheduled acquisition
+and encrypted backup/restore remain pending. See the
+[exact verification record](stock-research-verification-2026-10-21.md).
+
 The frozen dashboard full run ended with 11,597 passed, 33 optional skips and two
 test-context failures. Reviewed test-only fixes and a 131-test ordered regression
 resolved the demonstrated interactions without changing production secret/logging
