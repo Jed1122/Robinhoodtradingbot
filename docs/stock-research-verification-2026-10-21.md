@@ -46,8 +46,12 @@ The 25 enrichment calls returned fundamentals, annual/quarterly financials, quot
 daily raw-request history, earnings results and SEC filing indexes. Five positional
 financial results were null; this means no returned financial data for those slots,
 not zero revenue. Of 2,650 returned daily bars, 193 were labeled interpolated. Synthetic
-bars cannot supply genuine trading activity or establish liquidity. Current normalization
-and omission handling are verified separately; no qualifying strategy result follows.
+bars cannot supply genuine trading activity or establish liquidity. The corrected
+normalizer retained 10 fundamental records, 38 annual financial periods and 60 quarterly
+periods while explicitly preserving the five unavailable companies. One non-interpolated
+historical row violated its OHLC range, so the strict history normalization correctly
+denied that batch. The bad row remains in the original capture; no price was repaired,
+zero-filled or silently accepted. No qualifying strategy result follows.
 
 A separate public Nasdaq directory capture retained 13,293 rows and 5,176 tentatively
 eligible common-stock listings. Name-based security classification remains conservative
@@ -60,7 +64,11 @@ Ruff, strict mypy, Bandit and dependency-lock verification at its reviewed check
 The new capture/reader/screen/config correction passed 51 focused checks, including
 RED-to-GREEN regressions for publication, cancellation, input bounds, factor identity,
 extreme decimals and contradictory rehashed manifests. Independent review cleared
-those corrected paths. New normalizers received their own fixture-based verification.
+those corrected paths. The integrated new stock surfaces subsequently passed 114 tests
+with 88.18% combined statement/branch coverage against an 80% gate. Coverage is for the
+new capture, archive, screen, stock configuration and fact normalizers, not the entire
+application; the capture module individually measured 79%. Independent review also
+cleared positional financial nulls and interpolated-bar omission provenance.
 
 A broader central regression and final static checks are recorded in the ongoing
 implementation ledger. Earlier full-suite evidence applies to an older executable;
