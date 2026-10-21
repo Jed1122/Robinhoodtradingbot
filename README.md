@@ -277,4 +277,5 @@ exit accounting, deterministic experimental execution, source-aware research,
 comparison commands and an authenticated responsive dashboard. Paper trading is
 optional, with no mandatory waiting period. Live execution remains unavailable
 pending strategy qualification, broker verification and separate user authorization.
-See [brokerage/security boundaries](docs/hybrid-broker-and-security.md).
+See [brokerage/security boundaries](docs/hybrid-broker-and-security.md) and the
+[release verification and remaining work](docs/hybrid-verification-2026-10-21.md).

@@ -208,3 +208,69 @@ def test_tactical_entry_cannot_average_down_an_existing_position():
             NOW,
             POLICY,
         )
+
+
+@pytest.mark.parametrize(
+    "instruction, message",
+    [
+        (order(quantity=D(4)), "position concentration"),
+        (order(quantity=D(10), sleeve="long_term"), "position concentration"),
+        (order(risk_stop=D(1)), "trade risk"),
+        (order(risk_stop=None), "risk stop required"),
+        (order(quantity=D(".0000001")), "precision"),
+        (order(quantity=D(".5"), limit_price=D(11)), "fractional"),
+    ],
+)
+def test_entry_exposure_and_execution_constraints_have_specific_denials(instruction, message):
+    with pytest.raises(ValueError, match=message):
+        reserve_order(Account(paused=False), instruction, quote(), NOW, POLICY)
+
+
+def test_insufficient_buying_power_is_not_masked_by_a_loss_suspension():
+    a = Account(
+        paused=False,
+        starting_capital=D(5),
+        cash=D(5),
+        high_watermark=D(5),
+        daily_reference=D(5),
+        weekly_reference=D(5),
+    )
+    with pytest.raises(ValueError, match="insufficient buying power"):
+        reserve_order(a, order(), quote(), NOW, POLICY)
+
+
+@pytest.mark.parametrize(
+    "sleeve,quantity,cash,reason",
+    [
+        ("long_term", D(90), D(100), "liquidity reserve"),
+        ("tactical", D(15), D(850), "sleeve allocation"),
+    ],
+)
+def test_existing_exposure_preserves_reserve_and_tactical_budget(sleeve, quantity, cash, reason):
+    a = Account(
+        paused=False, cash=cash, lots=(buy_lot("held", "OTHER", sleeve, quantity, D(10), NOW),)
+    )
+    with pytest.raises(ValueError, match=reason):
+        reserve_order(
+            a, order(), quote(), NOW, POLICY, exposure_quotes={"OTHER": quote(symbol="OTHER")}
+        )
+
+
+@pytest.mark.parametrize(
+    "changes,reason",
+    [
+        ({"order_id": "unowned"}, "owned active order"),
+        ({"quantity": D(4)}, "remaining quantity"),
+        ({"price": D(11), "quantity": D(3)}, "committed funds"),
+        ({"quantity": D(".0000001")}, "precision"),
+    ],
+)
+def test_invalid_fills_do_not_change_reserved_state(changes, reason):
+    a = reserve_order(Account(paused=False), order(), quote(), NOW, POLICY)
+    fill = FillFact(
+        **(dict(id="f", order_id="o", quantity=D(1), price=D("10.01"), fee=D(0), at=NOW) | changes)
+    )
+    before = a.model_dump_json()
+    with pytest.raises(ValueError, match=reason):
+        fill_order(a, fill, POLICY)
+    assert a.model_dump_json() == before
