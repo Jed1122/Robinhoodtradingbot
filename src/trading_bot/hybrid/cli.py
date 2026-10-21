@@ -324,7 +324,14 @@ def main() -> None:
             static_dir=args.dashboard_dir,
             run_worker=True,
         )
-        uvicorn.run(app, host=args.host, port=args.port, access_log=False)
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            access_log=False,
+            log_config=None,
+            server_header=False,
+        )
     except (ValueError, OSError, RuntimeError):
         print(
             "Hybrid runtime denied: verify private paths, configuration, and state.",
