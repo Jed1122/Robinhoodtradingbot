@@ -555,3 +555,46 @@ def test_past_phase_result_from_an_invalid_boundary_is_not_admitted(scenario, mo
         assert result.reason == "deadline" and result.term_attempted
         assert len(daemon.inspections) == 2
         assert result.term_deadline_ns == fence.term_deadline_ns
+
+
+@pytest.mark.parametrize("mode", ["read", "read_error", "wakeup"])
+@pytest.mark.parametrize("offset", [11, 16, 30])
+def test_active_run_stall_never_renews_original_cleanup_caps(scenario, monkeypatch, mode, offset):
+    with opened(scenario) as store:
+        intent, fence = started(store, scenario)
+        daemon = Daemon(scenario, intent)
+        api = daemon.install(monkeypatch)
+        late = fence.term_deadline_ns + offset * NS
+        fired = False
+
+        def stall():
+            nonlocal fired
+            if not fired:
+                scenario[1]["monotonic_ns"] = late
+                fired = True
+
+        if mode == "wakeup":
+
+            def wake(seconds):
+                if not fired:
+                    stall()
+                else:
+                    daemon.sleep(seconds)
+
+            monkeypatch.setattr(api.time, "sleep", wake)
+        else:
+            daemon.on_read = stall
+            if mode == "read_error":
+                daemon.rows = [ValueError("fictional delayed timeout")]
+
+        if offset == 11:
+            result = api.supervise_active(store)
+            assert result.reason == "deadline" and result.kill_attempted
+            assert daemon.signals == [("KILL", late, fence.term_deadline_ns + 15 * NS)]
+            assert daemon.now <= fence.term_deadline_ns + 20 * NS
+        else:
+            with pytest.raises(ValueError, match=r"^stock_supervisor_unavailable$"):
+                api.supervise_active(store)
+            assert not daemon.signals
+            assert not (scenario[0] / intent.attempt_id / "stopped.json").exists()
+        assert daemon.handlers == daemon.initial_handlers

@@ -186,8 +186,9 @@ def supervise_active(store: AttemptStore) -> StockSupervisionResult:
         now = clock.now()
         same_domain = fence.boot_id == clock.boot_id and now >= fence.start_monotonic_ns
         current_owner = store._owned_attempt == target.attempt.attempt_id
+        initial_recovery = not (same_domain and current_owner and now < fence.term_deadline_ns)
         with _shutdown() as shutdown:
-            if same_domain and current_owner and now < fence.term_deadline_ns:
+            if not initial_recovery:
                 raw, reason = _monitor(
                     store, target, reader, clock, fence.term_deadline_ns, shutdown, run_phase=True
                 )
@@ -203,8 +204,9 @@ def supervise_active(store: AttemptStore) -> StockSupervisionResult:
                 reason = "recovery"
                 origin = min(now, fence.term_deadline_ns) if same_domain else now
             grace_end = origin + 10 * _NS
-            # An already-overdue recovery receives a fresh finite KILL budget only.
-            kill_end = (now if now >= grace_end else grace_end) + 5 * _NS
+            # Only an attempt already overdue at entry receives a fresh cleanup budget.
+            # A late active RUN keeps its original C/Q, even when they have expired.
+            kill_end = (now if initial_recovery and now >= grace_end else grace_end) + 5 * _NS
             verify_end = kill_end + 5 * _NS
             _require(_integer(verify_end, 1))
             term_attempted = kill_attempted = False
