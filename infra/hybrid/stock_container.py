@@ -12,8 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, NoReturn
 
-API_VERSION = "1.55"
-_TARGET_API = (1, 55)
+API_VERSION = "1.52"
+_TARGET_API = (1, 52)
 _IMAGE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _VERSION = re.compile(r"(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\Z")
 _FIXED_ENV = {

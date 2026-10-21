@@ -40,7 +40,7 @@ def encoded(value):
 
 
 def engine():
-    return {"ApiVersion": "1.55", "MinAPIVersion": "1.44", "Os": "linux", "Arch": "amd64"}
+    return {"ApiVersion": "1.52", "MinAPIVersion": "1.44", "Os": "linux", "Arch": "amd64"}
 
 
 def image():
@@ -81,7 +81,7 @@ def observed_image(value=None):
 def test_verified_profiles_retain_only_supported_identity_and_environment():
     verifier = module()
     host = verifier.verify_engine_version(encoded(engine()))
-    assert host.api_version == "1.55" and host.architecture == "amd64"
+    assert host.api_version == "1.52" and host.architecture == "amd64"
     result = verifier.verify_image(encoded(image()), IMAGE, host)
     assert result.image_digest == IMAGE and result.architecture == host.architecture
     assert result.environment == tuple(ENV)
@@ -92,11 +92,11 @@ def test_verified_profiles_retain_only_supported_identity_and_environment():
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("ApiVersion", "1.54"),
+        ("ApiVersion", "1.51"),
         ("ApiVersion", "1.9"),
-        ("ApiVersion", "1.055"),
-        ("ApiVersion", 1.55),
-        ("MinAPIVersion", "1.56"),
+        ("ApiVersion", "1.052"),
+        ("ApiVersion", 1.52),
+        ("MinAPIVersion", "1.53"),
         ("MinAPIVersion", None),
         ("Os", "windows"),
         ("Arch", "fictional"),
@@ -111,8 +111,8 @@ def test_engine_requires_explicit_supported_api_range_and_linux(field, value):
 
 def test_newer_daemon_can_serve_the_fixed_supported_api_without_negotiation():
     record = engine()
-    record["ApiVersion"] = "1.56"
-    assert module().verify_engine_version(encoded(record)).api_version == "1.55"
+    record["ApiVersion"] = "1.53"
+    assert module().verify_engine_version(encoded(record)).api_version == "1.52"
 
 
 @pytest.mark.parametrize(

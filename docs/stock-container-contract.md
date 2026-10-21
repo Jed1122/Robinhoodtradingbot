@@ -117,15 +117,25 @@ controls. These must be checked against the actual container, not inferred from 
 
 `infra/hybrid/stock_container.py` checks supplied bounded JSON metadata, without any
 daemon connection. It is a precondition for future create/inspect work, not that work
-or authentication of supplied metadata. The fixed Engine API profile is `/v1.55`:
-require a Linux amd64/arm64 daemon whose advertised `MinAPIVersion <= 1.55 <= ApiVersion`,
-comparing integer version components with no silent downgrade. Current native daemon
-compatibility has not been observed. The official versioned schema supports exact
+or authentication of supplied metadata. The fixed Engine API profile is `/v1.52`:
+require a Linux amd64/arm64 daemon whose advertised `MinAPIVersion <= 1.52 <= ApiVersion`,
+comparing integer version components with no silent downgrade. A read-only October 21
+host check observed a compatible advertised API range/platform; actual worker/image
+and hardening compatibility remain unverified. The official versioned schema supports exact
 `Entrypoint`/`Cmd` arrays and create followed by inspect; an accepted create or ignored
 request property is not hardening evidence. A future launcher may use that documented
 Engine API over the fixed local Unix socket while retaining Compose's whole resolved
 model for release identity. No Engine client or write operation is implemented here.
-[Official API 1.55 schema](https://raw.githubusercontent.com/moby/moby/api/v1.55.0/api/swagger.yaml).
+[Official API 1.52 schema](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/swagger.yaml).
+
+The initial local source profile required API 1.55 and correctly rejected the observed
+host's 1.52 maximum. Source and tests were deliberately revised after independent review
+of the versioned 1.52 schema, retaining every safety requirement. The fixed client target
+is not selected dynamically from daemon capabilities, and no daemon upgrade occurred.
+For API 1.52 specifically, require the entire `PortBindings` map to be empty: nonempty
+maps with empty/null lists can create unspecified published bindings. Reject nonempty
+create warnings. These remain requirements for the future create/inspect barrier.
+[Versioned port-binding behavior](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/daemon/server/router/container/container_routes.go).
 
 Before even an inert configuration probe is created, verify the supplied image's local
 `Id` (not `RepoDigests`), Linux OS, matching architecture, recipe user and `/app` workdir.
@@ -133,8 +143,8 @@ Reject inherited volumes and exposed ports: Docker can union those with image va
 despite empty request overrides. Reject nonempty labels, shell/ONBUILD metadata and
 escaped-argument mode in this bounded recipe profile. Omitted/null/empty map metadata
 is permitted only for the documented optional maps, not as a general missing-data rule.
-[Image configuration](https://raw.githubusercontent.com/moby/moby/api/v1.55.0/api/types/container/config.go),
-[merge implementation](https://raw.githubusercontent.com/moby/moby/master/daemon/commit.go).
+[Image configuration](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/types/container/config.go),
+[Docker 29.1.3 merge implementation](https://raw.githubusercontent.com/moby/moby/docker-v29.1.3/daemon/commit.go).
 
 Require exactly `PATH`, `LANG`, `GPG_KEY`, `PYTHON_VERSION`, `PYTHON_SHA256`, `PYTHONPATH`,
 `PYTHONDONTWRITEBYTECODE`, `PYTHONUNBUFFERED`, `LIVE_TRADING_ENABLED` and

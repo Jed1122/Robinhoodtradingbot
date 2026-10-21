@@ -89,7 +89,7 @@ no Docker, credential, ledger, control mutation or activation operation.
   unexpected mounts/environment/network/restart policy, unknown existing container,
   duplicate launcher, time rollback, interrupted Docker commands and orphan ownership.
 - [x] First implement data-only Engine/image observation verification. Freeze the official
-  versioned API 1.55 schema, requiring a Linux daemon whose advertised API range contains
+  versioned API 1.52 schema, requiring a Linux daemon whose advertised API range contains
   that version, with no silent downgrade. Reject image-ID/OS/architecture mismatches,
   inherited volumes/ports or unreviewed environment keys/values, duplicates and bare keys.
   Match image-owned user/workdir and application environment to the existing Dockerfile;
@@ -120,6 +120,14 @@ directory passed 245 tests with four optional local-age skips; no encrypted-back
 native-image proof follows from those skips. Ruff, strict mypy (442 files), expanded
 Bandit, lock and diff checks passed. Independent review is READY_FOR_INTEGRATION for
 these parsers only. Actual CID inspection and the supervisor are still pending.
+
+Host compatibility amendment: a separately authorized read-only native check observed
+Docker 29.1.3 advertising API 1.44–1.52, Linux amd64 and cgroup v2. The initial fixed
+1.55 source profile would deny that host. After independent versioned-schema review,
+the source target was explicitly changed to 1.52 with no runtime fallback, upgrade or
+policy weakening. Two version regressions were RED before the change; all 67 parser
+tests passed afterward with 100% branch coverage. No image/container/service mutation
+or broker operation occurred. Native image/runtime proof remains pending.
 
 ## Task 3: Supervised timer, paused installation and native checks
 

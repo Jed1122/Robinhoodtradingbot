@@ -53,15 +53,25 @@ This is retained-record verification, not trusted release production, actual con
 inspection, deadline enforcement, installation or continuous-operation evidence.
 
 The data-only Engine/image metadata parsers are implemented locally as a separate
-precondition to future container creation. They require the fixed API 1.55 range,
+precondition to future container creation. They require the fixed API 1.52 range,
 matching image/platform, the reviewed inherited environment and absent implicit image
 volumes/ports. They retain the disabled-healthcheck timing profile. The parser tests
 passed 67 checks with 100% branch coverage, including an independently found and corrected
 nonfinite exponent-overflow case. All deployment-related tests passed 245 checks with
 four optional local-age skips. Independent review, Ruff, strict mypy (442 files), expanded
 Bandit, lock and diff checks passed. These checks made no Docker or provider connection.
-The actual pinned image values and native daemon compatibility remain unknown; an
-unsupported host must be denied, with no automatic daemon upgrade or API downgrade.
+The actual pinned image values and native worker/hardening compatibility remain unknown;
+an unsupported host must be denied, with no automatic daemon upgrade or API downgrade.
+
+An authorized read-only October 21 check of the existing droplet observed Docker 29.1.3
+advertising API 1.44–1.52, Linux amd64 and cgroup v2/systemd. The initial 1.55 profile
+would deny that host. Independent review confirmed the required image/container safety
+fields and semantics in the official 1.52 schema; source/tests now explicitly pin 1.52
+without runtime negotiation or weaker limits. Two changed-version tests were observed
+RED before the constant changed; all 67 parser checks then passed with 100% branch
+coverage. No image was built, no container was created or started, and no service,
+broker credential or trading setting changed. An advertised API range is not
+executing-container or capacity evidence.
 
 ## Next implementation and proof
 
