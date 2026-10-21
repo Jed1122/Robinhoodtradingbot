@@ -671,3 +671,45 @@ def test_recovery_ack_then_new_attempt_can_complete_new_start_protocol(operation
         recovered.record_created(created(fresh))
         fence = recovered.prepare_start()
         assert fence.attempt_id == fresh.attempt_id and fresh.attempt_id != old.attempt_id
+
+
+@pytest.mark.parametrize("prior_ack", ["terminal", "created"])
+def test_initial_stop_validation_failure_revokes_prior_session_acknowledgements(
+    operations, policy, monkeypatch, prior_ack
+):
+    api, _, _ = operations
+    original_fstat = api.os.fstat
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        if prior_ack == "terminal":
+            store.record_stopped(encoded(stopped(intent)))
+    with opened(operations) as recovered:
+        if prior_ack == "terminal":
+            recovered.record_stopped(encoded(stopped(intent)))
+            active_store = recovered
+        else:
+            # A fresh owning session is required for an acknowledged, unstarted CID.
+            recovered.record_stopped(encoded(stopped(intent)))
+            intent = recovered.begin(policy)
+            recovered.record_created(created(intent))
+            active_store = recovered
+
+        calls = 0
+
+        def fail_first_fstat(fd):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise OSError("fictional initial validation failure")
+            return original_fstat(fd)
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(api.os, "fstat", fail_first_fstat)
+            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+                active_store.record_stopped(encoded(stopped(intent)))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            if prior_ack == "terminal":
+                active_store.begin(policy)
+            else:
+                active_store.prepare_start()

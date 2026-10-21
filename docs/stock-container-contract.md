@@ -295,6 +295,9 @@ terminal receipt before admitting a later attempt. Readable terminal bytes alone
 cannot grant admission after a failed flush. A changed CID/lifetime, unsafe state or
 uncertain reconfirmation denies and clears the session's acknowledgement. Reconfirmation
 does not rewrite, repair or initialize records.
+Stop processing revokes prior CID/start/terminal acknowledgements before its first
+filesystem validation, so even an entry-validation failure cannot preserve an earlier
+permission to start or admit a later attempt.
 This store is sequencing/consistency evidence, not a substitute for native
 observations, control authority, authentication or the process supervisor.
 Each opened owner session admits at most one fresh attempt. At most 8192 retained

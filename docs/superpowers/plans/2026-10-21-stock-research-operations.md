@@ -181,7 +181,12 @@ attempt. Four RED regressions reproduced those cases. Root added same-session CI
 acknowledgement/hash checks, validated created/start CID/clock linkage, and mandatory
 fresh stopped reconfirmation plus durability acknowledgement after reopen. Terminal
 receipts now retain container lifetime timestamps and reject changed lifetimes. The
-corrected tests and regression pass; independent follow-up review is pending.
+corrected tests and regression pass. Follow-up review confirmed those fixes and found
+an entry-order gap: failure of the first filesystem validation preserved prior session
+acknowledgements. Two additional regressions failed before moving all stop-related
+latch invalidation before validation. The corrected store passes 72 local filesystem
+tests and 499 deployment regressions with four optional age skips. Independent review
+of this final entry-order correction is pending.
 Production initialization,
 write transport, controller/deadline handling and native recovery remain pending.
 

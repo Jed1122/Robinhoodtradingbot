@@ -105,8 +105,12 @@ persistence-expired-fence cases before review. It passed 58 fictional/filesystem
 tests at 98.74% combined statement/branch coverage, plus 485 deployment regressions
 with four optional age skips. Review reproduced three durability/identity gaps;
 four RED cases failed before root's acknowledgement/hash, created/start linkage and
-fresh terminal-reconfirmation fixes. Corrected source is awaiting independent
-follow-up. No production
+fresh terminal-reconfirmation fixes. Follow-up review confirmed those fixes and found
+that failure of the first validation retained an earlier session acknowledgement.
+Two observed RED regressions now pass after acknowledgement invalidation was moved
+before validation. The store now passes 72 filesystem tests at 98.57% combined
+statement/branch coverage and 499 deployment tests with four optional age skips;
+review of this final correction is pending. No production
 operations namespace, Docker writer, controller or native recovery is established.
 
 Next: complete integrated verification, deployed image/config/control-path verification

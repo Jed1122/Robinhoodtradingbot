@@ -692,10 +692,10 @@ class AttemptStore:
 
     def record_stopped(self, raw: bytes) -> dict[str, Any]:
         with _sanitized():
-            self._validate()
             self._created_acknowledged = None
             self._terminal_acknowledged = None
             self._start_issued = True
+            self._validate()
             attempt = self._active()
             if attempt is None:
                 _deny()
