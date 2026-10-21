@@ -120,6 +120,11 @@ tax assumptions apply to realized gains, never gross proceeds. Without a tax rat
 after-tax results remain unknown. The comparison assumes one fractional full-fill
 episode without reinvestment and remains illustrative, not qualifying backtesting.
 
+The seven frozen pure hypothesis policies and their point-in-time observation
+contract are documented in [hybrid-policies.md](hybrid-policies.md). They emit
+unqualified research proposals and have no order authority. The executed retained
+data exit study is recorded in [hybrid-strategy-comparison.md](hybrid-strategy-comparison.md).
+
 ## Limits and next steps
 
 The completed, separately retained ETF Task 5 study found insufficient evidence for

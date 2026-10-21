@@ -41,8 +41,8 @@ Check its hash against the reviewed workstation copy, then invoke it explicitly 
 sudo -n sh /private/staging/deploy-remote.sh /private/staging/hybrid-source.tar <archive-sha256>
 ```
 
-This is an operator execution step, not an action performed by preparing the artifacts. No deployment
-was performed when writing this runbook. Remote builds may download the digest-pinned Python base
+This is an operator execution step, not an action performed by preparing the artifacts. The initial isolated service was deployed and checked on 21 October 2026; see
+the release verification report for revision-specific evidence. Remote builds may download the digest-pinned Python base
 and frozen Python dependencies; there is no registry publication. Verify existing provider transfer
 allowances if operating constraints require zero transfer charges.
 
@@ -105,11 +105,11 @@ monitor disk/RAM under representative paper workloads before leaving the process
 
 ## Remaining project steps
 
-Integrate and review the exact runtime/image composition, run the runtime and dashboard test suites,
-prepare the clean archive, deploy only the isolated paper service, verify the authenticated dashboard
-and persistence, rehearse restore, then qualify representative source-backed paper behavior. Research,
-out-of-sample validation and live authorization remain separate gates. These artifacts do not enable
-live execution.
+The initial isolated runtime passed bounded deployment, authenticated access, persistence, restart
+and restored-journal checks. Qualify permitted source inputs, complete strategy-cycle and broker
+integration, and measure sustained operation next. Historical qualification and explicit live
+authorization remain separate gates. Experimental simulation is optional; no paper-duration gate
+is imposed. These artifacts do not enable live execution.
 # Builder compatibility
 
 The existing host uses the classic Docker builder, which ignores per-Dockerfile

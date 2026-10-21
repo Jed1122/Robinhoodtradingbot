@@ -46,7 +46,8 @@ connection grants background authentication.
 - Deployment must use nonroot, read-only, capability-free containers, private state,
   loopback publishing, bounded resources and no production-ledger/credential mounts.
 
-Remaining review items include sustained operation, restore verification, licensed
+A bounded deployed-runtime backup/restore and restart rehearsal passed; see the
+release verification report. Remaining review items include sustained operation, licensed
 source completeness, unattended broker authentication, real nonempty broker mappings,
 and behavior under actual broker review/approval constraints. Automated static and
 fixture checks do not establish these external facts.
