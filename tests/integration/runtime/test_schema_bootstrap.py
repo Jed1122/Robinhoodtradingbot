@@ -134,3 +134,40 @@ def test_bootstrap_denies_unsafe_destinations_before_callback(bootstrap, kind):
     with pytest.raises(module.SchemaBootstrapError):
         module.bootstrap_schema_oauth(oauth_store=destination)
     assert Callback.starts == 0
+
+
+def test_cleanup_failure_is_sanitized_and_always_restores_umask(bootstrap, monkeypatch):
+    module, parent = bootstrap
+    Connection.fail = True
+
+    def broken_cleanup(path):
+        raise OSError("fixture-secret-cleanup-message")
+
+    monkeypatch.setattr(module.shutil, "rmtree", broken_cleanup)
+    previous = os.umask(0o022)
+    try:
+        with pytest.raises(module.SchemaBootstrapError) as error:
+            module.bootstrap_schema_oauth(oauth_store=parent / "research")
+        assert "fixture-secret" not in str(error.value)
+        current = os.umask(0o022)
+        assert current == 0o022
+    finally:
+        os.umask(previous)
+
+
+def test_atomic_publication_never_replaces_a_racing_empty_destination(bootstrap, monkeypatch):
+    module, parent = bootstrap
+    destination = parent / "research"
+    original = module._rename_new_directory
+    inode = []
+
+    def race(source, target):
+        target.mkdir(mode=0o700)
+        inode.append(target.stat().st_ino)
+        original(source, target)
+
+    monkeypatch.setattr(module, "_rename_new_directory", race)
+    with pytest.raises(module.SchemaBootstrapError):
+        module.bootstrap_schema_oauth(oauth_store=destination)
+    assert destination.stat().st_ino == inode[0]
+    assert list(destination.iterdir()) == []

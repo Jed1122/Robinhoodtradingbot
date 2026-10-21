@@ -61,11 +61,18 @@ worktrees. Research/documentary audits do not grant implementation or trading au
 - Interactive official connection responds for the unique intended active cash
   account; positions and bounded recent orders are empty. No customer values retained
   in source or reports.
-- Existing standalone OAuth store failed schema capture with a sanitized OAuthFlowError;
-  no fresh login, refresh, expiry or revocation result is claimed.
+- Existing standalone OAuth store failed schema capture with a sanitized OAuthFlowError.
+  A separately authorized fresh research grant captured 83 tools, and a second process
+  reused the saved credential without a browser. Refresh, natural expiry and revocation
+  remain unverified. The credential is trading-capable; local research facades deny writes.
 - Current official stock-only scanner found 399 matches but returned 200 rows. The
   truncated prefix is not the complete universe and is not an investment ranking.
 - Existing hybrid image remains healthy, paused, loopback-only and live-disabled;
   no age executable or recurring encrypted backup/watchdog timer was observed.
+- A public current-listing capture retained 13,293 rows and 5,176 tentatively eligible
+  common-stock listings. Membership and classification are discovery evidence only.
+- The fixed 13-tool stock research profile passed independent review and 607 focused
+  broker/runtime/architecture/universe/watchdog checks. Ruff, mypy, Bandit and lock
+  verification passed. These checks do not qualify a strategy or prove continuous service.
 
 Completion remains unproven until the full goal passes the evidence audit above.

@@ -15,7 +15,7 @@ from contextlib import AsyncExitStack
 from datetime import timedelta
 from pathlib import Path
 from types import TracebackType
-from typing import Self, cast
+from typing import TYPE_CHECKING, Self, cast
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -41,6 +41,10 @@ from trading_bot.brokers.robinhood_mcp_transport import (
     McpToolResult,
     McpToolSession,
 )
+
+if TYPE_CHECKING:
+    from trading_bot.brokers.stock_research_mcp import StockResearchMcpSession
+
 
 READ_ONLY_EQUITY_MCP_TOOLS = frozenset(EXPECTED_TOOL_ARGUMENTS)
 ROBINHOOD_MCP_OAUTH_SCOPE = "internal"
@@ -583,6 +587,8 @@ class RobinhoodMcpSdkConnection:
         self._stack: AsyncExitStack | None = None
         self._read_only: ReadOnlyMcpClientSession | None = None
         self._schema_only: SchemaOnlyMcpClientSession | None = None
+        self._stock_sdk_session: ClientSession | None = None
+        self._stock_research_session: StockResearchMcpSession | None = None
 
     async def __aenter__(self) -> Self:
         if self._stack is not None:
@@ -635,6 +641,7 @@ class RobinhoodMcpSdkConnection:
                 )
             )
             await session.initialize()
+            self._stock_sdk_session = session
             self._read_only = ReadOnlyMcpClientSession(session)
             self._schema_only = SchemaOnlyMcpClientSession(session)
         except BaseException:
@@ -654,6 +661,8 @@ class RobinhoodMcpSdkConnection:
         self._stack = None
         self._read_only = None
         self._schema_only = None
+        self._stock_sdk_session = None
+        self._stock_research_session = None
         if stack is not None:
             await stack.aclose()
 
@@ -662,6 +671,17 @@ class RobinhoodMcpSdkConnection:
         if self._read_only is None:
             raise RuntimeError("MCP connection is not initialized")
         return self._read_only
+
+    @property
+    def stock_research_session(self) -> StockResearchMcpSession:
+        """Explicit separately gated market-data profile; legacy reads stay unchanged."""
+        if self._stock_sdk_session is None:
+            raise RuntimeError("MCP connection is not initialized")
+        if self._stock_research_session is None:
+            from trading_bot.brokers.stock_research_mcp import StockResearchMcpSession
+
+            self._stock_research_session = StockResearchMcpSession(self._stock_sdk_session)
+        return self._stock_research_session
 
     @property
     def schema_session(self) -> SchemaOnlyMcpClientSession:

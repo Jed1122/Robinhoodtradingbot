@@ -24,8 +24,10 @@ no account, portfolio, review, placement or cancellation call. It writes no acco
 fingerprint and cannot prove account reconciliation.
 
 Credential/client records are encrypted private files. The complete staged store
-is renamed into its absent final destination after success; failures remove only
-new staging. The existing grant is preserved. The command emits only status,
+is published using a native no-clobber rename into its absent final destination
+after success; unsupported platforms fail closed. Failures remove only new staging,
+and cleanup failure cannot skip restoring the process umask. The existing grant
+is preserved. The command emits only status,
 artifact hash/count, booleans and issue-time lifetime metadata, never token values,
 token hashes, provider exception text or OAuth URL parameters. Directory fsync is
 required at publication. Failed or uncertain publication is not silently retried.

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ctypes
 import hashlib
 import json
 import os
 import shutil
 import stat
+import sys
 import tempfile
 from pathlib import Path
 
@@ -33,6 +35,31 @@ def _sync_directory(path: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _rename_new_directory(source: Path, destination: Path) -> None:
+    """Atomic no-clobber publication; unsupported platform/filesystem fails closed."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin":
+        rename = libc.renamex_np
+        rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        result = rename(os.fsencode(source), os.fsencode(destination), 0x00000004)
+    elif sys.platform.startswith("linux"):
+        rename = libc.renameat2
+        rename.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename.restype = ctypes.c_int
+        result = rename(-100, os.fsencode(source), -100, os.fsencode(destination), 1)
+    else:
+        raise SchemaBootstrapError("exclusive OAuth publication unavailable")
+    if result != 0:
+        raise OSError(ctypes.get_errno(), "exclusive OAuth publication failed")
 
 
 def bootstrap_schema_oauth(*, oauth_store: str | Path) -> dict[str, object]:
@@ -101,16 +128,26 @@ def bootstrap_schema_oauth(*, oauth_store: str | Path) -> dict[str, object]:
         # Never replace/adopt a store created during the human authorization flow.
         if destination.exists() or destination.is_symlink():
             raise SchemaBootstrapError("schema OAuth bootstrap failed safely")
-        os.rename(store, destination)
+        _rename_new_directory(store, destination)
         staging = None
         _sync_directory(parent)
         return result
     except Exception:
         raise SchemaBootstrapError("schema OAuth bootstrap failed safely") from None
     finally:
-        if staging is not None:
-            shutil.rmtree(staging)
-        os.umask(previous_umask)
+        cleanup_failed = False
+        try:
+            if staging is not None:
+                try:
+                    shutil.rmtree(staging)
+                except Exception:
+                    cleanup_failed = True
+        finally:
+            os.umask(previous_umask)
+        if cleanup_failed:
+            raise SchemaBootstrapError(
+                "schema OAuth cleanup failed; private staging retained"
+            ) from None
 
 
 def main() -> int:
