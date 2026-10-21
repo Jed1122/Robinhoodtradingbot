@@ -141,6 +141,29 @@ def test_invalid_routes_deny_before_socket(monkeypatch, call, argument):
         getattr(api.StockEngineReader(), call)(argument)
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1.52/info",
+        "/version?extra=1",
+        "/version\r\nX-Injected: value",
+        "/version HTTP/1.0\r\n\r\nPOST /v1.52/containers/create HTTP/1.0\r\n",
+        "/v1.51/containers/" + CID + "/json",
+        "/v1.52/containers/other/json",
+        "/v1.52/images/other:latest/json",
+        "/v1.52/containers/" + CID + "/archive",
+        "",
+        None,
+        True,
+    ],
+)
+def test_shared_transport_itself_enforces_closed_routes_before_socket(monkeypatch, path):
+    api = module()
+    monkeypatch.setattr(api, "_connection", lambda _deadline: pytest.fail("Socket was opened"))
+    with pytest.raises(ValueError, match=r"^stock_engine_unavailable$"):
+        api.StockEngineReader._get(path)
+
+
 def test_peer_and_socket_failures_do_not_expose_exception_text(monkeypatch):
     api = module()
 

@@ -116,12 +116,37 @@ def _body(peer: socket.socket, deadline: float, headers: dict[str, str], buffere
     return buffered
 
 
+def _route(path: str) -> None:
+    _require(type(path) is str and len(path) <= 256)
+    if path == "/version":
+        return
+    prefix = "/v" + API_VERSION + "/"
+    _require(path.startswith(prefix))
+    parts = path[len(prefix) :].split("/")
+    _require(len(parts) == 3 and parts[2] == "json")
+    kind, identifier, _ = parts
+    if kind == "images":
+        _require(_IMAGE.fullmatch(identifier) is not None)
+    elif kind == "containers":
+        name_prefix = "hybrid-stock-research-"
+        _require(
+            _CID.fullmatch(identifier) is not None
+            or (
+                identifier.startswith(name_prefix)
+                and _ATTEMPT.fullmatch(identifier[len(name_prefix) :]) is not None
+            )
+        )
+    else:
+        _deny()
+
+
 class StockEngineReader:
     """Fresh GET-only observations; no context/env/socket/path override is exposed."""
 
     @staticmethod
     def _get(path: str) -> bytes:
         try:
+            _route(path)
             deadline = time.monotonic() + _IO_SECONDS
             with _connection(deadline) as peer:
                 peer.settimeout(_remaining(deadline))
