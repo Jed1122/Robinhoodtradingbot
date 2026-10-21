@@ -23,7 +23,7 @@ def module():
     return importlib.import_module("infra.hybrid.stock_engine")
 
 
-def run(monkeypatch, response, call="version", argument=None):
+def run(monkeypatch, response, call="version", argument=None, **kwargs):
     api = module()
     client, server = socket.socketpair()
     received = []
@@ -44,7 +44,9 @@ def run(monkeypatch, response, call="version", argument=None):
     try:
         reader = api.StockEngineReader()
         result = (
-            getattr(reader, call)(argument) if argument is not None else getattr(reader, call)()
+            getattr(reader, call)(argument, **kwargs)
+            if argument is not None
+            else getattr(reader, call)(**kwargs)
         )
         return result, received
     finally:
@@ -311,3 +313,125 @@ def test_missing_peer_credentials_support_denies_with_fixed_error(connector, mon
     monkeypatch.delattr(api.socket, "SO_PEERCRED")
     with pytest.raises(ValueError, match=r"^stock_engine_unavailable$"):
         api.StockEngineReader().version()
+
+
+@pytest.mark.parametrize("cap", [0, -1, True, 1.5, "1", 2**63, 1])
+def test_invalid_or_expired_absolute_cap_denies_before_socket(monkeypatch, cap):
+    api = module()
+    monkeypatch.setattr(
+        api, "_connection", lambda deadline: pytest.fail("Expired cap opened socket")
+    )
+    with pytest.raises(ValueError, match=r"^stock_engine_unavailable$"):
+        api.StockEngineReader().inspect(CID, not_after_ns=cap)
+
+
+def test_inspection_uses_supplied_earlier_absolute_cap(monkeypatch):
+    api = module()
+    client, server = socket.socketpair()
+    deadlines = []
+    cap = time.monotonic_ns() + 1_000_000_000
+
+    def connect(deadline):
+        deadlines.append(deadline)
+        return client
+
+    monkeypatch.setattr(api, "_connection", connect)
+    server.sendall(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+    server.shutdown(socket.SHUT_WR)
+    try:
+        assert api.StockEngineReader().inspect(CID, not_after_ns=cap) == b"{}"
+        assert deadlines == [cap / 1_000_000_000]
+    finally:
+        client.close()
+        server.close()
+
+
+def test_late_connection_does_not_renew_inspection_cap(monkeypatch):
+    api = module()
+    original = time.monotonic
+    cap = time.monotonic_ns() + 1_000_000_000
+
+    class Peer:
+        def __enter__(self):
+            monkeypatch.setattr(api.time, "monotonic", lambda: original() + 2)
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def settimeout(self, seconds):
+            pytest.fail("Expired inspection reached I/O")
+
+    monkeypatch.setattr(api, "_connection", lambda deadline: Peer())
+    with pytest.raises(ValueError, match=r"^stock_engine_unavailable$"):
+        api.StockEngineReader().inspect(CID, not_after_ns=cap)
+
+
+def test_delayed_trailing_get_bytes_deny_after_declared_body(monkeypatch):
+    api = module()
+    client, server = socket.socketpair()
+    monkeypatch.setattr(api, "_connection", lambda deadline: client)
+
+    def serve():
+        with server:
+            server.recv(4096)
+            server.sendall(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+            time.sleep(0.02)
+            with suppress(OSError):
+                server.sendall(b"unexpected")
+
+    worker = threading.Thread(target=serve)
+    worker.start()
+    try:
+        with pytest.raises(ValueError, match=r"^stock_engine_unavailable$"):
+            api.StockEngineReader().inspect(CID)
+    finally:
+        client.close()
+        worker.join(timeout=2)
+        assert not worker.is_alive()
+
+
+def test_earlier_cap_also_bounds_the_final_eof_wait(monkeypatch):
+    api = module()
+    client, server = socket.socketpair()
+    monkeypatch.setattr(api, "_connection", lambda deadline: client)
+
+    def serve():
+        with server:
+            server.recv(4096)
+            server.sendall(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+            time.sleep(0.15)
+
+    worker = threading.Thread(target=serve)
+    worker.start()
+    try:
+        with pytest.raises(ValueError, match=r"^stock_engine_unavailable$"):
+            api.StockEngineReader().inspect(CID, not_after_ns=time.monotonic_ns() + 30_000_000)
+    finally:
+        client.close()
+        worker.join(timeout=2)
+        assert not worker.is_alive()
+
+
+def test_future_cap_cannot_enlarge_the_default_budget(monkeypatch):
+    api = module()
+    client, server = socket.socketpair()
+    deadlines = []
+
+    def connect(deadline):
+        deadlines.append(deadline)
+        return client
+
+    monkeypatch.setattr(api, "_connection", connect)
+    server.sendall(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+    server.shutdown(socket.SHUT_WR)
+    began = time.monotonic()
+    try:
+        assert (
+            api.StockEngineReader().inspect(CID, not_after_ns=time.monotonic_ns() + 60_000_000_000)
+            == b"{}"
+        )
+        assert began < deadlines[0] < began + 5.1
+    finally:
+        client.close()
+        server.close()

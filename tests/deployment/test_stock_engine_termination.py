@@ -115,7 +115,16 @@ def response(status, body=b""):
     )
 
 
-def exchange(monkeypatch, store, replies, *, signal="TERM", on_connect=None, direct=False):
+def exchange(
+    monkeypatch,
+    store,
+    replies,
+    *,
+    signal="TERM",
+    on_connect=None,
+    direct=False,
+    not_after_ns=None,
+):
     api = module()
     # Only this fixture substitutes the fixed production-root requirement.
     monkeypatch.setattr(api, "_production_store", lambda candidate: None)
@@ -153,10 +162,11 @@ def exchange(monkeypatch, store, replies, *, signal="TERM", on_connect=None, dir
     monkeypatch.setattr(api, "_connection", connection)
     try:
         transport = api.StockEngineTerminator()
+        kwargs = {} if not_after_ns is None else {"not_after_ns": not_after_ns}
         if direct:
-            result = transport._exchange(signal, store)
+            result = transport._exchange(signal, store, **kwargs)
         else:
-            result = transport.signal_active(store, signal)
+            result = transport.signal_active(store, signal, **kwargs)
         return result, sorted(requests), connections
     finally:
         for client, _ in peers:
@@ -364,14 +374,13 @@ def test_store_drift_after_signal_connection_prevents_send(scenario, monkeypatch
 
 @pytest.mark.parametrize("slow_connection", [0, 1])
 def test_absolute_budget_includes_both_connections(scenario, monkeypatch, slow_connection):
-    api = module()
-    original = api.time.monotonic
+    original = time.monotonic
     with opened(scenario) as store:
         intent, _ = started(store, scenario)
 
         def delay(index):
             if index == slow_connection:
-                monkeypatch.setattr(api.time, "monotonic", lambda: original() + 6)
+                monkeypatch.setattr(time, "monotonic", lambda: original() + 6)
 
         with pytest.raises(ValueError, match=r"^stock_engine_termination_unavailable$"):
             exchange(
@@ -393,3 +402,46 @@ def test_production_guard_rejects_fictional_root_without_opening_socket(scenario
         started(store, scenario)
         with pytest.raises(ValueError, match=r"^stock_engine_termination_unavailable$"):
             api.StockEngineTerminator().signal_active(store, "TERM")
+
+
+@pytest.mark.parametrize("cap", [0, -1, True, 1.5, "1", 2**63, 1])
+def test_invalid_or_expired_signal_cap_denies_before_connection(scenario, monkeypatch, cap):
+    with opened(scenario) as store:
+        started(store, scenario)
+        with pytest.raises(ValueError, match=r"^stock_engine_termination_unavailable$"):
+            exchange(monkeypatch, store, [], not_after_ns=cap)
+
+
+def test_signal_shares_earlier_cap_across_inspection_and_dispatch(scenario, monkeypatch):
+    cap = time.monotonic_ns() + 1_000_000_000
+    with opened(scenario) as store:
+        intent, _ = started(store, scenario)
+        _, requests, deadlines = exchange(
+            monkeypatch,
+            store,
+            [response(200, encoded(running(intent))), response(204)],
+            not_after_ns=cap,
+        )
+        assert len(requests) == 2
+        assert deadlines == [cap / 1_000_000_000, cap / 1_000_000_000]
+
+
+@pytest.mark.parametrize("late_index", [0, 1])
+def test_late_signal_connection_cannot_renew_phase_cap(scenario, monkeypatch, late_index):
+    original = time.monotonic
+    cap = time.monotonic_ns() + 1_000_000_000
+    with opened(scenario) as store:
+        intent, _ = started(store, scenario)
+
+        def delay(index):
+            if index == late_index:
+                monkeypatch.setattr(time, "monotonic", lambda: original() + 2)
+
+        with pytest.raises(ValueError, match=r"^stock_engine_termination_unavailable$"):
+            exchange(
+                monkeypatch,
+                store,
+                [response(200, encoded(running(intent))), response(204)],
+                on_connect=delay,
+                not_after_ns=cap,
+            )

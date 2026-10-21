@@ -4,16 +4,13 @@ No controller, retry, removal, deadline renewal, broker or credential operation.
 Both daemon exchanges share one five-second budget and a locked root store.
 """
 
-import time
 from typing import NoReturn
 
 from infra.hybrid.stock_attempts import AttemptSnapshot, AttemptStore, _integer, _timestamp
 from infra.hybrid.stock_container import API_VERSION, _object
-from infra.hybrid.stock_engine import _connection, _remaining
+from infra.hybrid.stock_engine import _connection, _deadline, _remaining
 from infra.hybrid.stock_engine_mutation import _ERRORS, _production_store, _response
 from infra.hybrid.stock_release import _exact
-
-_IO_SECONDS = 5.0
 
 
 def _deny() -> NoReturn:
@@ -81,9 +78,9 @@ class StockEngineTerminator:
     """Fresh identity-checked TERM/KILL dispatch for a persisted active start only."""
 
     @staticmethod
-    def _exchange(signal: str, store: AttemptStore) -> None:
+    def _exchange(signal: str, store: AttemptStore, *, not_after_ns: int | None = None) -> None:
         try:
-            deadline = time.monotonic() + _IO_SECONDS
+            deadline = _deadline(not_after_ns)
             _production_store(store)
             _require(type(signal) is str and signal in {"TERM", "KILL"})
             target = store.cleanup_target()
@@ -116,5 +113,7 @@ class StockEngineTerminator:
         except _ERRORS:
             _deny()
 
-    def signal_active(self, store: AttemptStore, signal: str) -> None:
-        self._exchange(signal, store)
+    def signal_active(
+        self, store: AttemptStore, signal: str, *, not_after_ns: int | None = None
+    ) -> None:
+        self._exchange(signal, store, not_after_ns=not_after_ns)

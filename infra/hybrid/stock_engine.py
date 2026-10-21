@@ -43,6 +43,16 @@ def _remaining(deadline: float) -> float:
     return min(remaining, _IO_SECONDS)
 
 
+def _deadline(not_after_ns: int | None = None) -> float:
+    """One entry budget, optionally shortened by an absolute monotonic phase cap."""
+    deadline = time.monotonic() + _IO_SECONDS
+    if not_after_ns is not None:
+        _require(type(not_after_ns) is int and 0 < not_after_ns <= 2**63 - 1)
+        deadline = min(deadline, not_after_ns / 1_000_000_000)
+    _remaining(deadline)
+    return deadline
+
+
 def _connection(deadline: float) -> socket.socket:
     """Only a root daemon on the fixed root-controlled socket is supported."""
     _require(sys.platform == "linux" and os.geteuid() == 0)
@@ -144,10 +154,10 @@ class StockEngineReader:
     """Fresh GET-only observations; no context/env/socket/path override is exposed."""
 
     @staticmethod
-    def _get(path: str) -> bytes:
+    def _get(path: str, *, not_after_ns: int | None = None) -> bytes:
         try:
             _route(path)
-            deadline = time.monotonic() + _IO_SECONDS
+            deadline = _deadline(not_after_ns)
             with _connection(deadline) as peer:
                 peer.settimeout(_remaining(deadline))
                 request = (
@@ -156,6 +166,7 @@ class StockEngineReader:
                 peer.sendall(request)
                 headers, initial = _headers(peer, deadline)
                 body = _body(peer, deadline, headers, initial)
+                _require(not _receive(peer, deadline, 1))
                 _remaining(deadline)
                 return body
         except (OSError, ValueError, TypeError, OverflowError, struct.error):
@@ -168,9 +179,12 @@ class StockEngineReader:
         _require(type(image_digest) is str and _IMAGE.fullmatch(image_digest) is not None)
         return self._get("/v" + API_VERSION + "/images/" + image_digest + "/json")
 
-    def inspect(self, container_id: str) -> bytes:
+    def inspect(self, container_id: str, *, not_after_ns: int | None = None) -> bytes:
         _require(type(container_id) is str and _CID.fullmatch(container_id) is not None)
-        return self._get("/v" + API_VERSION + "/containers/" + container_id + "/json")
+        return self._get(
+            "/v" + API_VERSION + "/containers/" + container_id + "/json",
+            not_after_ns=not_after_ns,
+        )
 
     def inspect_attempt(self, attempt_id: str) -> bytes:
         _require(type(attempt_id) is str and _ATTEMPT.fullmatch(attempt_id) is not None)
