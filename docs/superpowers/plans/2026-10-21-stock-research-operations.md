@@ -131,6 +131,17 @@ policy weakening. Two version regressions were RED before the change; all 67 par
 tests passed afterward with 100% branch coverage. No image/container/service mutation
 or broker operation occurred. Native image/runtime proof remains pending.
 
+The data-only worker request and prestart comparison are now implemented locally in
+`infra/hybrid/stock_prestart.py`. They derive only the closed release policy, explicit
+private namespaces and complete request/resolved mount inventories, and check fresh
+created state, CID/attempt/release/image/config identities, environment, command,
+resources and all 69 versioned HostConfig fields. They never create or start anything.
+Initial missing-implementation RED was observed; 123 fictional cases then passed with
+100% branch coverage. Deployment regression passed 368 tests with four optional age
+skips; Ruff, strict mypy (443 files), expanded Bandit and lock checks passed. Independent
+review is pending. Actual daemon I/O, trusted production and supervisor remain pending;
+the actual-CID inspection task above is not checked complete by supplied JSON tests.
+
 ## Task 3: Supervised timer, paused installation and native checks
 
 Add stock-specific oneshot service/timer files, fixture tests and installation procedure.

@@ -73,6 +73,15 @@ trusted producer, supervisor, hard termination, timer and deployment are not com
 The [container contract](docs/stock-container-contract.md) distinguishes retained-record
 consistency from native image/runtime evidence and records the fixed API profile.
 
+The subsequent local data-only prestart gate builds a fixed raw API 1.52 worker
+request and compares supplied created-container metadata against complete identity,
+command, environment, request/resolved mounts, fresh state and resource policies.
+It passed 123 fictional cases with 100% branch coverage and 368 deployment regression
+tests with four optional age skips. Independent review is pending. This gate performs
+no Docker call and does not establish actual CID inspection, applied hardening or
+permission to start. Primary a63a475 remains frozen for its running full test suite;
+this source increment is developed separately.
+
 Next: complete integrated verification, deployed image/config/control-path verification
 and a completion-relative timer with an actual process
 deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,

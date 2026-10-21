@@ -168,6 +168,55 @@ reviewed profile change, not an unsafe fallback.
 
 ## Launcher and deadline
 
+### Source profile for created-container admission
+
+`infra/hybrid/stock_prestart.py` implements a data-only API 1.52 request and inspection gate. Its
+inputs must come from the root release loader and separately observed image; none
+of its returned values grants execution authority. It performs no Docker operation.
+The root launcher must later obtain fresh observations itself while holding its
+host lock, and retain the exact attempt/CID relationship before any start request.
+
+Use a fresh 32-character lowercase hexadecimal attempt ID, a generated
+`hybrid-stock-research-<attempt>` name, and exactly three ownership labels:
+`org.hybrid.stock.managed=stock-research`, `org.hybrid.stock.release=<release ID>` and
+`org.hybrid.stock.attempt=<attempt>`. Compare the complete 64-character CID, not a
+name or prefix. Require the actual immutable image, generated name/labels, exact
+worker command, image environment, user/workdir, disabled healthcheck, no interactive
+streams, SIGTERM and ten-second stop timeout. A fresh `created` state must also have
+all inactive flags, zero PID/exit/restart values, empty error and zero start/finish
+timestamps. Reject nonempty create warnings and unknown creation-response fields.
+
+Construct the raw API request from the already verified complete Compose model;
+never accept caller-supplied container options. Explicitly request private IPC and
+cgroup namespaces, runc, a 64 MiB private IPC shared-memory segment, the fixed memory,
+swap/CPU/PID limits, and private propagation on all six structured binds. These
+make existing isolation requirements explicit rather than relying on daemon defaults.
+No host directory creation is permitted. Request and resolved mount inventories
+must agree exactly, ignoring only array order; the attestation alone is read-only.
+The string-form `/tmp` tmpfs is separate from the six reported binds.
+
+Inspect all 69 versioned HostConfig fields with exact JSON types, allowing omission
+only for the seven fields marked optional by that schema. Reject extra fields,
+nonempty raw binds, ports, capabilities, devices, groups, annotations, storage/sysctl
+overrides, alternate namespaces, auto-removal and restart. Nil and empty collections
+are equivalent only on named fields whose empty values have the same disabled
+semantics. Require Docker's twelve fixed masked paths plus at most 4096 unique
+CPU thermal-throttle paths, and its five readonly paths. Explicit empty masks deny.
+Unknown daemon-added ulimits or logging options deny rather than being silently
+adopted. The initial implementation accepts only the two explicit bounded logging
+options; additional daemon cache options need an explicit reviewed profile change. Native proof
+must establish the actual daemon profile before installation.
+
+Created-stage AppArmor metadata is expected to be empty for this request; it is not
+proof of an applied security profile. Network metadata must describe a single
+uninitialized bridge endpoint, no published ports or active sandbox. Driver/storage
+metadata is informational and cannot substitute for any mount, namespace, image or
+resource check. Applied security, cgroup enforcement and filesystem/credential
+ownership still need separate native verification after an authorized inert start.
+[Versioned configuration types](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/types/container/config.go),
+[HostConfig types](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/types/container/hostconfig.go),
+[inspect types](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/types/container/container.go).
+
 Use a root-owned standard-library launcher, fixed local Docker Unix socket and
 scrubbed environment; do not inherit a remote context, proxy, user env file or shell
 expansion. The launcher holds a separate stable host flock across creation through
