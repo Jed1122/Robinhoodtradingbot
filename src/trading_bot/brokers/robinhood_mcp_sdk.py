@@ -41,6 +41,12 @@ from trading_bot.brokers.robinhood_mcp_transport import (
     McpToolResult,
     McpToolSession,
 )
+from trading_bot.brokers.robinhood_oauth_lifecycle import (
+    AUTHORIZATION_ENDPOINT,
+    LIFECYCLE_FIELD,
+    OAuthLifecycle,
+    PrivateOAuthStoreLease,
+)
 
 if TYPE_CHECKING:
     from trading_bot.brokers.stock_research_mcp import StockResearchMcpSession
@@ -251,7 +257,24 @@ class EncryptedFileTokenStorage:
             return None
         _validate_private_file(path)
         try:
-            plaintext = self._box.decrypt(path.read_bytes())
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                info = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.geteuid()
+                    or info.st_mode & 0o077
+                    or info.st_nlink != 1
+                    or info.st_size > 262144
+                ):
+                    raise OAuthStoreError("encrypted OAuth state is invalid")
+                with os.fdopen(descriptor, "rb", closefd=False) as handle:
+                    encrypted = handle.read(262145)
+                if len(encrypted) > 262144:
+                    raise OAuthStoreError("encrypted OAuth state is invalid")
+            finally:
+                os.close(descriptor)
+            plaintext = self._box.decrypt(encrypted)
             value: object = json.loads(plaintext)
         except (CryptoError, OSError, UnicodeDecodeError, ValueError) as exc:
             raise OAuthStoreError("encrypted OAuth state is invalid") from exc
@@ -274,12 +297,22 @@ class EncryptedFileTokenStorage:
         temporary = Path(temporary_name)
         try:
             os.fchmod(descriptor, 0o600)
-            os.write(descriptor, ciphertext)
+            remaining = memoryview(ciphertext)
+            while remaining:
+                written = os.write(descriptor, remaining)
+                if written <= 0:
+                    raise OSError("OAuth state write made no progress")
+                remaining = remaining[written:]
             os.fsync(descriptor)
             os.close(descriptor)
             descriptor = -1
             os.replace(temporary, self._store / name)
             _validate_private_file(self._store / name)
+            directory = os.open(self._store, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
         except OSError as exc:
             raise OAuthStoreError("unable to persist encrypted OAuth state") from exc
         finally:
@@ -294,6 +327,9 @@ class EncryptedFileTokenStorage:
         if value.pop(_SCOPE_PROOF_FIELD, None) != _SCOPE_PROOF_VALUE:
             raise OAuthStoreError("stored OAuth token lacks pinned-scope provenance")
         try:
+            record = value.pop(LIFECYCLE_FIELD, None)
+            if record is not None and OAuthLifecycle.from_record(record).state != "active":
+                raise OAuthStoreError("OAuth credential requires owner recovery")
             tokens = OAuthToken.model_validate(value)
         except ValueError as exc:
             raise OAuthStoreError("stored OAuth token shape is invalid") from exc
@@ -302,12 +338,34 @@ class EncryptedFileTokenStorage:
         return tokens
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
+        if await self.get_lifecycle() is not None:
+            raise OAuthStoreError("OAuth lifecycle requires an atomic generation commit")
+        await self.set_tokens_with_lifecycle(tokens, None)
+
+    async def get_lifecycle(self) -> OAuthLifecycle | None:
+        try:
+            value = self._read(_TOKENS_FILE)
+            record = None if value is None else value.get(LIFECYCLE_FIELD)
+            return None if record is None else OAuthLifecycle.from_record(record)
+        except ValueError:
+            raise OAuthStoreError("stored OAuth lifecycle is invalid") from None
+
+    async def set_tokens_with_lifecycle(
+        self, tokens: OAuthToken, lifecycle: OAuthLifecycle | None
+    ) -> None:
         if type(tokens) is not OAuthToken:
             raise TypeError("tokens must be OAuthToken")
         if tokens.scope not in {None, ROBINHOOD_MCP_OAUTH_SCOPE}:
             raise OAuthStoreError("OAuth token scope is outside the pinned contract")
         value = tokens.model_dump(mode="json", exclude_none=True)
         value[_SCOPE_PROOF_FIELD] = _SCOPE_PROOF_VALUE
+        if lifecycle is None and await self.get_lifecycle() is not None:
+            raise OAuthStoreError("OAuth lifecycle cannot be discarded")
+        if lifecycle is not None:
+            lifecycle.__post_init__()
+            if lifecycle.state == "active" and tokens.expires_in != lifecycle.expires_in:
+                raise OAuthStoreError("OAuth lifetime does not match its token generation")
+            value[LIFECYCLE_FIELD] = lifecycle.to_record()
         self._write(_TOKENS_FILE, value)
 
     async def get_client_info(self) -> OAuthClientInformationFull | None:
@@ -478,7 +536,13 @@ class LoopbackOAuthCallback:
         if self._server is None or self._result is None:
             raise McpSdkConnectionError("OAuth callback server is not running")
         try:
-            values = parse_qs(urlsplit(authorization_url).query, strict_parsing=True)
+            parsed = urlsplit(authorization_url)
+            if (
+                f"{parsed.scheme}://{parsed.netloc}{parsed.path}" != AUTHORIZATION_ENDPOINT
+                or parsed.fragment
+            ):
+                raise ValueError
+            values = parse_qs(parsed.query, strict_parsing=True)
             states = values.get("state", ())
             scopes = values.get("scope", ())
             if (
@@ -593,36 +657,50 @@ class RobinhoodMcpSdkConnection:
     async def __aenter__(self) -> Self:
         if self._stack is not None:
             raise RuntimeError("MCP connection is already entered")
-        _validate_private_directory(self._store_dir)
-        storage = EncryptedFileTokenStorage(self._store_dir)
-        callback_uri = (
-            self._callback.redirect_uri
-            if self._callback is not None
-            else f"http://{OAUTH_CALLBACK_HOST}:{OAUTH_CALLBACK_PORT}{OAUTH_CALLBACK_PATH}"
+        from trading_bot.brokers.robinhood_oauth_provider import (
+            LifecycleOAuthClientProvider,
+            PinnedOAuthTransport,
         )
-        provider = PinnedScopeOAuthClientProvider(
-            self._endpoint,
-            OAuthClientMetadata(
-                redirect_uris=[AnyUrl(callback_uri)],
-                # OAuth public clients use PKCE and intentionally have no client secret.
-                token_endpoint_auth_method="none",  # nosec B106
-                scope=ROBINHOOD_MCP_OAUTH_SCOPE,
-                client_name="Robinhood write-incapable shadow client",
-                software_id="robinhood-multi-asset-trading-system",
-                software_version="0.1.0",
-            ),
-            storage,
-            redirect_handler=(None if self._callback is None else self._callback.redirect_handler),
-            callback_handler=(None if self._callback is None else self._callback.callback_handler),
-            timeout=OAUTH_FLOW_TIMEOUT_SECONDS,
-        )
+
         stack = AsyncExitStack()
         self._stack = stack
         try:
+            stack.enter_context(PrivateOAuthStoreLease(self._store_dir))
+            _validate_private_directory(self._store_dir)
+            storage = EncryptedFileTokenStorage(self._store_dir)
+            callback_uri = (
+                self._callback.redirect_uri
+                if self._callback is not None
+                else f"http://{OAUTH_CALLBACK_HOST}:{OAUTH_CALLBACK_PORT}{OAUTH_CALLBACK_PATH}"
+            )
+            provider = LifecycleOAuthClientProvider(
+                self._endpoint,
+                OAuthClientMetadata(
+                    redirect_uris=[AnyUrl(callback_uri)],
+                    # OAuth public clients use PKCE and intentionally have no client secret.
+                    token_endpoint_auth_method="none",  # nosec B106
+                    scope=ROBINHOOD_MCP_OAUTH_SCOPE,
+                    client_name="Robinhood write-incapable shadow client",
+                    software_id="robinhood-multi-asset-trading-system",
+                    software_version="0.1.0",
+                ),
+                storage,
+                redirect_handler=(
+                    None if self._callback is None else self._callback.redirect_handler
+                ),
+                callback_handler=(
+                    None if self._callback is None else self._callback.callback_handler
+                ),
+                timeout=OAUTH_FLOW_TIMEOUT_SECONDS,
+            )
             client = await stack.enter_async_context(
                 httpx.AsyncClient(
                     auth=provider,
-                    follow_redirects=True,
+                    follow_redirects=False,
+                    trust_env=False,
+                    transport=PinnedOAuthTransport(
+                        httpx.AsyncHTTPTransport(retries=0, trust_env=False)
+                    ),
                     timeout=httpx.Timeout(self._timeout_seconds),
                 )
             )
@@ -645,8 +723,10 @@ class RobinhoodMcpSdkConnection:
             self._read_only = ReadOnlyMcpClientSession(session)
             self._schema_only = SchemaOnlyMcpClientSession(session)
         except BaseException:
-            await stack.aclose()
-            self._stack = None
+            try:
+                await stack.aclose()
+            finally:
+                self._stack = None
             raise
         return self
 

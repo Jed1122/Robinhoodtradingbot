@@ -426,7 +426,7 @@ async def test_callback_ignores_unrelated_and_wrong_state_requests() -> None:
     await callback.start()
     try:
         await callback.redirect_handler(
-            f"https://example.test/authorize?state={expected_state}"
+            f"https://robinhood.com/oauth?state={expected_state}"
             f"&scope={ROBINHOOD_MCP_OAUTH_SCOPE}"
         )
         unrelated = await _callback_request("/wrong?code=" + "c" * 32)
@@ -447,7 +447,7 @@ async def test_callback_wait_is_bounded() -> None:
     await callback.start()
     try:
         await callback.redirect_handler(
-            "https://example.test/authorize?state="
+            "https://robinhood.com/oauth?state="
             + "s" * 32
             + f"&scope={ROBINHOOD_MCP_OAUTH_SCOPE}"
         )
@@ -468,7 +468,7 @@ async def test_callback_rejects_broader_scope_before_opening_browser() -> None:
     try:
         with pytest.raises(McpSdkConnectionError, match="request is invalid"):
             await callback.redirect_handler(
-                "https://example.test/authorize?state="
+                "https://robinhood.com/oauth?state="
                 + "s" * 32
                 + "&scope=internal%20future-broader-scope"
             )

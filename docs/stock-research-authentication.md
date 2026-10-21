@@ -32,17 +32,58 @@ artifact hash/count, booleans and issue-time lifetime metadata, never token valu
 token hashes, provider exception text or OAuth URL parameters. Directory fsync is
 required at publication. Failed or uncertain publication is not silently retried.
 
+## Bounded official renewal
+
+After reviewing this exact provider contract and completing the owner-authorized
+browser grant, the operator can explicitly renew the dedicated research credential:
+
+```sh
+PYTHONPATH=src uv run python -m trading_bot.runtime.oauth_renewal \
+  --oauth-store /absolute/private/oauth-stock-research
+```
+
+The command acquires a single-process store lease before reading credentials and
+holds it through bounded HTTP cleanup. It fetches current fixed official protected
+resource and authorization-server metadata, verifies the public client, atomically
+persists `refresh_pending`, sends exactly one refresh POST, and commits the new
+token plus absolute lifetime metadata in one encrypted record. It exposes no MCP
+session, tool invocation, browser callback or account operation. No proxy settings,
+redirects, fallback endpoints, registration or retries are enabled.
+
+Unknown response outcomes and invalid responses leave the store denied pending
+owner recovery. Never rerun by restoring an old refresh token or removing the pending
+record. A failed atomic commit can leave either pending state or a complete new
+generation; recovery never retries the old refresh token. Injected filesystem and
+cancellation fixtures test these boundaries but do not prove physical power-loss
+durability. The lock coordinates cooperating processes on one host, not store copies.
+
+On 2026-10-21 the authorized dedicated grant completed one actual official refresh.
+Its conservative absolute expiry was retained as 2026-10-29 18:45:38 UTC. A fresh
+process then reused that encrypted generation without a callback and captured all
+83 tool declarations, with schema artifact SHA-256
+`d7e31092ac39b56350cac907769916f17bdd95d5cb89e3d4c1f1126e1ee8f1dc`.
+Neither command invoked account, portfolio or order tools. This proves explicit
+renewal and process-restart reuse at that checkpoint. Natural expiry, owner revocation,
+long-running deployed access and account binding remain unverified.
+
+Headless connections restore the persisted deadline without extending it, pin the
+reviewed metadata, use wall/monotonic clock high-water checks and checkpoint observed
+time. A known expired generation or unexpected 401 permits at most one guarded refresh
+within the connection; legacy tokens without observed absolute lifetime do not silently
+enter an interactive flow. Pending/denied stores fail before outbound traffic.
+
 ## Remaining authentication proofs
 
 Successful browser authorization proves neither indefinite background access nor
-refresh/revocation behavior. Verify a separate no-browser connection, genuine
-expiry provenance and correct official metadata before refresh, single-owner token
-rotation, successful persistence, natural-expiry recovery and owner-revoked denial.
+refresh/revocation behavior. Explicit renewal, genuine issue-time expiry metadata,
+single-owner persistence and separate no-browser restart were verified above.
+Natural-expiry recovery, owner-revoked denial and the deployed worker still require
+separate evidence.
 Never force refresh through an invented fallback endpoint or replay old refresh
 credentials. Existing legacy read-schema gates remain unchanged.
 
-Only after reviewing the selected-server stock-research declarations should the
-worker receive a separate fixed research-only tool profile. Writer, account,
+The reviewed selected-server stock-research declarations are a separate fixed
+research-only tool profile. Writer, account,
 portfolio and reconciliation operations must be denied independently at session
 and transport boundaries. Current snapshots become available at receipt time;
 financial period dates cannot be substituted for publication timestamps.
