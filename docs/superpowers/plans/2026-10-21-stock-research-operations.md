@@ -67,7 +67,8 @@ no native image probe, producer or deployment is claimed. See the
 ## Task 2: Release description, container barrier and hard deadline
 
 Add `compose.stock-research.yml`, `infra/hybrid/stock_release.py`,
-`infra/hybrid/stock-runner.py`, focused deployment tests and a stock operations runbook.
+`infra/hybrid/stock_container.py`, `infra/hybrid/stock-runner.py`, focused deployment tests
+and a stock operations runbook.
 Reuse `Dockerfile` and the trusted-root attestation schema. Keep the read-only release
 verifier separate from actual Docker orchestration so its trust/identity contract can
 be independently tested first. Public `load_release(path)` enforces the fixed production
@@ -87,6 +88,14 @@ no Docker, credential, ledger, control mutation or activation operation.
 - [ ] Write RED fixture tests for malformed/untrusted manifest, wrong image/config/command,
   unexpected mounts/environment/network/restart policy, unknown existing container,
   duplicate launcher, time rollback, interrupted Docker commands and orphan ownership.
+- [x] First implement data-only Engine/image observation verification. Freeze the official
+  versioned API 1.55 schema, requiring a Linux daemon whose advertised API range contains
+  that version, with no silent downgrade. Reject image-ID/OS/architecture mismatches,
+  inherited volumes/ports or unreviewed environment keys/values, duplicates and bare keys.
+  Match image-owned user/workdir and application environment to the existing Dockerfile;
+  retain only a frozen public-metadata profile for the later created-container comparison.
+  Bounded fictional JSON checks do not prove the pinned base's actual configuration,
+  daemon compatibility, image provenance or runtime support. No Docker I/O is added here.
 - [ ] Inspect a created CID and exact image, user, command, mounts and hardening before
   start. No registry pull/publication, Docker socket in worker, ports or inherited HTTP
   healthcheck. `restart: "no"`; bounded logs, pids/CPU/memory and read-only root filesystem.
@@ -103,6 +112,14 @@ a container. The read-only verifier and policy passed 102 fictional tests; verif
 branch coverage is 99%. Independent review found a descriptor-cleanup error; two RED
 regressions reproduced it and passed after the fix. Launcher, producer, actual container
 inspection and hard termination remain unimplemented/unverified. Task 2 is not complete.
+
+The next data-only Engine/image metadata parsers passed 67 fictional tests with 100%
+branch coverage. Independent review's exponent-overflow finding was reproduced RED and
+fixed for both parsers, including nested ignored metadata. The complete deployment-test
+directory passed 245 tests with four optional local-age skips; no encrypted-backup or
+native-image proof follows from those skips. Ruff, strict mypy (442 files), expanded
+Bandit, lock and diff checks passed. Independent review is READY_FOR_INTEGRATION for
+these parsers only. Actual CID inspection and the supervisor are still pending.
 
 ## Task 3: Supervised timer, paused installation and native checks
 

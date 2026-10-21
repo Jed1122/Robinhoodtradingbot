@@ -56,6 +56,18 @@ and bounds without code attestation or provider access. Actual inert-container
 observation, attestation production and runtime inspection remain unverified; see
 [operations status](docs/stock-research-operations.md).
 
+The isolated stock Compose policy and read-only retained-release verifier are now local
+source. The four closed canonical artifacts bind the exact resolved worker policy,
+image/config identity and observed bounds; public loading fixes root ownership and
+production paths. Verifier/policy checks passed 102 fictional tests with 99% verifier
+branch coverage. Separate Engine/image metadata parsers passed 67 tests with 100%
+branch coverage; deployment-related regression passed 245 with four optional local-age
+skips. Independent reviews cleared corrected cleanup and numeric-overflow cases. These
+components perform no Docker/provider operation. Actual container inspection, the
+trusted producer, supervisor, hard termination, timer and deployment are not complete.
+The [container contract](docs/stock-container-contract.md) distinguishes retained-record
+consistency from native image/runtime evidence and records the fixed API profile.
+
 Next: complete integrated verification, deployed image/config/control-path verification
 and a completion-relative timer with an actual process
 deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,

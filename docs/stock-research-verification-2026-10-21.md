@@ -150,6 +150,15 @@ and fences old cycles across pause/resume. Its state and operator procedure are 
 supervised collector. The full dashboard baseline at 3cd8e8c is still running separately;
 it does not validate this subsequent feature.
 
+The configuration-only command, isolated Compose source and immutable retained-release
+verifier are also implemented locally. The verifier/policy passed 102 fictional checks
+with 99% verifier branch coverage. Separate data-only Engine/image metadata parsers
+passed 67 checks with 100% branch coverage, and the deployment-test directory passed
+245 checks with four optional local-age skips. Independent reviews cleared the corrected
+cleanup and numeric-overflow boundaries. Actual pinned-image observation, CID inspection,
+trusted attestation production, supervision, termination and native deployment remain
+unverified. See [operations status](stock-research-operations.md).
+
 The research acquisition/cache scheduler is not yet a verified persistent background
 service. Natural-expiry/revocation recovery, substantive company research, complete
 raw-session liquidity, stock point-in-time datasets, out-of-sample strategy/cost/tax validation,

@@ -67,10 +67,18 @@ does not itself attest the executing worker: inspect that separate container too
 
 The worker uses UID/GID `10001:10001`, a read-only root filesystem, dropped capabilities,
 no-new-privileges, init forwarding, 128 pids, 0.5 CPU and 512 MiB memory. It has no
-published/exposed ports, Docker socket, host namespaces, extra devices, privileged
+published/exposed ports, Docker socket, explicit host network/PID/IPC/UTS/cgroup sharing,
+extra devices, privileged
 mode, automatic removal, restart or registry pull. Explicit bridge networking is
 used for the reviewed fixed-host official client. Limits require native capacity
 verification; their presence is not evidence that the host can sustain them.
+
+The current Compose source does not explicitly set IPC or cgroup namespace mode;
+omission cannot prove private namespaces. The future prestart barrier must require
+actual IPC and cgroup modes `private`, PID/UTS modes empty and no `host` override.
+Docker's empty user-namespace mode uses daemon policy; it does not establish UID
+remapping. Do not claim user-namespace isolation from an empty field. A native host
+that cannot meet the frozen profile is denied; no automatic daemon upgrade follows.
 
 Bind only these existing canonical paths, with host-path creation disabled:
 
@@ -96,12 +104,57 @@ Actual container environment must equal the inspected immutable image's inherite
 environment plus those two overrides; it must not be compared only to the two YAML
 keys. Reject unreviewed inherited credential/proxy/config variables rather than
 retaining arbitrary environment values in a release record.
-The only writable scratch is a bounded `/tmp` tmpfs. Logs use a bounded local driver.
+The only additional application scratch mount configured by this policy is a bounded
+`/tmp` tmpfs. Docker-managed mounts such as private IPC's `/dev/shm` require separate
+actual-container inspection. Logs use a bounded local driver.
 
 Docker documents create-without-start and init/signal, pull, healthcheck and read-only
 controls. These must be checked against the actual container, not inferred from YAML.
 [Create reference](https://docs.docker.com/reference/cli/docker/container/create/),
 [Compose service reference](https://docs.docker.com/reference/compose-file/services/).
+
+## Data-only Engine and image observations
+
+`infra/hybrid/stock_container.py` checks supplied bounded JSON metadata, without any
+daemon connection. It is a precondition for future create/inspect work, not that work
+or authentication of supplied metadata. The fixed Engine API profile is `/v1.55`:
+require a Linux amd64/arm64 daemon whose advertised `MinAPIVersion <= 1.55 <= ApiVersion`,
+comparing integer version components with no silent downgrade. Current native daemon
+compatibility has not been observed. The official versioned schema supports exact
+`Entrypoint`/`Cmd` arrays and create followed by inspect; an accepted create or ignored
+request property is not hardening evidence. A future launcher may use that documented
+Engine API over the fixed local Unix socket while retaining Compose's whole resolved
+model for release identity. No Engine client or write operation is implemented here.
+[Official API 1.55 schema](https://raw.githubusercontent.com/moby/moby/api/v1.55.0/api/swagger.yaml).
+
+Before even an inert configuration probe is created, verify the supplied image's local
+`Id` (not `RepoDigests`), Linux OS, matching architecture, recipe user and `/app` workdir.
+Reject inherited volumes and exposed ports: Docker can union those with image values
+despite empty request overrides. Reject nonempty labels, shell/ONBUILD metadata and
+escaped-argument mode in this bounded recipe profile. Omitted/null/empty map metadata
+is permitted only for the documented optional maps, not as a general missing-data rule.
+[Image configuration](https://raw.githubusercontent.com/moby/moby/api/v1.55.0/api/types/container/config.go),
+[merge implementation](https://raw.githubusercontent.com/moby/moby/master/daemon/commit.go).
+
+Require exactly `PATH`, `LANG`, `GPG_KEY`, `PYTHON_VERSION`, `PYTHON_SHA256`, `PYTHONPATH`,
+`PYTHONDONTWRITEBYTECODE`, `PYTHONUNBUFFERED`, `LIVE_TRADING_ENABLED` and
+`PREDICTION_LIVE_ENABLED`. Entries are case-sensitive explicit `KEY=value` strings;
+duplicates, bare removals, proxies, credentials and arbitrary config overrides deny.
+Application values match the Dockerfile and both live flags are already false. PATH
+starts with `/app/.venv/bin` and contains only reviewed absolute system directories;
+the supplied order is retained for exact created-container comparison. Python 3.12
+version/archive digest and public GPG fingerprint syntax are checked. This bounded
+value profile does not authenticate the repository's pinned base digest or establish
+its actual patch/version/path values; those still require native image observation.
+[Current official Python recipe](https://raw.githubusercontent.com/docker-library/python/2a3b794c223ab067d122719541cdd54a068732a5/3.12/slim-bookworm/Dockerfile).
+
+Require the existing Dockerfile's healthcheck test, interval, timeout, start period and
+retry values, allowing the versioned optional zero `StartInterval`. Retain a derived
+disabled healthcheck with `Test=["NONE"]` and reviewed timing metadata, since Docker
+may preserve inherited timing fields when disabling it. Profiles are immutable and
+exclude the environment/healthcheck from their repr; malformed metadata returns only
+`stock_container_unavailable`. Unknown or inconsistent native behavior needs an explicit
+reviewed profile change, not an unsafe fallback.
 
 ## Launcher and deadline
 

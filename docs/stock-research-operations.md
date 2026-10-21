@@ -52,6 +52,17 @@ temporary file is created and no scanner rule was disabled globally.
 This is retained-record verification, not trusted release production, actual container
 inspection, deadline enforcement, installation or continuous-operation evidence.
 
+The data-only Engine/image metadata parsers are implemented locally as a separate
+precondition to future container creation. They require the fixed API 1.55 range,
+matching image/platform, the reviewed inherited environment and absent implicit image
+volumes/ports. They retain the disabled-healthcheck timing profile. The parser tests
+passed 67 checks with 100% branch coverage, including an independently found and corrected
+nonfinite exponent-overflow case. All deployment-related tests passed 245 checks with
+four optional local-age skips. Independent review, Ruff, strict mypy (442 files), expanded
+Bandit, lock and diff checks passed. These checks made no Docker or provider connection.
+The actual pinned image values and native daemon compatibility remain unknown; an
+unsupported host must be denied, with no automatic daemon upgrade or API downgrade.
+
 ## Next implementation and proof
 
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).
