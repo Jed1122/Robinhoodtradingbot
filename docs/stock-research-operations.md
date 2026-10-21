@@ -33,6 +33,11 @@ native container or deployed configuration proof is claimed.
 
 ## Retained release verification
 
+The later [first-attempt composition](stock-fresh-attempt.md) connects these verified
+components locally. It permits only an empty initialized operations namespace and
+returns actual supervisor lifecycle evidence. It does not implement repeated cycles,
+incident resolution, old-CID deletion or installed operations.
+
 `compose.stock-research.yml` defines the isolated worker policy. The local Compose tool
 rendered it successfully using fictional image/release values, without creating or
 starting a container. `infra/hybrid/stock_release.py` now verifies the four canonical
