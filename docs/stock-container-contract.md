@@ -303,6 +303,9 @@ queued or uncertain start may still act on it. Reject that combination both befo
 writing a new terminal receipt and when validating retained receipts. Preserve
 never-started `created` observations with `start_fence_present=false`. Existing
 incompatible receipts are incidents; do not rewrite them or use them for admission.
+Central stopped-receipt validation also requires its stored start-presence flag to
+match the actual `start.json` presence, including older historical attempts scanned
+for later admission. A false recorded flag cannot mask a durable start fence.
 This store is sequencing/consistency evidence, not a substitute for native
 observations, control authority, authentication or the process supervisor.
 Each opened owner session admits at most one fresh attempt. At most 8192 retained

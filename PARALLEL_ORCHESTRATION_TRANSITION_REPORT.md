@@ -148,6 +148,13 @@ root now rejects new and retained receipts with that combination. Never-started
 with four optional age skips in the latter; Ruff/mypy448/Bandit/lock checks passed.
 The exact corrected store candidate still needs follow-up review before integration.
 
+The 36ed2a9 follow-up remained NOT_READY: an older retained receipt could store a
+false start-presence bit despite an actual start record. Two further RED regressions
+reproduced the historical-admission gap. Central stopped-receipt validation now
+compares the bit with actual start-record presence for every reader. The integrated
+check passes 1,053 tests with four optional age skips; static/lock checks pass.
+Independent review of this exact final correction is pending.
+
 The parallel pure stock-minute manifest adapter at ae991be passed independent review,
 200 focused tests and 58 negative probes. Root merged its three owned files at
 63a988e after exact diff review and reran 956 central checks with four optional age

@@ -245,3 +245,11 @@ retained-receipt guards; never-started `created` observations remain valid. The
 corrected focused suite passed 239 tests at 98% combined store/termination coverage;
 central regression passed 1,051 with four optional age skips. Ruff, strict mypy
 (448 files), expanded Bandit, lock and diff checks passed. Follow-up review is pending.
+
+The 36ed2a9 review found a historical stopped receipt could store false start-presence
+despite a valid `start.json`. Two further RED cases reproduced admission with
+`created` and `exited`. Central stopped-receipt validation now compares the stored
+bit with actual record presence, including older attempts. Central regression passed
+1,053 tests with four optional age skips; Ruff, strict mypy448, expanded Bandit,
+lock and diff checks passed. Exact follow-up review is pending; the earlier
+NOT_READY dispositions are not integration acceptance.

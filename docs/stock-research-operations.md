@@ -149,6 +149,14 @@ never-started `created` valid. The corrected focused suite passed 239 tests and 
 central regression passed 1,051 with four optional age skips. Ruff, strict mypy (448
 files), expanded Bandit and lock checks passed. Follow-up store review remains required.
 
+The follow-up review at 36ed2a9 found a retained historical receipt could set its
+start-presence flag false while a valid start record remained. Two additional RED
+cases reproduced admission for both `created` and `exited` receipts. Root moved the
+actual-presence comparison into central stopped-receipt validation, so historical
+admission receives the same chain check as current snapshots. Central regression now
+passes 1,053 tests with four optional age skips; Ruff/mypy448/Bandit/lock checks pass.
+The exact correction still requires independent review.
+
 ## Next implementation and proof
 
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).

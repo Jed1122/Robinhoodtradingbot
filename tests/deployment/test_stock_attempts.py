@@ -1041,7 +1041,10 @@ def test_snapshot_rejects_preexisting_created_terminal_receipt_with_start(operat
         snapshot(store)
 
 
-def test_historical_start_fenced_created_receipt_blocks_later_admission(operations, policy):
+@pytest.mark.parametrize("status,flag", [("created", True), ("created", False), ("exited", False)])
+def test_historical_start_fenced_created_receipt_blocks_later_admission(
+    operations, policy, status, flag
+):
     _, root, _ = operations
     with opened(operations) as store:
         first = store.begin(policy)
@@ -1055,6 +1058,11 @@ def test_historical_start_fenced_created_receipt_blocks_later_admission(operatio
         store.prepare_start()
         store.record_stopped(encoded(stopped(second)))
     retained_created_receipt(root, first)
+    path = root / first.attempt_id / "stopped.json"
+    receipt = json.loads(path.read_bytes())
+    receipt["status"] = status
+    receipt["start_fence_present"] = flag
+    path.write_bytes(encoded(receipt))
     with opened(operations) as store:
         store.record_stopped(encoded(stopped(second)))
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):

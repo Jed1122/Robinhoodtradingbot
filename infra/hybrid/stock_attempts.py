@@ -499,6 +499,7 @@ class AttemptStore:
                     for key in ("oom_killed", "error_present", "start_fence_present")
                 )
             )
+            _require(value["start_fence_present"] is _exists(directory, "start.json"))
             _require(value["status"] != "created" or value["start_fence_present"] is False)
             _timestamp(value["container_started_at"], zero=True)
             _timestamp(value["container_finished_at"], zero=True)
