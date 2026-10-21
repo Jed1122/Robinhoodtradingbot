@@ -280,3 +280,78 @@ def test_cli_passes_only_image_derived_hash_to_cycle_without_git(tmp_path, monke
     )
     assert observed == [(deployed_image_code_hash(image), loaded)]
     assert json.loads(capsys.readouterr().out)["live_enabled"] is False
+
+
+def test_export_only_requires_a_destination_before_opening_resources(tmp_path, monkeypatch, capsys):
+    module = importlib.import_module("trading_bot.runtime.stock_research_worker")
+    monkeypatch.setattr(
+        module, "resolve_code_identity", lambda *args: pytest.fail("invalid command")
+    )
+    assert module.main([*arguments(tmp_path.resolve()), "--export-only"]) == 2
+    assert json.loads(capsys.readouterr().out)["reason"] == "worker_startup_blocked"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_export_only_cli_reads_migrated_ledger_without_sdk_or_new_claim(
+    tmp_path, monkeypatch, capsys
+):
+    from trading_bot.persistence.migrations import migrate_sqlite_ledger
+
+    module = importlib.import_module("trading_bot.runtime.stock_research_worker")
+    monkeypatch.setattr(module, "resolve_code_identity", lambda *args: IDENTITY)
+    root = tmp_path.resolve()
+    root.chmod(0o700)
+    for name in ("unused-archive", "dashboard-export"):
+        (root / name).mkdir(mode=0o700)
+    migrate_sqlite_ledger(
+        root / "ledger.sqlite3",
+        alembic_ini=ROOT / "alembic.ini",
+        migrations_dir=ROOT / "migrations",
+    )
+    monkeypatch.setattr(
+        module,
+        "RobinhoodMcpSdkConnection",
+        lambda **kwargs: pytest.fail("export has no provider operation"),
+    )
+    assert (
+        module.main(
+            [*arguments(root), "--export-only", "--export-dir", str(root / "dashboard-export")]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "export_only" and result["live_enabled"] is False
+    assert result["dashboard_export_status"] == "published"
+    projection = json.loads((root / "dashboard-export/stock-research.json").read_text())
+    assert projection["worker"]["status"] == "never_run"
+    with sqlite3.connect(root / "ledger.sqlite3") as connection:
+        assert connection.execute("SELECT count(*) FROM audit_events").fetchone() == (0,)
+    assert not (root / "unused-oauth").exists()
+
+
+def test_export_failure_preserves_separate_completed_acquisition_result(
+    tmp_path, monkeypatch, capsys
+):
+    from trading_bot.runtime import stock_dashboard_export as exporter
+
+    module = importlib.import_module("trading_bot.runtime.stock_research_worker")
+    monkeypatch.setattr(module, "resolve_code_identity", lambda *args: IDENTITY)
+    root = tmp_path.resolve()
+    root.chmod(0o700)
+    with sqlite3.connect(root / "ledger.sqlite3") as connection:
+        connection.execute("CREATE TABLE sentinel (value TEXT)")
+    (root / "ledger.sqlite3").chmod(0o600)
+
+    async def cycle(**kwargs):
+        return {"status": "succeeded", "reason": "complete", "live_enabled": False}
+
+    async def failed(**kwargs):
+        raise exporter.StockDashboardExportError("private-export-error")
+
+    monkeypatch.setattr(module, "run_stock_research_cycle", cycle)
+    monkeypatch.setattr(exporter, "export_stock_dashboard", failed)
+    assert module.main([*arguments(root), "--export-dir", str(root / "unused-export")]) == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "succeeded" and result["reason"] == "complete"
+    assert result["dashboard_export_status"] == "blocked"
+    assert "private-export-error" not in json.dumps(result)

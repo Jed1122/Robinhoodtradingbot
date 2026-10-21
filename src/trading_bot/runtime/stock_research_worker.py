@@ -537,10 +537,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--oauth-store", type=Path, required=True)
     parser.add_argument("--archive-dir", type=Path, required=True)
+    parser.add_argument(
+        "--export-dir", type=Path, help="Separate private dashboard projection directory"
+    )
+    parser.add_argument(
+        "--export-only",
+        action="store_true",
+        help="Reconstruct the projection without broker calls or a new research claim",
+    )
     parser.add_argument("--image-digest", help="Operator-verified executing immutable image digest")
     parser.add_argument("--image-attestation", type=Path, help="Root-owned release attestation")
     args = parser.parse_args(argv)
     try:
+        _check(not args.export_only or args.export_dir is not None, "worker_startup_blocked")
         _check(
             (args.image_digest is None) == (args.image_attestation is None),
             "worker_startup_blocked",
@@ -579,18 +588,43 @@ def main(argv: list[str] | None = None) -> int:
             with _existing_private_ledger(args.database) as descriptor:
                 engine = create_engine(url, existing_file_descriptor=descriptor)
                 try:
-                    return await run_stock_research_cycle(
-                        loaded=loaded,
-                        code_hash=code_hash,
-                        factory=async_session_factory(engine),
-                        oauth_store=args.oauth_store,
-                        output_dir=args.archive_dir,
+                    factory = async_session_factory(engine)
+                    result = (
+                        {"status": "succeeded", "reason": "export_only", "live_enabled": False}
+                        if args.export_only
+                        else await run_stock_research_cycle(
+                            loaded=loaded,
+                            code_hash=code_hash,
+                            factory=factory,
+                            oauth_store=args.oauth_store,
+                            output_dir=args.archive_dir,
+                        )
                     )
+                    if args.export_dir is not None:
+                        from trading_bot.runtime.stock_dashboard_export import (
+                            export_stock_dashboard,
+                        )
+
+                        try:
+                            publication = await export_stock_dashboard(
+                                loaded=loaded,
+                                code_hash=code_hash,
+                                factory=factory,
+                                archive_dir=args.archive_dir,
+                                export_dir=args.export_dir,
+                            )
+                            result["dashboard_export_status"] = "published"
+                            result["dashboard_export_sha256"] = publication["sha256"]
+                        except Exception:
+                            result["dashboard_export_status"] = "blocked"
+                    return result
                 finally:
                     await engine.dispose()
 
         result = asyncio.run(execute())
         print(json.dumps(result, sort_keys=True))
+        if result.get("dashboard_export_status") == "blocked":
+            return 2
         return 0 if result["status"] == "succeeded" or result.get("reason") == "not_due" else 2
     except Exception:
         print(json.dumps(_blocked("worker_startup_blocked"), sort_keys=True))

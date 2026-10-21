@@ -7,7 +7,12 @@ review, order, transfer or live-activation operation. The OAuth credential itsel
 remains trading-capable; these are local capability restrictions.
 
 This is an executable acquisition cycle, tested with fictional provider sessions and
-migrated databases. It has not been run as a deployed scheduled service. Existing
+migrated databases. At source 32f4de3, one authorized local discovery completed all 17
+planned data calls using the dedicated saved grant. A separate immediate invocation
+returned `not_due` without another claim or capture. Rehash/recomputation retained 16
+complete query groups, 1,472 candidates, 1,058 scorable companies and ten research
+priorities; all eligibility flags remained false. This is one local cycle, not a
+deployed scheduled service. Existing
 paused services and the hybrid account journal are not changed by this command.
 
 ## Admission and recovery
@@ -127,6 +132,17 @@ Output is a sanitized JSON status with counts and artifact digests. Successful c
 and ordinary `not_due` return exit 0; other blocked outcomes return exit 2. Credentials,
 account IDs, raw provider text and private filesystem paths are not printed.
 
+## Dashboard projection
+
+The optional `--export-dir` publishes a verified, sanitized dashboard projection after
+the acquisition result. `--export-only` recomputes that projection without constructing
+an SDK, reading credentials or reserving calls. It still requires the existing ledger,
+canonical configuration and code-identity checks. Export failure is reported separately
+and cannot replace a committed acquisition outcome. The authenticated dashboard can opt
+in with `serve --stock-export-dir`; its filesystem-only reader receives no raw archive,
+research ledger or OAuth access. See the [export contract](stock-dashboard-export.md)
+for private directory requirements, freshness, UTC budget handling and exact CLI use.
+
 ## Verification and remaining work
 
 Fictional integration tests exercise discovery/enrichment, fresh reuse, changed
@@ -136,7 +152,8 @@ clock deadlines, UTC-midnight planning and lost claim/terminal commit acknowledg
 Separate process tests exercise lock contention; fault tests verify lock release even
 when closing a writer directory fails. These tests establish local behavior only.
 
-Next: integrate the authenticated dashboard's read projection, research pause/kill gate,
+The authenticated dashboard projection and stock UI are implemented and locally verified
+as described in the export contract. Next: the research pause/kill gate,
 resource-bounded external timer and deployed identity checks; verify actual scheduled collection, authentication
 expiry/revocation, encrypted backup/restore and watchdog alerts. Market-data qualification,
 out-of-sample stock-strategy validation, costs/taxes, nonempty brokerage reconciliation

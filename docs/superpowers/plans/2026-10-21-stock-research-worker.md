@@ -89,7 +89,8 @@ Do not claim 24/7 operation from source code or a healthy paused container.
 
 The durable claim/budget/cache ledger and one-shot owner are implemented locally; see
 [the current worker contract](../../stock-research-worker.md). The next implementation
-step is the dashboard read projection and external timer, followed by actual deployed
+step was the dashboard read projection, now locally implemented and verified; research
+controls and the external timer follow, then actual deployed
 identity, authentication, backup/restore and monitoring evidence. Source code and fake
 sessions do not establish scheduled production operation.
 
@@ -105,3 +106,47 @@ as the default and provide no arbitrary code-hash override. Tests use local fict
 attestations with an injected trusted owner only through the existing verifier test
 seam. This adds startup capability, not an attestation producer, timer, control gate,
 executing-image verification, deployment or permission to run provider calls.
+
+## Authenticated dashboard projection continuation
+
+The next dependency chain is a bounded typed export -> private atomic publisher and
+read-only reader -> optional authenticated API injection -> stock research UI. Only
+sanitized projections enter the separate export mount; the dashboard receives no raw
+archive, research ledger or OAuth mount. Export reading performs no SQLite operation,
+broker call or background refresh. The original hybrid account/config identity and
+live-disabled controls remain intact.
+
+Use the canonical stock policy to bind export configuration and maximum source age.
+Read strict job state and rehash/recompute both cache heads under the archive lease.
+Preserve actual source availability times, missing factors and evidence gaps. Export
+only whitelisted screening metrics, source digests/timestamps, counts and closed local
+status codes; no provider prose, account state or raw payload. Scores remain research
+priorities, with every qualification/live flag false. Suppress stale or unavailable
+research opportunities. A failed export cannot change a committed research outcome;
+surface it separately and retain no fresh success claim.
+
+The API's optional stock reader must run only after authentication, fail to a sanitized
+unavailable research view, and preserve health/readiness and account controls. Existing
+Pause/Kill controls remain scoped to the hybrid journal until the separate collector
+gate is integrated. The UI must explain that boundary. Keep all default routes and
+snapshot fields compatible when no stock export is configured.
+
+Verify schema/type/size/count bounds, future/stale times, missing/unsafe/changed files,
+symlinks/hardlinks, atomic publication and no raw/private fields; actual migrated-DB
+export and restart behavior; authentication/no-reader-on-401, both snapshot/control
+responses, and no portfolio mutation; frontend stock rows, scores, original times,
+status/budget, missing/stale states and control-scope labels. Render desktop and mobile
+with fictional fixtures. Deployed mounts/timer/controls and actual 24/7 operation remain
+separate next steps.
+
+## Dashboard continuation checkpoint
+
+The bounded typed projection, atomic private publisher, read-only reader, authenticated
+API composition and stock UI are implemented. Central verification passed 417 backend
+tests with 93.63% combined branch coverage, 57 frontend tests and a production frontend
+build. Independent reviews cleared corrected status/time/secret and control-scope
+boundaries. Actual API rendered checks on desktop and mobile used fictional data only;
+no browser errors, warnings or page overflow were observed. See the
+[export contract](../../stock-dashboard-export.md). Collector admission controls,
+deployed mount/identity proofs and supervised scheduling remain next; no 24/7 operation
+or live readiness follows from this checkpoint.

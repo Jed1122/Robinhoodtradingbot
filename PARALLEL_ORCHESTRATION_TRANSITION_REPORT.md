@@ -13,14 +13,33 @@ Independent local review cleared the integrated worker after clock-boundary and
 existing-ledger opening fixes. Central checks passed 650 tests with 89.97% combined
 branch coverage over the changed runtime/persistence surface. These are fictional
 session and local database tests; they do not establish deployed collection or an
-investment advantage. The older 7cd644d full baseline remains in progress separately.
+investment advantage. The full frozen 7cd644d baseline subsequently completed with
+11,407 passed, 33 optional skips, one warning and 88.55% combined branch coverage.
+The primary integration branch advanced to 32f4de3 after exact diff review; its
+changed worker/CLI/persistence surface passed 455 central tests. That older full
+baseline does not certify the later worker or dashboard changes.
 
 The CLI also accepts the existing root-controlled deployed-image attestation through
 a required option pair, checks its full stock configuration hash and passes only the
 image-derived code hash to acquisition. This has local fictional-attestation tests;
 the stock deployment's attestation producer and executing-image proof remain absent.
 
-Next: authenticated stock-dashboard export, authoritative research pause/kill admission,
+One authorized local worker discovery at 32f4de3 completed 17 stock-data calls using
+the dedicated saved grant; immediate restart returned `not_due` without another claim
+or capture. Recomputed retained evidence yielded 1,472 candidates, 1,058 scorable
+companies and ten research priorities, all investment-ineligible. This is separate
+from fictional tests and does not establish a scheduled service.
+
+The sanitized stock-dashboard export and authenticated filesystem-only feed are now
+implemented locally, with stock research priorities, evidence gaps, original source
+times and collector status on desktop/mobile. Central checks passed 417 tests with
+93.63% combined branch coverage over the changed backend surface, 57 frontend tests,
+a production frontend build, and fictional publisher-to-API rendered checks at both
+viewports. Independent backend/UI reviews cleared this bounded integration. No broker,
+credential or deployment operation was performed for that check. The dashboard's
+existing controls explicitly remain scoped to the hybrid portfolio journal.
+
+Next: authoritative research pause/kill admission,
 deployed image/config verification and a completion-relative timer with an actual process
 deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,
 restore and watchdog alerts. Stock data/strategy qualification and nonempty brokerage

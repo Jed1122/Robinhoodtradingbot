@@ -326,6 +326,7 @@ class StockResearchJobState:
     reserved_today: int
     discovery_head: StockResearchResult | None
     enrichment_head: StockResearchResult | None
+    observed_at: datetime
 
     @property
     def pending_count(self) -> int:
@@ -477,6 +478,7 @@ class SqlStockResearchJobs:
             ),
             next((item for item in reversed(eligible) if item.phase == "discovery"), None),
             next((item for item in reversed(eligible) if item.phase == "enrichment"), None),
+            now,
         )
 
     async def snapshot(self) -> StockResearchJobState:

@@ -21,6 +21,11 @@ from trading_bot.hybrid.execution import mark_equity
 from trading_bot.hybrid.models import Account
 from trading_bot.hybrid.worker import Journal, worker_loop
 from trading_bot.research.hybrid_service import research_snapshot
+from trading_bot.research.stock_dashboard import (
+    StockDashboardFeed,
+    present_stock_dashboard,
+    unavailable_stock_dashboard,
+)
 
 
 class Control(BaseModel):
@@ -165,10 +170,28 @@ def build_hybrid_app(
     *,
     static_dir: Path | None = None,
     run_worker: bool = False,
+    stock_research_reader: StockDashboardFeed | None = None,
 ) -> FastAPI:
     if len(token) < 32 or any(char.isspace() for char in token):
         raise ValueError("a private high-entropy dashboard token is required")
     expected = hashlib.sha256(token.encode()).digest()
+
+    def current_snapshot(account: Account) -> dict[str, object]:
+        result = snapshot(account, policy)
+        if stock_research_reader is not None:
+            try:
+                view = present_stock_dashboard(
+                    stock_research_reader(),
+                    now=datetime.now(UTC),
+                    maximum_age_seconds=stock_research_reader.maximum_age_seconds,
+                )
+            except Exception:
+                view = unavailable_stock_dashboard("export_unavailable")
+            original = result["research"]
+            if isinstance(original, dict):
+                view["comparisons"] = original.get("comparisons", [])
+            result["research"] = view
+        return result
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
@@ -229,7 +252,7 @@ def build_hybrid_app(
 
     @app.get("/api/hybrid/snapshot", dependencies=[Depends(authenticate)])
     async def get_snapshot() -> dict[str, object]:
-        return snapshot(await owner.read(), policy)
+        return current_snapshot(await owner.read())
 
     @app.post("/api/hybrid/controls", dependencies=[Depends(authenticate)])
     async def control(body: Control) -> dict[str, object]:
@@ -248,7 +271,7 @@ def build_hybrid_app(
             account = await owner.change(str(uuid4()), "control", {"action": body.action}, change)
         except ValueError:
             raise HTTPException(409, "Control denied; operator review required") from None
-        return snapshot(account, policy)
+        return current_snapshot(account)
 
     if static_dir is not None:
         if not (static_dir / "index.html").is_file():

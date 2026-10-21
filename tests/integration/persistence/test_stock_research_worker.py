@@ -486,3 +486,181 @@ async def test_truncated_current_screen_publishes_no_ranked_cache_head(worker):
     assert result["status"] == "blocked" and result["reason"] == "screen_incomplete"
     state = await owner.snapshot()
     assert state.discovery_head is None and state.pending_count == 0 and state.reserved_today == 2
+
+
+@pytest.mark.asyncio
+async def test_verified_stock_export_reconstructs_heads_without_new_calls_or_ledger_events(worker):
+    from trading_bot.research.stock_dashboard import present_stock_dashboard
+    from trading_bot.runtime.stock_dashboard_export import (
+        StockDashboardReader,
+        export_stock_dashboard,
+    )
+
+    _, root, clock, scenario, cycle, owner, loaded = worker
+    assert (await cycle())["status"] == "succeeded"
+    destination = root.parent / "dashboard-export"
+    destination.mkdir(mode=0o700)
+    before = await owner.snapshot()
+    publication = await export_stock_dashboard(
+        loaded=loaded,
+        code_hash=CODE,
+        factory=owner._factory,
+        archive_dir=root,
+        export_dir=destination,
+        clock=clock.now,
+    )
+    projection = StockDashboardReader(root=destination, loaded=loaded)()
+    view = present_stock_dashboard(projection, now=clock.now(), maximum_age_seconds=7200)
+    assert publication["status"] == "published"
+    assert projection.state_sha256 == before.state_hash
+    assert view["opportunities"][0]["symbol"] == "ALFA"
+    assert view["opportunities"][0]["dossier_as_of"] is None
+    assert view["stock_worker"]["reserved_today"] == 2
+    assert len(scenario.calls) == 2
+    assert (await owner.snapshot()).state_hash == before.state_hash
+    body = (destination / "stock-research.json").read_text()
+    assert all(
+        text not in body
+        for text in ("fictional-ALFA", "filters_applied", "instrument_id", "payload")
+    )
+    clock.current += timedelta(hours=1)
+    assert (await cycle())["phase"] == "enrichment"
+    await export_stock_dashboard(
+        loaded=loaded,
+        code_hash=CODE,
+        factory=owner._factory,
+        archive_dir=root,
+        export_dir=destination,
+        clock=clock.now,
+    )
+    projection = StockDashboardReader(root=destination, loaded=loaded)()
+    view = present_stock_dashboard(projection, now=clock.now(), maximum_age_seconds=7200)
+    assert view["opportunities"][0]["dossier_as_of"] == clock.now().isoformat()
+    assert "financials_absent" in view["opportunities"][0]["gaps"]
+    assert projection.worker.reserved_today == 9
+    assert len(scenario.calls) == 9
+
+
+@pytest.mark.asyncio
+async def test_blocked_capture_export_keeps_prior_evidence_with_original_times(worker):
+    from trading_bot.research.stock_dashboard import present_stock_dashboard
+    from trading_bot.runtime.stock_dashboard_export import (
+        StockDashboardReader,
+        export_stock_dashboard,
+    )
+
+    _, root, clock, scenario, cycle, owner, loaded = worker
+    await cycle()
+    first = clock.now()
+    clock.current += timedelta(hours=1)
+    scenario.fail = "auth"
+    assert (await cycle())["reason"] == "auth_unavailable"
+    destination = root.parent / "dashboard-export"
+    destination.mkdir(mode=0o700)
+    await export_stock_dashboard(
+        loaded=loaded,
+        code_hash=CODE,
+        factory=owner._factory,
+        archive_dir=root,
+        export_dir=destination,
+        clock=clock.now,
+    )
+    view = present_stock_dashboard(
+        StockDashboardReader(root=destination, loaded=loaded)(),
+        now=clock.now(),
+        maximum_age_seconds=7200,
+    )
+    assert view["stock_worker"]["status"] == "blocked"
+    assert view["stock_worker"]["reason"] == "auth_unavailable"
+    assert view["stock_worker"]["reserved_today"] == 9
+    assert view["opportunities"][0]["available_at"] == first.isoformat()
+    assert len(scenario.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_export_rejects_tampered_cache_without_fabricating_an_empty_success(worker):
+    from trading_bot.runtime.stock_dashboard_export import (
+        StockDashboardExportError,
+        export_stock_dashboard,
+    )
+
+    _, root, clock, scenario, cycle, owner, loaded = worker
+    await cycle()
+    destination = root.parent / "dashboard-export"
+    destination.mkdir(mode=0o700)
+    state = await owner.snapshot()
+    file = root / (state.discovery_head.report_sha256 + ".stock-screen.json")
+    file.write_bytes(file.read_bytes() + b" ")
+    with pytest.raises(StockDashboardExportError):
+        await export_stock_dashboard(
+            loaded=loaded,
+            code_hash=CODE,
+            factory=owner._factory,
+            archive_dir=root,
+            export_dir=destination,
+            clock=clock.now,
+        )
+    assert not (destination / "stock-research.json").exists()
+    assert len(scenario.calls) == 2
+    assert (await owner.snapshot()).state_hash == state.state_hash
+
+
+@pytest.mark.asyncio
+async def test_export_directory_must_be_separate_from_raw_archive(worker):
+    from trading_bot.runtime.stock_dashboard_export import (
+        StockDashboardExportError,
+        export_stock_dashboard,
+    )
+
+    _, root, clock, scenario, cycle, owner, loaded = worker
+    await cycle()
+    with pytest.raises(StockDashboardExportError):
+        await export_stock_dashboard(
+            loaded=loaded,
+            code_hash=CODE,
+            factory=owner._factory,
+            archive_dir=root,
+            export_dir=root,
+            clock=clock.now,
+        )
+    assert not (root / "stock-research.json").exists()
+    assert len(scenario.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_export_budget_stays_bound_to_snapshot_utc_day_across_midnight(worker, monkeypatch):
+    from trading_bot.research.stock_dashboard import present_stock_dashboard
+    from trading_bot.runtime.stock_dashboard_export import (
+        StockDashboardReader,
+        export_stock_dashboard,
+    )
+
+    module, root, clock, _, cycle, owner, loaded = worker
+    clock.current = NOW.replace(hour=23)
+    await cycle()
+    clock.current = NOW.replace(hour=23, minute=59, second=59)
+    snapshot_time = clock.now()
+    snapshot = module.SqlStockResearchJobs.snapshot
+
+    async def crossing(self):
+        state = await snapshot(self)
+        clock.current += timedelta(seconds=1)
+        return state
+
+    destination = root.parent / "dashboard-export"
+    destination.mkdir(mode=0o700)
+    monkeypatch.setattr(module.SqlStockResearchJobs, "snapshot", crossing)
+    await export_stock_dashboard(
+        loaded=loaded,
+        code_hash=CODE,
+        factory=owner._factory,
+        archive_dir=root,
+        export_dir=destination,
+        clock=clock.now,
+    )
+    projection = StockDashboardReader(root=destination, loaded=loaded)()
+    assert projection.generated_at == snapshot_time
+    assert projection.worker.reserved_today == 2
+    view = present_stock_dashboard(projection, now=clock.now(), maximum_age_seconds=7200)
+    assert view["stock_worker"]["reason"] == "budget_day_changed"
+    assert view["stock_worker"]["reserved_today"] is None

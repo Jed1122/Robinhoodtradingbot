@@ -255,6 +255,9 @@ def main() -> None:
     serve.add_argument("--container-loopback-publish", action="store_true")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--dashboard-dir", type=Path, default=Path("dashboard/dist"))
+    serve.add_argument(
+        "--stock-export-dir", type=Path, help="Separate read-only stock dashboard projection mount"
+    )
     args = parser.parse_args()
     try:
         _private_directory(args.state_dir)
@@ -317,12 +320,28 @@ def main() -> None:
         AdminBindPolicy.validate(args.host, args.container_loopback_publish)
         engine = create_engine(url)
         owner = HybridJournal(async_session_factory(engine), str(loaded.config_hash))
+        stock_reader = None
+        if args.stock_export_dir is not None:
+            from trading_bot.runtime.stock_dashboard_export import StockDashboardReader
+
+            root = args.config_root
+            stock_loaded = load_config(
+                root / "base.yaml",
+                root / "hybrid/paper.yaml",
+                root / "hybrid/safety-envelope.yaml",
+                os.environ,
+                hybrid_policy_path=root / "hybrid/policy.yaml",
+                stock_research_policy_path=root / "hybrid/stock-research.yaml",
+                stock_worker_policy_path=root / "hybrid/stock-worker.yaml",
+            )
+            stock_reader = StockDashboardReader(root=args.stock_export_dir, loaded=stock_loaded)
         app = build_hybrid_app(
             owner,
             cast(HybridAppConfig, loaded.config).hybrid,
             read_token(token_path),
             static_dir=args.dashboard_dir,
             run_worker=True,
+            stock_research_reader=stock_reader,
         )
         uvicorn.run(
             app,

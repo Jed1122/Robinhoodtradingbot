@@ -109,6 +109,36 @@ passed. Bandit, offline lock and diff
 checks also passed. These source/fixture checks remain distinct from actual official refresh and
 schema-reuse evidence. No complete all-repository test pass is claimed for this revision.
 
+## Later local worker and dashboard checkpoint
+
+The one-shot worker at 32f4de3 completed one additional authorized discovery with
+exactly 17 planned, attempted and successful stock-data calls. It reused the dedicated
+saved grant without a browser callback and invoked no account or order tools. Manifest
+SHA-256 `a300b94bbe13a67524e6ee38034487b3199e5373c1e7c59d8f7595157e72d6af`
+and report SHA-256
+`49b84c53040a9546f782602444dd884cf8f103d65a65eff55ecf78abb09a63b1`
+were rehashed and recomputed at the original cutoff. Sixteen complete observed query
+groups yielded 1,472 candidates, 1,058 scorable companies and ten research priorities.
+The canonical configuration hash was
+`deff9b8bdaadb5765dfe79dd4b2f0f091f1a857cb81cd57594be3b3922920d10`.
+An immediate process restart returned `not_due`, with no new claim or capture.
+This adds 17 calls to the earlier 53; it does not replace those source checkpoints.
+No company or strategy became investment-eligible.
+
+The frozen 7cd644d baseline completed with 11,407 passed, 33 optional skips, one warning
+and 88.55% combined branch coverage. The optional native-data, QuantLib and local-age
+skips are not native or encrypted-backup evidence. Subsequent worker/CLI/persistence
+integration at 32f4de3 passed 455 central tests; that older full run does not certify
+the later source changes.
+
+The bounded stock-dashboard backend then passed 417 central tests with 93.63% combined
+branch coverage, independent review, Ruff, strict mypy, Bandit and lock checks. The
+integrated stock UI passed 57 tests and a production frontend build. A fictional local
+projection traversed the real private publisher, file reader, authenticated API and
+built UI on desktop and mobile without browser errors, warnings or page overflow.
+No provider or credential operation was part of this dashboard check. The
+[export contract](stock-dashboard-export.md) describes the implemented boundary.
+
 ## Outstanding work
 
 The research acquisition/cache scheduler is not yet a verified persistent background
