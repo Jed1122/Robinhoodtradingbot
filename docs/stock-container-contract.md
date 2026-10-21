@@ -126,7 +126,7 @@ and hardening compatibility remain unverified. The official versioned schema sup
 request property is not hardening evidence. A future launcher may use that documented
 Engine API over the fixed local Unix socket while retaining Compose's whole resolved
 model for release identity. The separate bounded GET-only reader below implements
-metadata transport; no Engine write or launcher operation is implemented here.
+metadata transport; the separate scoped mutation library below is not a launcher.
 [Official API 1.52 schema](https://raw.githubusercontent.com/moby/moby/api/v1.52.0/api/swagger.yaml).
 
 The initial local source profile required API 1.55 and correctly rejected the observed
@@ -305,6 +305,42 @@ attempt directories fit the bounded inventory; an explicit completed-receipt
 retention procedure is required before that limit, without deleting active receipts
 or replacing namespace/lock anchors. Public functions fix root UID and production
 path; only private filesystem-test helpers accept a fictional root/owner.
+
+### Scoped create/start transport
+
+`infra/hybrid/stock_engine_mutation.py` is an uncomposed root-only library, with no
+CLI, scheduler or service caller. Production operations require the fixed Linux
+UID-0 operations store and the existing fixed-socket/root-peer connector. The
+GET-only reader retains its separate closed routes and 200-response policy.
+
+`create_worker(store, release, image)` consumes the still-open owning store's one-use
+fresh create claim, matches retained release/image/config/Compose/duration identities
+and derives the name and request through `worker_request`. Recovered, closed or
+terminal attempts cannot create; constructing another transport does not reset the
+store latch. A valid 201 response returns only a checked CID acknowledgement. It
+does not record a verified CID or start anything. Actual inspection and
+`record_created` remain separate mandatory steps for the future supervisor.
+
+`start_worker(store)` invokes `prepare_start()` itself and derives the CID from its
+local result. There is no input route, body, CID or caller-created start fence. The
+closed shared exchange owns those same sequences even if called directly. Immediately
+before sending it rechecks the namespace, active identity, issued object, exact
+acknowledged receipt hashes, boot and unexpired monotonic deadline. A successful 204
+returns the fence for supervision; it does not mean the process exited or produced
+research. A second start preparation remains denied across transport objects.
+
+Each exchange has one absolute five-second I/O budget, including local preflight,
+connect, send and response. HTTP/1.0 close framing, 8192-byte headers and 1-MiB body
+caps are fixed. Create requires a complete bounded 201 JSON acknowledgement without
+warnings; start requires 204 with no response bytes, including a delayed extra byte.
+Duplicate/malformed headers, transfer encoding, unexpected statuses, partial sends
+and timeouts deny with `stock_engine_mutation_unavailable`, without daemon diagnostics.
+No outcome refunds a consumed claim or retries a request. In particular, 304 is not
+a fresh-start acknowledgement and a reader error is not proof of 404 absence.
+
+No native mutation has been exercised. Signal/stop/removal, ambiguous-outcome recovery,
+actual ownership observations, the trusted release producer, deadline supervisor and
+paused timer are still required before this library can be composed into a worker.
 
 Use a root-owned standard-library launcher, fixed local Docker Unix socket and
 scrubbed environment; do not inherit a remote context, proxy, user env file or shell

@@ -348,7 +348,11 @@ class AttemptStore:
         self._closed = False
         self._used_begin = False
         self._owned_attempt: str | None = None
+        self._create_issued = False
+        self._create_claim: Attempt | None = None
         self._start_issued = False
+        self._start_fence: StartFence | None = None
+        self._start_acknowledged: str | None = None
         self._cid_record_issued = False
         self._created_acknowledged: str | None = None
         self._terminal_acknowledged: tuple[str, str] | None = None
@@ -587,10 +591,14 @@ class AttemptStore:
                 _deny()
             self._validate()
             self._owned_attempt = attempt_id
+            self._create_issued = False
+            self._create_claim = None
             self._created_acknowledged = None
             self._terminal_acknowledged = None
             self._cid_record_issued = False
             self._start_issued = False
+            self._start_fence = None
+            self._start_acknowledged = None
             return result
 
     def _owned(self) -> Attempt:
@@ -601,6 +609,58 @@ class AttemptStore:
         with self._attempt_directory(active.attempt_id) as directory:
             _require(not _exists(directory, "stopped.json"))
         return active
+
+    def claim_create(self, release: StockRelease) -> Attempt:
+        """Consume one fresh owner's create claim, including on validation failure."""
+        with _sanitized():
+            issued = self._create_issued
+            self._create_issued = True
+            self._create_claim = None
+            _require(not issued)
+            attempt = self._owned()
+            _require(type(release) is StockRelease)
+            _require(
+                _exact(
+                    [
+                        release.release_id,
+                        release.image_digest,
+                        release.config_hash,
+                        release.compose_sha256,
+                        release.max_run_seconds,
+                    ],
+                    [
+                        attempt.release_id,
+                        attempt.image_digest,
+                        attempt.config_hash,
+                        attempt.compose_sha256,
+                        attempt.max_run_seconds,
+                    ],
+                )
+            )
+            self._create_claim = attempt
+            self.check_create_claim(attempt)
+            return attempt
+
+    def check_create_claim(self, claim: Attempt) -> None:
+        """Recheck supplied claim consistency; this performs no dispatch itself."""
+        with _sanitized():
+            _require(type(claim) is Attempt and self._create_claim is claim)
+            attempt = self._owned()
+            _require(
+                attempt == claim
+                and self._create_issued
+                and not self._cid_record_issued
+                and not self._start_issued
+            )
+            with self._attempt_directory(attempt.attempt_id) as directory:
+                _require(set(os.listdir(directory)) == {"intent.json"})
+            self._validate()
+            clock = _clock()
+            _check_clock(clock)
+            _require(
+                clock["boot_id"] == attempt.boot_id
+                and clock["monotonic_ns"] >= attempt.created_monotonic_ns
+            )
 
     @staticmethod
     def _base(
@@ -619,6 +679,7 @@ class AttemptStore:
 
     def record_created(self, verified: CreatedContainer) -> None:
         with _sanitized():
+            self._create_claim = None
             attempt = self._owned()
             _require(not self._cid_record_issued)
             self._cid_record_issued = True
@@ -654,6 +715,8 @@ class AttemptStore:
 
     def prepare_start(self) -> StartFence:
         with _sanitized():
+            self._start_fence = None
+            self._start_acknowledged = None
             attempt = self._owned()
             _require(not self._start_issued and self._created_acknowledged is not None)
             with self._attempt_directory(attempt.attempt_id) as directory:
@@ -674,7 +737,7 @@ class AttemptStore:
                     "term_deadline_ns": deadline,
                 }
                 self._start_issued = True
-                _write_new(directory, "start.json", value, self._uid)
+                digest = _write_new(directory, "start.json", value, self._uid)
             self._validate()
             now = _clock()
             _check_clock(now)
@@ -682,16 +745,57 @@ class AttemptStore:
                 now["boot_id"] == attempt.boot_id
                 and clock["monotonic_ns"] <= now["monotonic_ns"] < deadline
             )
-            return StartFence(
+            fence = StartFence(
                 attempt.attempt_id,
                 created["container_id"],
                 attempt.boot_id,
                 clock["monotonic_ns"],
                 deadline,
             )
+            self._start_acknowledged = digest
+            self._start_fence = fence
+            return fence
+
+    def check_start_fence(self, fence: StartFence) -> None:
+        """Recheck the exact issued fence and acknowledged bytes before dispatch."""
+        with _sanitized():
+            _require(type(fence) is StartFence and self._start_fence is fence)
+            attempt = self._owned()
+            _require(
+                self._start_issued
+                and self._created_acknowledged is not None
+                and self._start_acknowledged is not None
+                and fence.attempt_id == attempt.attempt_id
+            )
+            with self._attempt_directory(attempt.attempt_id) as directory:
+                created = self._created_and_start(directory, attempt)
+                _require(created is not None)
+                start = self._receipt(directory, "start.json", attempt)
+                _require(
+                    hashlib.sha256(_canonical(created)).hexdigest()
+                    == self._created_acknowledged
+                    and hashlib.sha256(_canonical(start)).hexdigest()
+                    == self._start_acknowledged
+                )
+                _require(
+                    start["container_id"] == fence.container_id
+                    and start["boot_id"] == fence.boot_id
+                    and start["monotonic_ns"] == fence.start_monotonic_ns
+                    and start["term_deadline_ns"] == fence.term_deadline_ns
+                )
+            self._validate()
+            clock = _clock()
+            _check_clock(clock)
+            _require(
+                clock["boot_id"] == fence.boot_id
+                and fence.start_monotonic_ns <= clock["monotonic_ns"] < fence.term_deadline_ns
+            )
 
     def record_stopped(self, raw: bytes) -> dict[str, Any]:
         with _sanitized():
+            self._create_claim = None
+            self._start_fence = None
+            self._start_acknowledged = None
             self._created_acknowledged = None
             self._terminal_acknowledged = None
             self._start_issued = True

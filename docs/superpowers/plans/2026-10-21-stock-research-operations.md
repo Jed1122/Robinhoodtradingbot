@@ -190,6 +190,29 @@ cleared the final entry-order correction at e485be8.
 Production initialization,
 write transport, controller/deadline handling and native recovery remain pending.
 
+Task 2 next increment: add a separate fixed-socket mutation library, without a CLI
+or service composition. Its closed shared exchange owns both entry sequences:
+`create_worker(store, release, image)` consumes a fresh create claim in the still-open
+owning store, then derives the fixed name/body; `start_worker(store)` itself invokes
+the existing durable `prepare_start()` and derives its CID. Neither accepts a caller
+route, body, CID or start fence. A second transport cannot renew either store latch.
+Recheck namespace, active identity, unchanged acknowledged receipts, boot and deadline
+immediately before sending. Keep the GET-only reader unchanged. Use separate strict
+201/complete-JSON create and 204/empty-body start parsing with one absolute I/O budget;
+unexpected status, partial send, timeout or malformed response never refunds a claim.
+No claim, acknowledgement or internally consistent fixture establishes native
+provenance, stopped state, research success or authority to launch a production worker.
+Root implements and reviews the store and transport; only fictional sockets/files
+are used until supervision, release production and native checks are complete.
+
+This increment is now local source: 17 store-dispatch regressions were observed RED
+before adding the fresh create claim and final receipt/fence checks; the missing
+mutation implementation was separately observed RED. The corrected store/transport
+passed 144 fictional filesystem/socket tests, with 100% combined statement/branch
+coverage over the mutation library and 98.93% across both modules. All 571 deployment
+regressions passed with four optional age skips. Independent source review is pending;
+no native mutation or launcher composition is established.
+
 ## Task 3: Supervised timer, paused installation and native checks
 
 Add stock-specific oneshot service/timer files, fixture tests and installation procedure.

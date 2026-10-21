@@ -713,3 +713,103 @@ def test_initial_stop_validation_failure_revokes_prior_session_acknowledgements(
                 active_store.begin(policy)
             else:
                 active_store.prepare_start()
+
+
+def test_create_claim_is_owned_one_use_and_not_recovery_authority(operations, policy):
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        claim = store.claim_create(policy)
+        assert claim == intent
+        store.check_create_claim(claim)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.check_create_claim(replace(claim))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(policy)
+    with opened(operations) as recovered:
+        assert recovered.active() == intent
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovered.claim_create(policy)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"release_id": "a" * 64},
+        {"image_digest": "sha256:" + "a" * 64},
+        {"config_hash": "a" * 64},
+        {"compose_sha256": "a" * 64},
+        {"max_run_seconds": 449},
+    ],
+)
+def test_create_claim_checks_retained_release_and_burns_failure(operations, policy, changes):
+    with opened(operations) as store:
+        store.begin(policy)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(replace(policy, **changes))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(policy)
+
+
+def test_create_claim_is_consumed_even_if_initial_validation_fails(operations, policy, monkeypatch):
+    api, _, _ = operations
+    with opened(operations) as store:
+        store.begin(policy)
+        with monkeypatch.context() as scoped:
+            scoped.setattr(api.os, "fstat", lambda _fd: (_ for _ in ()).throw(OSError("fictional")))
+            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+                store.claim_create(policy)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(policy)
+
+
+@pytest.mark.parametrize("phase", ["created", "start", "stopped"])
+def test_create_claim_cannot_follow_existing_execution_receipts(operations, policy, phase):
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        if phase == "start":
+            store.prepare_start()
+        if phase == "stopped":
+            store.record_stopped(encoded(stopped(intent)))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(policy)
+
+
+@pytest.mark.parametrize("change", ["boot", "rollback", "receipt"])
+def test_final_create_check_rejects_changed_state(operations, policy, change):
+    _, root, clock = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        claim = store.claim_create(policy)
+        if change == "boot":
+            clock["boot_id"] = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        elif change == "rollback":
+            clock["monotonic_ns"] -= 1
+        else:
+            store.record_created(created(intent))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.check_create_claim(claim)
+        assert (root / intent.attempt_id / "intent.json").is_file()
+
+
+@pytest.mark.parametrize("change", ["copy", "clock", "start_bytes", "stopped"])
+def test_final_start_check_requires_issued_unchanged_unexpired_fence(operations, policy, change):
+    _, root, clock = operations
+    with opened(operations) as store:
+        intent = store.begin(policy)
+        store.record_created(created(intent))
+        fence = store.prepare_start()
+        store.check_start_fence(fence)
+        if change == "copy":
+            fence = replace(fence)
+        elif change == "clock":
+            clock["monotonic_ns"] = fence.term_deadline_ns
+        elif change == "start_bytes":
+            path = root / intent.attempt_id / "start.json"
+            value = json.loads(path.read_bytes())
+            value["utc"] = "2026-10-21T21:00:01+00:00"
+            path.write_bytes(encoded(value))
+        else:
+            store.record_stopped(encoded(stopped(intent)))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.check_start_fence(fence)

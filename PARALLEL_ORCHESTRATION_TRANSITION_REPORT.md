@@ -2,6 +2,14 @@
 
 ## Individual-stock research checkpoint — October 21
 
+The corrected full baseline at a63a475 finished with 11,810 passed, 33 optional
+skips, one dependency deprecation warning and 88.77% combined branch coverage in
+4,258.53 seconds. Reviewed local integration advanced the primary to f04a63f;
+its 641 central deployment/reconciliation/adapter tests passed with four optional
+age skips, plus Ruff, strict mypy (445 files), expanded Bandit and lock checks.
+Primary is now frozen at f04a63f for a new full run. Later dispatch-source work
+remains separate and is not covered by either baseline result.
+
 The current investment workstream prioritizes individual companies. A local one-shot
 research owner now composes complete scanner plans, numerical screening, company
 dossiers, durable call reservations, cache verification and a shared private archive
@@ -112,6 +120,16 @@ before validation. The store now passes 72 filesystem tests at 98.57% combined
 statement/branch coverage and 499 deployment tests with four optional age skips.
 Independent review cleared the final entry-order correction at e485be8. No production
 operations namespace, Docker writer, controller or native recovery is established.
+
+The next local increment adds an uncomposed create/start mutation library and
+store-owned fresh-create claim/final dispatch checks. Its shared exchange derives
+all routes/bodies and owns claim/fence issuance, including when called directly;
+another transport cannot replay a consumed permission. It passed 144 fictional
+tests at 100% combined coverage for the mutation library (98.93% across it and the
+attempt store), plus 571 deployment tests with four optional age skips. Independent
+review is pending. No CLI/service imports it and no native mutation occurred.
+Signal/stop/removal, actual ownership/recovery, supervision and deployment remain
+unimplemented or unverified.
 
 A separate fictional audit reproduced false-clean broker-neutral reconciliation for
 wrong-scope account snapshots/rows, changed position economics, changed executable
