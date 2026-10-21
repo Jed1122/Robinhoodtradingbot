@@ -76,16 +76,35 @@ async def replay(
     quotes: dict[str, Quote] = {}
     state = initial
     digest = hashlib.sha256(scenario.model_dump_json().encode()).hexdigest()
+    next_index = 0
     for index, step in enumerate(scenario.steps):
+        if index < next_index:
+            continue
+        request: dict[str, object] = {"scenario_hash": digest, "step": index}
         if isinstance(step, QuoteStep):
-            if step.quote.as_of > step.at:
-                raise ValueError("future quote cannot enter scenario")
-            quotes[step.quote.symbol] = step.quote
+            # Consecutive simultaneous quotes form one observation. Never value a
+            # restored multi-symbol account from the first incomplete fragment.
+            batch: dict[str, Quote] = {}
+            next_index = index
+            while next_index < len(scenario.steps):
+                candidate = scenario.steps[next_index]
+                if not isinstance(candidate, QuoteStep) or candidate.at != step.at:
+                    break
+                if candidate.quote.as_of > candidate.at:
+                    raise ValueError("future quote cannot enter scenario")
+                symbol = candidate.quote.symbol
+                if symbol in batch and batch[symbol] != candidate.quote:
+                    raise ValueError("conflicting simultaneous quote")
+                batch[symbol] = candidate.quote
+                next_index += 1
+            quotes.update(batch)
+            if next_index > index + 1:
+                # Existing pre-batch journal requests conflict rather than silently
+                # adopting a different transition under an old idempotency key.
+                request["quote_steps"] = list(range(index, next_index))
 
         def transition(account: Account, event: Step = step) -> Account:
             if isinstance(event, QuoteStep):
-                if account.valuation_at is not None and event.at <= account.valuation_at:
-                    return account
                 return mark_account(account, quotes, event.at)
             if isinstance(event, OrderStep):
                 if event.order.symbol not in quotes:
@@ -109,7 +128,7 @@ async def replay(
             await owner.change(
                 f"scenario:{digest}:{index}",
                 kind,
-                {"scenario_hash": digest, "step": index},
+                request,
                 transition,
             )
             if owner is not None

@@ -72,3 +72,36 @@ async def test_configuration_identity_cannot_adopt_another_account(journal):
     await owner.change("g", "initialize", {}, lambda _: Account())
     with pytest.raises(ValueError):
         await HybridJournal(factory, "b" * 64).read()
+
+
+async def test_batched_quotes_survive_journal_restart_and_duplicate_replay(journal):
+    from datetime import UTC, datetime
+
+    from trading_bot.config.hybrid import HybridSettings
+    from trading_bot.hybrid.scenario import Scenario, replay
+
+    owner, factory = journal
+    await owner.change("genesis", "initialize", {}, lambda _: Account())
+    now = datetime(2026, 10, 21, 14, tzinfo=UTC)
+    scenario = Scenario.model_validate(
+        {
+            "steps": [
+                {
+                    "kind": "quote",
+                    "at": now,
+                    "quote": {
+                        "symbol": symbol,
+                        "bid": "100",
+                        "ask": "100",
+                        "as_of": now,
+                    },
+                }
+                for symbol in ("AAA", "BBB")
+            ]
+        }
+    )
+    first = await replay(scenario, HybridSettings(), await owner.read(), owner=owner)
+    restarted = HybridJournal(factory, "a" * 64)
+    second = await replay(scenario, HybridSettings(), await restarted.read(), owner=restarted)
+    assert first == second
+    assert len(second.marks) == 2

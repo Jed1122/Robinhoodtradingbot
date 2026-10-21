@@ -76,3 +76,64 @@ def test_scenario_rejects_time_travel():
                 ]
             }
         )
+
+
+async def test_restored_multi_symbol_quotes_are_valued_as_one_complete_snapshot():
+    from trading_bot.hybrid.models import Lot
+
+    initial = Account(
+        cash=Decimal("800"),
+        lots=tuple(
+            Lot(
+                id=symbol,
+                symbol=symbol,
+                sleeve="long_term",
+                quantity=Decimal(1),
+                basis=Decimal(100),
+                acquired_at=NOW - timedelta(days=1),
+            )
+            for symbol in ("AAA", "BBB")
+        ),
+    )
+    scenario = Scenario.model_validate(
+        {
+            "steps": [
+                {
+                    "kind": "quote",
+                    "at": NOW,
+                    "quote": {
+                        "symbol": symbol,
+                        "bid": price,
+                        "ask": price,
+                        "as_of": NOW,
+                    },
+                }
+                for symbol, price in (("AAA", "110"), ("BBB", "120"))
+            ]
+        }
+    )
+    result = await replay(scenario, HybridSettings(), initial)
+    assert result.last_equity == Decimal("1030")
+    assert {mark.symbol for mark in result.marks} == {"AAA", "BBB"}
+
+
+async def test_conflicting_same_time_quote_batch_rejects_without_valuation():
+    scenario = Scenario.model_validate(
+        {
+            "steps": [
+                {
+                    "kind": "quote",
+                    "at": NOW,
+                    "quote": {
+                        "symbol": "AAA",
+                        "bid": price,
+                        "ask": price,
+                        "as_of": NOW,
+                    },
+                }
+                for price in ("110", "120")
+            ]
+        }
+    )
+    with pytest.raises(ValueError, match="conflicting simultaneous"):
+        await replay(scenario, HybridSettings(), Account())
