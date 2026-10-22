@@ -56,3 +56,12 @@ def test_ci_configuration_checks_the_current_stock_composition() -> None:
     assert "infra/digitalocean" not in commands
     assert "docker compose -f compose.stock-research.yml config --quiet" in commands
     assert "infra/hybrid/deploy-remote.sh" in commands
+
+
+def test_ci_security_scan_includes_current_stock_host_modules() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    commands = [step["run"] for step in workflow["jobs"]["bandit"]["steps"] if "run" in step]
+    assert (
+        "uv run bandit -c pyproject.toml -r src infra/hybrid/stock_*.py "
+        "scripts/check_critical_branch_coverage.py"
+    ) in commands
