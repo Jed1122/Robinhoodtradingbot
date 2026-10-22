@@ -76,3 +76,33 @@ replacement and write/fsync/close failures. Native image/isolation/lifecycle pro
 paused installation, OAuth lifecycle, backups/restore and scheduled acquisition remain
 later operational gates. Data, strategy and nonempty broker reconciliation remain
 independent gates; no test or release promotes live trading.
+
+## Public build feasibility and root disposition
+
+For the observed daemon version, the fixed Engine build route accepts an uploaded
+archive and explicitly selects builder version1or2. Streamed errors can follow HTTP200,
+so neither that status nor an intermediate image ID proves build success. This is a
+candidate for a producer-owned causal build, subject to complete stream validation
+and exact resulting-image inspection.
+[Moby29.1.3 build route](https://raw.githubusercontent.com/moby/moby/docker-v29.1.3/daemon/server/router/build/build_routes.go).
+
+`pull=false` selects prefer-local behavior rather than a general registry prohibition.
+An offline policy therefore needs independent enforcement. It is not a requirement
+to invent an offline build subsystem: the existing Dockerfile installs locked
+dependencies, and a coherent build policy can explicitly describe its public base-image
+and dependency access. The inert probe's network-disabled policy remains unchanged.
+[Image-source selection](https://raw.githubusercontent.com/moby/moby/docker-v29.1.3/daemon/builder/dockerfile/imagecontext.go).
+
+The Docker CLI build path adds client configuration, credential collection, proxy
+arguments and iidfile behavior. A fixed raw Engine operation is the smaller client
+credential boundary. It still requires its own bounded request/response and ambiguity
+policy; a client timeout cannot establish physical daemon termination.
+[Docker CLI29.1.3 build implementation](https://raw.githubusercontent.com/docker/cli/v29.1.3/cli/command/image/build.go).
+
+Root selects a producer-owned build as the direction for the next written design:
+no separately trusted archive-to-image receipt exists, and a publisher accepting
+unrelated supplied identities would leave the actual requirement unmet. Freeze
+explicit build-network access and terminal/ambiguous-build handling before code.
+Do not add a claimed no-registry guarantee from a flag, widen the probe transport,
+retry an ambiguous build, or publish a usable release after a missed cap. No native
+build, registry operation or source upload was performed by this audit.
