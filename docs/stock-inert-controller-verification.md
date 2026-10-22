@@ -28,24 +28,30 @@ single-use signal fences, STOP persistence and cleanup-only STOP reconfirmation.
 Output/removal/terminal and closed-predecessor absence writers are implemented with
 exact session evidence identity and crash/clock/durability tests. The actual transport
 must still establish scoped HTTP status/body/EOF before minting private evidence;
-the tests use fictional wire evidence. Fixed Engine transports, supervision/CLI,
-whole-increment review and this controller's actual full regression are pending.
+the tests use fictional wire evidence. Fixed Engine operations now implement metadata,
+CREATE/CID, strict prestart, START, scoped polling/discovery/signals, finite logs and
+non-force retirement. Supervision/CLI, whole-increment review and this controller's
+actual full regression are pending.
 
 ## Actual verification
 
-The current local deployment/architecture regression passed **2,800 tests in42.03
+The current local deployment/architecture regression passed **2,863 tests in48.99
 seconds**, with four optional local-age checks skipped. The terminal-writer group
-passed94 checks in7.25seconds. Before its final19additional cases, the store regression
-passed997checks at100% statement/branch coverage; the observer separately reached
+passed94 checks in7.25seconds. Task2's final acceptance passed1,016store checks
+in16.98seconds at100% statement/branch coverage; the observer separately reached
 100% in its611-check regression. These are fictional filesystem/wire observations,
-not native Docker or broker evidence. Task2's final acceptance rerun is next.
+not native Docker or broker evidence. Tasks1and2 are complete locally. The63transport
+checks passed in3.21seconds with100% statement/branch coverage over the new transport;
+Task3's final acceptance rerun is next. These include partial-send/disconnection and
+complete Content-Length without final EOF, one shared signal-exchange budget and
+no retry after ambiguous CREATE/START. Existing worker transport files are unchanged.
 
 The127-predecessor successor-admission test used an actual advancing local monotonic
 clock and completed its observed setup in2.248seconds without extending the20second
 setup or5secondCREATE cap. This local fictional-history test does not qualify host
 capacity or native exchange timing.
 
-Ruff passed. Strict mypy passed458 source files including the stock host modules.
+Ruff passed. Strict mypy passed459 source files including the stock host modules.
 The dependency lock check and diff check passed. Bandit over src plus the stock
 host modules reported no findings. The broader scan of every infra/hybrid script
 reported12 inherited Low findings in unchanged prepare.py/watchdog.py; these were
@@ -66,8 +72,8 @@ certify these later controller changes.
 
 ## Next required work
 
-Complete Task2's final acceptance rerun, then implement the fixed bounded transports
-and controller, obtain one fresh whole-increment review and run
+Complete Task3's acceptance rerun, implement controller supervision/CLI, then obtain
+one fresh whole-increment review and run
 revision-specific integrated checks. Preserve the running primary full unchanged.
 
 Only afterward perform an actual credential-free intended-host probe. Source/image

@@ -183,8 +183,9 @@ Filesystem primitives do not assert transport provenance or durability merely fr
 readable bytes. They sanitize all operational failures and never repair a partial
 namespace. The namespace opener now validates complete bounded lineage and original artifacts;
 setup/CREATE/CID/prestart/START and cleanup/STOP/output/retirement/closed writers
-and fences are implemented locally. Fixed native transports and the controller
-remain incomplete. No runnable controller uses this store yet.
+and fences are implemented locally. Fixed transport operations are implemented and
+tested with socket pairs; actual native behavior remains unverified. No runnable
+controller uses this store yet.
 
 Receipt field spellings are frozen as follows (common fields above are implicit):
 
@@ -364,3 +365,25 @@ setup's original20second cap. begin requires that current acknowledgement for th
 closed entry. Copying tokens/evidence, reading old closed records or generic404 cannot
 admit a successor; no setup deadline is renewed. A closed no-CID abandonment requires
 fresh history durability but no daemon absence observation.
+
+## Fixed transport composition contract
+
+StockProbeEngine.begin_probe(store, image_digest, shutdown=None) owns one setup
+claim before its bounded actual version/image reads and, when required, one exact
+full-predecessor-CID404 observation. It persists original metadata through begin.
+create_probe owns prepare/claim/recheck, derives exact name/body from that stored
+intent, requires complete bounded201/EOF and retains actual original CREATE bytes.
+verify_created owns the full-CID GET and strict prestart acknowledgement. start_probe
+owns prepare/claim/recheck and sends one bodyless START, requiring closed empty204.
+All methods use fixed root store/socket/API checks, current shutdown state and
+original caps. Ambiguous transport never retries CREATE/START or manufactures ACK.
+The transport instance burns its one metadata/prestart read before connection;
+durable store flags separately prevent recreated instances from repeating writes.
+
+The private HTTP parser admits only exact expected status, unique valid ASCII headers,
+no transfer encoding, at most8KiB header, a route-specific body bound and final EOF.
+CREATE bodies are at most4KiB; metadata/inspection at most1MiB. The later finite
+logs path uses16KiB and requires multiplexed content type, including valid empty HTTP
+bodies which are then invalid probe output. Shared production-worker defaults and
+routes are unchanged; this dedicated parser composes only shared bounded socket/time
+primitives, avoiding expanded authority on existing worker transports.
