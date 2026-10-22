@@ -76,8 +76,16 @@ still apply. A failed export returns exit 2 and reports its status separately fr
 committed acquisition result.
 
 Add `--stock-export-dir /absolute/private/dashboard-export` to the existing
-`trading_bot.hybrid.cli serve` invocation. That opt-in reader uses the same canonical
-stock policy. Without it, existing dashboard behavior remains unchanged. Feed reads
+`trading_bot.hybrid.cli serve` invocation. `compose.hybrid.yml` supplies the fixed
+`--stock-export-dir /stock-exports` argument and mounts only the collector's
+`/var/lib/hybrid-stock-research/exports` directory there read-only. It never mounts the
+stock parent, raw archive, ledger, controls or OAuth store. Both services use UID/GID
+10001, preserving the owned 0700 directory and 0600 projection contract. The dedicated
+export directory must already exist; Compose cannot create it. Its actual native
+mount and ownership remain deployment-verification requirements.
+
+The opt-in reader uses the same canonical stock policy. Without the CLI option,
+existing dashboard behavior remains unchanged. Feed reads
 occur only after API authentication; health/readiness do not inspect the feed.
 The projection appears in both snapshot and control responses, without changing
 portfolio state, trade authorization or live readiness.

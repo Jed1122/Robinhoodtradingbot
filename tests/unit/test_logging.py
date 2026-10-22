@@ -1816,6 +1816,81 @@ def test_post_configuration_last_resort_uses_the_redacting_json_sink(
         logger.propagate = original_propagate
 
 
+@pytest.mark.parametrize("placement", ["propagating", "nonpropagating", "last_resort"])
+@pytest.mark.parametrize("displaced_hooks", [False, True])
+def test_late_exact_null_handler_preserves_noop_and_propagation_without_hooks(
+    capsys: pytest.CaptureFixture[str], placement: str, displaced_hooks: bool
+) -> None:
+    sentinel = "null-handler-fictional-secret"
+    SecretRegistry().register(sentinel)
+    configure_logging("INFO")
+    logger = stdlib_logging.getLogger("late-exact-null-handler")
+    handler = stdlib_logging.NullHandler()
+    assert type(handler) is stdlib_logging.NullHandler and handler.lock is None
+    calls: list[str] = []
+
+    def displaced(record: stdlib_logging.LogRecord) -> bool:
+        del record
+        calls.append("displaced")
+        raise AssertionError("exact NullHandler must remain a no-op")
+
+    if displaced_hooks:
+        handler.__dict__.update(handle=displaced, filter=displaced, emit=displaced)
+    logger.propagate = placement == "propagating"
+    if placement == "last_resort":
+        logger.handlers = []
+        stdlib_logging.lastResort = handler
+    else:
+        logger.handlers = [handler]
+
+    logger.error("ordinary event %s", sentinel)
+
+    assert calls == []
+    output = capsys.readouterr()
+    assert output.out == ""
+    if placement == "propagating":
+        assert "ordinary event" in json.loads(output.err)["event"]
+        assert sentinel not in output.err
+    else:
+        assert output.err == ""
+
+
+@pytest.mark.parametrize("last_resort", [False, True])
+def test_null_handler_subclass_keeps_sanitized_base_dispatch(last_resort: bool) -> None:
+    sentinel = "null-subclass-fictional-secret"
+    SecretRegistry().register(sentinel)
+    configure_logging("INFO")
+    captured: list[str] = []
+    hook_calls: list[str] = []
+
+    class RecordingNullHandler(stdlib_logging.NullHandler):
+        def createLock(self) -> None:
+            stdlib_logging.Handler.createLock(self)
+
+        def handle(self, record: stdlib_logging.LogRecord) -> bool:
+            del record
+            hook_calls.append("handle")
+            raise AssertionError("displaced handle must not run")
+
+        def emit(self, record: stdlib_logging.LogRecord) -> None:
+            captured.append(record.getMessage())
+
+    handler = RecordingNullHandler()
+    logger = stdlib_logging.getLogger("late-null-handler-subclass")
+    logger.propagate = False
+    if last_resort:
+        logger.handlers = []
+        stdlib_logging.lastResort = handler
+    else:
+        logger.handlers = [handler]
+
+    logger.error("ordinary event %s", sentinel)
+
+    assert hook_calls == []
+    assert len(captured) == 1 and "ordinary event" in captured[0]
+    assert sentinel not in captured[0]
+
+
 def test_configure_logging_fails_closed_without_validated_size_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

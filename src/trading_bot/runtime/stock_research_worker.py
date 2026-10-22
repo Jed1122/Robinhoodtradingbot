@@ -568,11 +568,20 @@ def _existing_private_ledger(path: Path) -> Iterator[int]:
 
 def load_stock_worker_configuration(root: Path) -> LoadedConfig:
     """One canonical graph for startup, resume and inert image policy observation."""
+    # Docker's inert safety flags are not policy overrides. Every other alias,
+    # spelling or value still reaches the loader's immutable-policy denial.
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not (
+            key in {"LIVE_TRADING_ENABLED", "PREDICTION_LIVE_ENABLED"} and value == "false"
+        )
+    }
     return load_config(
         root / "base.yaml",
         root / "hybrid/paper.yaml",
         root / "hybrid/safety-envelope.yaml",
-        os.environ,
+        environment,
         hybrid_policy_path=root / "hybrid/policy.yaml",
         stock_research_policy_path=root / "hybrid/stock-research.yaml",
         stock_worker_policy_path=root / "hybrid/stock-worker.yaml",

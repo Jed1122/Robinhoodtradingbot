@@ -18,11 +18,17 @@ services:
         target: /state
         bind:
           create_host_path: false
+      - type: bind
+        source: /var/lib/hybrid-stock-research/exports
+        target: /stock-exports
+        read_only: true
+        bind:
+          create_host_path: false
     tmpfs: ["/tmp:size=32m,mode=1777,noexec,nosuid,nodev"]
     environment:
       LIVE_TRADING_ENABLED: "false"
       PREDICTION_LIVE_ENABLED: "false"
-    command: ["--state-dir", "/state", "--config-root", "/app/configs", "serve", "--host", "0.0.0.0", "--container-loopback-publish", "--port", "8000", "--dashboard-dir", "/app/dashboard/dist"]
+    command: ["--state-dir", "/state", "--config-root", "/app/configs", "serve", "--host", "0.0.0.0", "--container-loopback-publish", "--port", "8000", "--dashboard-dir", "/app/dashboard/dist", "--stock-export-dir", "/stock-exports"]
     logging:
       driver: json-file
       options:

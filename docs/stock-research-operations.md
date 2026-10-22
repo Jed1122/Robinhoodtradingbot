@@ -16,6 +16,10 @@ control resume. It reports the full configuration hash, scan interval, run deadl
 source-age and call bounds, with `live_enabled=false`. It makes no code-identity,
 attestation, credential, database, control, SDK or provider operation. Invalid policy,
 missing files and an unsafe live environment override produce a fixed blocked result.
+The worker and inert configuration probe accept the Docker image's exact
+`LIVE_TRADING_ENABLED=false` and `PREDICTION_LIVE_ENABLED=false` flags without
+changing the canonical policy or its hash. Other values, spellings and nested
+configuration overrides remain blocked by the immutable-policy loader.
 No caller hash or activation argument exists.
 
 The output is a configuration observation, not executing-image attestation or authority

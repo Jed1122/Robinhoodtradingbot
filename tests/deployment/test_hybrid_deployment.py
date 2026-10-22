@@ -32,7 +32,14 @@ def test_isolated_compose_contract() -> None:
             "source": "/var/lib/hybrid-paper",
             "target": "/state",
             "bind": {"create_host_path": False},
-        }
+        },
+        {
+            "type": "bind",
+            "source": "/var/lib/hybrid-stock-research/exports",
+            "target": "/stock-exports",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
     ]
     assert service["environment"] == {
         "LIVE_TRADING_ENABLED": "false",
@@ -51,8 +58,33 @@ def test_isolated_compose_contract() -> None:
         "8000",
         "--dashboard-dir",
         "/app/dashboard/dist",
+        "--stock-export-dir",
+        "/stock-exports",
     ]
     assert "network_mode" not in service and "privileged" not in service
+
+
+def test_dashboard_reads_only_the_stock_worker_projection() -> None:
+    dashboard = yaml.safe_load((ROOT / "compose.hybrid.yml").read_text())["services"][
+        "hybrid-paper"
+    ]
+    worker = yaml.safe_load((ROOT / "compose.stock-research.yml").read_text())["services"][
+        "stock-research"
+    ]
+    worker_target = worker["command"][worker["command"].index("--export-dir") + 1]
+    reader_target = dashboard["command"][dashboard["command"].index("--stock-export-dir") + 1]
+    published = next(mount for mount in worker["volumes"] if mount["target"] == worker_target)
+    consumed = next(mount for mount in dashboard["volumes"] if mount["target"] == reader_target)
+    assert published["source"] == consumed["source"] == "/var/lib/hybrid-stock-research/exports"
+    assert consumed["read_only"] is True
+    assert consumed["bind"] == {"create_host_path": False}
+    # Private 0700/0600 projections require the same owner in each container.
+    assert dashboard["user"] == worker["user"] == "10001:10001"
+    # No stock ancestor, raw archive, controls, credential store or ledger is exposed.
+    assert {mount["source"] for mount in dashboard["volumes"]} == {
+        "/var/lib/hybrid-paper",
+        "/var/lib/hybrid-stock-research/exports",
+    }
 
 
 def test_image_context_and_remote_syntax() -> None:

@@ -77,6 +77,46 @@ def test_live_environment_override_cannot_be_presented_as_safe_configuration(mon
     assert result["status"] == "blocked" and result["live_enabled"] is False
 
 
+def test_container_false_safety_flags_preserve_the_immutable_policy(monkeypatch, capsys):
+    cli = module()
+    for key in ("LIVE_TRADING_ENABLED", "PREDICTION_LIVE_ENABLED"):
+        monkeypatch.delenv(key, raising=False)
+    assert cli.main(["--config-root", str(ROOT / "configs")]) == 0
+    expected = json.loads(capsys.readouterr().out)
+    monkeypatch.setenv("LIVE_TRADING_ENABLED", "false")
+    monkeypatch.setenv("PREDICTION_LIVE_ENABLED", "false")
+    assert cli.main(["--config-root", str(ROOT / "configs")]) == 0
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("LIVE_TRADING_ENABLED", "true"),
+        ("PREDICTION_LIVE_ENABLED", "true"),
+        ("LIVE_TRADING_ENABLED", "False"),
+        ("PREDICTION_LIVE_ENABLED", "0"),
+        ("LIVE_TRADING_ENABLED", ""),
+        ("LIVE_TRADING_ENABLED", " false"),
+        ("live_trading_enabled", "false"),
+        ("TRADING_BOT__LIVE_TRADING_ENABLED", "false"),
+    ],
+)
+def test_container_flags_do_not_admit_other_configuration_overrides(
+    monkeypatch, capsys, key, value
+):
+    cli = module()
+    monkeypatch.setenv("LIVE_TRADING_ENABLED", "false")
+    monkeypatch.setenv("PREDICTION_LIVE_ENABLED", "false")
+    monkeypatch.setenv(key, value)
+    assert cli.main(["--config-root", str(ROOT / "configs")]) == 2
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "blocked",
+        "reason": "stock_configuration_unavailable",
+        "live_enabled": False,
+    }
+
+
 def test_changed_canonical_stock_policy_changes_observed_hash_and_schedule(tmp_path, capsys):
     import shutil
 

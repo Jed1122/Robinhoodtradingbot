@@ -63,13 +63,17 @@ def test_cli_rejects_public_ledger_without_chmod_or_provider_access(tmp_path, mo
     assert not (tmp_path / "unused-oauth").exists()
 
 
+@pytest.mark.parametrize("container_flags", [False, True])
 def test_cli_validated_existing_ledger_reaches_fake_sdk_and_retains_charge(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, capsys, container_flags
 ):
     from trading_bot.persistence.migrations import migrate_sqlite_ledger
 
     module = importlib.import_module("trading_bot.runtime.stock_research_worker")
     monkeypatch.setattr(module, "resolve_code_identity", lambda *args: IDENTITY)
+    if container_flags:
+        monkeypatch.setenv("LIVE_TRADING_ENABLED", "false")
+        monkeypatch.setenv("PREDICTION_LIVE_ENABLED", "false")
     root = tmp_path.resolve()
     root.chmod(0o700)
     (root / "unused-archive").mkdir(mode=0o700)

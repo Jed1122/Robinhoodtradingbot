@@ -78,6 +78,7 @@ _TYPE_NAME_DESCRIPTOR = type.__dict__["__name__"]
 _ORIGINAL_LOGGER_LOG: _Final = _stdlib_logging.Logger._log
 _DISABLE_DURING_RECONFIGURE: _Final = _sys.maxsize
 _STRUCTLOG_LOGGER_TYPE: _Final = _structlog.stdlib._FixedFindCallerLogger
+_STDLIB_NULL_HANDLER_TYPE: _Final = _stdlib_logging.NullHandler
 
 
 class _FailClosedStreamHandler(_stdlib_logging.StreamHandler[_TextIO]):
@@ -996,6 +997,12 @@ def _safe_dispatch_record(
         if type(handlers) is not list:
             return
         for handler in list.__iter__(_cast(list[object], handlers)):
+            if type(handler) is _STDLIB_NULL_HANDLER_TYPE:
+                # Exact stdlib NullHandler is a no-op with lock=None. Bypassing
+                # its handle override through Handler.handle fails on Python 3.14.
+                # Count it to suppress fallback, without invoking instance hooks.
+                found_handler = True
+                continue
             if _stdlib_logging.Handler not in _class_mro(type(handler)):
                 return
             handler_state = _FILTERER_DICT_DESCRIPTOR.__get__(handler, type(handler))
@@ -1031,6 +1038,8 @@ def _safe_dispatch_record(
     if found_handler:
         return
     last_resort = _stdlib_logging.lastResort
+    if type(last_resort) is _STDLIB_NULL_HANDLER_TYPE:
+        return
     if last_resort is None or _stdlib_logging.Handler not in _class_mro(type(last_resort)):
         return
     last_resort_state = _FILTERER_DICT_DESCRIPTOR.__get__(last_resort, type(last_resort))

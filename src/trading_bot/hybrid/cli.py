@@ -323,17 +323,9 @@ def main() -> None:
         stock_reader = None
         if args.stock_export_dir is not None:
             from trading_bot.runtime.stock_dashboard_export import StockDashboardReader
+            from trading_bot.runtime.stock_research_worker import load_stock_worker_configuration
 
-            root = args.config_root
-            stock_loaded = load_config(
-                root / "base.yaml",
-                root / "hybrid/paper.yaml",
-                root / "hybrid/safety-envelope.yaml",
-                os.environ,
-                hybrid_policy_path=root / "hybrid/policy.yaml",
-                stock_research_policy_path=root / "hybrid/stock-research.yaml",
-                stock_worker_policy_path=root / "hybrid/stock-worker.yaml",
-            )
+            stock_loaded = load_stock_worker_configuration(args.config_root)
             stock_reader = StockDashboardReader(root=args.stock_export_dir, loaded=stock_loaded)
         app = build_hybrid_app(
             owner,

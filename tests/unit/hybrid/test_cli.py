@@ -2,7 +2,14 @@ import json
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
+
+from trading_bot.config import load_config
+from trading_bot.research.stock_dashboard import StockDashboardExport
+from trading_bot.runtime.stock_dashboard_export import publish_stock_dashboard
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -62,12 +69,27 @@ main()
     assert options.get("server_header", True) is False
 
 
-def test_optional_stock_export_composes_only_a_config_bound_file_reader(tmp_path):
+@pytest.mark.parametrize(
+    ("flags", "expected_success", "export_present"),
+    [
+        ({}, True, True),
+        ({"LIVE_TRADING_ENABLED": "false", "PREDICTION_LIVE_ENABLED": "false"}, True, True),
+        ({"LIVE_TRADING_ENABLED": "true", "PREDICTION_LIVE_ENABLED": "false"}, False, True),
+        ({"LIVE_TRADING_ENABLED": "false", "PREDICTION_LIVE_ENABLED": "true"}, False, True),
+        ({}, True, False),
+    ],
+)
+def test_optional_stock_export_composes_only_a_config_bound_file_reader(
+    tmp_path, flags, expected_success, export_present
+):
     state = tmp_path / "private"
     static = tmp_path / "static"
     static.mkdir()
     (static / "index.html").write_text("<html>fixture</html>")
     env = os.environ | {"PYTHONPATH": str(ROOT / "src")}
+    for key in ("LIVE_TRADING_ENABLED", "PREDICTION_LIVE_ENABLED"):
+        env.pop(key, None)
+    env.update(flags)
     initialize = subprocess.run(
         [sys.executable, "-m", "trading_bot.hybrid.cli", "--state-dir", str(state), "init"],
         env=env,
@@ -76,39 +98,116 @@ def test_optional_stock_export_composes_only_a_config_bound_file_reader(tmp_path
         text=True,
     )
     assert initialize.returncode == 0
+    loaded = load_config(
+        ROOT / "configs/base.yaml",
+        ROOT / "configs/hybrid/paper.yaml",
+        ROOT / "configs/hybrid/safety-envelope.yaml",
+        {},
+        hybrid_policy_path=ROOT / "configs/hybrid/policy.yaml",
+        stock_research_policy_path=ROOT / "configs/hybrid/stock-research.yaml",
+        stock_worker_policy_path=ROOT / "configs/hybrid/stock-worker.yaml",
+    )
+    export = tmp_path.resolve() / "export"
+    projection = StockDashboardExport.model_validate(
+        {
+            "schema_version": 1,
+            "kind": "stock_research_dashboard",
+            "generated_at": datetime(2026, 10, 22, 12, tzinfo=UTC),
+            "config_hash": str(loaded.config_hash),
+            "code_hash": "b" * 64,
+            "state_sha256": "c" * 64,
+            "worker": {
+                "last_claim_at": None,
+                "last_result_at": None,
+                "phase": None,
+                "status": "never_run",
+                "reason": None,
+                "pending_claims": 0,
+                "reserved_today": 0,
+                "daily_limit": 512,
+                "remaining_calls": 512,
+                "next_eligible_at": None,
+            },
+            "discovery": None,
+            "enrichment": None,
+            "qualified": False,
+            "investment_eligible": False,
+            "live_enabled": False,
+        }
+    )
+    original_projection = None
+    if export_present:
+        export.mkdir(mode=0o700)
+        publish_stock_dashboard(root=export, export=projection)
+        original_projection = (export / "stock-research.json").read_bytes()
     code = """import sys, uvicorn
 from trading_bot.hybrid import api
+from trading_bot.runtime import stock_research_worker as worker
 from trading_bot.runtime.stock_dashboard_export import (
     StockDashboardReader, StockDashboardExportError,
 )
+def forbidden(*args, **kwargs):
+    raise AssertionError('dashboard must not open a stock SDK or research ledger')
+worker.RobinhoodMcpSdkConnection = forbidden
+worker.SqlStockResearchJobs = forbidden
 original = api.build_hybrid_app
 def build(*args, **kwargs):
     reader = kwargs['stock_research_reader']
     assert isinstance(reader, StockDashboardReader)
     assert reader.maximum_age_seconds == 7200
     try:
-        reader()
+        projection = reader()
     except StockDashboardExportError:
+        assert export_present == 'False'
         print('BOUND_READER_WITH_UNAVAILABLE_EXPORT')
     else:
-        raise AssertionError('missing fixture export must not become research')
+        assert export_present == 'True'
+        assert projection.config_hash == expected_hash
+        assert projection.live_enabled is projection.qualified is False
+        assert projection.investment_eligible is False
+        print('BOUND_READER_FROM_CANONICAL_POLICY')
     return original(*args, **kwargs)
 api.build_hybrid_app = build
 uvicorn.run = lambda *args, **kwargs: None
-state, static, export = sys.argv[1:]
+state, static, export, expected_hash, export_present = sys.argv[1:]
 from trading_bot.hybrid.cli import main
 sys.argv = ['hybrid', '--state-dir', state, 'serve', '--dashboard-dir', static,
             '--stock-export-dir', export]
 main()
 """
     result = subprocess.run(
-        [sys.executable, "-c", code, str(state), str(static), str(tmp_path / "missing-export")],
+        [
+            sys.executable,
+            "-c",
+            code,
+            str(state),
+            str(static),
+            str(export),
+            str(loaded.config_hash),
+            str(export_present),
+        ],
         env=env,
         cwd=ROOT,
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "BOUND_READER_WITH_UNAVAILABLE_EXPORT"
-    assert not (tmp_path / "missing-export").exists()
+    assert result.returncode == (0 if expected_success else 2), result.stderr
+    if expected_success:
+        assert result.stdout.strip() == (
+            "BOUND_READER_FROM_CANONICAL_POLICY"
+            if export_present
+            else "BOUND_READER_WITH_UNAVAILABLE_EXPORT"
+        )
+    else:
+        assert not result.stdout.strip()
+        assert "Hybrid runtime denied" in result.stderr
+        assert str(export) not in result.stderr
+    if export_present:
+        assert (export / "stock-research.json").read_bytes() == original_projection
+        assert {path.name for path in export.iterdir()} == {
+            "stock-research.json",
+            ".stock-research.lock",
+        }
+    else:
+        assert not export.exists()
     assert (state / "dashboard.token").read_text().strip() not in result.stdout + result.stderr

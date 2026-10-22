@@ -20,7 +20,13 @@ from trading_bot.hybrid.models import (
 ZERO = Decimal(0)
 
 
+def _validate_quote_symbols(quotes: dict[str, Quote]) -> None:
+    if any(symbol != mark.symbol for symbol, mark in quotes.items()):
+        raise ValueError("exposure quote identity invalid")
+
+
 def mark_equity(account: Account, quotes: dict[str, Quote]) -> Decimal:
+    _validate_quote_symbols(quotes)
     if any(lot.symbol not in quotes for lot in account.lots):
         raise ValueError("missing exposure data")
     return (
@@ -44,7 +50,9 @@ def reserve_order(
     exposure_quotes: dict[str, Quote] | None = None,
 ) -> Account:
     require_utc(now)
-    quotes = (exposure_quotes or {}) | {quote.symbol: quote}
+    quotes = exposure_quotes or {}
+    _validate_quote_symbols(quotes)
+    quotes = quotes | {quote.symbol: quote}
     if account.kill_switch or account.paused:
         raise ValueError("kill switch or suspension blocks new orders")
     if (

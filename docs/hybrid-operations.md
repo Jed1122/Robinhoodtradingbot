@@ -14,9 +14,21 @@ Use existing capacity only; do not provision resources or publish a registry ima
 
 `compose.hybrid.yml` limits the new service to 0.5 CPU, 512 MiB and 128 processes. It runs UID/GID
 10001, a read-only root filesystem, dropped capabilities, no privilege escalation, a bounded tmpfs
-and bounded Docker logs. Its only bind mount is `/var/lib/hybrid-paper:/state`, separate from all
-brokerage credentials and production evidence. Port 8000 publishes only as `127.0.0.1:8081`.
+and bounded Docker logs. Its state mount is `/var/lib/hybrid-paper:/state`. It also mounts only
+`/var/lib/hybrid-stock-research/exports:/stock-exports` read-only and passes
+`--stock-export-dir /stock-exports` to display the separate collector's sanitized projection.
+The dashboard receives no stock ledger, raw archive, controls, OAuth store or parent namespace.
+Port 8000 publishes only as `127.0.0.1:8081`.
 There is no production credential transfer or broker integration in this deployment procedure.
+
+The stock export directory must already be canonical, owned by UID/GID 10001 and mode 0700;
+its published projection must remain mode 0600. Both containers use UID/GID 10001, so no
+permission relaxation is needed. Host-path creation is disabled: this helper does not create
+or repair the export directory, and deployment fails if the mount source is absent. Stage and
+verify that dedicated directory under the separate stock installation procedure before using
+this release. An existing empty export directory produces an unavailable research view until
+the collector publishes valid evidence. Actual native mount ownership and read-only enforcement
+still require deployment verification; local wiring tests do not establish that verification.
 
 ## Prepare the exact reviewed release
 

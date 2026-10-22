@@ -157,6 +157,95 @@ def test_unknown_pending_sector_is_not_free_capacity():
         )
 
 
+def test_mismatched_held_quote_cannot_hide_a_sector_limit_breach():
+    account = Account(
+        paused=False,
+        cash=D(800),
+        lots=(buy_lot("held", "OTHER", "long_term", D(20), D(10), NOW),),
+    )
+    instruction = order("new", sleeve="long_term", quantity=D(9))
+    # $200.20 held plus $90.145045 proposed exceeds the $250 sector cap.
+    with pytest.raises(ValueError, match="sector concentration"):
+        reserve_order(
+            account,
+            instruction,
+            quote(),
+            NOW,
+            POLICY,
+            exposure_quotes={"OTHER": quote(symbol="OTHER")},
+        )
+    before = account.model_dump_json()
+    with pytest.raises(ValueError, match=r"exposure.*identity"):
+        reserve_order(
+            account,
+            instruction,
+            quote(),
+            NOW,
+            POLICY,
+            exposure_quotes={"OTHER": quote(symbol="UNRELATED", sector="Health Care")},
+        )
+    assert account.model_dump_json() == before
+
+
+@pytest.mark.parametrize("diversified", [False, True])
+def test_mismatched_pending_quote_is_rejected_for_every_candidate_type(diversified):
+    account = reserve_order(
+        Account(paused=False),
+        order("pending", symbol="OTHER", sleeve="long_term", quantity=D(9)),
+        quote(symbol="OTHER"),
+        NOW,
+        POLICY,
+    )
+    candidate = quote(diversified_etf=diversified)
+    instruction = order("new", sleeve="long_term")
+    accepted = reserve_order(
+        account,
+        instruction,
+        candidate,
+        NOW,
+        POLICY,
+        exposure_quotes={"OTHER": quote(symbol="OTHER")},
+    )
+    assert len(accepted.orders) == 2 and accepted.reserved_cash > account.reserved_cash
+    before = account.model_dump_json()
+    with pytest.raises(ValueError, match=r"exposure.*(identity|invalid)"):
+        reserve_order(
+            account,
+            instruction,
+            candidate,
+            NOW,
+            POLICY,
+            exposure_quotes={"OTHER": quote(symbol="UNRELATED")},
+        )
+    assert account.model_dump_json() == before
+
+
+def test_candidate_quote_cannot_overwrite_and_hide_a_mismatched_exposure_alias():
+    account = Account(paused=False)
+    assert reserve_order(account, order(), quote(), NOW, POLICY).reserved_cash > 0
+    with pytest.raises(ValueError, match=r"exposure.*identity"):
+        reserve_order(
+            account,
+            order(),
+            quote(),
+            NOW,
+            POLICY,
+            exposure_quotes={"XYZ": quote(symbol="UNRELATED")},
+        )
+    assert account.orders == ()
+
+
+@pytest.mark.parametrize("held", [False, True])
+def test_mark_equity_rejects_a_mismatched_quote_in_the_supplied_mapping(held):
+    account = Account(
+        cash=D(800) if held else D(1000),
+        lots=(buy_lot("held", "OTHER", "long_term", D(20), D(10), NOW),) if held else (),
+    )
+    assert mark_equity(account, {"OTHER": quote(symbol="OTHER")}) == D(1000)
+    with pytest.raises(ValueError, match=r"exposure.*identity"):
+        mark_equity(account, {"OTHER": quote(symbol="UNRELATED")})
+
+
 def test_cancelled_partial_exit_retains_threshold_progress():
     a = Account(paused=False, lots=(buy_lot("l", "XYZ", "tactical", D(10), D(10), NOW),))
     a = reserve_order(
