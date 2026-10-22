@@ -108,6 +108,120 @@ def test_sell_proceeds_not_immediately_reinvestable():
     assert settle(account, due).cash == account.cash + D("9.99")
 
 
+@pytest.fixture
+def two_episode_account():
+    account = Account(paused=False)
+    for episode, quantity in (("a", D(3)), ("b", D(4))):
+        account = reserve_order(
+            account,
+            order(episode, sleeve="long_term", quantity=quantity, episode_id=episode),
+            quote(),
+            NOW,
+            POLICY,
+        )
+        account = fill_order(
+            account,
+            FillFact(
+                id=f"fill-{episode}",
+                order_id=episode,
+                quantity=quantity,
+                price=D("10.01"),
+                fee=D(0),
+                at=NOW,
+            ),
+            POLICY,
+        )
+    return account
+
+
+@pytest.mark.parametrize("episode,quantity", [("a", D(4)), ("missing", D(1))])
+def test_episode_sell_cannot_borrow_shares_from_another_episode(
+    two_episode_account, episode, quantity
+):
+    account = two_episode_account
+    assert [(lot.episode_id, lot.quantity) for lot in account.lots] == [("a", D(3)), ("b", D(4))]
+    before = account.model_dump_json()
+    with pytest.raises(ValueError, match="insufficient owned shares"):
+        reserve_order(
+            account,
+            order("sell", side="sell", sleeve="long_term", quantity=quantity, episode_id=episode),
+            quote(),
+            NOW,
+            POLICY,
+        )
+    assert account.model_dump_json() == before
+
+
+def test_episode_sell_fill_preserves_other_episode_and_its_cost_basis(two_episode_account):
+    account = reserve_order(
+        two_episode_account,
+        order("sell", side="sell", sleeve="long_term", quantity=D(3), episode_id="a"),
+        quote(),
+        NOW,
+        POLICY,
+    )
+    account = fill_order(
+        account,
+        FillFact(id="sale", order_id="sell", quantity=D(3), price=D(12), fee=D(0), at=NOW),
+        POLICY,
+        settlement_at=NOW + timedelta(days=1),
+    )
+    assert [(lot.episode_id, lot.quantity, lot.basis) for lot in account.lots] == [
+        ("b", D(4), D("40.04"))
+    ]
+    assert account.realized_gain == D("5.97")
+    assert account.tax_reserve == D("5.97")
+    assert account.settlements[0].amount == D(36)
+    assert account.orders[-1].status == "filled"
+
+
+def test_unscoped_sell_can_dispose_all_owned_episodes(two_episode_account):
+    account = reserve_order(
+        two_episode_account,
+        order("sell", side="sell", sleeve="long_term", quantity=D(7)),
+        quote(),
+        NOW,
+        POLICY,
+    )
+    account = fill_order(
+        account,
+        FillFact(id="sale", order_id="sell", quantity=D(7), price=D(12), fee=D(0), at=NOW),
+        POLICY,
+        settlement_at=NOW + timedelta(days=1),
+    )
+    assert account.lots == ()
+    assert account.realized_gain == D("13.93")
+    assert account.settlements[0].amount == D(84)
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_pending_episode_sell_blocks_overlapping_symbol_reservations(two_episode_account, partial):
+    account = reserve_order(
+        two_episode_account,
+        order("sell", side="sell", sleeve="long_term", quantity=D(3), episode_id="a"),
+        quote(),
+        NOW,
+        POLICY,
+    )
+    if partial:
+        account = fill_order(
+            account,
+            FillFact(id="sale", order_id="sell", quantity=D(1), price=D(12), fee=D(0), at=NOW),
+            POLICY,
+            settlement_at=NOW + timedelta(days=1),
+        )
+    before = account.model_dump_json()
+    with pytest.raises(ValueError, match="pending symbol"):
+        reserve_order(
+            account,
+            order("overlap", side="sell", sleeve="long_term", quantity=D(1), episode_id="b"),
+            quote(),
+            NOW,
+            POLICY,
+        )
+    assert account.model_dump_json() == before
+
+
 def test_kill_pause_exposure_and_missing_marks_block():
     for account in (Account(kill_switch=True), Account(), Account(cash=D(100))):
         with pytest.raises(ValueError):

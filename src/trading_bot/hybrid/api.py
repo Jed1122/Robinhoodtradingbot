@@ -36,10 +36,9 @@ class Control(BaseModel):
 def snapshot(account: Account, policy: HybridSettings) -> dict[str, object]:
     from trading_bot.hybrid.inputs import ResearchInputs, present_research
 
+    now = datetime.now(UTC)
     research = (
-        present_research(
-            ResearchInputs.model_validate_json(account.research_json), datetime.now(UTC)
-        )
+        present_research(ResearchInputs.model_validate_json(account.research_json), now)
         if account.research_json
         else research_snapshot()
     )
@@ -54,7 +53,18 @@ def snapshot(account: Account, policy: HybridSettings) -> dict[str, object]:
             )
             for model in comparison.get("models", [])
         ]
-    marks = {quote.symbol: quote for quote in account.marks}
+    # Match the persisted valuation/exposure guards: a new response cannot refresh
+    # old quotes or accept observations outside their recorded valuation checkpoint.
+    valuation_at = account.valuation_at
+    marks = (
+        {
+            quote.symbol: quote
+            for quote in account.marks
+            if 0 <= (now - quote.as_of).total_seconds() <= 5 and quote.as_of <= valuation_at
+        }
+        if valuation_at is not None and 0 <= (now - valuation_at).total_seconds() <= 5
+        else {}
+    )
     try:
         equity = mark_equity(account, marks)
     except ValueError:
@@ -84,7 +94,7 @@ def snapshot(account: Account, policy: HybridSettings) -> dict[str, object]:
         )
     ]
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": now.isoformat(),
         "mode": "paper",
         "live_enabled": False,
         "portfolio": {

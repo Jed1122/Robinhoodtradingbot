@@ -82,9 +82,33 @@ class StockWorkerSettings(StrictModel):
     max_archive_files: StrictInt = Field(default=10000, ge=128, le=100000)
 
 
+def _require_worker_enrichment_capacity(policy: StockResearchSettings) -> None:
+    count = policy.shortlist_count
+    # Complete stock_requests.enrichment_requests plan: fundamentals/history in
+    # batches of 10; annual/quarterly financials and quotes in batches of 20;
+    # one earnings request and one filing-index request per company.
+    planned_calls = 2 * ((count + 9) // 10) + 3 * ((count + 19) // 20) + 2 * count
+    if planned_calls > policy.max_calls_per_cycle:
+        raise ValueError("stock worker shortlist exceeds enrichment call budget")
+    # Enrichment is a later cycle. Equality leaves no time for dispatch after
+    # admission; every source check retains the original discovery claim clock.
+    if policy.maximum_source_age_minutes <= policy.scan_minutes:
+        raise ValueError("stock worker source age must exceed scan cadence")
+
+
 class StockWorkerAppConfig(StockResearchAppConfig):
     stock_worker: StockWorkerSettings
+
+    @model_validator(mode="after")
+    def feasible_enrichment(self) -> Self:
+        _require_worker_enrichment_capacity(self.stock_research)
+        return self
 
 
 class StockWorkerSafetyEnvelope(StockResearchSafetyEnvelope):
     stock_worker: StockWorkerSettings
+
+    @model_validator(mode="after")
+    def feasible_enrichment(self) -> Self:
+        _require_worker_enrichment_capacity(self.stock_research)
+        return self

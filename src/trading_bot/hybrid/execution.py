@@ -178,7 +178,9 @@ def reserve_order(
             (
                 lot.quantity
                 for lot in account.lots
-                if lot.symbol == order.symbol and lot.sleeve == order.sleeve
+                if lot.symbol == order.symbol
+                and lot.sleeve == order.sleeve
+                and (order.episode_id is None or lot.episode_id == order.episode_id)
             ),
             ZERO,
         )

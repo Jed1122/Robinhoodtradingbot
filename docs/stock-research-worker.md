@@ -17,6 +17,13 @@ paused services and the hybrid account journal are not changed by this command.
 
 ## Admission and recovery
 
+Worker configuration and its safety envelope reject a shortlist whose complete
+enrichment plan cannot fit the per-cycle call budget. The default ten-symbol
+shortlist needs 25 calls and retains its 32-call cap. Source freshness must also
+exceed the scan interval so enrichment can dispatch after admission. These
+worker-only checks preserve the scanner-only configuration graph and default
+canonical identity; they do not raise budgets or shorten source checks.
+
 The outer archive flock is stable across phases, builds and policy changes. It is held
 before ledger admission and credential construction through transport closure, artifact
 verification and terminal persistence. The manual capture and dossier entry points use
