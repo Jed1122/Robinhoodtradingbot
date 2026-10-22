@@ -16,12 +16,21 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from infra.hybrid.stock_attempts import _canonical, _check_clock, _clock, _read, _write_new
 from infra.hybrid.stock_build_inputs import SourceArchive, inspect_source
 from infra.hybrid.stock_probe_store import _clock_key
-from infra.hybrid.stock_release import _close_all, _fingerprint, _open_directory
+from infra.hybrid.stock_release import (
+    _close_all,
+    _fingerprint,
+    _open_directory,
+    normalize_configuration_observation,
+)
+
+if TYPE_CHECKING:
+    from infra.hybrid.stock_container import ImageProfile
+    from infra.hybrid.stock_probe_controller import ProbeResult
 
 PRODUCER_ROOT = Path("/var/lib/hybrid-stock-producer")
 _ASSETS_ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +48,9 @@ _SLOTS = {
     "dispatch.json": (1, 4096),
     "build-complete.json": (1, 4096),
     "source-preparation.json": (1, 4096),
+    "probe-intent.json": (1, 4096),
+    "probe-result.json": (1, 4096),
+    "configuration.bin": (1, 4096),
 }
 _ERRORS = (OSError, ValueError, TypeError, KeyError, OverflowError, AttributeError)
 _ACTIVE: _Lease | None = None
@@ -221,6 +233,9 @@ class _Lease:
         self.prepared = False
         self.started = False
         self.dispatched = False
+        self.built_image: ImageProfile | None = None
+        self.probe_started = False
+        self.probe_result: ProbeResult | None = None
         self.pins: list[tuple[int, str, tuple[int, ...]]] = []
         self.directories = [
             (self.root_fd, root),
@@ -289,7 +304,14 @@ class _Lease:
     def record(self, name: str, value: dict[str, Any]) -> str:
         self._filesystem()
         _require(
-            name in {"dispatch.json", "build-complete.json", "source-preparation.json"}
+            name
+            in {
+                "dispatch.json",
+                "build-complete.json",
+                "source-preparation.json",
+                "probe-intent.json",
+                "probe-result.json",
+            }
             and name not in self.inventories[self.attempt_fd]
         )
         digest, stamp = _write_binary(self.attempt_fd, name, _canonical(value), self.uid)
@@ -493,3 +515,83 @@ def _current_source(lease: _Lease) -> None:
     )
     lease.check()
     lease.prepared = True
+
+
+def _fresh_probe(lease: _Lease) -> ProbeResult:
+    """One fixed current probe; old/supplied results never replace the owned call."""
+    from infra.hybrid.stock_probe_controller import ProbeResult, run_probe
+
+    _require(type(lease) is _Lease)
+    started = lease.check()
+    _require(
+        lease.built_image is not None
+        and "build-complete.json" in lease.hashes
+        and not lease.probe_started
+    )
+    lease.probe_started = True
+    image = lease.built_image
+    if image is None:
+        _deny()
+    lease.record(
+        "probe-intent.json",
+        {
+            "schema_version": 1,
+            "kind": "stock_producer_probe_intent",
+            "namespace_id": lease.namespace["namespace_id"],
+            "source_sha256": lease.source.digest,
+            "image_digest": image.image_digest,
+            "build_complete_sha256": lease.hashes["build-complete.json"],
+            "started_clock": started,
+        },
+    )
+    lease.check()
+    result = run_probe(image.image_digest)
+    _require(type(result) is ProbeResult and result.image_digest == image.image_digest)
+    _require(
+        result.status in {"succeeded", "failed", "recovery_only"}
+        and type(result.reason) is str
+        and re.fullmatch(r"[a-z_]{1,64}", result.reason) is not None
+    )
+    _require(
+        type(result.probe_id) is str and re.fullmatch(r"[0-9a-f]{32}", result.probe_id) is not None
+    )
+    _require(
+        result.container_id is None
+        or (type(result.container_id) is str and _HEX.fullmatch(result.container_id) is not None)
+    )
+    raw = result.configuration
+    _require(raw is None or (type(raw) is bytes and 0 < len(raw) <= 4096))
+    completed = _clock()
+    _check_clock(completed)
+    lease.record(
+        "probe-result.json",
+        {
+            "schema_version": 1,
+            "kind": "stock_producer_probe_result",
+            "namespace_id": lease.namespace["namespace_id"],
+            "source_sha256": lease.source.digest,
+            "image_digest": result.image_digest,
+            "probe_id": result.probe_id,
+            "container_id": result.container_id,
+            "status": result.status,
+            "reason": result.reason,
+            "configuration_sha256": None if raw is None else hashlib.sha256(raw).hexdigest(),
+            "build_complete_sha256": lease.hashes["build-complete.json"],
+            "probe_intent_sha256": lease.hashes["probe-intent.json"],
+            "completed_clock": completed,
+        },
+    )
+    lease.check()
+    _require(
+        result.status == "succeeded"
+        and result.reason == "completed"
+        and result.container_id is not None
+        and raw is not None
+    )
+    if raw is None:
+        _deny()
+    _require(normalize_configuration_observation(raw) == raw)
+    lease.retain("configuration.bin", raw)
+    lease.check()
+    lease.probe_result = result
+    return result

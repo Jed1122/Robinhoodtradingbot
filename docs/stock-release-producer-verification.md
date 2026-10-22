@@ -68,10 +68,22 @@ statement/branch coverage over producer/build/preparer/supervisor. Ruffall, stri
 mypy464, changed-host Bandit, offline lock and diff checks passed. These are prefix
 checks, not completed Task3 or native Docker evidence.
 
-Remaining Task3 work is the fresh existing probe bridge, scrubbed reviewed Compose
-render, four canonical durable files, complete successful-history admission, existing
-loader verification and final clock/shutdown/context publication gate. The nested probe shutdown context must
-share the producer's sticky signal state without renewing either clock window.
+The fresh probe bridge is now implemented in the private build prefix. Actual7
+missing-operation REDs preceded implementation. The composed real store/transport/
+controller tests accept only one current succeeded/completed result for the built
+image, with exact canonical configuration and retained CID/probe/source/build
+bindings. Failed output, bad exit, recovery-only status, shutdown, original-window
+expiry and intent/result/configuration durability failures cannot advance the
+producer or repeat the probe. Tests default-deny native Docker;14focused cases pass.
+
+The corrected integrated group passed **922tests in80.90seconds**, with97.30%combined
+statement/branch coverage over producer/build/preparer/supervisor. Ruffall, strict
+mypy464, changed-host Bandit, offline lock and diff checks passed. This establishes
+fixture composition, not a native build/probe or completed public release producer.
+
+Remaining Task3 work is the scrubbed reviewed Compose render, four canonical durable
+files, complete successful-history admission, existing loader verification and final
+clock/shutdown/context publication gate.
 One fresh whole-branch review and the eventual actual source-specific full remain
 required.
 
@@ -81,7 +93,8 @@ exit0:15,010passed,33optional skips,1existing Starlette/httpx deprecation warnin
 do not restart it. The separate IEX code full at clean `f625775` also completed with
 actual exit0:15,239passed,33optional skips,1same warning,8,233.20seconds and89.13%
 coverage. Neither certifies this later producer; its source-specific full remains
-pending completion and the one whole-branch review. Actual native producer/probe proof, paused installation, OAuth lifecycle,
-backups/restore, scheduled stock research, qualified data/strategies and nonempty broker
+pending completion and the one whole-branch review. Actual native producer/probe
+proof, paused installation, OAuth lifecycle, backups/restore, scheduled stock
+research, qualified data/strategies and nonempty broker
 reconciliation remain independent. No mandatory60-day paper wait or automatic live
 activation follows from this checkpoint.

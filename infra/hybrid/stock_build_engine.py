@@ -158,6 +158,7 @@ def _build(lease: _Lease) -> ImageProfile:
             },
         )
         lease.check(not_after_ns=deadline)
+        lease.built_image = image
         return image
     except _ERRORS:
         _deny()
