@@ -20,7 +20,11 @@ from infra.hybrid.stock_release import RELEASE_ROOT, StockRelease, _exact, _poli
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _THERMAL = re.compile(r"/sys/devices/system/cpu/cpu(0|[1-9][0-9]{0,5})/thermal_throttle\Z")
-_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z\Z")
+# Native Docker clocks exclude ISO end-of-day normalization (accepted by Python 3.14).
+_TIMESTAMP = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+    r"(\.[0-9]{1,9})?Z\Z"
+)
 _MASKS = frozenset(
     {
         "/proc/acpi",

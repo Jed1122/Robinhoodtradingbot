@@ -365,6 +365,28 @@ def test_complete_created_container_returns_only_identity(policy):
     assert "Env" not in repr(result) and "HostConfig" not in repr(result)
 
 
+@pytest.mark.parametrize(
+    "created",
+    [
+        "2026-10-21T24:00:00Z",
+        "2026-10-21T23:60:00Z",
+        "2026-10-21T23:59:60Z",
+        "2026-02-30T23:59:59Z",
+    ],
+)
+def test_created_timestamp_cannot_normalize_an_invalid_native_clock(policy, created):
+    value = record(policy)
+    value["Created"] = created
+    with pytest.raises(ValueError, match=r"^stock_container_unavailable$"):
+        verify(policy, value)
+
+
+def test_last_native_second_keeps_nanosecond_precision_eligible(policy):
+    value = record(policy)
+    value["Created"] = "2026-10-21T23:59:59.123456789Z"
+    assert verify(policy, value).container_id == CID
+
+
 def test_no_volume_image_merge_may_report_null_config_volumes(policy):
     changed = record(policy)
     changed["Config"]["Volumes"] = None

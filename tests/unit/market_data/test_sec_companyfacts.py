@@ -536,8 +536,9 @@ def test_derived_fields_and_false_flags_cannot_be_set_through_construction():
         names = {field.name: field for field in fields(item)}
         for flag in FLAGS:
             assert names[flag].init is False
-            with pytest.raises(ValueError):
+            with pytest.raises((TypeError, ValueError)):
                 replace(item, **{flag: True})
+            assert getattr(item, flag) is False
         assert names["publication_at"].init is False
     for name in (
         "reported_cik",
@@ -549,7 +550,7 @@ def test_derived_fields_and_false_flags_cannot_be_set_through_construction():
         "records",
     ):
         assert result.__dataclass_fields__[name].init is False
-        with pytest.raises(ValueError):
+        with pytest.raises((TypeError, ValueError)):
             replace(result, **{name: ()})
 
 

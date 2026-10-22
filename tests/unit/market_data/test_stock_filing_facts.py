@@ -526,8 +526,9 @@ def test_all_new_models_are_repr_safe_frozen_slotted_and_permanently_unqualified
         for flag in FLAGS:
             assert getattr(value, flag) is False
             assert next(field for field in fields(value) if field.name == flag).init is False
-            with pytest.raises(ValueError):
+            with pytest.raises((TypeError, ValueError)):
                 replace(value, **{flag: True})
+            assert getattr(value, flag) is False
 
 
 @pytest.mark.parametrize(
