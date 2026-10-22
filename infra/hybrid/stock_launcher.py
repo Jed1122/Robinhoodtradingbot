@@ -101,6 +101,22 @@ def _recover(
     return StockCycleResult("recovery_only", supervision)
 
 
+def recover_research_cycle(store: AttemptStore) -> StockCycleResult:
+    """Cleanup only, including a terminal/empty store; never create or start work.
+
+    A post-stop invocation must not enter the regular repeated-cycle path, where
+    a completed predecessor can authorize a new worker. Sticky shutdown also
+    makes cleanup immediate if this process still owns a live start fence.
+    """
+    try:
+        _production_store(store)
+        with _shutdown() as shutdown:
+            shutdown[0] = True
+            return _recover(store, StockEngineReader(), shutdown)
+    except _ERRORS:
+        _deny()
+
+
 def run_research_cycle(store: AttemptStore, release_path: Path) -> StockCycleResult:
     """A fresh cycle or one recovery, never both and never an automatic retry."""
     try:

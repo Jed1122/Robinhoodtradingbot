@@ -1,8 +1,10 @@
 # Stock research operations status
 
-The local one-shot worker, explicit collector controls and authenticated dashboard
-projection are implemented. A separate supervised stock deployment is not installed
-or verified. Existing paused services remain unchanged. Live execution stays disabled.
+The one-shot worker, explicit collector controls and authenticated dashboard
+projection are implemented. The [native paused-installation procedure](stock-paused-installation.md)
+defines the separate deployment gate; use its retained native receipt for the actual
+installed status. The checkpoints below describe their original source-verification
+scope. Existing services are outside this stock installation. Live execution stays disabled.
 
 ## Configuration-only observation
 
