@@ -46,7 +46,9 @@ def _worker_exit(store: AttemptStore) -> tuple[int | None, bool]:
     return facts["exit_code"], facts["oom_killed"] or facts["error_present"]
 
 
-def _local(value: dict[str, Any], *, now: datetime) -> tuple[str, dict[str, Any] | None]:
+def _local(
+    value: dict[str, Any], *, now: datetime
+) -> tuple[StockControlRecord, dict[str, Any] | None]:
     if (
         type(value) is not dict
         or set(value) != {"version", "control", "control_sha256", "projection"}
@@ -66,7 +68,7 @@ def _local(value: dict[str, Any], *, now: datetime) -> tuple[str, dict[str, Any]
         if export.generated_at > now:
             raise ValueError
         projection = export.model_dump()
-    return control.status, projection
+    return control, projection
 
 
 def _timer(checkout: Path, release: StockRelease, *, deadline: float) -> tuple[bool, bool]:
@@ -115,12 +117,19 @@ def monitor_stock(
         if str(loaded.config_hash) != release.config_hash:
             raise ValueError
         policy = _policy(loaded)
+        code_hash = hashlib.sha256(f"oci-image:{release.image_digest}".encode()).hexdigest()
         deadline = time.monotonic() + 45
         with operations() as store:
             worker_exit, worker_error = _worker_exit(store)
-            control_status, projection = _local(
+            control, projection = _local(
                 run_local_helper(checkout, release, "observe", deadline=deadline), now=now
             )
+            if control.status == "running" and (
+                control.config_hash != release.config_hash or control.code_hash != code_hash
+            ):
+                # The worker would reject this grant even when the preceding
+                # projection and owned exit are current. Do not clear incidents.
+                raise ValueError
             enabled, active = _timer(checkout, release, deadline=deadline)
             from trading_bot.runtime.stock_operation_receipts import StockOperationReceipts
 
@@ -139,10 +148,8 @@ def monitor_stock(
             space = os.statvfs(_ROOT)
             incidents = evaluate_stock_health(
                 expected_config_hash=release.config_hash,
-                expected_code_hash=hashlib.sha256(
-                    f"oci-image:{release.image_digest}".encode()
-                ).hexdigest(),
-                control_status=control_status,
+                expected_code_hash=code_hash,
+                control_status=control.status,
                 timer_enabled=enabled,
                 timer_active=active,
                 worker_exit_code=worker_exit,

@@ -28,8 +28,12 @@ from typing import BinaryIO, NoReturn, cast
 from trading_bot.clock import require_utc
 from trading_bot.runtime.stock_backup_crypto import StockBackupCryptoReceipt, decrypt_stream
 from trading_bot.runtime.stock_research_controls import StockResearchControls
-from trading_bot.runtime.stock_snapshot import restore_snapshot_controls, verify_stock_snapshot
-from trading_bot.runtime.stock_snapshot_bundle import unpack_snapshot
+from trading_bot.runtime.stock_snapshot import (
+    ControlRestoreResult,
+    restore_snapshot_controls,
+    verify_stock_snapshot,
+)
+from trading_bot.runtime.stock_snapshot_bundle import pack_snapshot, unpack_snapshot
 
 _MAXIMUM_BYTES = 2 * 1024**3
 _CHUNK = 1024 * 1024
@@ -115,6 +119,11 @@ class _TimedStream:
         _require(type(count) is int and 0 < count <= len(body))
         self.written += count
         return count
+
+
+class _Discard:
+    def write(self, body: bytes) -> int:
+        return len(body)
 
 
 def _stamp(info: os.stat_result) -> tuple[int, ...]:
@@ -234,8 +243,31 @@ def _read_key(source: _Input, window: _Window) -> bytes:
     return bytes(key)
 
 
+@dataclass(frozen=True, slots=True)
+class _Destination:
+    path: Path
+    parent: int
+    descriptor: int
+
+    def check(self) -> None:
+        current, named = os.fstat(self.descriptor), self.path.stat(follow_symlinks=False)
+        _require((current.st_dev, current.st_ino) == (named.st_dev, named.st_ino))
+        _require(stat.S_ISDIR(named.st_mode) and named.st_uid == os.geteuid())
+        _require(stat.S_IMODE(named.st_mode) == 0o700)
+        current, named = os.fstat(self.parent), self.path.parent.stat(follow_symlinks=False)
+        _require((current.st_dev, current.st_ino) == (named.st_dev, named.st_ino))
+        _require(stat.S_ISDIR(named.st_mode) and named.st_uid == os.geteuid())
+        _require(stat.S_IMODE(named.st_mode) == 0o700)
+        _require(self.path.parent.resolve(strict=True) == self.path.parent)
+
+    def sync(self) -> None:
+        os.fsync(self.descriptor)
+        os.fsync(self.parent)
+        self.check()
+
+
 @contextmanager
-def _new_root(destination: Path, plaintext_bound: int, window: _Window) -> Iterator[int]:
+def _new_root(destination: Path, plaintext_bound: int, window: _Window) -> Iterator[_Destination]:
     parent = descriptor = -1
     try:
         _path(destination)
@@ -257,20 +289,53 @@ def _new_root(destination: Path, plaintext_bound: int, window: _Window) -> Itera
         )
         _require(stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o700)
         os.fsync(parent)
-        yield descriptor
-        os.fsync(descriptor)
-        os.fsync(parent)
-        current, named = os.fstat(descriptor), destination.stat(follow_symlinks=False)
-        _require((current.st_dev, current.st_ino) == (named.st_dev, named.st_ino))
-        _require(stat.S_ISDIR(named.st_mode) and named.st_uid == os.geteuid())
-        _require(stat.S_IMODE(named.st_mode) == 0o700)
-        current, named = os.fstat(parent), destination.parent.stat(follow_symlinks=False)
-        _require((current.st_dev, current.st_ino) == (named.st_dev, named.st_ino))
-        _require(stat.S_ISDIR(named.st_mode) and named.st_uid == os.geteuid())
-        _require(stat.S_IMODE(named.st_mode) == 0o700)
-        _require(destination.parent.resolve(strict=True) == destination.parent)
+        namespace = _Destination(destination, parent, descriptor)
+        yield namespace
+        # The caller syncs before its final byte proof. Exit performs read-only
+        # identity checks so no later fsync separates that proof from success.
+        namespace.check()
     finally:
         _close(tuple(fd for fd in (descriptor, parent) if fd >= 0))
+
+
+def _killed_proof(
+    destination: Path, controls: ControlRestoreResult, now: datetime, window: _Window
+) -> tuple[object, ...]:
+    root = destination / "killed-controls"
+    paths = (root, root / "controls")
+    descriptors: list[int] = []
+    try:
+        for path in paths:
+            window.check()
+            descriptors.append(_open_directory(path))
+        original = tuple(_stamp(os.fstat(descriptor)) for descriptor in descriptors)
+        _require(set(os.listdir(descriptors[0])) == {"saved-control.json", "controls"})
+        _require(set(os.listdir(descriptors[1])) == {"stock-control.json", ".stock-control.lock"})
+        files = []
+        for name in (
+            "saved-control.json",
+            "controls/stock-control.json",
+            "controls/.stock-control.lock",
+        ):
+            lock = name.endswith(".lock")
+            with _input(
+                root / name, minimum=0 if lock else 1, maximum=0 if lock else 8192
+            ) as source:
+                files.append((name, _stamp(source.info), _hash(source, window)))
+        with _input(destination / "snapshot/saved-control.json", minimum=1, maximum=8192) as saved:
+            _require(_hash(saved, window) == files[0][2])
+        killed = StockResearchControls(root / "controls", clock=lambda: now).read()
+        _require(killed.record.status == "killed" and killed.sha256 == controls.state_sha256)
+        _require(killed.record.control_id == controls.control_id)
+        _require(killed.record.generation == controls.generation)
+        for path, descriptor, info in zip(paths, descriptors, original, strict=True):
+            _require(
+                _stamp(os.fstat(descriptor)) == info == _stamp(path.stat(follow_symlinks=False))
+            )
+        window.check()
+        return killed, original, tuple(files)
+    finally:
+        _close(tuple(reversed(descriptors)))
 
 
 def _decrypt(
@@ -339,8 +404,9 @@ async def restore_encrypted_stock_backup(
             plaintext_bound = min(_MAXIMUM_BYTES, source.info.st_size)
             with (
                 _input(private_key_file, minimum=32, maximum=32) as secret,
-                _new_root(destination, plaintext_bound, window) as root,
+                _new_root(destination, plaintext_bound, window) as namespace,
             ):
+                root = namespace.descriptor
                 crypto, original = _decrypt(source, secret, root, plaintext_bound, window)
                 _require(crypto.ciphertext_sha256 == actual_ciphertext)
                 with _input(destination / _TEMPORARY, minimum=1, maximum=plaintext_bound) as plain:
@@ -371,20 +437,39 @@ async def restore_encrypted_stock_backup(
                 )
                 window.check()
                 _require(controls.offline_only is True)
-                killed = StockResearchControls(
-                    destination / "killed-controls/controls", clock=lambda: now
-                ).read()
-                _require(killed.record.status == "killed")
-                _require(killed.record.control_id == controls.control_id)
-                _require(killed.record.generation == controls.generation)
+                killed_proof = _killed_proof(destination, controls, now, window)
                 _require(
                     _stamp(os.stat(_TEMPORARY, dir_fd=root, follow_symlinks=False)) == original
                 )
                 _require(set(os.listdir(root)) == {_TEMPORARY, "snapshot", "killed-controls"})
                 with _input(manifest_path, minimum=1, maximum=32 * 1024 * 1024) as manifest:
                     _require(_hash(manifest, window) == expected_snapshot_manifest_sha256)
+                async with asyncio.timeout(window.remaining()):
+                    _require(
+                        await verify_stock_snapshot(destination / "snapshot", now=now) == snapshot
+                    )
+                _require(_killed_proof(destination, controls, now, window) == killed_proof)
+                os.unlink(_TEMPORARY, dir_fd=root)
+                namespace.sync()
+                # Repacking into a bounded discard sink proves that every final
+                # byte still matches the authenticated bundle after cleanup IO.
+                final_bundle = pack_snapshot(
+                    destination / "snapshot",
+                    cast(
+                        BinaryIO,
+                        _TimedStream(
+                            cast(BinaryIO, _Discard()), window, maximum_write=bundle.stream_bytes
+                        ),
+                    ),
+                    maximum_bytes=bundle.stream_bytes,
+                    maximum_files=bundle.file_count,
+                )
+                _require(final_bundle == bundle)
+                _require(_killed_proof(destination, controls, now, window) == killed_proof)
+                _require(set(os.listdir(root)) == {"snapshot", "killed-controls"})
                 source.check()
                 secret.check()
+                namespace.check()
                 window.check()
                 receipt = StockBackupRestoreReceipt(
                     actual_ciphertext,
@@ -400,8 +485,6 @@ async def restore_encrypted_stock_backup(
                     controls.generation,
                     True,
                 )
-                os.unlink(_TEMPORARY, dir_fd=root)
-                os.fsync(root)
         window.check()
         return receipt
     except Exception:

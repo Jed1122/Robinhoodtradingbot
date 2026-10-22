@@ -18,7 +18,9 @@ from nacl.public import PrivateKey
 from test_stock_snapshot import CODE, NOW, discovery, reserve
 from test_stock_snapshot import sample as snapshot_sample
 
+from trading_bot.persistence import async_session_factory, create_engine
 from trading_bot.runtime.stock_backup_crypto import encrypt_stream
+from trading_bot.runtime.stock_dashboard_export import export_stock_dashboard
 from trading_bot.runtime.stock_research_controls import StockResearchControls
 from trading_bot.runtime.stock_snapshot import create_stock_snapshot, verify_stock_snapshot
 from trading_bot.runtime.stock_snapshot_bundle import pack_snapshot
@@ -529,3 +531,205 @@ def test_new_namespace_rechecks_its_named_private_parent_before_success(tmp_path
             parent.mkdir(mode=0o700)
             (original / destination.name).rename(destination)
     assert destination.is_dir()
+
+
+@pytest.fixture
+async def populated_restore(sample):
+    await discovery(sample)
+    engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
+    try:
+        await export_stock_dashboard(
+            loaded=sample["loaded"],
+            code_hash=CODE,
+            factory=async_session_factory(engine),
+            archive_dir=sample["archive_dir"],
+            export_dir=sample["export_dir"],
+            clock=lambda: NOW,
+        )
+    finally:
+        await engine.dispose()
+    snapshot = await create_stock_snapshot(**sample)
+    root = sample["destination"].parent
+    key = root / "receiver.key"
+    key.write_bytes(PRIVATE)
+    key.chmod(0o600)
+    cipher = seal(root)
+    return {
+        "ciphertext": root / "backup.box",
+        "private_key_file": key,
+        "destination": root / "offline-drill",
+        "expected_ciphertext_sha256": cipher.ciphertext_sha256,
+        "expected_snapshot_manifest_sha256": snapshot.manifest_sha256,
+        "now": NOW + timedelta(hours=1),
+    }
+
+
+def mutate_snapshot(root, target):
+    if target == "ledger":
+        connection = sqlite3.connect(root / "state/ledger.sqlite3")
+        try:
+            connection.execute("PRAGMA user_version = 7")
+            connection.commit()
+        finally:
+            connection.close()
+    elif target == "archive":
+        next((root / "archive").glob("*.stock-screen.json")).write_bytes(b"changed research")
+    else:
+        (root / "exports/stock-research.json").write_bytes(b"{}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target", ["ledger", "archive", "export"])
+async def test_actual_snapshot_mutation_after_restore_checks_denies_receipt(
+    populated_restore, monkeypatch, target
+):
+    api = module()
+    destination = populated_restore["destination"]
+    original = api._hash
+    mutated = []
+
+    def late(source, window):
+        result = original(source, window)
+        if (
+            source.path == destination / "snapshot/manifest.json"
+            and (destination / "killed-controls").exists()
+            and not mutated
+        ):
+            before = source.path.read_bytes()
+            mutate_snapshot(destination / "snapshot", target)
+            assert source.path.read_bytes() == before
+            mutated.append(True)
+        return result
+
+    monkeypatch.setattr(api, "_hash", late)
+    with pytest.raises(ValueError, match=DENIAL):
+        await api.restore_encrypted_stock_backup(**populated_restore)
+    assert mutated == [True] and (destination / ".snapshot-bundle.tmp").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["altered", "replaced", "saved-copy"])
+async def test_restored_killed_namespace_must_remain_exact_at_final_boundary(
+    ready, monkeypatch, change
+):
+    api = module()
+    destination = ready["args"]["destination"]
+    original = api._hash
+    mutated = []
+
+    def late(source, window):
+        result = original(source, window)
+        if (
+            source.path == destination / "snapshot/manifest.json"
+            and (destination / "killed-controls").exists()
+            and not mutated
+        ):
+            path = destination / "killed-controls/controls/stock-control.json"
+            if change == "altered":
+                body = json.loads(path.read_bytes())
+                body["changed_at"] = "2026-10-22T12:30:00Z"
+                path.write_bytes(
+                    (json.dumps(body, sort_keys=True, separators=(",", ":")) + "\n").encode()
+                )
+            elif change == "replaced":
+                replacement = path.with_name("replacement")
+                replacement.write_bytes(path.read_bytes())
+                replacement.chmod(0o600)
+                replacement.replace(path)
+            else:
+                (destination / "killed-controls/saved-control.json").write_bytes(b"{}\n")
+            mutated.append(True)
+        return result
+
+    monkeypatch.setattr(api, "_hash", late)
+    with pytest.raises(ValueError, match=DENIAL):
+        await api.restore_encrypted_stock_backup(**ready["args"])
+    assert mutated == [True] and (destination / ".snapshot-bundle.tmp").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target", ["ledger", "killed"])
+async def test_final_cleanup_fsync_mutation_cannot_escape_receipt_proof(ready, monkeypatch, target):
+    api = module()
+    destination = ready["args"]["destination"]
+    original = os.fsync
+    mutated = []
+
+    def late(descriptor):
+        original(descriptor)
+        if (
+            not mutated
+            and (destination / "killed-controls").exists()
+            and not (destination / ".snapshot-bundle.tmp").exists()
+        ):
+            if target == "ledger":
+                mutate_snapshot(destination / "snapshot", "ledger")
+            else:
+                path = destination / "killed-controls/controls/stock-control.json"
+                path.write_bytes(b"{}\n")
+            mutated.append(True)
+
+    monkeypatch.setattr(api.os, "fsync", late)
+    with pytest.raises(ValueError, match=DENIAL):
+        await api.restore_encrypted_stock_backup(**ready["args"])
+    assert mutated == [True] and (destination / "snapshot").is_dir()
+
+
+@pytest.mark.asyncio
+async def test_final_application_replay_uses_the_remaining_outer_deadline(ready, monkeypatch):
+    api = module()
+    original_verify, original_remaining = api.verify_stock_snapshot, api._Window.remaining
+    calls = []
+
+    async def slow(root, *, now):
+        calls.append(True)
+        if len(calls) == 2:
+            await asyncio.sleep(1)
+            raise AssertionError("remaining outer deadline must cancel final replay")
+        return await original_verify(root, now=now)
+
+    def remaining(window):
+        value = original_remaining(window)
+        return 0.001 if calls else value
+
+    monkeypatch.setattr(api, "verify_stock_snapshot", slow)
+    monkeypatch.setattr(api._Window, "remaining", remaining)
+    with pytest.raises(ValueError, match=DENIAL):
+        await api.restore_encrypted_stock_backup(**ready["args"])
+    assert len(calls) == 2 and (ready["args"]["destination"] / ".snapshot-bundle.tmp").exists()
+
+
+@pytest.mark.asyncio
+async def test_final_canonical_byte_proof_checks_deadline_inside_stream_io(ready, monkeypatch):
+    api = module()
+    original_pack, original_clock = api.pack_snapshot, api.monotonic
+    calls = []
+
+    def expired(*args, **kwargs):
+        calls.append(True)
+        monkeypatch.setattr(api, "monotonic", lambda: original_clock() + 301)
+        return original_pack(*args, **kwargs)
+
+    monkeypatch.setattr(api, "pack_snapshot", expired)
+    with pytest.raises(ValueError, match=DENIAL):
+        await api.restore_encrypted_stock_backup(**ready["args"])
+    assert calls == [True] and (ready["args"]["destination"] / "snapshot").is_dir()
+
+
+@pytest.mark.asyncio
+async def test_byte_mutation_after_final_replay_returns_cannot_become_a_success(ready, monkeypatch):
+    api = module()
+    original = api.verify_stock_snapshot
+    calls = []
+
+    async def late(root, *, now):
+        result = await original(root, now=now)
+        calls.append(True)
+        if len(calls) == 2:
+            mutate_snapshot(root, "ledger")
+        return result
+
+    monkeypatch.setattr(api, "verify_stock_snapshot", late)
+    with pytest.raises(ValueError, match=DENIAL):
+        await api.restore_encrypted_stock_backup(**ready["args"])
+    assert len(calls) == 2 and (ready["args"]["destination"] / "snapshot").is_dir()

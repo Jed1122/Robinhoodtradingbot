@@ -138,15 +138,20 @@ def test_new_services_bound_resources_and_allow_only_local_unix_operations(
     assert "CapabilityBoundingSet" not in service and "AmbientCapabilities" not in service
 
 
-def test_monitor_can_write_only_its_spool_and_existing_operations_lease(release):
+def test_monitor_can_write_only_incidents_and_its_existing_read_lock_anchors(release):
     service = units(release)[PREFIX + "monitor.service"]["Service"]
-    assert set(service["ReadWritePaths"].split()) == {SPOOL, OPERATIONS + "/launcher.lock"}
+    assert set(service["ReadWritePaths"].split()) == {
+        SPOOL + "/incidents",
+        SPOOL + "/receipts/.stock-receipts.lock",
+        OPERATIONS + "/launcher.lock",
+        "/var/lib/hybrid-stock-research/controls/.stock-control.lock",
+    }
 
 
 def test_backup_payloads_are_read_only_except_existing_locks_and_private_staging(release):
     service = units(release)[PREFIX + "backup.service"]["Service"]
     assert set(service["ReadWritePaths"].split()) == {
-        SPOOL,
+        SPOOL + "/receipts",
         OPERATIONS + "/launcher.lock",
         "/var/lib/hybrid-stock-backups",
         "/var/lib/hybrid-stock-research/maintenance",
@@ -173,7 +178,6 @@ def test_only_separate_bootstrap_is_enabled_by_multi_user_and_runs_after_recover
     )
     assert actual["Service"]["RemainAfterExit"] == "yes"
     assert set(actual["Service"]["ReadWritePaths"].split()) == {
-        SPOOL,
         OPERATIONS + "/launcher.lock",
         "/var/lib/hybrid-stock-research/controls/.stock-control.lock",
     }
@@ -191,6 +195,42 @@ def test_only_separate_bootstrap_is_enabled_by_multi_user_and_runs_after_recover
     for name, value in all_units.items():
         if name.startswith(PREFIX):
             assert "hybrid-stock-research.service" not in value["Unit"].get("Requires", "")
+
+
+@pytest.mark.parametrize("operation", ["monitor", "backup", "bootstrap"])
+@pytest.mark.parametrize(
+    "target,writers",
+    [
+        (SPOOL, set()),
+        (SPOOL + "/incidents", {"monitor"}),
+        (SPOOL + "/incidents/incidents.json", {"monitor"}),
+        (SPOOL + "/receipts", {"backup"}),
+        (SPOOL + "/receipts/.stock-receipts.lock", {"monitor", "backup"}),
+        (SPOOL + "/receipts/backup-" + "a" * 64 + ".json", {"backup"}),
+        (OPERATIONS, set()),
+        (OPERATIONS + "/launcher.lock", {"monitor", "backup", "bootstrap"}),
+        (OPERATIONS + "/namespace.json", set()),
+        ("/var/lib/hybrid-stock-research/controls", set()),
+        ("/var/lib/hybrid-stock-research/controls/stock-control.json", set()),
+        (
+            "/var/lib/hybrid-stock-research/controls/.stock-control.lock",
+            {"monitor", "backup", "bootstrap"},
+        ),
+        ("/var/lib/hybrid-stock-research/archive/.stock-research.lock", {"backup"}),
+        ("/var/lib/hybrid-stock-research/exports/.stock-research.lock", {"backup"}),
+        ("/var/lib/hybrid-stock-research/maintenance", {"backup"}),
+        ("/var/lib/hybrid-stock-backups", {"backup"}),
+        (OAUTH, set()),
+    ],
+)
+def test_service_write_exceptions_cannot_expose_another_store_or_control_payload(
+    release, operation, target, writers
+):
+    service = units(release)[PREFIX + operation + ".service"]["Service"]
+    assert service["ProtectSystem"] == "strict"
+    writable = tuple(Path(path) for path in service["ReadWritePaths"].split())
+    exposed = any(Path(target).is_relative_to(path) for path in writable)
+    assert exposed is (operation in writers)
 
 
 @pytest.mark.parametrize(

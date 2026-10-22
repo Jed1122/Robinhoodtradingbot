@@ -63,6 +63,10 @@ properties/drop-ins and run native `systemd-analyze verify` before installation.
   groups/environment and drops to UID/GID10001 before application readers run.
   That owner has no Docker-socket permission. Only existing mutex anchors and
   named staging/spool/backup directories are writable in maintenance sandboxes.
+  Monitor can write its incidents directory and receipt/control read-lock anchors;
+  backup can write its receipts directory and snapshot/encryption paths. Neither
+  receives the maintenance parent or the other service's store. Bootstrap receives
+  only its operations and control-lock anchors.
 
 Paused/killed authority is never automatically resumed. Preserve control_id,
 generation and predecessor hash during upgrades and recovery. No host reboot is
@@ -171,6 +175,8 @@ out of logs, reports and Git.
 exit, original claim/result/source clocks, timer state, storage and verified
 backup/copy/restore times. Launcher exit0 is only lifecycle completion; export
 generated_at is not acquisition freshness. Empty validated rankings may be valid.
+Running control grants must match the installed configuration and image-derived
+code identity before an observation can resolve retained incidents.
 Retained enrichment currently refreshes every6hours while source TTL is2hours;
 stale dossiers remain suppressed and visible as `source_stale`, rather than
 silently extending their evidence lifetime.

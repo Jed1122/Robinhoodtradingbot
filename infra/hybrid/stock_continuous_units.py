@@ -15,8 +15,11 @@ from infra.hybrid.stock_units import unit_files as collector_unit_files
 
 _PREFIX = "hybrid-stock-research-"
 _SPOOL = "/var/lib/hybrid-stock-maintenance"
+_INCIDENTS = _SPOOL + "/incidents"
+_RECEIPTS = _SPOOL + "/receipts"
 _OPERATIONS = "/var/lib/hybrid-stock-operations"
 _LEASE = _OPERATIONS + "/launcher.lock"
+_CONTROL_LOCK = "/var/lib/hybrid-stock-research/controls/.stock-control.lock"
 
 
 def _service(
@@ -114,7 +117,7 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
     files[_PREFIX + "monitor.service"] = _service(
         checkout,
         f"{command} monitor {manifest}",
-        (_SPOOL, _LEASE),
+        (_INCIDENTS, _RECEIPTS + "/.stock-receipts.lock", _LEASE, _CONTROL_LOCK),
         description="Read-only stock operational observations and private local incidents",
         start=60,
         stop=15,
@@ -127,12 +130,12 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
         checkout,
         f"{command} backup {manifest}",
         (
-            _SPOOL,
+            _RECEIPTS,
             _LEASE,
             "/var/lib/hybrid-stock-backups",
             "/var/lib/hybrid-stock-research/maintenance",
             "/var/lib/hybrid-stock-research/archive/.stock-research.lock",
-            "/var/lib/hybrid-stock-research/controls/.stock-control.lock",
+            _CONTROL_LOCK,
             "/var/lib/hybrid-stock-research/exports/.stock-research.lock",
         ),
         description="Coherent stock snapshot and authenticated encrypted backup",
@@ -159,7 +162,7 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
     files[_PREFIX + "bootstrap.service"] = _service(
         checkout,
         f"/usr/bin/python3 -B -m infra.hybrid.stock_bootstrap {manifest}",
-        (_SPOOL, _LEASE, "/var/lib/hybrid-stock-research/controls/.stock-control.lock"),
+        (_LEASE, _CONTROL_LOCK),
         description="Verified stock boot bootstrap after recovery and running authority",
         start=60,
         stop=15,

@@ -22,6 +22,7 @@ from tests.unit.runtime.test_stock_local_state import local as _local
 from trading_bot.runtime.stock_dashboard_export import publish_stock_dashboard
 from trading_bot.runtime.stock_incidents import StockIncidentSpool
 from trading_bot.runtime.stock_local_state import read_local_stock_state
+from trading_bot.runtime.stock_research_controls import StockResearchControlError
 
 release = _release
 data = _data
@@ -144,6 +145,31 @@ def test_unusable_projection_preserves_previous_unresolved_research_incidents(
 def test_paused_state_observes_backup_gaps_without_research_false_alarm(observed):
     assert run(observed)["status"] == "observed"
     assert active(observed[-1]) == {"backup_missing", "offhost_copy_missing", "restore_missing"}
+
+
+@pytest.mark.parametrize("binding", ["config_hash", "code_hash", "matching"])
+def test_running_control_must_match_release_before_incidents_can_be_resolved(
+    observed, local, binding
+):
+    _, loaded, _, _, controls, initial = local
+    code = hashlib.sha256(f"oci-image:{observed[0].image_digest}".encode()).hexdigest()
+    controls.change(
+        "resume",
+        expected_sha256=initial.sha256,
+        config_hash="f" * 64 if binding == "config_hash" else str(loaded.config_hash),
+        code_hash="f" * 64 if binding == "code_hash" else code,
+    )
+    previous = {"worker_failed", "worker_result_stale"}
+    observed[-1].update(tuple(sorted(previous)), now=module.datetime.now(module.UTC))
+    if binding == "matching":
+        controls.grant(config_hash=str(loaded.config_hash), code_hash=code)
+        assert run(observed)["status"] == "observed"
+        assert "observation_invalid" not in active(observed[-1])
+    else:
+        with pytest.raises(StockResearchControlError):
+            controls.grant(config_hash=str(loaded.config_hash), code_hash=code)
+        assert run(observed)["status"] == "unavailable"
+        assert previous | {"observation_invalid"} <= active(observed[-1])
 
 
 def test_transient_helper_failure_preserves_active_incidents(observed, monkeypatch):
