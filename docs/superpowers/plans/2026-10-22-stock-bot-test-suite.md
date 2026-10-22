@@ -33,10 +33,10 @@
 
 **Interfaces:** Preserve exact TrialEpisode/TrialLossState fields, validation/properties/remaining behavior and original import aliases; equity projection consumes the neutral module.
 
-- [ ] Write tests for profits not refilling consumed loss, unsettled/pending reservation, invalid/duplicate episodes and identical old/new class aliases; run and observe missing-neutral-module RED.
-- [ ] Move the two unchanged types and update the equity projection import, retaining legacy reexports.
-- [ ] Run neutral loss tests plus owned economic/accounting/persistence and stock/hybrid risk checks; expected pass with no behavior/default changes. Run targeted Ruff/mypy.
-- [ ] Commit owned files and record actual result.
+- [x] Write tests for profits not refilling consumed loss, unsettled/pending reservation, invalid/duplicate episodes and identical old/new class aliases; run and observe missing-neutral-module RED.
+- [x] Move the two unchanged types and update the equity projection import, retaining legacy reexports.
+- [x] Run neutral loss tests plus owned economic/accounting/persistence and stock/hybrid risk checks; expected pass with no behavior/default changes. Run targeted Ruff/mypy.
+- [x] Commit owned files and record actual result.
 
 ## Task 2: Retire legacy suites and align coverage
 
@@ -44,11 +44,11 @@
 
 **Interfaces:** pytest/default tests root remains tests; standard coverage sources include retained stock/shared Python and host modules, documented legacy exclusions; checker keeps its report/root API and fail-closed validations.
 
-- [ ] Write scope/membership and retained-safety guards; observe RED against existing legacy files/coverage discovery. Preserve generic checker invalid/missing/duplicate/path/branch/counter cases.
-- [ ] Materialize and inspect the exact retirement manifest; remove legacy suites/helpers and the mixed ETF observer/positive prediction cases; keep asset-denial and benchmark tests.
-- [ ] Replace legacy coverage membership with stock/shared membership; preserve80/90/95 gates and include entire stock modules, not imported lines alone.
-- [ ] Run collection without providers and narrow scope/checker/loss tests; expected no legacy test collection or missing imports, passing integrity checks. Fix actual ownership/import failures without suppressing them.
-- [ ] Commit scoped changes and record exact collected/removed counts and actual checks.
+- [x] Write scope/membership and retained-safety guards; observe RED against existing legacy files/coverage discovery. Preserve generic checker invalid/missing/duplicate/path/branch/counter cases.
+- [x] Materialize and inspect the exact retirement manifest; remove legacy suites/helpers and the mixed ETF observer/positive prediction cases; keep asset-denial and benchmark tests.
+- [x] Replace legacy coverage membership with stock/shared membership; preserve80/90/95 gates and include entire stock modules, not imported lines alone.
+- [x] Run collection without providers and narrow scope/checker/loss tests; expected no legacy test collection or missing imports, passing integrity checks. Fix actual ownership/import failures without suppressing them.
+- [x] Commit scoped changes and record exact collected/removed counts and actual checks.
 
 ## Task 3: CI, documentation and final stock verification
 
@@ -56,9 +56,13 @@
 
 **Interfaces:** CI and documented default use the same retained suite and coverage configuration; dashboard checks remain; no options research install/append or inactive old deployment checks.
 
-- [ ] Write/update workflow assertions; observe old options append/environment contract RED before changing CI.
-- [ ] Align CI and documentation, marking legacy operational test commands historical. Retain locked dependency/security and applicable configuration checks.
-- [ ] Run the complete NEW retained stock/shared suite once with branch JSON coverage and unchanged gates, then run the critical/host checker. Expected pass; inspect skips/warnings and disclose scope/time/count.
-- [ ] Run Ruffall, strict mypy, expanded Bandit, offline lock and diff checks; expected pass, record actual evidence.
-- [ ] Commit and obtain one fresh review of e2960a4..HEAD against this spec and all root rulings; fix Important/Critical with observed RED/GREEN and relevant full retained suite, without another legacy run.
-- [ ] Preserve final evidence and complete the engineering audit. Keep branch local under current no-push/no-deployment scope; report remaining operational/investment gates and next steps.
+- [x] Write/update workflow assertions; observe old options append/environment contract RED before changing CI.
+- [x] Align CI and documentation, marking legacy operational test commands historical. Retain locked dependency/security and applicable configuration checks.
+- [x] Run the complete NEW retained stock/shared suite once with branch JSON coverage and unchanged gates, then run the critical/host checker. Expected pass; inspect skips/warnings and disclose scope/time/count.
+- [x] Run Ruffall, strict mypy, expanded Bandit, offline lock and diff checks; expected pass, record actual evidence.
+- [x] Commit and obtain one fresh review of e2960a4..HEAD against this spec and all root rulings; fix Important/Critical with observed RED/GREEN and relevant full retained suite, without another legacy run.
+- [x] Preserve final evidence and complete the engineering audit. Keep branch local under current no-push/no-deployment scope; report remaining operational/investment gates and next steps.
+
+## Observed completion
+
+Tested0bfab5b:10,298passed0failed0skipped1warning830.97seconds,90.69%whole-retained combinedcoverage. Critical90%per-file gate and25-stock-host95%combinedgate passed (97.94%). One fresh gpt-6-astra/high review; documented command corrected and2stale baseline assertions fixed RED/GREEN, full suite green. See [permanent verification and decisions](../../stock-bot-test-verification-2026-10-22.md). Retain the branch/worktree locally; no push/PR/deployment/live activation.

@@ -18,10 +18,11 @@ or verified continuous production operation. No live order path is enabled.
 See [filing integration and verification](docs/stock-filing-dossier-verification.md),
 [dashboard refresh checks](docs/stock-dashboard-refresh.md) and the
 [repeatable worker lifecycle](docs/stock-repeated-cycle-verification.md). The local
-repeatable lifecycle is implemented; integrated review, full regression and native
-runtime/deployment checks remain pending. Next work
-connects filing refreshes to durable scheduled collection and the shortlist, then
-validates stock policy inputs and risk-gated order proposals. Research can conclude
+repeatable lifecycle is implemented. The current stock/shared regression and
+independent test-scope review passed; see the [verification record](docs/stock-bot-test-verification-2026-10-22.md).
+Native runtime/deployment checks remain pending. Next work verifies unattended
+scheduled collection on the intended host, then validates stock policy inputs and
+risk-gated order proposals. Research can conclude
 that no purchase is justified. There is no fixed 60-day paper waiting requirement;
 validation, reconciliation, risk controls and explicit live authorization still apply.
 

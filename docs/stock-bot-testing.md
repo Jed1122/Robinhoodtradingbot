@@ -60,7 +60,8 @@ imports remain identical aliases.
 The pre-retirement run at `e2960a4` exited 0 with 15,370 passed, 33 skipped,
 one warning and 89.04% coverage in 8,618.49 seconds. That is a historical full-repository
 result with a different denominator. It must not be presented as the current stock
-suite result. Current verification is recorded separately after execution.
+suite result. Current verification is recorded separately in the
+[2026-10-22 stock suite report](stock-bot-test-verification-2026-10-22.md).
 
 The broader scan of all `infra/hybrid` helpers reported 12 pre-existing Low
 subprocess notices in `prepare.py` and `watchdog.py` (exit 1, no Medium/High
