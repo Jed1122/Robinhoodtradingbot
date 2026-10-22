@@ -17,7 +17,9 @@ or verified continuous production operation. No live order path is enabled.
 
 See [filing integration and verification](docs/stock-filing-dossier-verification.md),
 [dashboard refresh checks](docs/stock-dashboard-refresh.md) and the
-[remaining repeated-worker work](docs/stock-repeated-cycle-design.md). Next work
+[repeatable worker lifecycle](docs/stock-repeated-cycle-verification.md). The local
+repeatable lifecycle is implemented; integrated review, full regression and native
+runtime/deployment checks remain pending. Next work
 connects filing refreshes to durable scheduled collection and the shortlist, then
 validates stock policy inputs and risk-gated order proposals. Research can conclude
 that no purchase is justified. There is no fixed 60-day paper waiting requirement;

@@ -1,5 +1,9 @@
 # Repeated stock research cycles: recovery design checkpoint
 
+The subsequent [local implementation and verification](stock-repeated-cycle-verification.md)
+implements this design under explicit protocol 2. The design below is retained as
+its historical rationale; native runtime and installed scheduling remain unverified.
+
 This records the next root-owned protocol design. It is not implemented, approved
 native behavior, a migration instruction or authority to run a timer. The current
 first-attempt entry point correctly rejects every nonempty namespace. The live

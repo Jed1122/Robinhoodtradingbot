@@ -95,6 +95,12 @@ def _response(peer: socket.socket, deadline: float, expected: int) -> bytes:
     return _response_status(peer, deadline, {expected})[1]
 
 
+def _not_shutdown(shutdown: list[bool] | None) -> None:
+    _require(
+        shutdown is None or (type(shutdown) is list and len(shutdown) == 1 and shutdown[0] is False)
+    )
+
+
 class StockEngineMutator:
     """Uncomposed root-only library with one create/start per owning store attempt."""
 
@@ -104,9 +110,12 @@ class StockEngineMutator:
         store: AttemptStore,
         release: StockRelease | None = None,
         image: ImageProfile | None = None,
+        *,
+        shutdown: list[bool] | None = None,
     ) -> tuple[bytes, StartFence | None]:
         try:
             _production_store(store)
+            _not_shutdown(shutdown)
             _require(type(operation) is str and operation in {"create", "start"})
             deadline = time.monotonic() + _IO_SECONDS
             fence = None
@@ -148,6 +157,7 @@ class StockEngineMutator:
                     store.check_create_fence(create_fence)
                 else:
                     store.check_start_fence(fence)
+                _not_shutdown(shutdown)
                 peer.settimeout(_remaining(deadline))
                 peer.sendall(request)
                 response = _response(peer, deadline, expected)
@@ -156,14 +166,23 @@ class StockEngineMutator:
         except _ERRORS:
             _deny()
 
-    def create_worker(self, store: AttemptStore, release: StockRelease, image: ImageProfile) -> str:
+    def create_worker(
+        self,
+        store: AttemptStore,
+        release: StockRelease,
+        image: ImageProfile,
+        *,
+        shutdown: list[bool] | None = None,
+    ) -> str:
         try:
-            body, _ = self._exchange("create", store, release, image)
+            body, _ = self._exchange("create", store, release, image, shutdown=shutdown)
             return verify_creation(body)
         except _ERRORS:
             _deny()
 
-    def start_worker(self, store: AttemptStore) -> StartFence:
-        body, fence = self._exchange("start", store)
+    def start_worker(
+        self, store: AttemptStore, *, shutdown: list[bool] | None = None
+    ) -> StartFence:
+        body, fence = self._exchange("start", store, shutdown=shutdown)
         _require(not body and fence is not None)
         return cast(StartFence, fence)

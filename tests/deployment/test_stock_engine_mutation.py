@@ -688,3 +688,32 @@ def test_create_fence_flush_failure_sends_no_request(scenario, monkeypatch):
         )
         with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
             api.StockEngineMutator().create_worker(store, release, image)
+
+
+@pytest.mark.parametrize("operation", ["create", "start"])
+def test_shutdown_seen_after_connection_blocks_dispatch(scenario, monkeypatch, operation):
+    api, _, _, release, image = scenario
+    shutdown = [False]
+
+    class NoSend:
+        def __enter__(self):
+            shutdown[0] = True
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def sendall(self, raw):
+            pytest.fail("Request sent after shutdown intent")
+
+    with opened(scenario) as store:
+        attempt = store.begin(release)
+        if operation == "start":
+            prepare_dispatch(store, release)
+            store.record_created(verified(attempt))
+        monkeypatch.setattr(api, "_connection", lambda deadline: NoSend())
+        with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
+            if operation == "create":
+                api.StockEngineMutator().create_worker(store, release, image, shutdown=shutdown)
+            else:
+                api.StockEngineMutator().start_worker(store, shutdown=shutdown)

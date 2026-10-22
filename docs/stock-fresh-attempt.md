@@ -1,5 +1,10 @@
 # First stock research attempt
 
+This legacy first-attempt entry point remains bounded to empty state. The later
+[repeatable lifecycle](stock-repeated-cycle-verification.md) adds a separate
+coordinator and fixed-root CLI with shutdown handling before admission. Statements
+below about absent repeated composition describe this legacy entry point.
+
 `infra.hybrid.stock_launcher.launch_fresh_attempt(store, release_path)` connects
 the existing trusted-release, Engine/image, durable attempt, prestart, START and
 active-supervision components. It is a root-only library for the first attempt in

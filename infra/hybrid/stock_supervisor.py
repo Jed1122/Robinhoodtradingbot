@@ -173,7 +173,19 @@ def _finish(
     )
 
 
-def supervise_active(store: AttemptStore) -> StockSupervisionResult:
+@contextmanager
+def _shutdown_state(existing: list[bool] | None) -> Iterator[list[bool]]:
+    if existing is None:
+        with _shutdown() as requested:
+            yield requested
+    else:
+        _require(type(existing) is list and len(existing) == 1 and type(existing[0]) is bool)
+        yield existing
+
+
+def supervise_active(
+    store: AttemptStore, *, shutdown: list[bool] | None = None
+) -> StockSupervisionResult:
     """Keep the owning lock open; recover/supervise only, with no create/start API."""
     try:
         _production_store(store)
@@ -187,10 +199,10 @@ def supervise_active(store: AttemptStore) -> StockSupervisionResult:
         same_domain = fence.boot_id == clock.boot_id and now >= fence.start_monotonic_ns
         current_owner = store._owned_attempt == target.attempt.attempt_id
         initial_recovery = not (same_domain and current_owner and now < fence.term_deadline_ns)
-        with _shutdown() as shutdown:
+        with _shutdown_state(shutdown) as requested:
             if not initial_recovery:
                 raw, reason = _monitor(
-                    store, target, reader, clock, fence.term_deadline_ns, shutdown, run_phase=True
+                    store, target, reader, clock, fence.term_deadline_ns, requested, run_phase=True
                 )
                 if raw is not None:
                     return _finish(store, target, raw, "natural_exit", False, False)
@@ -215,7 +227,7 @@ def supervise_active(store: AttemptStore) -> StockSupervisionResult:
                 with suppress(*_ERRORS):
                     terminator.signal_active(store, "TERM", not_after_ns=grace_end)
                 raw, _ = _monitor(
-                    store, target, reader, clock, grace_end, shutdown, run_phase=False
+                    store, target, reader, clock, grace_end, requested, run_phase=False
                 )
                 if raw is not None:
                     return _finish(store, target, raw, reason, term_attempted, False)
@@ -223,7 +235,7 @@ def supervise_active(store: AttemptStore) -> StockSupervisionResult:
                 kill_attempted = True
                 with suppress(*_ERRORS):
                     terminator.signal_active(store, "KILL", not_after_ns=kill_end)
-            raw, _ = _monitor(store, target, reader, clock, verify_end, shutdown, run_phase=False)
+            raw, _ = _monitor(store, target, reader, clock, verify_end, requested, run_phase=False)
             if raw is not None:
                 return _finish(store, target, raw, reason, term_attempted, kill_attempted)
             _deny()
