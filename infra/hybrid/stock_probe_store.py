@@ -594,6 +594,28 @@ def _reconfirm_bytes(directory: int, name: str, raw: bytes, uid: int) -> None:
         _require(_read_bytes(directory, name, uid) == raw)
 
 
+@dataclass(frozen=True, slots=True)
+class ProbeCleanup:
+    probe_id: str
+    intent_sha256: str
+    start_sha256: str | None
+    boot_id: str
+    origin_ns: int
+    term_deadline_ns: int
+    kill_deadline_ns: int
+    final_deadline_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeSignalFence:
+    cleanup: ProbeCleanup
+    signal: str
+    container_id: str
+    start_sha256: str
+    boot_id: str
+    deadline_ns: int
+
+
 class ProbeStore:
     """Root-private admission/dispatch sequencing; no Engine or live capability."""
 
@@ -606,6 +628,8 @@ class ProbeStore:
         self._content = _ContentCache()
         self._nodes: dict[str, tuple[tuple[int, ...], dict[str, tuple[int, ...]], _Node]] = {}
         self._last_clock: dict[str, Any] | None = None
+        self._clock_discontinuities = 0
+        self._candidate_intent_hash: str | None = None
         self._setup_issued = False
         self._begin_issued = False
         self._setup_token: ProbeSetup | None = None
@@ -623,6 +647,17 @@ class ProbeStore:
         self._start_dispatched = False
         self._start_token: ProbeStartFence | None = None
         self._start_ack: str | None = None
+        self._cleanup_issued = False
+        self._cleanup_token: ProbeCleanup | None = None
+        self._discovery_issued = False
+        self._signal_issued: set[str] = set()
+        self._signal_dispatched: set[str] = set()
+        self._signal_tokens: dict[str, ProbeSignalFence] = {}
+        self._stopped_issued = False
+        self._stopped_ack: str | None = None
+        self._natural_stopped_ack: str | None = None
+        self._stopped_observation: ProbeObservation | None = None
+        self._stop_reconfirm_issued = False
 
     @property
     def namespace_id(self) -> str:
@@ -1022,6 +1057,7 @@ class ProbeStore:
             or key < _clock_key(previous["utc"])
         ):
             self._recovery_only = True
+            self._clock_discontinuities += 1
             self._create_ack = self._created_ack = self._start_ack = None
             _deny()
         return value
@@ -1158,6 +1194,7 @@ class ProbeStore:
                 probe_id=token.probe_id,
                 intent_sha256=None,
             )
+            self._candidate_intent_hash = hashlib.sha256(_canonical(intent)).hexdigest()
             os.mkdir(token.probe_id, 0o700, dir_fd=self._directory)
             directory = os.open(token.probe_id, _DIRECTORY, dir_fd=self._directory)
             try:
@@ -1461,3 +1498,306 @@ class ProbeStore:
             _require(not self._start_dispatched)
             self._start_dispatched = True
             self.check_start_fence(token)
+
+    def _known_cleanup_target(self, node: _Node) -> None:
+        snapshot = node.snapshot
+        if self._owned_id is not None:
+            _require(
+                snapshot.probe_id == self._owned_id and snapshot.intent_sha256 == self._owned_intent
+            )
+        elif (
+            self._setup_token is not None
+            and self._begin_issued
+            and self._candidate_intent_hash is not None
+            and snapshot.probe_id == self._setup_token.probe_id
+        ):
+            _require(
+                snapshot.intent_sha256 == self._candidate_intent_hash
+                and "create.json" not in node.records
+            )
+        else:
+            _require(
+                self._entry_snapshot is not None
+                and snapshot.probe_id == self._entry_snapshot.probe_id
+                and snapshot.intent_sha256 == self._entry_snapshot.intent_sha256
+            )
+        _require(snapshot.closed_outcome is None)
+
+    def begin_cleanup(self) -> ProbeCleanup | None:
+        with _sanitized():
+            _require(not self._cleanup_issued)
+            self._cleanup_issued = True
+            normal_owner = not self._recovery_only and self._owned_id is not None
+            # Burn normal authority before history, clocks or any recovery I/O.
+            self._recovery_only = True
+            self._setup_issued = self._begin_issued = True
+            self._create_ack = self._created_ack = self._start_ack = None
+            self._natural_stopped_ack = self._stopped_ack = None
+            self._cleanup_token = None
+            history = self._history()
+            if not history:
+                return None
+            node = history[-1]
+            self._known_cleanup_target(node)
+            shifts = self._clock_discontinuities
+            try:
+                now = self._now()
+            except ValueError:
+                if self._clock_discontinuities != shifts + 1:
+                    raise
+                # One first changed-domain sample may establish bounded cleanup.
+                # A second shift here fails; no new token or renewal is issued.
+                normal_owner = False
+                now = self._now()
+            origin = now["monotonic_ns"]
+            if (
+                normal_owner
+                and node.snapshot.run_deadline_ns is not None
+                and node.snapshot.boot_id == now["boot_id"]
+            ):
+                origin = min(origin, node.snapshot.run_deadline_ns)
+            final = origin + 20000000000
+            _require(_integer(final, 1))
+            self._window(now["boot_id"], final)
+            token = ProbeCleanup(
+                node.snapshot.probe_id,
+                node.snapshot.intent_sha256,
+                node.hashes.get("start.json"),
+                now["boot_id"],
+                origin,
+                origin + 10000000000,
+                origin + 15000000000,
+                final,
+            )
+            self._cleanup_token = token
+            return token
+
+    def _cleanup_node(self, token: ProbeCleanup) -> _Node:
+        _require(
+            not self._closed
+            and self._recovery_only
+            and type(token) is ProbeCleanup
+            and token is self._cleanup_token
+        )
+        history = self._history()
+        _require(bool(history))
+        node = history[-1]
+        self._known_cleanup_target(node)
+        _require(
+            node.snapshot.probe_id == token.probe_id
+            and node.snapshot.intent_sha256 == token.intent_sha256
+            and node.hashes.get("start.json") == token.start_sha256
+        )
+        return node
+
+    def check_cleanup(self, token: ProbeCleanup) -> None:
+        with _sanitized():
+            self._cleanup_node(token)
+            self._window(token.boot_id, token.final_deadline_ns)
+
+    def cleanup_target(self, token: ProbeCleanup) -> ProbeSnapshot:
+        with _sanitized():
+            node = self._cleanup_node(token)
+            self._window(token.boot_id, token.final_deadline_ns)
+            return node.snapshot
+
+    def record_discovered_cid(self, token: ProbeCleanup, raw: bytes) -> str:
+        with _sanitized():
+            _require(not self._discovery_issued)
+            self._discovery_issued = True
+            node = self._cleanup_node(token)
+            _require(
+                node.snapshot.container_id is None
+                and "create.json" in node.records
+                and "cid.json" not in node.records
+            )
+            candidate = _object(raw)["Id"]
+            _require(_hash(candidate))
+            cid = str(candidate)
+            observe_probe(
+                raw,
+                probe_id=token.probe_id,
+                container_id=cid,
+                image_digest=node.snapshot.image_digest,
+            )
+            _require(all(prior.snapshot.container_id != cid for prior in self._history()))
+            stamp = self._window(token.boot_id, token.final_deadline_ns)
+            with self._folder(token.probe_id) as directory:
+                raw_hash = _write_bytes(directory, "discovery.bin", raw, self._uid)
+            digest = self._receipt(
+                node,
+                "cid.json",
+                {
+                    "create_sha256": node.hashes["create.json"],
+                    "container_id": cid,
+                    "evidence_kind": "name_inspection",
+                    "observation_sha256": raw_hash,
+                    "observation_size": len(raw),
+                },
+                stamp,
+            )
+            retained = self._cleanup_node(token)
+            _require(
+                retained.hashes["cid.json"] == digest and retained.snapshot.container_id == cid
+            )
+            self._window(token.boot_id, token.final_deadline_ns)
+            return cid
+
+    def prepare_signal(self, token: ProbeCleanup, signal: str) -> ProbeSignalFence:
+        with _sanitized():
+            _require(
+                type(signal) is str
+                and signal in ("TERM", "KILL")
+                and signal not in self._signal_issued
+            )
+            self._signal_issued.add(signal)
+            node = self._cleanup_node(token)
+            _require(
+                node.snapshot.container_id is not None
+                and token.start_sha256 is not None
+                and "stopped.json" not in node.records
+            )
+            deadline = token.term_deadline_ns if signal == "TERM" else token.kill_deadline_ns
+            now = self._window(token.boot_id, deadline)
+            _require(signal != "KILL" or now["monotonic_ns"] >= token.term_deadline_ns)
+            fence = ProbeSignalFence(
+                token,
+                signal,
+                cast(str, node.snapshot.container_id),
+                cast(str, token.start_sha256),
+                token.boot_id,
+                deadline,
+            )
+            self._signal_tokens[signal] = fence
+            return fence
+
+    def check_signal_fence(self, fence: ProbeSignalFence) -> None:
+        with _sanitized():
+            _require(
+                type(fence) is ProbeSignalFence and self._signal_tokens.get(fence.signal) is fence
+            )
+            node = self._cleanup_node(fence.cleanup)
+            _require(
+                node.snapshot.container_id == fence.container_id
+                and node.hashes.get("start.json") == fence.start_sha256
+                and "stopped.json" not in node.records
+            )
+            now = self._window(fence.boot_id, fence.deadline_ns)
+            _require(
+                fence.signal != "KILL" or now["monotonic_ns"] >= fence.cleanup.term_deadline_ns
+            )
+
+    def claim_signal(self, fence: ProbeSignalFence, raw: bytes) -> None:
+        with _sanitized():
+            _require(
+                type(fence) is ProbeSignalFence and fence.signal not in self._signal_dispatched
+            )
+            self._signal_dispatched.add(fence.signal)
+            self.check_signal_fence(fence)
+            node = self._cleanup_node(fence.cleanup)
+            actual = observe_probe(
+                raw,
+                probe_id=node.snapshot.probe_id,
+                container_id=fence.container_id,
+                image_digest=node.snapshot.image_digest,
+            )
+            _require(actual.status == "running")
+            self.check_signal_fence(fence)
+
+    def _stopped_facts(self, node: _Node, raw: bytes) -> ProbeObservation:
+        cid = node.snapshot.container_id
+        _require(cid is not None)
+        actual = observe_probe(
+            raw,
+            probe_id=node.snapshot.probe_id,
+            container_id=cast(str, cid),
+            image_digest=node.snapshot.image_digest,
+        )
+        _require(
+            actual.status in ("created", "exited", "dead")
+            and (actual.status != "created" or "start.json" not in node.records)
+        )
+        return actual
+
+    def record_stopped(
+        self, raw: bytes, *, cleanup: ProbeCleanup | None = None
+    ) -> ProbeObservation:
+        with _sanitized():
+            _require(not self._stopped_issued)
+            self._stopped_issued = True
+            self._stopped_ack = self._natural_stopped_ack = None
+            self._stopped_observation = None
+            if cleanup is None:
+                node = self._owned_node()
+                _require(self._start_dispatched and node.snapshot.run_deadline_ns is not None)
+                boot, deadline = node.snapshot.boot_id, cast(int, node.snapshot.run_deadline_ns)
+            else:
+                node = self._cleanup_node(cleanup)
+                boot, deadline = cleanup.boot_id, cleanup.final_deadline_ns
+            _require("stopped.json" not in node.records)
+            actual = self._stopped_facts(node, raw)
+            stamp = self._window(boot, deadline)
+            with self._folder(node.snapshot.probe_id) as directory:
+                raw_hash = _write_bytes(directory, "stopped.bin", raw, self._uid)
+            fields = {
+                "container_id": actual.container_id,
+                "start_sha256": node.hashes.get("start.json"),
+                "inspection_sha256": raw_hash,
+                "inspection_size": len(raw),
+                "status": actual.status,
+                "exit_code": actual.exit_code,
+                "oom_killed": actual.oom_killed,
+                "error_present": actual.error_present,
+                "container_started_at": actual.container_started_at,
+                "container_finished_at": actual.container_finished_at,
+            }
+            digest = self._receipt(node, "stopped.json", fields, stamp)
+            retained = self._owned_node() if cleanup is None else self._cleanup_node(cleanup)
+            _require(retained.hashes["stopped.json"] == digest)
+            self._window(boot, deadline)
+            self._stopped_ack, self._stopped_observation = digest, actual
+            if (
+                cleanup is None
+                and actual.status == "exited"
+                and actual.exit_code == 0
+                and not actual.oom_killed
+                and not actual.error_present
+                and _native_key(actual.container_finished_at)
+                >= _native_key(actual.container_started_at)
+            ):
+                self._natural_stopped_ack = digest
+            return actual
+
+    def _same_stopped_lifetime(self, node: _Node, raw: bytes) -> ProbeObservation:
+        _require(node.snapshot.stopped is not None and "stopped.json" in node.records)
+        actual = self._stopped_facts(node, raw)
+        retained = cast(ProbeObservation, node.snapshot.stopped)
+        _require(
+            actual.container_started_at == retained.container_started_at
+            and actual.container_finished_at == retained.container_finished_at
+        )
+        return actual
+
+    def _flush_stopped(self, node: _Node) -> None:
+        with self._folder(node.snapshot.probe_id) as directory:
+            original = _read_bytes(directory, "stopped.bin", self._uid)
+            _reconfirm_bytes(directory, "stopped.bin", original, self._uid)
+            _reconfirm_durability(
+                directory, "stopped.json", node.records["stopped.json"], self._uid
+            )
+
+    def reconfirm_stopped(self, token: ProbeCleanup, raw: bytes) -> ProbeObservation:
+        with _sanitized():
+            _require(not self._stop_reconfirm_issued)
+            self._stop_reconfirm_issued = True
+            self._stopped_ack = self._natural_stopped_ack = None
+            self._stopped_observation = None
+            node = self._cleanup_node(token)
+            actual = self._same_stopped_lifetime(node, raw)
+            self._window(token.boot_id, token.final_deadline_ns)
+            self._flush_stopped(node)
+            retained = self._cleanup_node(token)
+            _require(retained.hashes["stopped.json"] == node.hashes["stopped.json"])
+            self._window(token.boot_id, token.final_deadline_ns)
+            self._stopped_ack, self._stopped_observation = node.hashes["stopped.json"], actual
+            return actual

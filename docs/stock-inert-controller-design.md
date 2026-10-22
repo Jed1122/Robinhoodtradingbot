@@ -265,3 +265,46 @@ Metadata receipts use the operation's pre-write timestamp, not its acknowledgeme
 clock. Fresh entry durability is reconfirmed explicitly; it is not inferred from a
 validated content cache. Root still has to implement STOP/output/removal/closed
 writers and the fixed transports/controller before this protocol is runnable.
+
+## Cleanup and stopped-state writer contract
+
+begin_cleanup() burns all admission/CREATE/START authority before inspecting state.
+It returns one exact ProbeCleanup token for the known unfinished entry (or null for
+an empty namespace). For an uninterrupted normal owner, cleanup starts at the earlier
+of the current clock and its original RUN deadline. Reopened/changed-domain recovery
+uses a fresh finite current-domain cleanup origin, preserving the original START.
+TERM/KILL/final deadlines are origin+10/+15/+20 seconds. Repeated calls or later clock
+changes cannot renew them. Only the initially observed entry, the acknowledged own
+entry or the exact precomputed pending intent can become the cleanup target.
+
+check_cleanup(token) and cleanup_target(token) check that exact issued object and
+its original final cap; target snapshots remain copied data. record_discovered_cid
+retains a fixed-name inspection only when CREATE exists and CID is absent. It binds
+original discovery.bin, full CID and name_inspection receipt, rejects CID reuse and
+never grants START. Name absence remains unresolved in the later actual transport.
+
+prepare_signal(token, TERM/KILL) issues each fixed signal at most once, within its
+original phase. KILL cannot issue before TERM grace ends. claim_signal(fence, raw)
+consumes dispatch before fallible work and requires a fresh owned running observation,
+matching retained START and full CID. check_signal_fence rechecks exact identity,
+unchanged records and the fixed phase before wire. Neither ACK nor error is STOP.
+
+record_stopped(raw, cleanup=None) writes original stopped.bin and its immutable
+receipt, binding CID, START hash and exact native facts. Without cleanup, it requires
+the actual normal owner's dispatched START and original RUN cap. With cleanup, it
+uses the exact issued cleanup token and original final cap. A created observation
+with any START fence is unresolved. Only a normal, timely, clean exited observation
+can acknowledge natural completion; cleanup/recovery never can.
+
+reconfirm_stopped(token, raw) requires an existing valid STOP chain plus fresh actual
+nonrunning ownership and exactly the same StartedAt/FinishedAt strings. It freshly
+flushes unchanged original STOP bytes/receipt and never rewrites them. Later native
+error/OOM/exit facts or exited->dead state can be retained as current cleanup facts
+without manufacturing a new lifetime; they cannot qualify normal success. This is a
+cleanup-only reconfirmation, not a recovered successful run. Unknown/mismatched
+identity, running/queued-created state or changed lifetime denies reconfirmation.
+
+Every writer/reconfirmation/signal claim burns its one-use state before fallible
+validation. Complete bytes after failed acknowledgement remain non-authoritative;
+torn artifact/receipt inventory is an incident, never synthesized automatically.
+Actual fixed transport provenance and output/removal/closed writers follow separately.

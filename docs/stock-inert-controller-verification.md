@@ -23,9 +23,12 @@ credential, account, order or deployment operation was performed in this increme
   Original setup/dispatch/RUN deadlines survive delays, lost acknowledgements and
   reopening. Copied objects and complete unacknowledged bytes cannot issue a token.
 
-Task1 is complete. Task2 remains in progress: STOP/output/removal/closed recovery
-writers, fresh scoped closed-CID absence evidence and cleanup acknowledgements are
-not implemented. Fixed Engine transports, supervision/CLI, whole-increment review
+Task1 is complete. Task2 now also implements bounded cleanup, owned-CID discovery,
+single-use signal fences, STOP persistence and cleanup-only STOP reconfirmation.
+The expanded store regression passed922 checks in6.79seconds at100% statement/branch
+coverage. These are fictional filesystem/process observations, not native execution.
+Task2 remains in progress: output/removal/closed writers and fresh scoped closed-CID
+absence evidence are not implemented. Fixed Engine transports, supervision/CLI, whole-increment review
 and this controller's actual full regression are also pending. A closed CID denies
 new admission until the missing actual absence path is implemented.
 
