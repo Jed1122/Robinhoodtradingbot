@@ -23,7 +23,7 @@ from trading_bot.accounting.owned_economic_models import (
 )
 from trading_bot.domain import AssetClass, OrderState, Position, Side
 from trading_bot.domain.owned_order_lifecycle import advance_owned_order
-from trading_bot.risk.options_economics import TrialEpisode, TrialLossState
+from trading_bot.risk.trial_losses import TrialEpisode, TrialLossState
 
 _ZERO = Decimal(0)
 _TERMINAL = {OrderState.FILLED, OrderState.CANCELED, OrderState.EXPIRED, OrderState.REJECTED}
