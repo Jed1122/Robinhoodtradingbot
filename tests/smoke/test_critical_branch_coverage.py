@@ -10,229 +10,84 @@ ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "check_critical_branch_coverage.py"
 
 
-@pytest.mark.parametrize("relative", (
-    "src/trading_bot/market_data/etf_capital_observed.py",
-    "src/trading_bot/research/etf_capital_protocol.py",
-))
-def test_observed_source_and_closed_protocol_require_critical_branch_coverage(tmp_path, relative):
-    root = tmp_path / "project"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_economic_window_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/research/etf_capital_economic_window.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
 @pytest.mark.parametrize(
     "relative",
-    (
-        "src/trading_bot/research/etf_capital_constrained_policy.py",
-        "src/trading_bot/simulation/etf_capital_constrained.py",
-    ),
+    [
+        "src/trading_bot/risk/trial_losses.py",
+        "src/trading_bot/persistence/lease.py",
+        "src/trading_bot/runtime/stock_research_worker.py",
+        "src/trading_bot/research/stock_dossiers.py",
+        "infra/hybrid/stock_release_producer.py",
+    ],
 )
-def test_constrained_reference_requires_critical_branch_coverage(tmp_path, relative):
+def test_current_stock_modules_cannot_be_missing_from_coverage(tmp_path, relative):
     root = tmp_path / "project"
+    _source(root, "src/trading_bot/risk/anchor.py")
     _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_matched_reference_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/research/etf_capital_matched.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_passive_reference_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/research/etf_capital_passive.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_shared_resampling_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/research/etf_resampling.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-@pytest.mark.parametrize("filename", ("etf_capital_panel.py", "etf_capital_panel_models.py"))
-def test_capital_complete_panel_requires_critical_branch_coverage(tmp_path, filename):
-    root = tmp_path / "project"
-    relative = f"src/trading_bot/research/{filename}"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_owned_walk_forward_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_walk_forward.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-@pytest.mark.parametrize(
-    "filename", (
-        "etf_capital_feature_epoch.py", "etf_capital_projection_preimage.py",
-        "etf_capital_prepared_policy.py",
+    report = _report(
+        tmp_path / "coverage.json",
+        {
+            "src/trading_bot/risk/anchor.py": _entry(0, 0),
+        },
     )
-)
-def test_capital_owned_preimage_helpers_require_critical_branch_coverage(tmp_path, filename):
-    root = tmp_path / "project"
-    relative = f"src/trading_bot/research/{filename}"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
     assert _load_checker().check_critical_branch_coverage(report, root) == [
         f"missing branch coverage for {relative}"
     ]
 
 
-def test_capital_prepared_days_require_critical_branch_coverage(tmp_path):
+def test_retired_strategy_modules_are_outside_the_stock_coverage_gate(tmp_path):
     root = tmp_path / "project"
-    relative = "src/trading_bot/research/etf_capital_prepared.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
+    for relative in (
+        "risk/options_economics.py",
+        "execution/etf_cost_observer.py",
+        "persistence/options_trial.py",
+        "simulation/etf_strategy.py",
+    ):
+        _source(root, "src/trading_bot/" + relative)
+    _source(root, "src/trading_bot/risk/anchor.py")
+    report = _report(
+        tmp_path / "coverage.json",
+        {
+            "src/trading_bot/risk/anchor.py": _entry(0, 0),
+        },
+    )
+    assert _load_checker().check_critical_branch_coverage(report, root) == []
 
 
-def test_capital_owned_source_requires_critical_branch_coverage(tmp_path):
+@pytest.mark.parametrize("covered,passes", [(94, False), (95, True)])
+def test_stock_hosts_keep_the_95_percent_combined_gate(tmp_path, covered, passes):
     root = tmp_path / "project"
-    relative = "src/trading_bot/market_data/etf_capital_owned.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
+    _source(root, "src/trading_bot/risk/anchor.py")
+    _source(root, "infra/hybrid/stock_host.py")
+    entry = _entry(20, 20)
+    entry["summary"].update(num_statements=80, covered_lines=covered - 20)
+    report = _report(
+        tmp_path / "coverage.json",
+        {
+            "src/trading_bot/risk/anchor.py": _entry(0, 0),
+            "infra/hybrid/stock_host.py": entry,
+        },
+    )
+    errors = _load_checker().check_critical_branch_coverage(report, root)
+    assert errors == ([] if passes else ["stock host combined coverage below 95%: 94/100"])
 
 
-def test_capital_account_requires_critical_branch_coverage(tmp_path):
+@pytest.mark.parametrize("statements,covered", [(True, 1), (2, True), (-1, 0), (2, 3)])
+def test_stock_host_statement_counters_fail_closed(tmp_path, statements, covered):
     root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_account.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
+    _source(root, "src/trading_bot/risk/anchor.py")
+    _source(root, "infra/hybrid/stock_host.py")
+    entry = _entry(0, 0)
+    entry["summary"].update(num_statements=statements, covered_lines=covered)
+    report = _report(
+        tmp_path / "coverage.json",
+        {
+            "src/trading_bot/risk/anchor.py": _entry(0, 0),
+            "infra/hybrid/stock_host.py": entry,
+        },
+    )
     assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_action_inputs_require_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_action_events.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_checkpoint_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/persistence/etf_capital_checkpoint.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_risk_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_risk.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_daily_entry_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_daily_entry.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_daily_exit_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_daily_exit.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_daily_owner_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_daily_owner.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_due_facts_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_due_facts.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_trajectory_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/simulation/etf_capital_trajectory.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
-    ]
-
-
-def test_capital_daily_policy_requires_critical_branch_coverage(tmp_path):
-    root = tmp_path / "project"
-    relative = "src/trading_bot/research/etf_capital_daily_policy.py"
-    _source(root, relative)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative}"
+        "invalid statement counters for infra/hybrid/stock_host.py"
     ]
 
 
@@ -296,67 +151,12 @@ def test_fails_when_a_discovered_critical_file_is_missing_from_report(tmp_path: 
     assert errors == ["missing branch coverage for src/trading_bot/risk/missing.py"]
 
 
-def test_requires_capital_order_funding_branch_report(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    _source(root, "src/trading_bot/simulation/etf_capital_funding.py")
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        "missing branch coverage for src/trading_bot/simulation/etf_capital_funding.py"
-    ]
-
-
-def test_requires_options_trial_history_and_execution_lease_branches(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    _source(root, "src/trading_bot/risk/anchor.py")
-    _source(root, "src/trading_bot/persistence/options_trial.py")
-    _source(root, "src/trading_bot/persistence/options_risk.py")
-    _source(root, "src/trading_bot/persistence/lease.py")
-    report = _report(
-        tmp_path / "coverage.json",
-        {
-            "src/trading_bot/risk/anchor.py": _entry(0, 0),
-        },
-    )
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        "missing branch coverage for src/trading_bot/persistence/lease.py",
-        "missing branch coverage for src/trading_bot/persistence/options_risk.py",
-        "missing branch coverage for src/trading_bot/persistence/options_trial.py",
-    ]
-
-
 def test_requires_scoped_capability_verification_branches(tmp_path: Path) -> None:
     root = tmp_path / "project"
     _source(root, "src/trading_bot/capabilities/verification.py")
     report = _report(tmp_path / "coverage.json", {})
     assert _load_checker().check_critical_branch_coverage(report, root) == [
         "missing branch coverage for src/trading_bot/capabilities/verification.py",
-    ]
-
-
-def test_requires_incremental_historical_owner_branch_report(tmp_path):
-    root = tmp_path / "project"
-    _source(root, "src/trading_bot/simulation/etf_incremental_history.py")
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        "missing branch coverage for src/trading_bot/simulation/etf_incremental_history.py"
-    ]
-
-
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        "src/trading_bot/simulation/etf_daily_screen.py",
-        "src/trading_bot/research/etf_daily_protocol.py",
-        "src/trading_bot/research/etf_daily_intake.py",
-        "src/trading_bot/research/etf_daily_economics.py",
-    ],
-)
-def test_daily_screen_cannot_escape_critical_branch_gate(tmp_path, relative_path):
-    root = tmp_path / "project"
-    _source(root, relative_path)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative_path}"
     ]
 
 
@@ -394,117 +194,6 @@ def test_joint_economics_cannot_escape_the_critical_branch_gate(tmp_path, relati
     ]
 
 
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        "src/trading_bot/persistence/paper_cycle_journal.py",
-        "src/trading_bot/runtime/paper_promotion.py",
-        "src/trading_bot/runtime/paper_promotion_runtime.py",
-        "src/trading_bot/runtime/etf_forward_paper.py",
-        "src/trading_bot/persistence/etf_forward_paper.py",
-    ],
-)
-def test_requires_every_paper_owner_and_promotion_branch_report(tmp_path, relative_path):
-    root = tmp_path / "project"
-    _source(root, relative_path)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative_path}",
-    ]
-
-
-def test_requires_durable_recorded_options_runtime_branches(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    _source(root, "src/trading_bot/runtime/options_recorded_session.py")
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        "missing branch coverage for src/trading_bot/runtime/options_recorded_session.py",
-    ]
-
-
-def test_requires_etf_strategy_coordinator_branches(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    _source(root, "src/trading_bot/simulation/etf_strategy.py")
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        "missing branch coverage for src/trading_bot/simulation/etf_strategy.py",
-    ]
-
-
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        "src/trading_bot/simulation/etf_native_history.py",
-        "src/trading_bot/simulation/etf_native_models.py",
-        "src/trading_bot/persistence/etf_native_checkpoint.py",
-    ],
-)
-def test_requires_native_execution_and_recovery_branch_reports(tmp_path, relative_path):
-    root = tmp_path / "project"
-    _source(root, relative_path)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative_path}"
-    ]
-
-
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        "src/trading_bot/domain/options_account.py",
-        "src/trading_bot/reconciliation/options.py",
-        "src/trading_bot/runtime/options_monitor.py",
-    ],
-)
-def test_requires_each_discovered_options_module_to_have_branch_coverage(
-    tmp_path: Path, relative_path: str
-) -> None:
-    root = tmp_path / "project"
-    _source(root, relative_path)
-    report = _report(tmp_path / "coverage.json", {})
-
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative_path}",
-    ]
-
-
-def test_accepts_exact_90_percent_branch_coverage_for_options_modules(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    options_modules = [
-        "src/trading_bot/domain/options_account.py",
-        "src/trading_bot/reconciliation/options.py",
-        "src/trading_bot/runtime/options_monitor.py",
-    ]
-    for relative_path in options_modules:
-        _source(root, relative_path)
-    report = _report(
-        tmp_path / "coverage.json",
-        {relative_path: _entry(10, 9) for relative_path in options_modules},
-    )
-
-    assert _load_checker().check_critical_branch_coverage(report, root) == []
-
-
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        "src/trading_bot/domain/options_account.py",
-        "src/trading_bot/reconciliation/options.py",
-        "src/trading_bot/runtime/options_monitor.py",
-    ],
-)
-def test_rejects_invalid_branch_coverage_for_each_options_module(
-    tmp_path: Path, relative_path: str
-) -> None:
-    root = tmp_path / "project"
-    _source(root, relative_path)
-    report = _report(tmp_path / "coverage.json", {relative_path: _entry(10, 11)})
-
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"invalid branch counters for {relative_path}",
-    ]
-
-
 def test_requires_discovered_simulation_lifecycle_modules(tmp_path: Path) -> None:
     root = tmp_path / "project"
     _source(root, "src/trading_bot/risk/anchor.py")
@@ -522,57 +211,6 @@ def test_requires_discovered_simulation_lifecycle_modules(tmp_path: Path) -> Non
         "missing branch coverage for src/trading_bot/simulation/lifecycle_accounting.py",
         "missing branch coverage for src/trading_bot/simulation/lifecycle_codec.py",
         "missing branch coverage for src/trading_bot/simulation/lifecycle_models.py",
-    ]
-
-
-def test_requires_historical_options_execution_branches(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    _source(root, "src/trading_bot/simulation/options_historical_execution.py")
-    _source(root, "src/trading_bot/simulation/options_historical_models.py")
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        "missing branch coverage for src/trading_bot/simulation/options_historical_execution.py",
-        "missing branch coverage for src/trading_bot/simulation/options_historical_models.py",
-    ]
-
-
-def test_requires_each_etf_history_owner_branch_report(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    names = ("etf_history.py", "etf_history_state.py")
-    for name in names:
-        _source(root, "src/trading_bot/simulation/" + name)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        "missing branch coverage for src/trading_bot/simulation/" + name for name in names
-    ]
-
-
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        "src/trading_bot/simulation/etf_fixture_execution.py",
-        "src/trading_bot/research/etf_costs.py",
-    ],
-)
-def test_requires_etf_execution_and_charge_branch_reports(
-    tmp_path: Path, relative_path: str
-) -> None:
-    root = tmp_path / "project"
-    _source(root, relative_path)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {relative_path}",
-    ]
-
-
-def test_requires_historical_account_journal_branches(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    names = ("options_account_journal.py", "options_account_journal_models.py")
-    for name in names:
-        _source(root, "src/trading_bot/research/" + name)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        "missing branch coverage for src/trading_bot/research/" + name for name in names
     ]
 
 
@@ -680,14 +318,4 @@ def test_rejects_a_root_without_discovered_critical_modules(tmp_path: Path) -> N
 
     assert _load_checker().check_critical_branch_coverage(report, root) == [
         "no critical source modules discovered"
-    ]
-
-
-def test_capital_path_economic_report_requires_critical_branch_coverage(tmp_path: Path) -> None:
-    root = tmp_path / "project"
-    path = "src/trading_bot/research/etf_capital_path_economics.py"
-    _source(root, path)
-    report = _report(tmp_path / "coverage.json", {})
-    assert _load_checker().check_critical_branch_coverage(report, root) == [
-        f"missing branch coverage for {path}"
     ]

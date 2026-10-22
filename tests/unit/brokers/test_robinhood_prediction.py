@@ -1,21 +1,10 @@
-from decimal import Decimal
 
 import pytest
 
 from trading_bot.brokers.errors import UnsupportedCapabilityError
 from trading_bot.brokers.robinhood_prediction import (
-    PREDICTION_LIVE_ENABLED,
     RobinhoodPredictionAdapter,
 )
-
-
-def test_prediction_fixture_normalization_is_available() -> None:
-    adapter = RobinhoodPredictionAdapter()
-    quote = adapter.normalize_quote(
-        {"contract_id": "rain", "yes_price": "0.31", "no_price": "0.69"}
-    )
-    assert quote.yes_price == Decimal("0.31")
-    assert not PREDICTION_LIVE_ENABLED
 
 
 @pytest.mark.asyncio

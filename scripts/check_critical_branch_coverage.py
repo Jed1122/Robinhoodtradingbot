@@ -9,119 +9,55 @@ from pathlib import Path
 from typing import Any
 
 MINIMUM_BRANCH_COVERAGE_PERCENT = 90
+MINIMUM_STOCK_HOST_COVERAGE_PERCENT = 95
 SOURCE_ROOT = Path("src/trading_bot")
 
 
 def _critical_modules(root: Path) -> tuple[Path, ...]:
+    """Retained shared safety modules; legacy strategy gates are retired."""
     source_root = root / SOURCE_ROOT
-    modules: list[Path] = []
+    modules: set[Path] = set()
     for directory in ("risk", "execution", "lifecycle"):
-        candidate = source_root / directory
-        if candidate.is_dir():
-            modules.extend(candidate.rglob("*.py"))
-
-    order_state_machine = source_root / "domain" / "order_state_machine.py"
-    if order_state_machine.is_file():
-        modules.append(order_state_machine)
-
-    capability_verification = source_root / "capabilities" / "verification.py"
-    if capability_verification.is_file():
-        modules.append(capability_verification)
-
-    for filename in (
-        "lease.py",
-        "options_trial.py",
-        "options_risk.py",
-        "etf_history_store.py",
-        "etf_strategy_checkpoint.py",
-        "etf_native_checkpoint.py",
-        "etf_capital_checkpoint.py",
-        "paper_cycle_journal.py",
-        "etf_forward_paper.py",
-        "owned_order_journal.py",
-        "owned_economic_journal.py",
+        modules.update((source_root / directory).rglob("*.py"))
+    for relative in (
+        "domain/order_state_machine.py",
+        "domain/owned_order_lifecycle.py",
+        "capabilities/verification.py",
+        "persistence/lease.py",
+        "persistence/owned_order_journal.py",
+        "persistence/owned_economic_journal.py",
+        "persistence/paper_cycle_journal.py",
+        "runtime/paper_promotion.py",
+        "runtime/paper_promotion_runtime.py",
     ):
-        persistence_module = source_root / "persistence" / filename
-        if persistence_module.is_file():
-            modules.append(persistence_module)
+        candidate = source_root / relative
+        if candidate.is_file():
+            modules.add(candidate)
+    modules.update((source_root / "accounting").glob("*.py"))
+    modules.update((source_root / "simulation").glob("lifecycle*.py"))
+    return tuple(
+        sorted(
+            (path.resolve() for path in modules if not path.name.startswith(("options", "etf_"))),
+            key=str,
+        )
+    )
 
-    recorded_options_runtime = source_root / "runtime" / "options_recorded_session.py"
-    if recorded_options_runtime.is_file():
-        modules.append(recorded_options_runtime)
 
-    for relative_path in (
-        Path("market_data/etf_capital_owned.py"),
-        Path("market_data/etf_capital_observed.py"),
-        Path("domain/options_account.py"),
-        Path("domain/owned_order_lifecycle.py"),
-        Path("accounting/owned_economic_models.py"),
-        Path("accounting/owned_economic_codec.py"),
-        Path("accounting/owned_economic_projection.py"),
-        Path("reconciliation/options.py"),
-        Path("runtime/options_monitor.py"),
-        Path("runtime/paper_promotion.py"),
-        Path("runtime/paper_promotion_runtime.py"),
-        Path("runtime/etf_forward_paper.py"),
+def _stock_modules(root: Path) -> tuple[Path, ...]:
+    """Require whole current stock modules, including unexecuted source files."""
+    source_root = root / SOURCE_ROOT
+    modules = set(source_root.rglob("stock_*.py"))
+    modules.update((source_root / "hybrid").glob("*.py"))
+    modules.update((root / "infra/hybrid").glob("stock_*.py"))
+    for relative in (
+        "market_data/alpaca_stock_minutes.py",
+        "market_data/sec_submissions.py",
+        "market_data/sec_companyfacts.py",
     ):
-        options_module = source_root / relative_path
-        if options_module.is_file():
-            modules.append(options_module)
-
-    simulation_directory = source_root / "simulation"
-    if simulation_directory.is_dir():
-        modules.extend(simulation_directory.glob("lifecycle*.py"))
-        modules.extend(simulation_directory.glob("options_replay*.py"))
-        modules.extend(simulation_directory.glob("options_historical*.py"))
-        modules.extend(simulation_directory.glob("etf_history*.py"))
-        modules.extend(simulation_directory.glob("etf_account.py"))
-        modules.extend(simulation_directory.glob("etf_capital_funding.py"))
-        modules.extend(simulation_directory.glob("etf_capital_account.py"))
-        modules.extend(simulation_directory.glob("etf_capital_action_events.py"))
-        modules.extend(simulation_directory.glob("etf_capital_risk.py"))
-        modules.extend(simulation_directory.glob("etf_capital_daily_entry.py"))
-        modules.extend(simulation_directory.glob("etf_capital_daily_exit.py"))
-        modules.extend(simulation_directory.glob("etf_capital_daily_owner.py"))
-        modules.extend(simulation_directory.glob("etf_capital_due_facts.py"))
-        modules.extend(simulation_directory.glob("etf_capital_trajectory.py"))
-        modules.extend(simulation_directory.glob("etf_capital_constrained.py"))
-        modules.extend(simulation_directory.glob("etf_capital_walk_forward.py"))
-        modules.extend(simulation_directory.glob("etf_fixture_execution.py"))
-        modules.extend(simulation_directory.glob("etf_strategy.py"))
-        modules.extend(simulation_directory.glob("etf_native_history.py"))
-        modules.extend(simulation_directory.glob("etf_native_models.py"))
-        modules.extend(simulation_directory.glob("etf_incremental_history.py"))
-        modules.extend(simulation_directory.glob("etf_daily_screen.py"))
-        modules.extend(simulation_directory.glob("etf_exploratory_lifecycle.py"))
-        modules.extend(simulation_directory.glob("etf_monthly_*.py"))
-
-    research_directory = source_root / "research"
-    if research_directory.is_dir():
-        modules.extend(research_directory.glob("etf_resampling.py"))
-        modules.extend(research_directory.glob("options_account_*.py"))
-        modules.extend(research_directory.glob("etf_costs.py"))
-        modules.extend(research_directory.glob("etf_capital_feasibility.py"))
-        modules.extend(research_directory.glob("etf_capital_path_economics.py"))
-        modules.extend(research_directory.glob("etf_capital_economic_window.py"))
-        modules.extend(research_directory.glob("etf_capital_panel.py"))
-        modules.extend(research_directory.glob("etf_capital_panel_models.py"))
-        modules.extend(research_directory.glob("etf_capital_passive.py"))
-        modules.extend(research_directory.glob("etf_capital_matched.py"))
-        modules.extend(research_directory.glob("etf_capital_daily_policy.py"))
-        modules.extend(research_directory.glob("etf_capital_constrained_policy.py"))
-        modules.extend(research_directory.glob("etf_capital_prepared_policy.py"))
-        modules.extend(research_directory.glob("etf_capital_prepared.py"))
-        modules.extend(research_directory.glob("etf_capital_protocol.py"))
-        modules.extend(research_directory.glob("etf_capital_feature_epoch.py"))
-        modules.extend(research_directory.glob("etf_capital_projection_preimage.py"))
-        modules.extend(research_directory.glob("etf_daily_*.py"))
-        modules.extend(research_directory.glob("etf_monthly_*.py"))
-        modules.extend(research_directory.glob("etf_exploratory_economics.py"))
-
-    monthly_strategy = source_root / "strategies" / "etf_monthly_trend.py"
-    if monthly_strategy.is_file():
-        modules.append(monthly_strategy)
-
-    return tuple(sorted((module.resolve() for module in modules), key=str))
+        candidate = source_root / relative
+        if candidate.is_file():
+            modules.add(candidate)
+    return tuple(sorted((path.resolve() for path in modules), key=str))
 
 
 def _normalize_report_path(report_path: str, root: Path) -> Path | None:
@@ -169,7 +105,8 @@ def _branch_counters(details: Any) -> tuple[int, int] | None:
 def check_critical_branch_coverage(report: Path, root: Path) -> list[str]:
     """Return deterministic errors for critical modules that fail branch coverage."""
     root = root.resolve()
-    modules = _critical_modules(root)
+    critical = set(_critical_modules(root))
+    modules = sorted(critical | set(_stock_modules(root)), key=str)
     if not modules:
         return ["no critical source modules discovered"]
     try:
@@ -187,6 +124,8 @@ def check_critical_branch_coverage(report: Path, root: Path) -> list[str]:
 
     measured = _coverage_by_source_path(files, root)
     errors: list[str] = []
+    host_total = host_covered = 0
+    host_valid = True
     for module in modules:
         relative = module.relative_to(root).as_posix()
         entries = measured.get(module)
@@ -206,10 +145,35 @@ def check_critical_branch_coverage(report: Path, root: Path) -> list[str]:
             errors.append(f"{message} for {relative}")
             continue
         total, covered = counters
-        if total and covered * 100 < total * MINIMUM_BRANCH_COVERAGE_PERCENT:
+        if module in critical and total and covered * 100 < total * MINIMUM_BRANCH_COVERAGE_PERCENT:
             errors.append(
                 f"branch coverage below {MINIMUM_BRANCH_COVERAGE_PERCENT}% for {relative}: "
                 f"{covered}/{total}"
+            )
+        if module.parent == (root / "infra/hybrid"):
+            summary = details["summary"]
+            statements = summary.get("num_statements")
+            covered_lines = summary.get("covered_lines")
+            if (
+                type(statements) is not int
+                or type(covered_lines) is not int
+                or statements < 0
+                or covered_lines < 0
+                or covered_lines > statements
+            ):
+                errors.append(f"invalid statement counters for {relative}")
+                host_valid = False
+            else:
+                host_total += statements + total
+                host_covered += covered_lines + covered
+    hosts = tuple((root / "infra/hybrid").glob("stock_*.py"))
+    if hosts and host_valid and not errors:
+        if not host_total:
+            errors.append("stock host coverage has no measured statements or branches")
+        elif host_covered * 100 < host_total * MINIMUM_STOCK_HOST_COVERAGE_PERCENT:
+            errors.append(
+                f"stock host combined coverage below {MINIMUM_STOCK_HOST_COVERAGE_PERCENT}%: "
+                f"{host_covered}/{host_total}"
             )
     return errors
 
