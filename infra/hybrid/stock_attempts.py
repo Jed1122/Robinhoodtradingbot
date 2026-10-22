@@ -55,7 +55,44 @@ _INTENT_KEYS = {
     "max_run_seconds",
     *_CLOCK_KEYS,
 }
-_FILES = {"intent.json", "created.json", "start.json", "stopped.json"}
+_LINEAGE_KEYS = {
+    "predecessor_attempt_id",
+    "predecessor_terminal_kind",
+    "predecessor_terminal_sha256",
+    "retirement_attempt_id",
+    "retirement_container_id",
+    "retirement_stopped_sha256",
+}
+_V1_FILES = {"intent.json", "created.json", "start.json", "stopped.json"}
+_FILES = _V1_FILES | {"create.json", "removal-intent.json", "removed.json", "abandoned.json"}
+_TARGET_KEYS = {"target_attempt_id", "target_container_id", "target_stopped_sha256"}
+_EXTRA_KEYS = {
+    "create.json": {"request_sha256", "dispatch_deadline_ns"},
+    "removal-intent.json": _TARGET_KEYS,
+    "removed.json": _TARGET_KEYS | {"removal_intent_sha256", "evidence_kind"},
+    "abandoned.json": {"removed_sha256"},
+    "created.json": {"container_id"},
+    "start.json": {"container_id", "term_deadline_ns"},
+    "stopped.json": {
+        "container_id",
+        "status",
+        "exit_code",
+        "oom_killed",
+        "error_present",
+        "start_fence_present",
+        "container_started_at",
+        "container_finished_at",
+    },
+}
+_KINDS = {
+    name: "stock_attempt_"
+    + (
+        "abandoned_before_dispatch"
+        if name == "abandoned.json"
+        else name.removesuffix(".json").replace("-", "_")
+    )
+    for name in _EXTRA_KEYS
+}
 
 
 def _deny() -> NoReturn:
@@ -191,7 +228,7 @@ def _write_new(directory: int, name: str, value: dict[str, Any], uid: int) -> st
 
 def _namespace(root_info: os.stat_result, lock_info: os.stat_result) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "stock_operations_namespace",
         "namespace_id": secrets.token_hex(16),
         "root_device": root_info.st_dev,
@@ -242,7 +279,7 @@ def _validate_namespace(value: dict[str, Any], root: os.stat_result, lock: os.st
             "lock_inode",
         }
     )
-    _require(type(value["schema_version"]) is int and value["schema_version"] == 1)
+    _require(type(value["schema_version"]) is int and value["schema_version"] in (1, 2))
     _require(value["kind"] == "stock_operations_namespace" and _matches(value["namespace_id"], _ID))
     for key, expected in {
         "root_device": root.st_dev,
@@ -290,6 +327,7 @@ def initialize_operations() -> None:
 
 @dataclass(frozen=True, slots=True)
 class Attempt:
+    schema_version: int
     namespace_id: str
     attempt_id: str
     release_id: str
@@ -301,6 +339,45 @@ class Attempt:
     created_utc: str
     created_monotonic_ns: int
     intent_sha256: str
+    predecessor_attempt_id: str | None
+    predecessor_terminal_kind: str | None
+    predecessor_terminal_sha256: str | None
+    retirement_attempt_id: str | None
+    retirement_container_id: str | None
+    retirement_stopped_sha256: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class CreateFence:
+    attempt_id: str
+    intent_sha256: str
+    receipt_sha256: str
+    request_sha256: str
+    boot_id: str
+    dispatch_deadline_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class RemovalFence:
+    attempt_id: str
+    intent_sha256: str
+    target_attempt_id: str
+    target_container_id: str
+    target_stopped_sha256: str
+    removal_intent_sha256: str
+    boot_id: str
+    issued_monotonic_ns: int
+    deadline_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class RetirementProof:
+    """Trusted closed-transport result; copied receipts are not this authority."""
+
+    fence: RemovalFence
+    evidence_kind: str
+    boot_id: str
+    observed_monotonic_ns: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,13 +399,19 @@ class AttemptSnapshot:
     created_sha256: str | None
     start_sha256: str | None
     stopped_sha256: str | None
+    create_sha256: str | None
+    removal_intent_sha256: str | None
+    removed_sha256: str | None
+    abandoned_sha256: str | None
 
 
-def _intent(value: dict[str, Any], digest: str, namespace_id: str, attempt_id: str) -> Attempt:
+def _intent(
+    value: dict[str, Any], digest: str, namespace_id: str, attempt_id: str, version: int
+) -> Attempt:
     _require(
-        set(value) == _INTENT_KEYS
+        set(value) == (_INTENT_KEYS | (_LINEAGE_KEYS if version == 2 else set()))
         and type(value["schema_version"]) is int
-        and value["schema_version"] == 1
+        and value["schema_version"] == version
         and value["kind"] == "stock_attempt_intent"
     )
     _require(value["namespace_id"] == namespace_id and value["attempt_id"] == attempt_id)
@@ -338,7 +421,41 @@ def _intent(value: dict[str, Any], digest: str, namespace_id: str, attempt_id: s
         _matches(value["image_digest"], _IMAGE) and _integer(value["max_run_seconds"], 60, 450)
     )
     _check_clock(value)
+    if version == 2:
+        logical = [
+            value[key]
+            for key in (
+                "predecessor_attempt_id",
+                "predecessor_terminal_kind",
+                "predecessor_terminal_sha256",
+            )
+        ]
+        physical = [
+            value[key]
+            for key in (
+                "retirement_attempt_id",
+                "retirement_container_id",
+                "retirement_stopped_sha256",
+            )
+        ]
+        _require(
+            all(item is None for item in logical)
+            or (
+                _matches(logical[0], _ID)
+                and logical[1] in ("stopped", "abandoned_before_dispatch")
+                and _matches(logical[2], _HEX)
+            )
+        )
+        _require(
+            all(item is None for item in physical)
+            or (
+                _matches(physical[0], _ID)
+                and _matches(physical[1], _HEX)
+                and _matches(physical[2], _HEX)
+            )
+        )
     return Attempt(
+        version,
         namespace_id,
         attempt_id,
         value["release_id"],
@@ -350,6 +467,12 @@ def _intent(value: dict[str, Any], digest: str, namespace_id: str, attempt_id: s
         value["utc"],
         value["monotonic_ns"],
         digest,
+        value.get("predecessor_attempt_id"),
+        value.get("predecessor_terminal_kind"),
+        value.get("predecessor_terminal_sha256"),
+        value.get("retirement_attempt_id"),
+        value.get("retirement_container_id"),
+        value.get("retirement_stopped_sha256"),
     )
 
 
@@ -358,7 +481,7 @@ class AttemptStore:
         self._root, self._directory, self._lock, self._uid = root, directory, lock, uid
         self._namespace = namespace
         self._closed = False
-        self._used_begin = False
+        self._used_begin = True
         self._owned_attempt: str | None = None
         self._create_issued = False
         self._create_claim: Attempt | None = None
@@ -368,6 +491,16 @@ class AttemptStore:
         self._cid_record_issued = False
         self._created_acknowledged: str | None = None
         self._terminal_acknowledged: tuple[str, str] | None = None
+        self._create_fence: CreateFence | None = None
+        self._create_acknowledged: str | None = None
+        self._create_prepared = False
+        self._removal_fence: RemovalFence | None = None
+        self._removal_issued = False
+        self._removed_acknowledged: str | None = None
+        self._recovery_only = False
+        # The opener classifies the checked entry state before exposing this store.
+        self._entry_unfinished = True
+        self._entry_terminal: tuple[str, str, str, str] | None = None
 
     def _validate(self) -> None:
         _require(not self._closed and os.geteuid() == self._uid)
@@ -430,7 +563,7 @@ class AttemptStore:
         )
         _require(
             type(head["schema_version"]) is int
-            and head["schema_version"] == 1
+            and head["schema_version"] == self._namespace["schema_version"]
             and head["kind"] == "stock_attempt_head"
             and head["namespace_id"] == self._namespace["namespace_id"]
         )
@@ -442,7 +575,13 @@ class AttemptStore:
         with self._attempt_directory(head["attempt_id"]) as directory:
             value, digest = _read(directory, "intent.json", self._uid)
             _require(digest == head["intent_sha256"])
-            return _intent(value, digest, head["namespace_id"], head["attempt_id"])
+            return _intent(
+                value,
+                digest,
+                head["namespace_id"],
+                head["attempt_id"],
+                self._namespace["schema_version"],
+            )
 
     def active(self) -> Attempt | None:
         with _sanitized():
@@ -459,34 +598,22 @@ class AttemptStore:
             "namespace_id",
             "attempt_id",
             "intent_sha256",
-            "container_id",
             *_CLOCK_KEYS,
         }
-        extra = set()
-        if name == "stopped.json":
-            extra = {
-                "status",
-                "exit_code",
-                "oom_killed",
-                "error_present",
-                "start_fence_present",
-                "container_started_at",
-                "container_finished_at",
-            }
-        elif name == "start.json":
-            extra = {"term_deadline_ns"}
         _require(
-            set(value) == common | extra
+            set(value) == common | _EXTRA_KEYS[name]
             and type(value["schema_version"]) is int
-            and value["schema_version"] == 1
-            and value["kind"] == "stock_attempt_" + name.partition(".")[0]
+            and value["schema_version"] == attempt.schema_version
+            and value["kind"] == _KINDS[name]
+            and (attempt.schema_version == 2 or name in _V1_FILES)
         )
         _require(
             value["namespace_id"] == attempt.namespace_id
             and value["attempt_id"] == attempt.attempt_id
             and value["intent_sha256"] == attempt.intent_sha256
-            and _matches(value["container_id"], _HEX)
         )
+        if name in ("created.json", "start.json", "stopped.json"):
+            _require(_matches(value["container_id"], _HEX))
         _check_clock(value)
         if name == "stopped.json":
             _require(
@@ -503,7 +630,7 @@ class AttemptStore:
             _require(value["status"] != "created" or value["start_fence_present"] is False)
             _timestamp(value["container_started_at"], zero=True)
             _timestamp(value["container_finished_at"], zero=True)
-        else:
+        elif name in ("created.json", "start.json", "create.json"):
             _require(
                 value["boot_id"] == attempt.boot_id
                 and value["monotonic_ns"] >= attempt.created_monotonic_ns
@@ -514,14 +641,51 @@ class AttemptStore:
                     and value["term_deadline_ns"]
                     == value["monotonic_ns"] + attempt.max_run_seconds * 1000000000
                 )
+            elif name == "create.json":
+                _require(
+                    _matches(value["request_sha256"], _HEX)
+                    and _integer(value["dispatch_deadline_ns"])
+                    and value["monotonic_ns"]
+                    < value["dispatch_deadline_ns"]
+                    <= value["monotonic_ns"] + 5000000000
+                )
+        elif name in ("removal-intent.json", "removed.json"):
+            _require(
+                value["target_attempt_id"] == attempt.retirement_attempt_id
+                and value["target_container_id"] == attempt.retirement_container_id
+                and value["target_stopped_sha256"] == attempt.retirement_stopped_sha256
+                and _matches(value["target_attempt_id"], _ID)
+                and _matches(value["target_container_id"], _HEX)
+                and _matches(value["target_stopped_sha256"], _HEX)
+            )
+            if name == "removed.json":
+                _require(
+                    _matches(value["removal_intent_sha256"], _HEX)
+                    and value["evidence_kind"] in ("delete_204", "inspect_404")
+                )
+        elif name == "abandoned.json":
+            _require(value["removed_sha256"] is None or _matches(value["removed_sha256"], _HEX))
         return value
 
     def _created_and_start(self, directory: int, attempt: Attempt) -> dict[str, Any] | None:
         has_start = _exists(directory, "start.json")
+        create = None
+        if attempt.schema_version == 2:
+            if _exists(directory, "create.json"):
+                create = self._receipt(directory, "create.json", attempt)
+            else:
+                _require(
+                    not any(
+                        _exists(directory, name)
+                        for name in ("created.json", "start.json", "stopped.json")
+                    )
+                )
         if not _exists(directory, "created.json"):
             _require(not has_start)
             return None
         created = self._receipt(directory, "created.json", attempt)
+        if create is not None:
+            _require(created["monotonic_ns"] >= create["monotonic_ns"])
         if has_start:
             start = self._receipt(directory, "start.json", attempt)
             _require(
@@ -531,62 +695,155 @@ class AttemptStore:
             )
         return created
 
+    def _local_snapshot(self, attempt: Attempt) -> AttemptSnapshot:
+        with self._attempt_directory(attempt.attempt_id) as directory:
+            names = set(os.listdir(directory))
+            _require(attempt.schema_version == 2 or names.issubset(_V1_FILES))
+            created = self._created_and_start(directory, attempt)
+            receipts = {
+                name: self._receipt(directory, name, attempt) for name in names - {"intent.json"}
+            }
+            hashes = {
+                name: hashlib.sha256(_canonical(value)).hexdigest()
+                for name, value in receipts.items()
+            }
+            container_id = created["container_id"] if created is not None else None
+            start = receipts.get("start.json")
+            fence = (
+                None
+                if start is None
+                else StartFence(
+                    attempt.attempt_id,
+                    start["container_id"],
+                    start["boot_id"],
+                    start["monotonic_ns"],
+                    start["term_deadline_ns"],
+                )
+            )
+            stopped = receipts.get("stopped.json")
+            if stopped is not None:
+                _require(container_id is None or stopped["container_id"] == container_id)
+                container_id = stopped["container_id"]
+            if attempt.schema_version == 2:
+                removed = receipts.get("removed.json")
+                if removed is not None:
+                    _require(removed["removal_intent_sha256"] == hashes.get("removal-intent.json"))
+                if attempt.retirement_attempt_id is None:
+                    _require("removed.json" not in names and "removal-intent.json" not in names)
+                elif "create.json" in names or "abandoned.json" in names:
+                    _require(removed is not None)
+                abandoned = receipts.get("abandoned.json")
+                if abandoned is not None:
+                    _require(
+                        not names.intersection(
+                            {"create.json", "created.json", "start.json", "stopped.json"}
+                        )
+                    )
+                    _require(abandoned["removed_sha256"] == hashes.get("removed.json"))
+            return AttemptSnapshot(
+                attempt,
+                container_id,
+                fence,
+                hashes.get("created.json"),
+                hashes.get("start.json"),
+                hashes.get("stopped.json"),
+                hashes.get("create.json"),
+                hashes.get("removal-intent.json"),
+                hashes.get("removed.json"),
+                hashes.get("abandoned.json"),
+            )
+
+    def _history(self) -> dict[str, AttemptSnapshot]:
+        active = self._active()
+        if active is None:
+            return {}
+        history = {}
+        cids = set()
+        for attempt_id in self._inventory():
+            with self._attempt_directory(attempt_id) as directory:
+                value, digest = _read(directory, "intent.json", self._uid)
+            attempt = _intent(
+                value,
+                digest,
+                self._namespace["namespace_id"],
+                attempt_id,
+                self._namespace["schema_version"],
+            )
+            state = self._local_snapshot(attempt)
+            history[attempt_id] = state
+            if active.schema_version == 2 and state.container_id is not None:
+                _require(state.container_id not in cids)
+                cids.add(state.container_id)
+            if attempt_id != active.attempt_id:
+                _require(state.stopped_sha256 is not None or state.abandoned_sha256 is not None)
+        if active.schema_version == 1:
+            return history
+        visited = set()
+        cursor: AttemptSnapshot | None = history[active.attempt_id]
+        while cursor is not None:
+            attempt = cursor.attempt
+            _require(attempt.attempt_id not in visited)
+            visited.add(attempt.attempt_id)
+            predecessor_id = attempt.predecessor_attempt_id
+            if predecessor_id is None:
+                _require(attempt.retirement_attempt_id is None)
+                cursor = None
+                continue
+            _require(predecessor_id in history)
+            predecessor = history[predecessor_id]
+            if attempt.predecessor_terminal_kind == "stopped":
+                _require(
+                    predecessor.stopped_sha256 is not None
+                    and attempt.predecessor_terminal_sha256 == predecessor.stopped_sha256
+                    and attempt.retirement_attempt_id == predecessor_id
+                    and attempt.retirement_container_id == predecessor.container_id
+                    and attempt.retirement_stopped_sha256 == predecessor.stopped_sha256
+                )
+            else:
+                _require(
+                    predecessor.abandoned_sha256 is not None
+                    and attempt.predecessor_terminal_sha256 == predecessor.abandoned_sha256
+                    and attempt.retirement_attempt_id is None
+                )
+            cursor = predecessor
+        _require(visited == set(history))
+        return history
+
     def snapshot(self) -> AttemptSnapshot | None:
         """Read the checked active receipt chain without acknowledging or repairing it."""
         with _sanitized():
             self._validate()
             attempt = self._active()
-            result = None
-            if attempt is not None:
-                with self._attempt_directory(attempt.attempt_id) as directory:
-                    created = self._created_and_start(directory, attempt)
-                    container_id = created["container_id"] if created is not None else None
-                    created_hash = (
-                        hashlib.sha256(_canonical(created)).hexdigest()
-                        if created is not None
-                        else None
-                    )
-                    fence = None
-                    start_hash = stopped_hash = None
-                    if _exists(directory, "start.json"):
-                        start = self._receipt(directory, "start.json", attempt)
-                        if created is None or start["container_id"] != container_id:
-                            _deny()
-                        _require(start["monotonic_ns"] >= created["monotonic_ns"])
-                        fence = StartFence(
-                            attempt.attempt_id,
-                            start["container_id"],
-                            start["boot_id"],
-                            start["monotonic_ns"],
-                            start["term_deadline_ns"],
-                        )
-                        start_hash = hashlib.sha256(_canonical(start)).hexdigest()
-                    if _exists(directory, "stopped.json"):
-                        stopped = self._receipt(directory, "stopped.json", attempt)
-                        _require(container_id is None or stopped["container_id"] == container_id)
-                        _require(stopped["start_fence_present"] is (fence is not None))
-                        container_id = stopped["container_id"]
-                        stopped_hash = hashlib.sha256(_canonical(stopped)).hexdigest()
-                    result = AttemptSnapshot(
-                        attempt, container_id, fence, created_hash, start_hash, stopped_hash
-                    )
+            history = self._history()
+            result = None if attempt is None else history[attempt.attempt_id]
             self._validate()
             _require(self._active() == attempt)
             return result
 
+    def _burn_recovery(self) -> None:
+        self._recovery_only = True
+        self._used_begin = True
+        self._create_issued = self._create_prepared = self._cid_record_issued = True
+        self._start_issued = True
+        self._create_claim = None
+        self._create_fence = None
+        self._create_acknowledged = None
+        self._created_acknowledged = None
+        self._start_fence = None
+        self._start_acknowledged = None
+        self._terminal_acknowledged = None
+        self._removal_fence = None
+        self._removed_acknowledged = None
+
+    def recovery_snapshot(self) -> AttemptSnapshot | None:
+        with _sanitized():
+            self._burn_recovery()
+            return self.snapshot()
+
     def cleanup_target(self) -> AttemptSnapshot:
         """Revoke fresh execution before obtaining a start-fenced cleanup target."""
         with _sanitized():
-            self._used_begin = True
-            self._create_issued = True
-            self._create_claim = None
-            self._cid_record_issued = True
-            self._created_acknowledged = None
-            self._start_issued = True
-            self._start_fence = None
-            self._start_acknowledged = None
-            self._terminal_acknowledged = None
-            result = self.snapshot()
+            result = self.recovery_snapshot()
             if result is None:
                 _deny()
             _require(
@@ -601,33 +858,52 @@ class AttemptStore:
     def begin(self, release: StockRelease) -> Attempt:
         with _sanitized():
             self._validate()
-            _require(not self._used_begin and type(release) is StockRelease)
+            _require(
+                self._namespace["schema_version"] == 2
+                and not self._used_begin
+                and not self._recovery_only
+                and type(release) is StockRelease
+            )
             active = self._active()
+            history = self._history()
+            lineage = dict.fromkeys(_LINEAGE_KEYS)
             if active is not None:
                 if self._terminal_acknowledged is None:
                     _deny()
                 _require(self._terminal_acknowledged[0] == active.attempt_id)
-            for old_id in self._inventory():
-                with self._attempt_directory(old_id) as directory:
-                    raw, digest = _read(directory, "intent.json", self._uid)
-                    old = _intent(raw, digest, self._namespace["namespace_id"], old_id)
-                    known_created = self._created_and_start(directory, old)
-                    stopped = self._receipt(directory, "stopped.json", old)
-                    _require(
-                        known_created is None
-                        or stopped["container_id"] == known_created["container_id"]
+                predecessor = history[active.attempt_id]
+                kind = (
+                    "stopped"
+                    if predecessor.stopped_sha256 is not None
+                    else "abandoned_before_dispatch"
+                )
+                terminal_hash = predecessor.stopped_sha256 or predecessor.abandoned_sha256
+                _require(
+                    terminal_hash is not None
+                    and self._terminal_acknowledged[1] == terminal_hash
+                    and self._entry_terminal
+                    == (active.attempt_id, active.intent_sha256, kind, terminal_hash)
+                )
+                lineage.update(
+                    {
+                        "predecessor_attempt_id": active.attempt_id,
+                        "predecessor_terminal_kind": kind,
+                        "predecessor_terminal_sha256": terminal_hash,
+                    }
+                )
+                if kind == "stopped":
+                    lineage.update(
+                        {
+                            "retirement_attempt_id": active.attempt_id,
+                            "retirement_container_id": predecessor.container_id,
+                            "retirement_stopped_sha256": predecessor.stopped_sha256,
+                        }
                     )
-                    if active is not None and old_id == active.attempt_id:
-                        _require(
-                            self._terminal_acknowledged is not None
-                            and self._terminal_acknowledged[1]
-                            == hashlib.sha256(_canonical(stopped)).hexdigest()
-                        )
             _require(active is None or active.attempt_id in self._inventory())
             self._used_begin = True
             attempt_id = secrets.token_hex(16)
             value = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "kind": "stock_attempt_intent",
                 "namespace_id": self._namespace["namespace_id"],
                 "attempt_id": attempt_id,
@@ -636,6 +912,7 @@ class AttemptStore:
                 "config_hash": release.config_hash,
                 "compose_sha256": release.compose_sha256,
                 "max_run_seconds": release.max_run_seconds,
+                **lineage,
                 **_clock(),
             }
             _intent(
@@ -643,6 +920,7 @@ class AttemptStore:
                 hashlib.sha256(_canonical(value)).hexdigest(),
                 self._namespace["namespace_id"],
                 attempt_id,
+                2,
             )
             os.mkdir(attempt_id, 0o700, dir_fd=self._directory)
             directory = os.open(attempt_id, _DIRECTORY, dir_fd=self._directory)
@@ -654,7 +932,7 @@ class AttemptStore:
             os.fsync(self._directory)
             self._validate()
             head = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "kind": "stock_attempt_head",
                 "namespace_id": self._namespace["namespace_id"],
                 "attempt_id": attempt_id,
@@ -674,6 +952,12 @@ class AttemptStore:
             self._owned_attempt = attempt_id
             self._create_issued = False
             self._create_claim = None
+            self._create_prepared = False
+            self._create_fence = None
+            self._create_acknowledged = None
+            self._removal_fence = None
+            self._removal_issued = False
+            self._removed_acknowledged = None
             self._created_acknowledged = None
             self._terminal_acknowledged = None
             self._cid_record_issued = False
@@ -684,11 +968,20 @@ class AttemptStore:
 
     def _owned(self) -> Attempt:
         self._validate()
+        _require(self._namespace["schema_version"] == 2 and not self._recovery_only)
         active = self._active()
         if active is None or active.attempt_id != self._owned_attempt:
             _deny()
         with self._attempt_directory(active.attempt_id) as directory:
-            _require(not _exists(directory, "stopped.json"))
+            _require(
+                not any(_exists(directory, name) for name in ("stopped.json", "abandoned.json"))
+            )
+        state = self._history()[active.attempt_id]
+        if active.retirement_attempt_id is not None:
+            _require(
+                self._removed_acknowledged is not None
+                and state.removed_sha256 == self._removed_acknowledged
+            )
         return active
 
     def claim_create(self, release: StockRelease) -> Attempt:
@@ -734,7 +1027,10 @@ class AttemptStore:
                 and not self._start_issued
             )
             with self._attempt_directory(attempt.attempt_id) as directory:
-                _require(set(os.listdir(directory)) == {"intent.json"})
+                expected = {"intent.json"}
+                if attempt.retirement_attempt_id is not None:
+                    expected |= {"removal-intent.json", "removed.json"}
+                _require(set(os.listdir(directory)) == expected)
             self._validate()
             clock = _clock()
             _check_clock(clock)
@@ -745,18 +1041,277 @@ class AttemptStore:
 
     @staticmethod
     def _base(
-        attempt: Attempt, kind: str, container_id: str, clock: dict[str, Any]
+        attempt: Attempt, kind: str, container_id: str | None, clock: dict[str, Any]
     ) -> dict[str, Any]:
         _check_clock(clock)
         return {
-            "schema_version": 1,
+            "schema_version": attempt.schema_version,
             "kind": "stock_attempt_" + kind,
             "namespace_id": attempt.namespace_id,
             "attempt_id": attempt.attempt_id,
             "intent_sha256": attempt.intent_sha256,
-            "container_id": container_id,
+            **({"container_id": container_id} if container_id is not None else {}),
             **clock,
         }
+
+    def prepare_create(
+        self, claim: Attempt, request_sha256: str, dispatch_deadline_ns: int
+    ) -> CreateFence:
+        with _sanitized():
+            prepared = self._create_prepared
+            self._create_prepared = True
+            self._create_fence = None
+            self._create_acknowledged = None
+            _require(not prepared)
+            self.check_create_claim(claim)
+            clock = _clock()
+            _check_clock(clock)
+            _require(
+                _matches(request_sha256, _HEX)
+                and _integer(dispatch_deadline_ns)
+                and clock["boot_id"] == claim.boot_id
+                and claim.created_monotonic_ns
+                <= clock["monotonic_ns"]
+                < dispatch_deadline_ns
+                <= clock["monotonic_ns"] + 5000000000
+            )
+            value = {
+                **self._base(claim, "create", None, clock),
+                "request_sha256": request_sha256,
+                "dispatch_deadline_ns": dispatch_deadline_ns,
+            }
+            with self._attempt_directory(claim.attempt_id) as directory:
+                digest = _write_new(directory, "create.json", value, self._uid)
+            fence = CreateFence(
+                claim.attempt_id,
+                claim.intent_sha256,
+                digest,
+                request_sha256,
+                claim.boot_id,
+                dispatch_deadline_ns,
+            )
+            self._create_fence, self._create_acknowledged = fence, digest
+            try:
+                self.check_create_fence(fence)
+            except _ERRORS:
+                self._create_fence = None
+                self._create_acknowledged = None
+                raise
+            return fence
+
+    def _acknowledged_create(self, attempt: Attempt) -> dict[str, Any]:
+        _require(self._create_fence is not None and self._create_acknowledged is not None)
+        with self._attempt_directory(attempt.attempt_id) as directory:
+            value = self._receipt(directory, "create.json", attempt)
+        fence = self._create_fence
+        if fence is None:
+            _deny()
+        _require(
+            hashlib.sha256(_canonical(value)).hexdigest()
+            == self._create_acknowledged
+            == fence.receipt_sha256
+            and fence.attempt_id == attempt.attempt_id
+            and fence.intent_sha256 == attempt.intent_sha256
+            and value["request_sha256"] == fence.request_sha256
+            and value["boot_id"] == fence.boot_id
+            and value["dispatch_deadline_ns"] == fence.dispatch_deadline_ns
+        )
+        return value
+
+    def check_create_fence(self, fence: CreateFence) -> None:
+        with _sanitized():
+            _require(type(fence) is CreateFence and self._create_fence is fence)
+            attempt = self._owned()
+            _require(not self._cid_record_issued and not self._start_issued)
+            value = self._acknowledged_create(attempt)
+            clock = _clock()
+            _check_clock(clock)
+            _require(
+                clock["boot_id"] == fence.boot_id
+                and value["monotonic_ns"] <= clock["monotonic_ns"] < fence.dispatch_deadline_ns
+            )
+
+    def _retirement_state(self) -> AttemptSnapshot:
+        self._validate()
+        _require(self._namespace["schema_version"] == 2)
+        state = self.snapshot()
+        if state is None:
+            _deny()
+        _require(
+            (self._owned_attempt == state.attempt.attempt_id or self._recovery_only)
+            and state.attempt.retirement_attempt_id is not None
+            and state.create_sha256 is None
+            and state.abandoned_sha256 is None
+            and state.removed_sha256 is None
+        )
+        return state
+
+    def prepare_removal(self) -> RemovalFence:
+        with _sanitized():
+            issued = self._removal_issued
+            self._removal_issued = True
+            self._removal_fence = None
+            _require(not issued)
+            state = self._retirement_state()
+            attempt = state.attempt
+            clock = _clock()
+            _check_clock(clock)
+            deadline = clock["monotonic_ns"] + 15000000000
+            _require(_integer(deadline))
+            with self._attempt_directory(attempt.attempt_id) as directory:
+                if state.removal_intent_sha256 is None:
+                    value = {
+                        **self._base(attempt, "removal_intent", None, clock),
+                        "target_attempt_id": attempt.retirement_attempt_id,
+                        "target_container_id": attempt.retirement_container_id,
+                        "target_stopped_sha256": attempt.retirement_stopped_sha256,
+                    }
+                    digest = _write_new(directory, "removal-intent.json", value, self._uid)
+                else:
+                    value = self._receipt(directory, "removal-intent.json", attempt)
+                    digest = _reconfirm_durability(
+                        directory, "removal-intent.json", value, self._uid
+                    )
+            if (
+                attempt.retirement_attempt_id is None
+                or attempt.retirement_container_id is None
+                or attempt.retirement_stopped_sha256 is None
+            ):
+                _deny()
+            fence = RemovalFence(
+                attempt.attempt_id,
+                attempt.intent_sha256,
+                attempt.retirement_attempt_id,
+                attempt.retirement_container_id,
+                attempt.retirement_stopped_sha256,
+                digest,
+                clock["boot_id"],
+                clock["monotonic_ns"],
+                deadline,
+            )
+            self._removal_fence = fence
+            try:
+                self.check_removal_fence(fence)
+            except _ERRORS:
+                self._removal_fence = None
+                raise
+            return fence
+
+    def _check_removal(self, fence: RemovalFence) -> None:
+        state = self._retirement_state()
+        attempt = state.attempt
+        _require(
+            state.removal_intent_sha256 == fence.removal_intent_sha256
+            and attempt.attempt_id == fence.attempt_id
+            and attempt.intent_sha256 == fence.intent_sha256
+            and attempt.retirement_attempt_id == fence.target_attempt_id
+            and attempt.retirement_container_id == fence.target_container_id
+            and attempt.retirement_stopped_sha256 == fence.target_stopped_sha256
+        )
+        clock = _clock()
+        _check_clock(clock)
+        _require(
+            clock["boot_id"] == fence.boot_id
+            and fence.issued_monotonic_ns <= clock["monotonic_ns"] < fence.deadline_ns
+        )
+
+    def check_removal_fence(self, fence: RemovalFence) -> None:
+        with _sanitized():
+            _require(type(fence) is RemovalFence and self._removal_fence is fence)
+            self._check_removal(fence)
+
+    def record_removed(self, fence: RemovalFence, proof: RetirementProof) -> None:
+        with _sanitized():
+            issued = self._removal_fence
+            self._removal_fence = None
+            self._removed_acknowledged = None
+            _require(type(fence) is RemovalFence and issued is fence)
+            self._check_removal(fence)
+            _require(
+                type(proof) is RetirementProof
+                and proof.fence is fence
+                and proof.evidence_kind in ("delete_204", "inspect_404")
+                and proof.boot_id == fence.boot_id
+                and _integer(proof.observed_monotonic_ns)
+            )
+            clock = _clock()
+            _check_clock(clock)
+            _require(
+                clock["boot_id"] == fence.boot_id
+                and fence.issued_monotonic_ns
+                <= proof.observed_monotonic_ns
+                <= clock["monotonic_ns"]
+                < fence.deadline_ns
+            )
+            attempt = self._active()
+            if attempt is None:
+                _deny()
+            value = {
+                **self._base(attempt, "removed", None, clock),
+                "target_attempt_id": fence.target_attempt_id,
+                "target_container_id": fence.target_container_id,
+                "target_stopped_sha256": fence.target_stopped_sha256,
+                "removal_intent_sha256": fence.removal_intent_sha256,
+                "evidence_kind": proof.evidence_kind,
+            }
+            with self._attempt_directory(attempt.attempt_id) as directory:
+                digest = _write_new(directory, "removed.json", value, self._uid)
+            state = self.snapshot()
+            _require(state is not None and state.removed_sha256 == digest)
+            self._removed_acknowledged = digest
+
+    def record_abandoned_before_dispatch(self) -> None:
+        with _sanitized():
+            self._burn_recovery()
+            state = self.snapshot()
+            if state is None:
+                _deny()
+            _require(
+                state.attempt.schema_version == 2
+                and state.create_sha256 is None
+                and state.container_id is None
+                and state.start_sha256 is None
+                and state.stopped_sha256 is None
+                and state.abandoned_sha256 is None
+                and (
+                    state.attempt.retirement_attempt_id is None or state.removed_sha256 is not None
+                )
+            )
+            if state.removed_sha256 is not None:
+                with self._attempt_directory(state.attempt.attempt_id) as directory:
+                    removed = self._receipt(directory, "removed.json", state.attempt)
+                    digest = _reconfirm_durability(directory, "removed.json", removed, self._uid)
+                _require(digest == state.removed_sha256 and self.snapshot() == state)
+            value = {
+                **self._base(state.attempt, "abandoned_before_dispatch", None, _clock()),
+                "removed_sha256": state.removed_sha256,
+            }
+            with self._attempt_directory(state.attempt.attempt_id) as directory:
+                _write_new(directory, "abandoned.json", value, self._uid)
+            self.snapshot()
+
+    def acknowledge_abandoned_terminal(self) -> None:
+        with _sanitized():
+            self._terminal_acknowledged = None
+            _require(not self._used_begin and not self._recovery_only)
+            state = self.snapshot()
+            if state is None or state.abandoned_sha256 is None:
+                _deny()
+            _require(
+                self._entry_terminal
+                == (
+                    state.attempt.attempt_id,
+                    state.attempt.intent_sha256,
+                    "abandoned_before_dispatch",
+                    state.abandoned_sha256,
+                )
+            )
+            with self._attempt_directory(state.attempt.attempt_id) as directory:
+                value = self._receipt(directory, "abandoned.json", state.attempt)
+                digest = _reconfirm_durability(directory, "abandoned.json", value, self._uid)
+            self._validate()
+            _require(self.snapshot() == state and digest == state.abandoned_sha256)
+            self._terminal_acknowledged = (state.attempt.attempt_id, digest)
 
     def record_created(self, verified: CreatedContainer) -> None:
         with _sanitized():
@@ -765,6 +1320,7 @@ class AttemptStore:
             _require(not self._cid_record_issued)
             self._cid_record_issued = True
             self._created_acknowledged = None
+            create = self._acknowledged_create(attempt)
             _require(type(verified) is CreatedContainer and _matches(verified.container_id, _HEX))
             _require(
                 _exact(
@@ -784,10 +1340,17 @@ class AttemptStore:
                     ],
                 )
             )
+            _require(
+                all(
+                    state.container_id != verified.container_id
+                    for key, state in self._history().items()
+                    if key != attempt.attempt_id
+                )
+            )
             value = self._base(attempt, "created", verified.container_id, _clock())
             _require(
                 value["boot_id"] == attempt.boot_id
-                and value["monotonic_ns"] >= attempt.created_monotonic_ns
+                and value["monotonic_ns"] >= create["monotonic_ns"]
             )
             with self._attempt_directory(attempt.attempt_id) as directory:
                 digest = _write_new(directory, "created.json", value, self._uid)
@@ -799,6 +1362,7 @@ class AttemptStore:
             self._start_fence = None
             self._start_acknowledged = None
             attempt = self._owned()
+            self._acknowledged_create(attempt)
             _require(not self._start_issued and self._created_acknowledged is not None)
             with self._attempt_directory(attempt.attempt_id) as directory:
                 created = self._receipt(directory, "created.json", attempt)
@@ -842,6 +1406,7 @@ class AttemptStore:
         with _sanitized():
             _require(type(fence) is StartFence and self._start_fence is fence)
             attempt = self._owned()
+            self._acknowledged_create(attempt)
             _require(
                 self._start_issued
                 and self._created_acknowledged is not None
@@ -872,13 +1437,18 @@ class AttemptStore:
 
     def record_stopped(self, raw: bytes) -> dict[str, Any]:
         with _sanitized():
+            if self._entry_unfinished:
+                self._burn_recovery()
             self._create_claim = None
+            self._create_fence = None
+            self._create_acknowledged = None
             self._start_fence = None
             self._start_acknowledged = None
             self._created_acknowledged = None
             self._terminal_acknowledged = None
             self._start_issued = True
             self._validate()
+            self._history()
             attempt = self._active()
             if attempt is None:
                 _deny()
@@ -903,7 +1473,13 @@ class AttemptStore:
                     digest = _write_new(directory, "stopped.json", value, self._uid)
                 self._receipt(directory, "stopped.json", attempt)
             self._validate()
-            self._terminal_acknowledged = (attempt.attempt_id, digest)
+            _require(self.snapshot() is not None)
+            if not self._recovery_only and not self._used_begin:
+                _require(
+                    self._entry_terminal
+                    == (attempt.attempt_id, attempt.intent_sha256, "stopped", digest)
+                )
+                self._terminal_acknowledged = (attempt.attempt_id, digest)
             return value
 
 
@@ -998,6 +1574,27 @@ def _open_operations(root: Path, *, trusted_uid: int) -> Iterator[AttemptStore]:
             _validate_namespace(namespace, os.fstat(directory), os.fstat(lock))
             store = AttemptStore(root, directory, lock, trusted_uid, namespace)
             store._validate()
+            entry = store.snapshot()
+            store._entry_unfinished = entry is not None and (
+                entry.stopped_sha256 is None and entry.abandoned_sha256 is None
+            )
+            if entry is not None and not store._entry_unfinished:
+                kind = (
+                    "stopped" if entry.stopped_sha256 is not None else "abandoned_before_dispatch"
+                )
+                digest = entry.stopped_sha256 or entry.abandoned_sha256
+                if digest is None:
+                    _deny()
+                store._entry_terminal = (
+                    entry.attempt.attempt_id,
+                    entry.attempt.intent_sha256,
+                    kind,
+                    digest,
+                )
+            if namespace["schema_version"] == 2 and not store._entry_unfinished:
+                store._used_begin = False
+            else:
+                store._burn_recovery()
             yield store
         finally:
             if store is not None:

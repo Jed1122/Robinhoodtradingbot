@@ -72,8 +72,25 @@ def cleanup_target(store):
     return accessor()
 
 
-def created(intent):
-    return CreatedContainer(CID, intent.attempt_id, RELEASE, IMAGE, "c" * 64, intent.compose_sha256)
+def created(intent, *, cid=CID):
+    return CreatedContainer(cid, intent.attempt_id, RELEASE, IMAGE, "c" * 64, intent.compose_sha256)
+
+
+def dispatch_prepared(store, policy, clock):
+    claim = store.claim_create(policy)
+    prepare = getattr(store, "prepare_create", None)
+    assert callable(prepare), "The actual dispatch needs a durable CREATE fence"
+    fence = prepare(claim, "a" * 64, clock["monotonic_ns"] + 5000000000)
+    store.check_create_fence(fence)
+    return fence
+
+
+def removed(store, api, clock, *, evidence="delete_204"):
+    fence = store.prepare_removal()
+    store.check_removal_fence(fence)
+    proof = api.RetirementProof(fence, evidence, clock["boot_id"], clock["monotonic_ns"])
+    store.record_removed(fence, proof)
+    return fence
 
 
 def stopped(intent, *, cid=CID, status="exited", running=False):
@@ -108,6 +125,474 @@ def stopped(intent, *, cid=CID, status="exited", running=False):
             "FinishedAt": "2026-10-21T21:00:02Z",
         },
     }
+
+
+def test_new_namespace_and_intent_bind_explicit_v2_lineage(operations, policy):
+    _, root, _ = operations
+    assert json.loads((root / "namespace.json").read_bytes())["schema_version"] == 2
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        raw = json.loads((root / attempt.attempt_id / "intent.json").read_bytes())
+        assert raw["schema_version"] == attempt.schema_version == 2
+        for name in (
+            "predecessor_attempt_id",
+            "predecessor_terminal_kind",
+            "predecessor_terminal_sha256",
+            "retirement_attempt_id",
+            "retirement_container_id",
+            "retirement_stopped_sha256",
+        ):
+            assert raw[name] is None
+
+
+def test_v1_namespace_is_readable_but_cannot_admit_a_new_attempt(operations, policy):
+    _, root, _ = operations
+    namespace = json.loads((root / "namespace.json").read_bytes())
+    namespace["schema_version"] = 1
+    (root / "namespace.json").write_bytes(encoded(namespace))
+    with opened(operations) as store:
+        assert store.snapshot() is None
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.begin(policy)
+    assert not (root / "active.json").exists()
+
+
+def test_v2_cid_cannot_be_recorded_without_durable_create_dispatch_fence(operations, policy):
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        store.claim_create(policy)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_created(created(attempt))
+
+
+def test_create_fence_is_durable_and_only_its_fresh_issued_object_can_dispatch(operations, policy):
+    _, root, clock = operations
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        claim = store.claim_create(policy)
+        prepare = getattr(store, "prepare_create", None)
+        assert callable(prepare), "CREATE needs a durable dispatch fence before wire"
+        fence = prepare(claim, "a" * 64, clock["monotonic_ns"] + 5000000000)
+        path = root / attempt.attempt_id / "create.json"
+        raw = json.loads(path.read_bytes())
+        assert raw["schema_version"] == 2
+        assert raw["intent_sha256"] == attempt.intent_sha256
+        assert raw["request_sha256"] == "a" * 64
+        assert raw["dispatch_deadline_ns"] == clock["monotonic_ns"] + 5000000000
+        store.check_create_fence(fence)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.check_create_fence(replace(fence))
+    with (
+        opened(operations) as reopened,
+        pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+    ):
+        reopened.check_create_fence(fence)
+
+
+def test_no_dispatch_abandonment_is_terminal_but_cannot_admit_during_recovery(operations, policy):
+    _, root, _ = operations
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        abandon = getattr(store, "record_abandoned_before_dispatch", None)
+        assert callable(abandon), "A checked v2 no-dispatch recovery needs its own terminal kind"
+        abandon()
+        raw = json.loads((root / attempt.attempt_id / "abandoned.json").read_bytes())
+        assert raw["kind"] == "stock_attempt_abandoned_before_dispatch"
+        assert raw["removed_sha256"] is None and "container_id" not in raw
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.begin(policy)
+    with opened(operations) as reopened:
+        reopened.acknowledge_abandoned_terminal()
+        successor = reopened.begin(policy)
+        assert successor.predecessor_attempt_id == attempt.attempt_id
+        assert successor.predecessor_terminal_kind == "abandoned_before_dispatch"
+        assert successor.retirement_container_id is None
+
+
+def test_recovery_burns_dispatch_authority_before_failed_snapshot_validation(
+    operations, policy, monkeypatch
+):
+    with opened(operations) as store:
+        store.begin(policy)
+        recover = getattr(store, "recovery_snapshot", None)
+        assert callable(recover), "Recovery must burn fresh authority before any fallible read"
+
+        def fail():
+            raise ValueError("fictional corrupt chain")
+
+        monkeypatch.setattr(store, "snapshot", fail)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recover()
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(policy)
+
+
+def test_stopped_handoff_requires_retirement_before_successor_create(operations, policy):
+    api, root, clock = operations
+    with opened(operations) as store:
+        predecessor = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_created(created(predecessor))
+        store.record_stopped(encoded(stopped(predecessor)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(predecessor)))
+        successor = store.begin(policy)
+        assert successor.predecessor_attempt_id == predecessor.attempt_id
+        assert successor.predecessor_terminal_kind == "stopped"
+        assert successor.retirement_container_id == CID
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(policy)
+        fence = removed(store, api, clock)
+        assert fence.target_attempt_id == predecessor.attempt_id
+        assert fence.target_container_id == CID
+        removal = root / successor.attempt_id / "removed.json"
+        assert json.loads(removal.read_bytes())["evidence_kind"] == "delete_204"
+        # A failed admission claim was consumed, even after cleanup completes.
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(policy)
+
+
+@pytest.mark.parametrize("evidence", ["delete_204", "inspect_404"])
+def test_retired_then_abandoned_successor_preserves_complete_logical_lineage(
+    operations, policy, evidence
+):
+    api, root, clock = operations
+    with opened(operations) as store:
+        predecessor = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_stopped(encoded(stopped(predecessor)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(predecessor)))
+        successor = store.begin(policy)
+    with opened(operations) as recovery:
+        recovery.recovery_snapshot()
+        removed(recovery, api, clock, evidence=evidence)
+        recovery.record_abandoned_before_dispatch()
+        assert recovery.snapshot().abandoned_sha256 is not None
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovery.begin(policy)
+    with opened(operations) as store:
+        store.acknowledge_abandoned_terminal()
+        third = store.begin(policy)
+        assert third.predecessor_attempt_id == successor.attempt_id
+        assert third.retirement_attempt_id is None
+        assert third.retirement_container_id is None
+        dispatch_prepared(store, policy, clock)
+        store.record_created(created(third, cid="e" * 64))
+        assert store.prepare_start().container_id == "e" * 64
+    # Even a valid terminal-chain member cannot silently disappear.
+    os.rename(root / predecessor.attempt_id, root / ("0" * 32))
+    with (
+        pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+        opened(operations) as store,
+    ):
+        store.snapshot()
+
+
+@pytest.mark.parametrize("change", ["copy", "wrong_fence", "expired", "rollback", "boot", "kind"])
+def test_removal_completion_requires_issued_scoped_fresh_proof(operations, policy, change):
+    api, _, clock = operations
+    with opened(operations) as store:
+        predecessor = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_stopped(encoded(stopped(predecessor)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(predecessor)))
+        store.begin(policy)
+        fence = store.prepare_removal()
+        proof = api.RetirementProof(fence, "delete_204", BOOT, clock["monotonic_ns"])
+        selected = replace(fence) if change == "copy" else fence
+        if change == "wrong_fence":
+            proof = replace(proof, fence=replace(fence))
+        elif change == "expired":
+            clock["monotonic_ns"] = fence.deadline_ns
+        elif change == "rollback":
+            proof = replace(proof, observed_monotonic_ns=fence.issued_monotonic_ns - 1)
+        elif change == "boot":
+            proof = replace(proof, boot_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
+        elif change == "kind":
+            proof = replace(proof, evidence_kind="generic_absence")
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_removed(selected, proof)
+        assert store.snapshot().removed_sha256 is None
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_removed(fence, proof)
+
+
+@pytest.mark.parametrize("phase", ["create", "created", "start", "unresolved_retirement"])
+def test_abandonment_never_reinterprets_dispatch_or_unresolved_retirement(
+    operations, policy, phase
+):
+    _, _, clock = operations
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        if phase in ("created", "start"):
+            store.record_created(created(attempt))
+        if phase == "start":
+            store.prepare_start()
+        if phase == "unresolved_retirement":
+            store.record_stopped(encoded(stopped(attempt)))
+    with opened(operations) as store:
+        if phase == "unresolved_retirement":
+            store.record_stopped(encoded(stopped(attempt)))
+            store.begin(policy)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_abandoned_before_dispatch()
+        assert store.snapshot().abandoned_sha256 is None
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.begin(policy)
+
+
+def test_historical_cid_cannot_be_reused_by_a_successor(operations, policy):
+    api, _, clock = operations
+    with opened(operations) as store:
+        predecessor = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_stopped(encoded(stopped(predecessor)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(predecessor)))
+        successor = store.begin(policy)
+        removed(store, api, clock)
+        dispatch_prepared(store, policy, clock)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_created(created(successor))
+        assert store.snapshot().created_sha256 is None
+
+
+def test_unfinished_entry_cannot_admit_even_after_it_records_terminal_stop(operations, policy):
+    _, _, clock = operations
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(attempt)))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.begin(policy)
+
+
+@pytest.mark.parametrize("phase", ["prepare", "dispatch"])
+def test_start_keeps_the_acknowledged_create_receipt_binding(operations, policy, phase):
+    _, root, clock = operations
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_created(created(attempt))
+        fence = store.prepare_start() if phase == "dispatch" else None
+        path = root / attempt.attempt_id / "create.json"
+        value = json.loads(path.read_bytes())
+        value["request_sha256"] = "b" * 64
+        path.write_bytes(encoded(value))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            if phase == "prepare":
+                store.prepare_start()
+            else:
+                store.check_start_fence(fence)
+
+
+def test_cid_clock_cannot_precede_the_create_dispatch_fence(operations, policy):
+    _, root, clock = operations
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        clock["monotonic_ns"] += 100
+        dispatch_prepared(store, policy, clock)
+        clock["monotonic_ns"] -= 1
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_created(created(attempt))
+        assert not (root / attempt.attempt_id / "created.json").exists()
+
+
+def test_uncertain_removal_receipt_never_grants_fresh_create(operations, policy, monkeypatch):
+    api, _, clock = operations
+    original = api._write_new
+    with opened(operations) as store:
+        predecessor = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_stopped(encoded(stopped(predecessor)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(predecessor)))
+        store.begin(policy)
+
+        def lose_ack(directory, name, value, uid):
+            digest = original(directory, name, value, uid)
+            if name == "removed.json":
+                raise OSError("fictional removed acknowledgement loss")
+            return digest
+
+        monkeypatch.setattr(api, "_write_new", lose_ack)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            removed(store, api, clock)
+        assert store.snapshot().removed_sha256 is not None
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.claim_create(policy)
+
+
+def test_abandonment_reconfirms_retirement_durability_before_its_terminal_write(
+    operations, policy, monkeypatch
+):
+    api, root, clock = operations
+    with opened(operations) as store:
+        predecessor = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_stopped(encoded(stopped(predecessor)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(predecessor)))
+        successor = store.begin(policy)
+        removed(store, api, clock)
+    with opened(operations) as recovery:
+        original = api._reconfirm_durability
+
+        def fail_removed(directory, name, value, uid):
+            if name == "removed.json":
+                raise OSError("fictional retirement durability failure")
+            return original(directory, name, value, uid)
+
+        monkeypatch.setattr(api, "_reconfirm_durability", fail_removed)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovery.record_abandoned_before_dispatch()
+        assert not (root / successor.attempt_id / "abandoned.json").exists()
+
+
+@pytest.mark.parametrize("after_write", [False, True])
+def test_failed_create_fence_ack_cannot_be_retried_or_adopted(
+    operations, policy, monkeypatch, after_write
+):
+    api, root, clock = operations
+    original = api._write_new
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        claim = store.claim_create(policy)
+
+        def fail_create(directory, name, value, uid):
+            if name == "create.json":
+                if after_write:
+                    original(directory, name, value, uid)
+                raise OSError("fictional CREATE fence acknowledgement loss")
+            return original(directory, name, value, uid)
+
+        monkeypatch.setattr(api, "_write_new", fail_create)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.prepare_create(claim, "a" * 64, clock["monotonic_ns"] + 5000000000)
+        monkeypatch.setattr(api, "_write_new", original)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.prepare_create(claim, "a" * 64, clock["monotonic_ns"] + 5000000000)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.record_created(created(attempt))
+    assert (root / attempt.attempt_id / "create.json").exists() is after_write
+    with opened(operations) as recovery:
+        if after_write:
+            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+                recovery.record_abandoned_before_dispatch()
+        else:
+            recovery.record_abandoned_before_dispatch()
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovery.begin(policy)
+
+
+@pytest.mark.parametrize("change", ["expiry", "boot", "rollback", "receipt"])
+def test_create_dispatch_fence_retains_original_budget_and_acknowledged_bytes(
+    operations, policy, change
+):
+    _, root, clock = operations
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        fence = dispatch_prepared(store, policy, clock)
+        if change == "expiry":
+            clock["monotonic_ns"] = fence.dispatch_deadline_ns
+        elif change == "boot":
+            clock["boot_id"] = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        elif change == "rollback":
+            clock["monotonic_ns"] -= 1
+        else:
+            path = root / attempt.attempt_id / "create.json"
+            value = json.loads(path.read_bytes())
+            value["utc"] = "2026-10-21T21:00:01+00:00"
+            path.write_bytes(encoded(value))
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.check_create_fence(fence)
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            store.prepare_create(attempt, "a" * 64, clock["monotonic_ns"] + 5000000000)
+
+
+@pytest.mark.parametrize("change", ["skip", "terminal_hash", "terminal_kind", "target", "partial"])
+def test_rehashed_intent_cannot_skip_or_retarget_a_terminal_predecessor(operations, policy, change):
+    _, root, clock = operations
+    with opened(operations) as store:
+        predecessor = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_stopped(encoded(stopped(predecessor)))
+    with opened(operations) as store:
+        store.record_stopped(encoded(stopped(predecessor)))
+        successor = store.begin(policy)
+    path = root / successor.attempt_id / "intent.json"
+    value = json.loads(path.read_bytes())
+    if change == "skip":
+        for key in (
+            "predecessor_attempt_id",
+            "predecessor_terminal_kind",
+            "predecessor_terminal_sha256",
+            "retirement_attempt_id",
+            "retirement_container_id",
+            "retirement_stopped_sha256",
+        ):
+            value[key] = None
+    elif change == "terminal_hash":
+        value["predecessor_terminal_sha256"] = "a" * 64
+    elif change == "terminal_kind":
+        value["predecessor_terminal_kind"] = "abandoned_before_dispatch"
+    elif change == "target":
+        value["retirement_container_id"] = "e" * 64
+    else:
+        value["retirement_attempt_id"] = None
+    path.write_bytes(encoded(value))
+    head = json.loads((root / "active.json").read_bytes())
+    head["intent_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (root / "active.json").write_bytes(encoded(head))
+    with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"), opened(operations):
+        pytest.fail("Rehashed broken history was admitted")
+
+
+def test_v1_start_fenced_history_stays_cleanup_only(operations, policy):
+    _, root, clock = operations
+    with opened(operations) as store:
+        attempt = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
+        store.record_created(created(attempt))
+        store.prepare_start()
+    # Explicit historical v1 fixture; production never rewrites a namespace.
+    intent_path = root / attempt.attempt_id / "intent.json"
+    intent = json.loads(intent_path.read_bytes())
+    for key in tuple(intent):
+        if key.startswith(("predecessor_", "retirement_")):
+            del intent[key]
+    intent["schema_version"] = 1
+    intent_path.write_bytes(encoded(intent))
+    digest = hashlib.sha256(intent_path.read_bytes()).hexdigest()
+    for path in (
+        root / "namespace.json",
+        root / "active.json",
+        root / attempt.attempt_id / "created.json",
+        root / attempt.attempt_id / "start.json",
+    ):
+        value = json.loads(path.read_bytes())
+        value["schema_version"] = 1
+        if "intent_sha256" in value:
+            value["intent_sha256"] = digest
+        path.write_bytes(encoded(value))
+    (root / attempt.attempt_id / "create.json").unlink()
+    with opened(operations) as store:
+        state = store.cleanup_target()
+        assert state.attempt.schema_version == 1 and state.container_id == CID
+        assert state.create_sha256 is None and state.start_fence is not None
+        store.record_stopped(encoded(stopped(state.attempt)))
+        for operation in (
+            lambda: store.begin(policy),
+            lambda: store.claim_create(policy),
+            store.prepare_start,
+            store.prepare_removal,
+        ):
+            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+                operation()
 
 
 def test_explicit_initialize_and_reopen_preserve_namespace_identity(operations):
@@ -157,6 +642,7 @@ def test_verified_cid_is_required_before_exclusive_start_fence(operations, polic
         intent = store.begin(policy)
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
             store.prepare_start()
+        dispatch_prepared(store, policy, clock)
         store.record_created(created(intent))
         fence = store.prepare_start()
         assert fence.container_id == CID
@@ -169,6 +655,7 @@ def test_verified_cid_is_required_before_exclusive_start_fence(operations, polic
 def test_reopening_never_adopts_an_unfinished_attempt_for_execution(operations, policy):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
     with opened(operations) as recovered:
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
@@ -180,6 +667,7 @@ def test_reopening_never_adopts_an_unfinished_attempt_for_execution(operations, 
 def test_terminal_ack_allows_later_fresh_attempt_not_replay(operations, policy):
     with opened(operations) as store:
         old = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(old))
         store.prepare_start()
         result = store.record_stopped(encoded(stopped(old)))
@@ -193,6 +681,7 @@ def test_terminal_ack_allows_later_fresh_attempt_not_replay(operations, policy):
 def test_same_session_cannot_start_after_stopped_ack(operations, policy):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         store.record_stopped(encoded(stopped(intent)))
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
@@ -211,6 +700,7 @@ def test_fsync_delay_cannot_return_an_expired_start_fence(operations, policy, mo
 
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         monkeypatch.setattr(api, "_write_new", delayed)
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
@@ -220,6 +710,7 @@ def test_fsync_delay_cannot_return_an_expired_start_fence(operations, policy, mo
 def test_lost_create_ack_recovery_can_only_record_matching_stopped_identity(operations, policy):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
     with opened(operations) as recovered:
         assert recovered.record_stopped(encoded(stopped(intent)))["container_id"] == CID
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
@@ -240,6 +731,7 @@ def test_lost_create_ack_recovery_can_only_record_matching_stopped_identity(oper
 def test_cid_receipt_is_bound_to_all_prestart_identities(operations, policy, field, value):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         changed = replace(created(intent), **{field: value})
         if field == "container_id":
             store.record_created(changed)
@@ -271,6 +763,7 @@ def test_nonterminal_or_unowned_observations_cannot_acknowledge_completion(
 ):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         observation = stopped(intent)
         observation[section][field] = value
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
@@ -291,17 +784,15 @@ def test_lost_active_pointer_after_use_is_not_fresh_state(operations, policy):
     with opened(operations) as store:
         store.begin(policy)
     (root / "active.json").unlink()
-    with opened(operations) as store:
-        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
-            store.active()
-        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
-            store.begin(policy)
+    with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"), opened(operations):
+        pytest.fail("The opener adopted an orphaned attempt")
 
 
 def test_boot_change_or_monotonic_rollback_blocks_start(operations, policy):
     _, _, clock = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         clock["boot_id"] = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
@@ -380,6 +871,7 @@ def test_uncertain_start_write_is_one_use_even_without_file(operations, policy, 
 
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         monkeypatch.setattr(api, "_write_new", failed)
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
@@ -418,6 +910,7 @@ def test_monotonic_rollback_blocks_before_fence_write(operations, policy):
     _, root, clock = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         clock["monotonic_ns"] -= 1
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
@@ -429,6 +922,7 @@ def test_stopped_diagnostics_are_reduced_to_presence_not_retained(operations, po
     _, root, _ = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         observation = stopped(intent)
         observation["State"]["Error"] = "fictional private diagnostic"
         observation["State"]["OOMKilled"] = True
@@ -499,6 +993,7 @@ def test_public_nonroot_selection_never_initializes_or_opens(monkeypatch):
 def test_never_started_created_observation_is_not_research_success(operations, policy):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         observation = stopped(intent, status="created")
         for key in ("StartedAt", "FinishedAt"):
             observation["State"][key] = "0001-01-01T00:00:00Z"
@@ -514,8 +1009,8 @@ def test_never_started_created_observation_is_not_research_success(operations, p
 def test_invalid_release_identity_cannot_become_an_attempt(operations, policy, field, value):
     _, root, _ = operations
     with (
-        opened(operations) as store,
         pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+        opened(operations) as store,
     ):
         store.begin(replace(policy, **{field: value}))
     assert not (root / "active.json").exists()
@@ -525,8 +1020,8 @@ def test_unexpected_namespace_file_and_unreferenced_attempt_block_admission(oper
     _, root, _ = operations
     (root / "unknown").write_bytes(b"fictional")
     with (
-        opened(operations) as store,
         pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+        opened(operations) as store,
     ):
         store.begin(policy)
 
@@ -536,6 +1031,7 @@ def test_failed_cid_fsync_never_becomes_dispatch_ack(operations, policy, monkeyp
     original = api.os.fsync
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         monkeypatch.setattr(
             api.os, "fsync", lambda _fd: (_ for _ in ()).throw(OSError("fictional"))
         )
@@ -550,12 +1046,13 @@ def test_lost_cid_anchor_cannot_relax_durable_start_identity(operations, policy)
     _, root, _ = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         store.prepare_start()
     (root / intent.attempt_id / "created.json").unlink()
     with (
-        opened(operations) as recovered,
         pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+        opened(operations) as recovered,
     ):
         recovered.record_stopped(encoded(stopped(intent, cid="a" * 64)))
 
@@ -568,6 +1065,7 @@ def test_reopened_terminal_bytes_require_fresh_reconfirmation(
     original = api.os.fsync
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         if failed_fsync:
             monkeypatch.setattr(
                 api.os, "fsync", lambda _fd: (_ for _ in ()).throw(OSError("fictional"))
@@ -597,6 +1095,7 @@ def test_persisted_start_and_created_receipts_must_agree(operations, policy, fie
     _, root, _ = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         store.prepare_start()
     path = root / intent.attempt_id / "start.json"
@@ -604,8 +1103,8 @@ def test_persisted_start_and_created_receipts_must_agree(operations, policy, fie
     record[field] = value
     path.write_bytes(encoded(record))
     with (
-        opened(operations) as recovered,
         pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+        opened(operations) as recovered,
     ):
         recovered.record_stopped(encoded(stopped(intent)))
 
@@ -614,6 +1113,7 @@ def test_start_clock_cannot_precede_acknowledged_created_clock(operations, polic
     _, root, clock = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         clock["monotonic_ns"] += 100
         store.record_created(created(intent))
         store.prepare_start()
@@ -623,8 +1123,8 @@ def test_start_clock_cannot_precede_acknowledged_created_clock(operations, polic
     record["term_deadline_ns"] -= 1
     path.write_bytes(encoded(record))
     with (
-        opened(operations) as recovered,
         pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+        opened(operations) as recovered,
     ):
         recovered.record_stopped(encoded(stopped(intent)))
 
@@ -633,6 +1133,7 @@ def test_cid_receipt_must_still_equal_the_acknowledged_bytes(operations, policy)
     _, root, _ = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         path = root / intent.attempt_id / "created.json"
         record = json.loads(path.read_bytes())
@@ -645,6 +1146,7 @@ def test_cid_receipt_must_still_equal_the_acknowledged_bytes(operations, policy)
 def test_fresh_reconfirmation_rejects_changed_container_lifetime(operations, policy):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_stopped(encoded(stopped(intent)))
     with opened(operations) as recovered:
         changed = stopped(intent)
@@ -660,6 +1162,7 @@ def test_failed_reconfirmation_clears_earlier_terminal_ack(operations, policy, m
     original = api.os.fsync
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_stopped(encoded(stopped(intent)))
     with opened(operations) as recovered:
         recovered.record_stopped(encoded(stopped(intent)))
@@ -673,15 +1176,23 @@ def test_failed_reconfirmation_clears_earlier_terminal_ack(operations, policy, m
             recovered.begin(policy)
 
 
-def test_recovery_ack_then_new_attempt_can_complete_new_start_protocol(operations, policy):
+def test_recovery_ends_before_a_later_terminal_handoff_can_start(operations, policy):
+    api, _, clock = operations
     with opened(operations) as store:
         old = store.begin(policy)
+        dispatch_prepared(store, policy, clock)
         store.record_created(created(old))
     with opened(operations) as recovered:
         recovered.record_stopped(encoded(stopped(old)))
-        fresh = recovered.begin(policy)
-        recovered.record_created(created(fresh))
-        fence = recovered.prepare_start()
+        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+            recovered.begin(policy)
+    with opened(operations) as fresh_session:
+        fresh_session.record_stopped(encoded(stopped(old)))
+        fresh = fresh_session.begin(policy)
+        removed(fresh_session, api, clock)
+        dispatch_prepared(fresh_session, policy, clock)
+        fresh_session.record_created(created(fresh, cid="e" * 64))
+        fence = fresh_session.prepare_start()
         assert fence.attempt_id == fresh.attempt_id and fresh.attempt_id != old.attempt_id
 
 
@@ -693,38 +1204,43 @@ def test_initial_stop_validation_failure_revokes_prior_session_acknowledgements(
     original_fstat = api.os.fstat
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         if prior_ack == "terminal":
             store.record_stopped(encoded(stopped(intent)))
-    with opened(operations) as recovered:
-        if prior_ack == "terminal":
+        if prior_ack == "created":
+            _assert_failed_stop_revokes_ack(
+                store, intent, prior_ack, api, original_fstat, monkeypatch, policy
+            )
+    if prior_ack == "terminal":
+        with opened(operations) as recovered:
             recovered.record_stopped(encoded(stopped(intent)))
-            active_store = recovered
-        else:
-            # A fresh owning session is required for an acknowledged, unstarted CID.
-            recovered.record_stopped(encoded(stopped(intent)))
-            intent = recovered.begin(policy)
-            recovered.record_created(created(intent))
-            active_store = recovered
+            _assert_failed_stop_revokes_ack(
+                recovered, intent, prior_ack, api, original_fstat, monkeypatch, policy
+            )
 
-        calls = 0
 
-        def fail_first_fstat(fd):
-            nonlocal calls
-            calls += 1
-            if calls == 1:
-                raise OSError("fictional initial validation failure")
-            return original_fstat(fd)
+def _assert_failed_stop_revokes_ack(
+    active_store, intent, prior_ack, api, original_fstat, monkeypatch, policy
+):
+    calls = 0
 
-        with monkeypatch.context() as scoped:
-            scoped.setattr(api.os, "fstat", fail_first_fstat)
-            with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
-                active_store.record_stopped(encoded(stopped(intent)))
+    def fail_first_fstat(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("fictional initial validation failure")
+        return original_fstat(fd)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(api.os, "fstat", fail_first_fstat)
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
-            if prior_ack == "terminal":
-                active_store.begin(policy)
-            else:
-                active_store.prepare_start()
+            active_store.record_stopped(encoded(stopped(intent)))
+    with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
+        if prior_ack == "terminal":
+            active_store.begin(policy)
+        else:
+            active_store.prepare_start()
 
 
 def test_create_claim_is_owned_one_use_and_not_recovery_authority(operations, policy):
@@ -778,6 +1294,7 @@ def test_create_claim_is_consumed_even_if_initial_validation_fails(operations, p
 def test_create_claim_cannot_follow_existing_execution_receipts(operations, policy, phase):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         if phase == "start":
             store.prepare_start()
@@ -792,7 +1309,7 @@ def test_final_create_check_rejects_changed_state(operations, policy, change):
     _, root, clock = operations
     with opened(operations) as store:
         intent = store.begin(policy)
-        claim = store.claim_create(policy)
+        fence = dispatch_prepared(store, policy, clock)
         if change == "boot":
             clock["boot_id"] = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
         elif change == "rollback":
@@ -800,7 +1317,7 @@ def test_final_create_check_rejects_changed_state(operations, policy, change):
         else:
             store.record_created(created(intent))
         with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
-            store.check_create_claim(claim)
+            store.check_create_fence(fence)
         assert (root / intent.attempt_id / "intent.json").is_file()
 
 
@@ -809,6 +1326,7 @@ def test_final_start_check_requires_issued_unchanged_unexpired_fence(operations,
     _, root, clock = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         fence = store.prepare_start()
         store.check_start_fence(fence)
@@ -839,6 +1357,12 @@ def test_snapshot_empty_and_each_stage_preserve_receipts_and_authority(operation
             None,
             None,
             None,
+        )
+        assert initial.create_sha256 is None
+        dispatch_prepared(store, policy, operations[2])
+        assert (
+            snapshot(store).create_sha256
+            == hashlib.sha256((root / intent.attempt_id / "create.json").read_bytes()).hexdigest()
         )
         store.record_created(created(intent))
         recorded = snapshot(store)
@@ -875,6 +1399,7 @@ def test_snapshot_empty_and_each_stage_preserve_receipts_and_authority(operation
 def test_snapshot_retains_stopped_cid_after_lost_create_ack(operations, policy):
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_stopped(encoded(stopped(intent, status="created")))
         view = snapshot(store)
         assert view.container_id == CID and view.created_sha256 is None
@@ -889,6 +1414,7 @@ def test_snapshot_rejects_inconsistent_receipt_chain(operations, policy, change)
     _, root, _ = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         store.prepare_start()
         store.record_stopped(encoded(stopped(intent)))
@@ -915,6 +1441,7 @@ def test_cleanup_recovers_original_target_without_new_launch_authority(operation
     _, root, clock = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         fence = store.prepare_start()
     before = {path.name: path.read_bytes() for path in (root / intent.attempt_id).iterdir()}
@@ -946,6 +1473,7 @@ def test_cleanup_rejects_unfenced_or_terminal_stage(operations, policy, stage):
         if stage != "empty":
             intent = store.begin(policy)
             if stage != "intent":
+                dispatch_prepared(store, policy, operations[2])
                 store.record_created(created(intent))
             if stage == "stopped":
                 store.prepare_start()
@@ -963,6 +1491,7 @@ def test_cleanup_revokes_start_before_failed_namespace_validation(operations, po
     _, root, _ = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         fence = store.prepare_start()
         (root / "launcher.lock").chmod(0o640)
@@ -977,6 +1506,7 @@ def test_cleanup_revokes_terminal_admission_before_failed_validation(operations,
     _, root, _ = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         store.prepare_start()
         store.record_stopped(encoded(stopped(intent)))
@@ -1008,6 +1538,7 @@ def test_start_fenced_created_state_cannot_acknowledge_termination(operations, p
 
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         fence = store.prepare_start()
         if not reopened:
@@ -1030,13 +1561,14 @@ def test_snapshot_rejects_preexisting_created_terminal_receipt_with_start(operat
     _, root, _ = operations
     with opened(operations) as store:
         intent = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(intent))
         store.prepare_start()
         store.record_stopped(encoded(stopped(intent)))
     retained_created_receipt(root, intent)
     with (
-        opened(operations) as store,
         pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+        opened(operations) as store,
     ):
         snapshot(store)
 
@@ -1045,25 +1577,29 @@ def test_snapshot_rejects_preexisting_created_terminal_receipt_with_start(operat
 def test_historical_start_fenced_created_receipt_blocks_later_admission(
     operations, policy, status, flag
 ):
-    _, root, _ = operations
+    api, root, clock = operations
     with opened(operations) as store:
         first = store.begin(policy)
+        dispatch_prepared(store, policy, operations[2])
         store.record_created(created(first))
         store.prepare_start()
         store.record_stopped(encoded(stopped(first)))
     with opened(operations) as store:
         store.record_stopped(encoded(stopped(first)))
         second = store.begin(policy)
-        store.record_created(created(second))
+        removed(store, api, clock)
+        dispatch_prepared(store, policy, clock)
+        store.record_created(created(second, cid="e" * 64))
         store.prepare_start()
-        store.record_stopped(encoded(stopped(second)))
+        store.record_stopped(encoded(stopped(second, cid="e" * 64)))
     retained_created_receipt(root, first)
     path = root / first.attempt_id / "stopped.json"
     receipt = json.loads(path.read_bytes())
     receipt["status"] = status
     receipt["start_fence_present"] = flag
     path.write_bytes(encoded(receipt))
-    with opened(operations) as store:
-        store.record_stopped(encoded(stopped(second)))
-        with pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"):
-            store.begin(policy)
+    with (
+        pytest.raises(ValueError, match=r"^stock_attempt_unavailable$"),
+        opened(operations) as store,
+    ):
+        store.begin(policy)
