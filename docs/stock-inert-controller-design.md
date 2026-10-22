@@ -160,3 +160,25 @@ authorization. Root producer, paused installation and intended-host proof follow
 
 Pinned native state reference: [Moby 29 state implementation](https://github.com/moby/moby/blob/d105562beff448ae44d6e3a2f7738b235fd197b5/daemon/container/state.go).
 This is source evidence, not intended-host lifecycle verification.
+
+## Store contract details frozen before implementation
+
+The intent is the sole exception to the common `intent_sha256` field: its value is
+required null because the canonical intent bytes define the digest. Later records
+bind that digest. This avoids a circular self-hash. The namespace record has only
+schema_version/kind/namespace_id/root_device/root_inode/lock_device/lock_inode;
+active has schema_version/kind/namespace_id/probe_id/intent_sha256. Namespace kind is
+stock_probe_namespace, active kind stock_probe_active. The permanent lock basename
+is launcher.lock, matching the low-level convention without sharing its inode/path.
+
+Fixed artifact basenames are engine.bin/image.bin/request.bin/create-response.bin/
+prestart.bin/stopped.bin/framed-logs.bin/configuration.bin. Original finite framed
+logs may be empty (then output is invalid); every other artifact is nonempty.
+Artifact writes are exclusive and never overwrite even complete unacknowledged bytes.
+The metadata names are intent/create/cid/created/start/stopped/output/removal-intent/
+removed/closed with .json suffix. No caller-selected basename is admitted.
+
+Filesystem primitives do not assert transport provenance or durability merely from
+readable bytes. They sanitize all operational failures and never repair a partial
+namespace. While lifecycle/lineage code is incomplete, the namespace opener admits
+only the initialized empty layout. No runnable controller uses this foundation.
