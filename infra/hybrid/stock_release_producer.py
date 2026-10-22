@@ -1,7 +1,7 @@
-"""Private one-use build lease. Publication and successful history remain incomplete.
+"""Owned source-bound stock releases, with no installation or trading operation.
 
-No public build/deployment operation exists in this intermediate module. An old
-attempt always blocks admission until the producer's complete closure is implemented.
+Each source owns fresh bounded native stages. Historical facts admit only a
+different source; current success requires final cleanup and the original window.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from infra.hybrid.stock_release import (
 if TYPE_CHECKING:
     from infra.hybrid.stock_container import ImageProfile
     from infra.hybrid.stock_probe_controller import ProbeResult
+    from infra.hybrid.stock_producer_history import _History
 
 PRODUCER_ROOT = Path("/var/lib/hybrid-stock-producer")
 _ASSETS_ROOT = Path(__file__).resolve().parents[2]
@@ -62,6 +63,7 @@ _SLOTS = {
     "render-complete.json": (1, 4096),
     "publication-intent.json": (1, 4096),
     "publication-files.json": (1, 4096),
+    "terminal.json": (1, 8192),
 }
 _ERRORS = (OSError, ValueError, TypeError, KeyError, OverflowError, AttributeError, RecursionError)
 _ACTIVE: _Lease | None = None
@@ -163,6 +165,47 @@ def _open(root: Path, uid: int, *, production: bool = False) -> int:
     return _open_directory(root, trusted_uid=uid, release_root=Path("/") if production else root)
 
 
+def _next_clock(
+    origin: dict[str, Any], last: dict[str, Any], shutdown: list[bool], deadline_ns: int
+) -> dict[str, Any]:
+    _require(type(shutdown) is list and len(shutdown) == 1 and shutdown[0] is False)
+    now = _clock()
+    _check_clock(now)
+    _require(
+        now["boot_id"] == origin["boot_id"]
+        and last["monotonic_ns"] <= now["monotonic_ns"] < deadline_ns
+        and _clock_key(last["utc"]) <= _clock_key(now["utc"])
+    )
+    return now
+
+
+def _filesystem(
+    uid: int,
+    production: bool,
+    directories: list[tuple[int, Path]],
+    directory_ids: list[tuple[int, int]],
+    inventories: dict[int, set[str]],
+    pins: list[tuple[int, str, tuple[int, ...]]],
+    *,
+    assets_fd: int | None = None,
+) -> None:
+    for (fd, path), identity in zip(directories, directory_ids, strict=True):
+        info = os.fstat(fd)
+        _require((info.st_dev, info.st_ino) == identity)
+        if fd != assets_fd:
+            _directory(info, uid)
+        current = _open(path, uid, production=production)
+        try:
+            info = os.fstat(current)
+            _require((info.st_dev, info.st_ino) == identity)
+        finally:
+            _close_all((current,))
+    for fd, expected in inventories.items():
+        _require(set(os.listdir(fd)) == expected)
+    for directory, name, stamp in pins:
+        _require(_fingerprint(os.stat(name, dir_fd=directory, follow_symlinks=False)) == stamp)
+
+
 def _initialize(root: Path, *, trusted_uid: int) -> None:
     """Explicit private fixture seam; partial/existing namespaces are never repaired."""
     with _sanitized():
@@ -227,20 +270,17 @@ class _Lease:
         shutdown: list[bool],
         origin: dict[str, Any],
         release_root: Path,
+        history: _History,
     ) -> None:
         self.source, self.root, self.assets_root, self.uid = source, root, assets_root, uid
         self.release_root, self.descriptors = release_root, descriptors
-        (
-            self.root_fd,
-            self.lock_fd,
-            self.inputs_fd,
-            self.attempts_fd,
-            self.assets_fd,
-            self.attempt_fd,
-        ) = descriptors
+        self.root_fd, self.lock_fd, self.inputs_fd, self.attempts_fd = descriptors[:4]
+        self.assets_fd, self.attempt_fd = descriptors[-2:]
+        self.release_fd = history.release_fd
+        self.completed_sources = set(history.sources)
         self.namespace, self.shutdown, self.origin = namespace, shutdown, origin
         self.deadline_ns = int(origin["monotonic_ns"]) + 1_200_000_000_000
-        self.last_clock = origin
+        self.last_clock = history.last_clock
         self.closed = False
         self.preparation_started = False
         self.prepared = False
@@ -253,7 +293,9 @@ class _Lease:
         self.compose_bytes: bytes | None = None
         self.publication_started = False
         self.published_manifest: Path | None = None
-        self.pins: list[tuple[int, str, tuple[int, ...]]] = []
+        self.terminal_started = False
+        self.terminal_ack = False
+        self.pins: list[tuple[int, str, tuple[int, ...]]] = list(history.pins)
         self.directories = [
             (self.root_fd, root),
             (self.inputs_fd, root / "inputs"),
@@ -264,46 +306,37 @@ class _Lease:
         self.directory_ids = [
             (os.fstat(fd).st_dev, os.fstat(fd).st_ino) for fd, _ in self.directories
         ]
+        for item, identity in zip(history.directories, history.directory_ids, strict=True):
+            if item[0] not in {fd for fd, _ in self.directories}:
+                self.directories.append(item)
+                self.directory_ids.append(identity)
         self.inventories = {
             self.root_fd: set(os.listdir(self.root_fd)),
             self.inputs_fd: set(os.listdir(self.inputs_fd)),
-            self.attempts_fd: {source.digest},
+            self.attempts_fd: self.completed_sources | {source.digest},
             self.attempt_fd: set(),
         }
+        for fd, inventory in history.inventories.items():
+            if fd not in self.inventories:
+                self.inventories[fd] = set(inventory)
         self.hashes: dict[str, str] = {}
 
     def _filesystem(self) -> None:
         _require(type(self) is _Lease and _ACTIVE is self and not self.closed)
-        for (fd, path), identity in zip(self.directories, self.directory_ids, strict=True):
-            info = os.fstat(fd)
-            _require((info.st_dev, info.st_ino) == identity)
-            if fd != self.assets_fd:
-                _directory(info, self.uid)
-            current = _open(path, self.uid, production=self.root == PRODUCER_ROOT)
-            try:
-                info = os.fstat(current)
-                _require((info.st_dev, info.st_ino) == identity)
-            finally:
-                _close_all((current,))
-        for fd, expected in self.inventories.items():
-            _require(set(os.listdir(fd)) == expected)
-        for directory, name, stamp in self.pins:
-            _require(_fingerprint(os.stat(name, dir_fd=directory, follow_symlinks=False)) == stamp)
+        _filesystem(
+            self.uid,
+            self.root == PRODUCER_ROOT,
+            self.directories,
+            self.directory_ids,
+            self.inventories,
+            self.pins,
+            assets_fd=self.assets_fd,
+        )
 
     def check(self, *, not_after_ns: int | None = None) -> dict[str, Any]:
         self._filesystem()
-        _require(
-            type(self.shutdown) is list and len(self.shutdown) == 1 and self.shutdown[0] is False
-        )
-        now = _clock()
-        _check_clock(now)
-        _require(
-            now["boot_id"] == self.origin["boot_id"]
-            and self.last_clock["monotonic_ns"] <= now["monotonic_ns"]
-            and _clock_key(self.last_clock["utc"]) <= _clock_key(now["utc"])
-        )
         deadline = self.deadline_ns if not_after_ns is None else min(self.deadline_ns, not_after_ns)
-        _require(now["monotonic_ns"] < deadline)
+        now = _next_clock(self.origin, self.last_clock, self.shutdown, deadline)
         self.last_clock = now
         return now
 
@@ -332,6 +365,7 @@ class _Lease:
                 "render-complete.json",
                 "publication-intent.json",
                 "publication-files.json",
+                "terminal.json",
             }
             and name not in self.inventories[self.attempt_fd]
         )
@@ -476,8 +510,23 @@ def _lease(
                 info = os.stat(name, dir_fd=inputs, follow_symlinks=False)
                 _file(info, trusted_uid, 1, 16 * 1024 * 1024)
                 input_pins.append((inputs, name, _fingerprint(info)))
-            # Intermediate prefix only: Task3 must validate completed historical closure.
-            _require(not os.listdir(attempts))
+            from infra.hybrid.stock_producer_history import _admit
+
+            history = _admit(
+                root=root,
+                release_root=release_root,
+                uid=trusted_uid,
+                descriptors=descriptors,
+                namespace=namespace,
+                origin=origin,
+                shutdown=shutdown,
+                source_sha256=source_sha256,
+                pins=[
+                    *input_pins,
+                    (directory, "namespace.json", namespace_stamp),
+                    (directory, "producer.lock", lock_stamp),
+                ],
+            )
             assets = _open(assets_root, trusted_uid, production=root == PRODUCER_ROOT)
             descriptors.append(assets)
             source = inspect_source(
@@ -513,6 +562,7 @@ def _lease(
                 shutdown,
                 origin,
                 release_root,
+                history,
             )
             _ACTIVE = lease
             lease.inventories[directory] = {"inputs", "attempts", "producer.lock", "namespace.json"}
@@ -645,3 +695,99 @@ def _fresh_probe(lease: _Lease) -> ProbeResult:
     lease.check()
     lease.probe_result = result
     return result
+
+
+class _Final:
+    """Original identities and window, usable after all owning handles are closed."""
+
+    def __init__(self, lease: _Lease) -> None:
+        lease.check()
+        _require(lease.terminal_ack and lease.published_manifest is not None)
+        if lease.published_manifest is None:
+            _deny()
+        self.manifest = lease.published_manifest
+        self.root, self.uid = lease.root, lease.uid
+        self.origin, self.last_clock = dict(lease.origin), dict(lease.last_clock)
+        self.deadline_ns, self.shutdown = lease.deadline_ns, lease.shutdown
+        self.directories = [
+            (
+                path,
+                identity,
+                fd == lease.assets_fd,
+                frozenset(lease.inventories[fd]) if fd in lease.inventories else None,
+            )
+            for (fd, path), identity in zip(lease.directories, lease.directory_ids, strict=True)
+        ]
+        paths = dict(lease.directories)
+        self.pins = [(paths[fd], name, stamp) for fd, name, stamp in lease.pins]
+
+    def check(self) -> None:
+        """No original FD or cleanup acknowledgement is reconstructed from files."""
+        with _sanitized():
+            _require(os.geteuid() == self.uid)
+            self.last_clock = _next_clock(
+                self.origin, self.last_clock, self.shutdown, self.deadline_ns
+            )
+            descriptors: list[int] = []
+            opened: dict[Path, int] = {}
+            try:
+                for path, identity, asset, inventory in self.directories:
+                    fd = _open(path, self.uid, production=self.root == PRODUCER_ROOT)
+                    descriptors.append(fd)
+                    info = os.fstat(fd)
+                    _require((info.st_dev, info.st_ino) == identity)
+                    if not asset:
+                        _directory(info, self.uid)
+                    if inventory is not None:
+                        _require(set(os.listdir(fd)) == inventory)
+                    opened[path] = fd
+                for path, name, stamp in self.pins:
+                    _require(
+                        stamp
+                        == _fingerprint(os.stat(name, dir_fd=opened[path], follow_symlinks=False))
+                    )
+            finally:
+                _close_all(reversed(descriptors))
+            self.last_clock = _next_clock(
+                self.origin, self.last_clock, self.shutdown, self.deadline_ns
+            )
+
+
+@contextmanager
+def _production_lease(source_sha256: str, shutdown: list[bool]) -> Iterator[_Lease]:
+    """The only production namespace; tests replace this filesystem boundary."""
+    _require(sys.platform == "linux" and os.geteuid() == 0)
+    with _lease(source_sha256, shutdown) as lease:
+        yield lease
+
+
+@contextmanager
+def _completed_release(source_sha256: str) -> Iterator[_Final]:
+    from infra.hybrid.stock_build_engine import _build
+    from infra.hybrid.stock_compose_render import _render
+    from infra.hybrid.stock_producer_history import _seal
+    from infra.hybrid.stock_release_publication import _publish_files
+    from infra.hybrid.stock_supervisor import _shutdown
+
+    with _sanitized():
+        _require(type(source_sha256) is str and _HEX.fullmatch(source_sha256) is not None)
+        with _shutdown() as requested:
+            with _production_lease(source_sha256, requested) as lease:
+                _build(lease)
+                _fresh_probe(lease)
+                _render(lease)
+                _publish_files(lease)
+                _seal(lease)
+                finished = _Final(lease)
+                yield finished
+                lease.check()
+                finished.last_clock = dict(lease.last_clock)
+            finished.check()
+        finished.check()
+
+
+def produce_release(source_sha256: str) -> Path:
+    """Own one fixed release; success follows every original-window cleanup gate."""
+    with _completed_release(source_sha256) as finished:
+        manifest = finished.manifest
+    return manifest

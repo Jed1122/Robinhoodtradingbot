@@ -17,9 +17,7 @@ from infra.hybrid.stock_release_producer import (
     PRODUCER_ROOT,
     _child_directory,
     _deny,
-    _directory,
     _Lease,
-    _open,
     _read_binary,
     _require,
     _sanitized,
@@ -105,16 +103,12 @@ def _publish_files(lease: _Lease) -> Path:
                 }
             ),
         }
-        root = _open(lease.release_root, lease.uid, production=lease.root == PRODUCER_ROOT)
-        lease.descriptors.append(root)
+        root = lease.release_fd
+        _require(root is not None)
+        if root is None:
+            raise ValueError("stock_producer_unavailable")
         info = os.fstat(root)
-        _directory(info, lease.uid)
-        # Intermediate prefix: historical attempts are still denied at lease admission.
-        _require(not os.listdir(root))
-        lease.directories.append((root, lease.release_root))
-        lease.directory_ids.append((info.st_dev, info.st_ino))
-        lease.inventories[root] = set()
-        os.fsync(root)
+        _require(set(os.listdir(root)) == lease.completed_sources)
         lease.check()
         file_hashes = {name: hashlib.sha256(raw).hexdigest() for name, raw in files.items()}
         lease.record(

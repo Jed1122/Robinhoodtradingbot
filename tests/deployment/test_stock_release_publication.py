@@ -76,7 +76,9 @@ def test_no_current_render_means_no_release_publication(scenario, monkeypatch):
 def test_unknown_or_existing_release_namespace_is_never_adopted(scenario, monkeypatch, kind):
     publisher = api()
     fixture, root = scenario
-    with built(fixture[0], monkeypatch, release_root=root) as lease:
+    # The release parent is now pinned at admission; corruption also invalidates
+    # context cleanup, so the entire owning scope must fail.
+    with pytest.raises(ValueError), built(fixture[0], monkeypatch, release_root=root) as lease:
         render(scenario, monkeypatch, lease)
         if kind in {"same_source", "unknown_release"}:
             target = root / (lease.source.digest if kind == "same_source" else "a" * 64)
@@ -87,9 +89,8 @@ def test_unknown_or_existing_release_namespace_is_never_adopted(scenario, monkey
             root.symlink_to(root.with_name("old-releases"))
         else:
             root.chmod(0o777)
-        with pytest.raises(ValueError):
-            publisher._publish_files(lease)
-        assert lease.published_manifest is None
+        publisher._publish_files(lease)
+    assert lease.published_manifest is None
 
 
 @pytest.mark.parametrize(

@@ -8,7 +8,7 @@ import socket
 from typing import NoReturn
 from urllib.parse import urlencode
 
-from infra.hybrid.stock_build_inputs import build_image_id
+from infra.hybrid.stock_build_inputs import SourceArchive, build_image_id
 from infra.hybrid.stock_container import ImageProfile, _object, verify_engine_version, verify_image
 from infra.hybrid.stock_engine import StockEngineReader, _connection
 from infra.hybrid.stock_release_producer import _current_source, _Lease
@@ -32,6 +32,11 @@ def _budget(lease: _Lease, cap: int) -> float:
 
 
 def _request(lease: _Lease) -> bytes:
+    return _source_request(lease.source)
+
+
+def _source_request(source: SourceArchive) -> bytes:
+    """Pure fixed request bytes; supplying these does not authorize an exchange."""
     query = urlencode(
         {
             "version": "1",
@@ -46,17 +51,13 @@ def _request(lease: _Lease) -> bytes:
             "memswap": "536870912",
             "cpuperiod": "100000",
             "cpuquota": "50000",
-            "buildargs": json.dumps(
-                {"PYTHON_BASE_IMAGE": lease.source.base_ref}, separators=(",", ":")
-            ),
+            "buildargs": json.dumps({"PYTHON_BASE_IMAGE": source.base_ref}, separators=(",", ":")),
         }
     )
     return (
         "POST /v1.52/build?" + query + " HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n"
-        "Content-Type: application/x-tar\r\nContent-Length: "
-        + str(len(lease.source.raw))
-        + "\r\n\r\n"
-    ).encode("ascii") + lease.source.raw
+        "Content-Type: application/x-tar\r\nContent-Length: " + str(len(source.raw)) + "\r\n\r\n"
+    ).encode("ascii") + source.raw
 
 
 def _exchange(lease: _Lease, request: bytes, cap: int) -> bytes:

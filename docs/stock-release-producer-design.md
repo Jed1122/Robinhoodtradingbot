@@ -2,7 +2,7 @@
 
 This implements the already authorized stock deployment architecture, without starting
 research, installing a service, changing controls, moving credentials or activating
-investing. The current controller checkout remains frozen for its actual full suite.
+investing. Local implementation and actual native host qualification remain distinct.
 
 ## Owned operations
 
@@ -83,6 +83,10 @@ Keep raw source, version/image metadata, bounded request/build response, actual 
 result, Compose version/template/raw render and terminal producer provenance outside
 the four closed release schemas. Pinned file/directory identities and exact inventories
 must survive readback and final context cleanup. No secrets enter these records/logs.
+The new terminal facts record is bounded to8192bytes so it can bind the original
+28 retained private/release file fingerprints and hashes, ten directory identities,
+source/image/namespace identities and original clocks. Existing nine private JSON
+record bounds and all four release schemas remain unchanged.
 
 ## Build, probe and rendering
 
@@ -155,6 +159,11 @@ complete; it never asserts acknowledgement of its own publication or caller succ
 Historical recognition uses the separate closed-chain/fresh-flush protocol linked above
 and cannot return an old manifest as a successful current producer result.
 The public result is the fixed manifest path; CLI formatting shares that final gate.
+The source-SHA-only CLI is `python -m infra.hybrid.stock_producer <source-sha256>`.
+CLI consumers must require both one complete success JSON object and actual exit0;
+text alone is not acknowledgement. Failed/late stdout never yields exit0 or a second
+status. No native stage follows terminal facts; post-facts operations only check
+local identities, cleanup, clocks and output. No installation or activation is added.
 
 File verification, local fixtures and public documentation do not prove a native build,
 isolation or deployment. Native producer/probe proof precedes paused installation,

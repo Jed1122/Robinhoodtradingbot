@@ -137,6 +137,48 @@ def _invoke(
     return result.stdout, cap
 
 
+def _recipe(
+    image: str, attestation: Path, workspace: Path
+) -> tuple[tuple[str, ...], tuple[str, ...], dict[str, str]]:
+    """Pure fixed invocation recipe, shared with closed historical validation."""
+    env = {
+        "DOCKER_CONFIG": str(workspace / "docker-config"),
+        "HOME": str(workspace / "home"),
+        "PATH": str(workspace / "empty-path"),
+        "LC_ALL": "C",
+        "STOCK_IMAGE": image,
+        "STOCK_ATTESTATION_FILE": str(attestation),
+    }
+    prefix = (
+        str(_DOCKER),
+        "--config",
+        env["DOCKER_CONFIG"],
+        "--host",
+        "unix:///var/run/docker.sock",
+        "compose",
+    )
+    version_argv = (*prefix, "version", "--short")
+    render_argv = (
+        *prefix,
+        "--ansi",
+        "never",
+        "--project-name",
+        "hybrid-stock-research",
+        "--project-directory",
+        str(workspace),
+        "--env-file",
+        str(workspace / "compose.env"),
+        "--file",
+        str(workspace / "compose-template.yml"),
+        "config",
+        "--format",
+        "json",
+        "--resolve-image-digests=false",
+        "--lock-image-digests=false",
+    )
+    return version_argv, render_argv, env
+
+
 def _render(lease: _Lease) -> bytes:
     with _sanitized():
         _require(type(lease) is _Lease)
@@ -155,41 +197,7 @@ def _render(lease: _Lease) -> bytes:
         if image is None:
             raise ValueError("stock_producer_unavailable")
         attestation = lease.release_root / lease.source.digest / "runtime-image-attestation.json"
-        env = {
-            "DOCKER_CONFIG": str(workspace / "docker-config"),
-            "HOME": str(workspace / "home"),
-            "PATH": str(workspace / "empty-path"),
-            "LC_ALL": "C",
-            "STOCK_IMAGE": image.image_digest,
-            "STOCK_ATTESTATION_FILE": str(attestation),
-        }
-        prefix = (
-            str(_DOCKER),
-            "--config",
-            env["DOCKER_CONFIG"],
-            "--host",
-            "unix:///var/run/docker.sock",
-            "compose",
-        )
-        version_argv = (*prefix, "version", "--short")
-        render_argv = (
-            *prefix,
-            "--ansi",
-            "never",
-            "--project-name",
-            "hybrid-stock-research",
-            "--project-directory",
-            str(workspace),
-            "--env-file",
-            str(workspace / "compose.env"),
-            "--file",
-            str(workspace / "compose-template.yml"),
-            "config",
-            "--format",
-            "json",
-            "--resolve-image-digests=false",
-            "--lock-image-digests=false",
-        )
+        version_argv, render_argv, env = _recipe(image.image_digest, attestation, workspace)
         lease.record(
             "render-intent.json",
             {

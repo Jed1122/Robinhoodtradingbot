@@ -2,8 +2,9 @@
 
 The [producer design](stock-release-producer-design.md) and
 [implementation plan](superpowers/plans/2026-10-22-stock-release-producer.md) retain
-the full build/probe/render/publication requirement. The producer is not yet runnable
-or deployment-ready. This work grants no native build, source-data, strategy, broker
+the full build/probe/render/publication requirement. The public producer is locally
+implemented; final integration/review/full acceptance and native qualification remain
+pending. It is not deployment-ready. This work grants no native build, source-data, strategy, broker
 reconciliation or live-trading qualification.
 
 Task1 is implemented and accepted locally at877924d. The supplied-data module checks
@@ -47,10 +48,10 @@ and diff checks passed. Bandit retained existing annotation/suppression warnings
 no finding was emitted. All transport tests used local socketpairs with native
 Docker default-denied. No native build, provider call or credential use occurred.
 
-This remains an intermediate private build library. Every retained attempt currently
-blocks another build. Task3 must implement complete successful-history validation
-that permits a different source, while preserving incident blocking and rejecting
-same-source replay. No successful old receipt is currently accepted as authority.
+At the Task2 checkpoint, this was an intermediate private build library: every
+retained attempt blocked another build. Task3's completed-history validation is
+described below; it permits a different source while preserving incident blocking
+and rejecting same-source replay. No old receipt grants current native authority.
 
 Task3 is in progress. Clean-source preparation and nested shutdown composition are
 implemented locally. Actual13nested-signal failures were reproduced, then corrected
@@ -108,15 +109,30 @@ executable and do not prove backup/restore. Ruffall, strict mypy452(src+eight ho
 modules), expanded Bandit, offline lock and diff checks passed. These are local
 fixture/child-process checks, not native Docker, broker or deployed runtime evidence.
 
-Remaining Task3 work is complete successful-history admission, terminal facts and final
-clock/shutdown/context/CLI publication gates. Root explicitly clarified the distinction
-between independently completed historical native facts and a lost current caller
-result in the [terminal contract](stock-release-producer-closure.md). Its full closed-chain
-and fresh durability protocol still needs implementation and failure tests. The
-[operations guide](stock-release-producer-operations.md) identifies the available
-library interfaces and unimplemented public producer accurately.
+The later terminal/history/public-command increment is locally implemented. Actual18
+missing-history REDs preceded implementation; the first18passed in25.88seconds.
+The expanded27-case group passed in40.08seconds, including nine fully rehashed invalid
+semantic chains and recognition of intact native facts after a failed old caller result,
+without adopting that old result as current acknowledgement. The [terminal contract](stock-release-producer-closure.md)
+defines the distinction and fresh actual durability requirement explicitly.
+
+Actual12missing-public-producer/CLI REDs then passed in11.63seconds. Two stdout REDs
+demonstrated a second-status/raised-output failure; the corrected expanded15-case group
+passed in16.60seconds. Two different source releases use the same persistent producer
+and probe stores and each runs its own build, probe, render and publication. Lock/handler
+cleanup, namespace, shutdown, original-window and CLI formatting/output failures suppress
+current success. Subsequent file/same-source guards join the final integrated acceptance.
+Ruffall and strict mypy454(src+ten host modules) pass at this local checkpoint.
+The [operations guide](stock-release-producer-operations.md) documents the public
+`produce_release` and source-SHA-only CLI without implying native qualification.
 One fresh whole-branch review and the eventual actual source-specific full remain
 required.
+
+The final combined history/public-command group passed **43tests in56.43seconds**,
+including the subsequent file-replacement and same-source replay guards. Ruffall,
+strict mypy454(src+ten host modules), expanded Bandit(src+ten hosts), offline lock
+and diff checks passed. Bandit emitted no findings and retained inherited
+annotation/suppression warnings. Integrated Task3 acceptance is still pending.
 
 The separate corrected-controller full at clean `8629cad` completed with actual
 exit0:15,010passed,33optional skips,1existing Starlette/httpx deprecation warning,

@@ -1,8 +1,9 @@
 # Producer terminal closure clarification
 
-Implementation status: pending. Every historical attempt still blocks admission;
-there is no completed public producer/CLI. This is not the intended final one-shot
-behavior. Root freezes the following clarification before implementing history.
+Implementation status: locally implemented; integrated/final/native acceptance are
+separate. Terminal facts are bounded to8192bytes and retain original file fingerprints,
+hashes and directory identities. Intact completed histories admit only a distinct
+source after actual fresh durability checks. No record asserts caller acknowledgement.
 
 ## Why the distinction is necessary
 
@@ -50,6 +51,6 @@ All current-call elapsed-time and fail-closed controls remain mandatory.
 This is reconciliation of intact completed facts, not incident repair or resume.
 Partial histories stay blocked; there is no new recovery command, operator approval,
 automatic pruning, image/container deletion or trading authority. The final public
-producer, history validator, final-gate tests and whole-branch acceptance remain
+producer/history/final-gate composition has local tests; whole-branch acceptance remains
 incomplete. Native proof, scheduled research, stock data/strategy qualification and
 broker reconciliation are separate gates.

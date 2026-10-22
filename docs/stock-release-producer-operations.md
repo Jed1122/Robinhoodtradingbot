@@ -1,8 +1,8 @@
 # Stock release producer operations
 
-Status: local implementation prefixes only. There is no public `produce_release`
-function or completed producer CLI yet. Do not invoke private stages manually as a
-deployment procedure. No native Docker build/probe/render, installation, credential
+Status: locally implemented producer, pending final acceptance and native qualification.
+Do not invoke private stages manually as a deployment procedure.
+No native Docker build/probe/render, installation, credential
 movement, research start or live activation has been performed by these changes.
 
 ## Available interfaces and fixed policy
@@ -20,12 +20,13 @@ the fixed Linux UID0 `/var/lib/hybrid-stock-producer` namespace once. Its parent
 must already be trusted and present. Initialization does not build or install
 anything. Partial/existing namespaces are denied, never repaired automatically.
 
-The unfinished public producer will accept only a source archive SHA-256. Its
+The public `produce_release(source_sha256: str) -> Path` accepts only an archive SHA-256. Its
 inputs belong at `inputs/<sha>.tar`; each source owns one exclusive attempt under
 `attempts/<sha>/`. Source preparation is repeated and matched inside the owning
-attempt. The current implementation rejects every historical attempt. Successful
-distinct-source admission still needs the [terminal closure contract](stock-release-producer-closure.md).
-Do not treat this intermediate restriction as the finished product.
+attempt. Completed histories require complete closed-chain validation and fresh
+flush/readback under the permanent actual lock before admitting a different source.
+Partial histories and same-source replay are denied. See the
+[terminal closure contract](stock-release-producer-closure.md).
 
 The host profile is fixed Docker29.1.3/API1.52/Linuxamd64 and Compose2.40.3. The build
 uses the reviewed Dockerfile and immutable base, with no registry authentication,
@@ -53,8 +54,9 @@ separate from the four immutable release files:
 
 The release directory is fixed at
 `/opt/hybrid-stock-research/releases/<source-sha256>/`; its parent must already be
-trusted and present. The intermediate publisher requires an empty release parent
-because no completed historical admission exists. Every file is exclusively created,
+trusted and present. The release parent's inventory must match exactly the admitted
+completed histories; unknown or existing target releases are denied.
+Every file is exclusively created,
 mode0444, flushed, read back with original inode bindings and checked by the existing
 release loader. A consistent readable release is not terminal producer success.
 
@@ -64,6 +66,29 @@ the private namespace and original failure evidence for root-owned incident anal
 No automatic cancellation/removal or daemon-termination claim follows from a timeout.
 Local process failure cleanup targets only its own newly created process group;
 it does not establish that Docker's daemon stopped a build or container.
+
+## Production command
+
+After independent native qualification, use a trusted root-owned clean checkout on
+the reviewed Linux host. The fixed producer and release parents must be explicitly
+prepared; normal production never initializes or repairs them. Stage the input with
+the existing `prepare_source` helper: first obtain its SHA in a separate private
+staging directory, then prepare the still-clean same HEAD into the absent
+`inputs/<sha>.tar`, checking that the returned SHA matches. This avoids an overwrite
+or unacknowledged copy; a changed HEAD or mismatching filename must stop the procedure.
+The owning producer still repeats and matches source preparation before its build.
+
+```sh
+PYTHONPATH=src python -m infra.hybrid.stock_producer <source-sha256>
+```
+
+The only positional input is that digest. Root, image, account, mode, endpoint,
+configuration and deadline overrides are unsupported. The production namespace
+boundary requires Linux/UID0. On success, one bounded JSON object contains `status`
+and the fixed derived `manifest` path. Require actual exit0 as well as complete JSON;
+a blocked/partial/late output is not acknowledgement. Formatting, descriptor and
+handler cleanup, identities and output checks share the original producer window.
+No credential, research start, service/timer, worker control or live-mode write follows.
 
 ## Verification and installation gates
 
@@ -76,7 +101,7 @@ mypy, expanded Bandit, lock and diff checks. The completed producer needs one
 whole-branch review and its own frozen full repository run; prior revisions' full
 results do not certify it.
 
-Before installation, finish the terminal/history/CLI contract and actual native
+Before installation, complete final review/full acceptance and actual native
 build → fresh probe → reviewed render → release → cleanup proof. Then verify an
 installation with collector controls paused and scheduling disabled. Scheduled
 research with Codex closed, authentication expiry/revocation, monitoring, restart
