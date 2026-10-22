@@ -14,7 +14,6 @@ ROOT = Path(__file__).parents[2]
         ("ci.yml", "quality"),
         ("ci.yml", "bandit"),
         ("ci.yml", "locked-dependencies"),
-        ("options-research.yml", "options-research"),
     ],
 )
 def test_uv_request_is_bound_to_the_job_interpreter(workflow: str, job_name: str) -> None:

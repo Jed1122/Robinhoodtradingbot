@@ -25,6 +25,15 @@ validates stock policy inputs and risk-gated order proposals. Research can concl
 that no purchase is justified. There is no fixed 60-day paper waiting requirement;
 validation, reconciliation, risk controls and explicit live authorization still apply.
 
+## Stock bot verification
+
+The default `pytest`, `pytest tests`, and `make test` suite covers the current stock
+bot and its shared equity safety components. Legacy ETF/options strategy, pricing,
+native-data and study tests and their dedicated workflow have been retired. Passive
+benchmarks and unsupported-asset rejection checks remain part of stock verification.
+Production legacy strategy code remains present but is outside this suite's claims.
+See [test scope, commands and coverage gates](docs/stock-bot-testing.md).
+
 ## Existing foundation
 
 This repository currently implements a paper-safe, fail-closed foundation: canonical
