@@ -1976,7 +1976,7 @@ def test_configured_structlog_emits_secret_free_aware_utc_json(
     assert "Bearer" not in serialized
 
 
-def test_makefile_has_exact_baseline_targets_and_commands() -> None:
+def test_makefile_has_exact_stock_targets_and_commands() -> None:
     makefile = (_REPO_ROOT / "Makefile").read_text(encoding="utf-8")
 
     phony = next(line for line in makefile.splitlines() if line.startswith(".PHONY:"))
@@ -1985,13 +1985,15 @@ def test_makefile_has_exact_baseline_targets_and_commands() -> None:
     assert "lint:\n\tuv run ruff check ." in makefile
     assert "typecheck:\n\tuv run mypy src" in makefile
     assert (
-        "test:\n\tuv run pytest tests --cov=trading_bot --cov-branch --cov-fail-under=80"
+        "test:\n\tuv run pytest tests --cov --cov-branch --cov-fail-under=80"
+        " --cov-report=json:coverage.json\n\tuv run python "
+        "scripts/check_critical_branch_coverage.py --report coverage.json"
         in makefile
     )
     assert ("security:\n\tuv run bandit -c pyproject.toml -r src\n\tuv run pip-audit") in makefile
 
 
-def test_ci_is_read_only_and_has_only_the_baseline_offline_test_matrix() -> None:
+def test_ci_is_read_only_and_has_only_the_stock_offline_test_matrix() -> None:
     workflow = (_REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     folded = workflow.casefold()
 
@@ -2001,7 +2003,10 @@ def test_ci_is_read_only_and_has_only_the_baseline_offline_test_matrix() -> None
     assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in workflow
     assert "uv run ruff check ." in workflow
     assert "uv run mypy src" in workflow
-    assert "uv run pytest tests --cov=trading_bot --cov-branch --cov-fail-under=80" in workflow
+    assert "uv run pytest tests --cov --cov-branch --cov-fail-under=80" in workflow
+    assert "--cov-report=json:coverage.json" in workflow
+    assert "scripts/check_critical_branch_coverage.py --report coverage.json" in workflow
+    assert "--cov=trading_bot" not in workflow
     for forbidden in (
         "pull_request_target",
         "secret",

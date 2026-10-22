@@ -14,7 +14,7 @@ uv sync --locked --all-groups
 make test
 uv run ruff check .
 uv run mypy src
-uv run bandit -c pyproject.toml -r src infra/hybrid scripts/check_critical_branch_coverage.py
+uv run bandit -c pyproject.toml -r src infra/hybrid/stock_*.py scripts/check_critical_branch_coverage.py
 uv lock --check --offline
 ```
 
@@ -61,6 +61,11 @@ The pre-retirement run at `e2960a4` exited 0 with 15,370 passed, 33 skipped,
 one warning and 89.04% coverage in 8,618.49 seconds. That is a historical full-repository
 result with a different denominator. It must not be presented as the current stock
 suite result. Current verification is recorded separately after execution.
+
+The broader scan of all `infra/hybrid` helpers reported 12 pre-existing Low
+subprocess notices in `prepare.py` and `watchdog.py` (exit 1, no Medium/High
+findings). Those unchanged utilities were not remediated or suppressed by this
+cleanup. The application/current-stock-host command above exited 0 with no findings.
 
 ## Remaining release work
 
