@@ -25,19 +25,25 @@ credential, account, order or deployment operation was performed in this increme
 
 Task1 is complete. Task2 now also implements bounded cleanup, owned-CID discovery,
 single-use signal fences, STOP persistence and cleanup-only STOP reconfirmation.
-The expanded store regression passed922 checks in6.79seconds at100% statement/branch
-coverage. These are fictional filesystem/process observations, not native execution.
-Task2 remains in progress: output/removal/closed writers and fresh scoped closed-CID
-absence evidence are not implemented. Fixed Engine transports, supervision/CLI, whole-increment review
-and this controller's actual full regression are also pending. A closed CID denies
-new admission until the missing actual absence path is implemented.
+Output/removal/terminal and closed-predecessor absence writers are implemented with
+exact session evidence identity and crash/clock/durability tests. The actual transport
+must still establish scoped HTTP status/body/EOF before minting private evidence;
+the tests use fictional wire evidence. Fixed Engine transports, supervision/CLI,
+whole-increment review and this controller's actual full regression are pending.
 
 ## Actual verification
 
-The current local focused run passed **1,867 tests in15.79 seconds**. Store tests
-passed873 checks with100% statement/branch coverage; the observer separately reached
+The current local deployment/architecture regression passed **2,800 tests in42.03
+seconds**, with four optional local-age checks skipped. The terminal-writer group
+passed94 checks in7.25seconds. Before its final19additional cases, the store regression
+passed997checks at100% statement/branch coverage; the observer separately reached
 100% in its611-check regression. These are fictional filesystem/wire observations,
-not native Docker or broker evidence.
+not native Docker or broker evidence. Task2's final acceptance rerun is next.
+
+The127-predecessor successor-admission test used an actual advancing local monotonic
+clock and completed its observed setup in2.248seconds without extending the20second
+setup or5secondCREATE cap. This local fictional-history test does not qualify host
+capacity or native exchange timing.
 
 Ruff passed. Strict mypy passed458 source files including the stock host modules.
 The dependency lock check and diff check passed. Bandit over src plus the stock
@@ -60,9 +66,8 @@ certify these later controller changes.
 
 ## Next required work
 
-Finish Task2's STOP/output/removal/closed writers, cleanup fences, fresh scoped
-entry absence and acknowledgement behavior with crash-window tests. Then implement the fixed
-bounded transports and controller, obtain one fresh whole-increment review and run
+Complete Task2's final acceptance rerun, then implement the fixed bounded transports
+and controller, obtain one fresh whole-increment review and run
 revision-specific integrated checks. Preserve the running primary full unchanged.
 
 Only afterward perform an actual credential-free intended-host probe. Source/image

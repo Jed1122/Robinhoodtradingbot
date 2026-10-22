@@ -1,8 +1,8 @@
 """Dedicated private probe persistence foundation; no worker or Engine authority.
 
-The namespace opener validates complete bounded retained history. The setup and
-CREATE/CID/prestart/START prefix has durable one-use fences; STOP/output/retirement
-and native controller paths remain incomplete. Readable bytes are not a durable
+The namespace opener validates complete bounded retained history. Lifecycle writers
+use durable one-use fences; fixed native transports and the controller remain
+incomplete. Readable bytes are not a durable
 acknowledgement, a transport observation or permission to dispatch.
 """
 
@@ -616,6 +616,37 @@ class ProbeSignalFence:
     deadline_ns: int
 
 
+@dataclass(frozen=True, slots=True)
+class ProbeOutputFence:
+    probe_id: str
+    intent_sha256: str
+    container_id: str
+    stopped_sha256: str
+    boot_id: str
+    deadline_ns: int
+    cleanup: ProbeCleanup | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeRemovalFence:
+    probe_id: str
+    intent_sha256: str
+    container_id: str
+    stopped_sha256: str
+    removal_intent_sha256: str
+    boot_id: str
+    deadline_ns: int
+    cleanup: ProbeCleanup | None
+
+
+@dataclass(frozen=True, slots=True)
+class _TransportEvidence:
+    fence: ProbeSetup | ProbeRemovalFence
+    kind: str
+    boot_id: str
+    observed_ns: int
+
+
 class ProbeStore:
     """Root-private admission/dispatch sequencing; no Engine or live capability."""
 
@@ -658,6 +689,27 @@ class ProbeStore:
         self._natural_stopped_ack: str | None = None
         self._stopped_observation: ProbeObservation | None = None
         self._stop_reconfirm_issued = False
+        self._output_issued = False
+        self._output_dispatched = False
+        self._output_claim_ack = False
+        self._output_recorded = False
+        self._output_token: ProbeOutputFence | None = None
+        self._output_ack: str | None = None
+        self._removal_issued = False
+        self._removal_token: ProbeRemovalFence | None = None
+        self._retirement_dispatched = False
+        self._retirement_claim_ack = False
+        self._delete_dispatched = False
+        self._delete_ready = False
+        self._retirement_evidence_issued = False
+        self._retirement_evidence_token: _TransportEvidence | None = None
+        self._removed_issued = False
+        self._removed_ack: str | None = None
+        self._terminal_issued = False
+        self._entry_evidence_issued = False
+        self._entry_evidence: _TransportEvidence | None = None
+        self._entry_absence_issued = False
+        self._entry_absence_ack: ProbeSnapshot | None = None
 
     @property
     def namespace_id(self) -> str:
@@ -962,6 +1014,7 @@ class ProbeStore:
                         and stopped["monotonic_ns"] < start["run_deadline_ns"]
                     )
                     _require(output["monotonic_ns"] < stopped["monotonic_ns"] + 5000000000)
+                    _require(removal["monotonic_ns"] < stopped["monotonic_ns"] + 5000000000)
                     _require(
                         removal is not None
                         and closed["monotonic_ns"] < removal["retirement_deadline_ns"]
@@ -1059,6 +1112,8 @@ class ProbeStore:
             self._recovery_only = True
             self._clock_discontinuities += 1
             self._create_ack = self._created_ack = self._start_ack = None
+            self._natural_stopped_ack = self._stopped_ack = None
+            self._output_ack = self._removed_ack = None
             _deny()
         return value
 
@@ -1158,12 +1213,14 @@ class ProbeStore:
             history = self._history()
             entry = None if not history else history[-1].snapshot
             _require(entry == self._entry_snapshot)
-            # The later closed-CID recovery transport must supply fresh absence
-            # evidence. This incomplete prefix deliberately cannot bypass it.
-            _require(token.predecessor_container_id is None)
+            _require(
+                token.predecessor_container_id is None
+                or (entry is not None and self._entry_absence_ack == entry)
+            )
             image = verify_image(image_raw, token.image_digest, verify_engine_version(engine_raw))
             request = probe_request(image, token.probe_id)
-            self._flush_entry(token, history)
+            if token.predecessor_container_id is None:
+                self._flush_entry(token, history)
             stamp = self._window(token.boot_id, token.deadline_ns)
             intent = {
                 "schema_version": 1,
@@ -1801,3 +1858,407 @@ class ProbeStore:
             self._window(token.boot_id, token.final_deadline_ns)
             self._stopped_ack, self._stopped_observation = node.hashes["stopped.json"], actual
             return actual
+
+    def _phase_node(self, cleanup: ProbeCleanup | None) -> _Node:
+        if cleanup is None:
+            return self._owned_node()
+        node = self._cleanup_node(cleanup)
+        self._window(cleanup.boot_id, cleanup.final_deadline_ns)
+        return node
+
+    def prepare_output(self, *, cleanup: ProbeCleanup | None = None) -> ProbeOutputFence:
+        with _sanitized():
+            _require(not self._output_issued)
+            self._output_issued = True
+            self._output_token, self._output_ack = None, None
+            node = self._phase_node(cleanup)
+            _require(
+                self._stopped_ack is not None
+                and self._stopped_ack == node.hashes.get("stopped.json")
+                and "output.json" not in node.records
+                and node.snapshot.container_id is not None
+            )
+            if cleanup is None:
+                boot = node.snapshot.boot_id
+                deadline = node.records["stopped.json"]["monotonic_ns"] + 5000000000
+            else:
+                boot = cleanup.boot_id
+                now = self._window(boot, cleanup.final_deadline_ns)
+                deadline = min(now["monotonic_ns"] + 5000000000, cleanup.final_deadline_ns)
+            self._window(boot, deadline)
+            fence = ProbeOutputFence(
+                node.snapshot.probe_id,
+                node.snapshot.intent_sha256,
+                cast(str, node.snapshot.container_id),
+                cast(str, self._stopped_ack),
+                boot,
+                deadline,
+                cleanup,
+            )
+            self._output_token = fence
+            return fence
+
+    def check_output_fence(self, fence: ProbeOutputFence) -> None:
+        with _sanitized():
+            _require(type(fence) is ProbeOutputFence and fence is self._output_token)
+            node = self._phase_node(fence.cleanup)
+            _require(
+                node.snapshot.probe_id == fence.probe_id
+                and node.snapshot.intent_sha256 == fence.intent_sha256
+                and node.snapshot.container_id == fence.container_id
+                and node.hashes.get("stopped.json") == fence.stopped_sha256 == self._stopped_ack
+                and "output.json" not in node.records
+            )
+            self._window(fence.boot_id, fence.deadline_ns)
+
+    def claim_output(self, fence: ProbeOutputFence) -> None:
+        with _sanitized():
+            _require(not self._output_dispatched)
+            self._output_dispatched = True
+            self.check_output_fence(fence)
+            self._output_claim_ack = True
+
+    def record_output(self, fence: ProbeOutputFence, raw: bytes) -> str:
+        """Complete finite body only; actual transport must establish final EOF."""
+        with _sanitized():
+            _require(not self._output_recorded)
+            self._output_recorded = True
+            self._output_ack = None
+            _require(self._output_claim_ack)
+            self.check_output_fence(fence)
+            node = self._phase_node(fence.cleanup)
+            stamp = self._window(fence.boot_id, fence.deadline_ns)
+            with self._folder(fence.probe_id) as directory:
+                framed_hash = _write_bytes(directory, "framed-logs.bin", raw, self._uid)
+                try:
+                    canonical = decode_probe_output(raw)
+                except ValueError:
+                    canonical = None
+                canonical_hash = (
+                    None
+                    if canonical is None
+                    else _write_bytes(directory, "configuration.bin", canonical, self._uid)
+                )
+            status = "invalid" if canonical is None else "valid"
+            digest = self._receipt(
+                node,
+                "output.json",
+                {
+                    "stopped_sha256": fence.stopped_sha256,
+                    "framed_sha256": framed_hash,
+                    "framed_size": len(raw),
+                    "status": status,
+                    "canonical_sha256": canonical_hash,
+                    "canonical_size": None if canonical is None else len(canonical),
+                },
+                stamp,
+            )
+            retained = self._phase_node(fence.cleanup)
+            _require(retained.hashes["output.json"] == digest)
+            self._window(fence.boot_id, fence.deadline_ns)
+            self._output_ack = digest
+            return status
+
+    def prepare_removal(self, *, cleanup: ProbeCleanup | None = None) -> ProbeRemovalFence:
+        with _sanitized():
+            _require(not self._removal_issued)
+            self._removal_issued = True
+            self._removal_token, self._removed_ack = None, None
+            node = self._phase_node(cleanup)
+            _require("stopped.json" in node.records and node.snapshot.container_id is not None)
+            if cleanup is None:
+                _require(
+                    self._stopped_ack == node.hashes["stopped.json"]
+                    and self._output_token is not None
+                    and self._output_ack is not None
+                    and self._output_ack == node.hashes.get("output.json")
+                    and "removal-intent.json" not in node.records
+                )
+                boot = node.snapshot.boot_id
+                stamp = self._window(
+                    boot, cast(ProbeOutputFence, self._output_token).deadline_ns
+                )
+            else:
+                boot = cleanup.boot_id
+                stamp = self._window(boot, cleanup.final_deadline_ns)
+            deadline = stamp["monotonic_ns"] + 15000000000
+            _require(_integer(deadline, 1))
+            if "removal-intent.json" not in node.records:
+                self._receipt(
+                    node,
+                    "removal-intent.json",
+                    {
+                        "container_id": node.snapshot.container_id,
+                        "stopped_sha256": node.hashes["stopped.json"],
+                        "retirement_deadline_ns": deadline,
+                    },
+                    stamp,
+                )
+            else:
+                with self._folder(node.snapshot.probe_id) as directory:
+                    _reconfirm_durability(
+                        directory,
+                        "removal-intent.json",
+                        node.records["removal-intent.json"],
+                        self._uid,
+                    )
+            if cleanup is not None:
+                deadline = min(deadline, cleanup.final_deadline_ns)
+            retained = self._phase_node(cleanup)
+            self._window(boot, deadline)
+            fence = ProbeRemovalFence(
+                retained.snapshot.probe_id,
+                retained.snapshot.intent_sha256,
+                cast(str, retained.snapshot.container_id),
+                retained.hashes["stopped.json"],
+                retained.hashes["removal-intent.json"],
+                boot,
+                deadline,
+                cleanup,
+            )
+            self._removal_token = fence
+            return fence
+
+    def check_removal_fence(self, fence: ProbeRemovalFence) -> None:
+        with _sanitized():
+            _require(type(fence) is ProbeRemovalFence and fence is self._removal_token)
+            node = self._phase_node(fence.cleanup)
+            _require(
+                node.snapshot.probe_id == fence.probe_id
+                and node.snapshot.intent_sha256 == fence.intent_sha256
+                and node.snapshot.container_id == fence.container_id
+                and node.hashes.get("stopped.json") == fence.stopped_sha256
+                and node.hashes.get("removal-intent.json") == fence.removal_intent_sha256
+            )
+            self._window(fence.boot_id, fence.deadline_ns)
+
+    def claim_retirement(self, fence: ProbeRemovalFence) -> None:
+        with _sanitized():
+            _require(not self._retirement_dispatched and not self._retirement_evidence_issued)
+            self._retirement_dispatched = True
+            self.check_removal_fence(fence)
+            self._retirement_claim_ack = True
+
+    def claim_removal(self, fence: ProbeRemovalFence, raw: bytes) -> None:
+        with _sanitized():
+            _require(not self._delete_dispatched)
+            self._delete_dispatched = True
+            _require(self._retirement_claim_ack)
+            self.check_removal_fence(fence)
+            node = self._phase_node(fence.cleanup)
+            _require("removed.json" not in node.records)
+            actual = self._same_stopped_lifetime(node, raw)
+            if actual != node.snapshot.stopped:
+                self._natural_stopped_ack = None
+            self._flush_stopped(node)
+            with self._folder(fence.probe_id) as directory:
+                _reconfirm_durability(
+                    directory, "removal-intent.json", node.records["removal-intent.json"], self._uid
+                )
+            self.check_removal_fence(fence)
+            self._stopped_ack = fence.stopped_sha256
+            self._stopped_observation = actual
+            self._delete_ready = True
+
+    def _retirement_evidence(self, fence: ProbeRemovalFence, kind: str) -> _TransportEvidence:
+        """Fixed transport only, after scoped404 or empty204 and complete HTTP EOF."""
+        with _sanitized():
+            _require(not self._retirement_evidence_issued)
+            self._retirement_evidence_issued = True
+            _require(self._retirement_claim_ack and kind in ("delete_204", "inspect_404"))
+            self.check_removal_fence(fence)
+            _require(kind != "delete_204" or self._delete_ready)
+            _require(kind != "inspect_404" or not self._delete_dispatched)
+            stamp = self._window(fence.boot_id, fence.deadline_ns)
+            proof = _TransportEvidence(fence, kind, stamp["boot_id"], stamp["monotonic_ns"])
+            self._retirement_evidence_token = proof
+            return proof
+
+    def _flush_node(self, node: _Node, boot: str, deadline: int) -> None:
+        """Fresh durability, never inferred from cached content or prior receipts."""
+        with self._folder(node.snapshot.probe_id) as directory:
+            for name in sorted(os.listdir(directory)):
+                self._window(boot, deadline)
+                if name in node.records:
+                    _reconfirm_durability(directory, name, node.records[name], self._uid)
+                else:
+                    _reconfirm_bytes(
+                        directory, name, _read_bytes(directory, name, self._uid), self._uid
+                    )
+                self._window(boot, deadline)
+        _reconfirm_durability(self._directory, "namespace.json", self._namespace, self._uid)
+        head, _ = _read(self._directory, "active.json", self._uid)
+        _reconfirm_durability(self._directory, "active.json", head, self._uid)
+        os.fsync(self._lock)
+        os.fsync(self._directory)
+        current = self._history()[-1]
+        _require(current.snapshot == node.snapshot)
+        self._window(boot, deadline)
+
+    def record_removed(self, fence: ProbeRemovalFence, proof: _TransportEvidence) -> None:
+        with _sanitized():
+            _require(not self._removed_issued)
+            self._removed_issued = True
+            self._removed_ack = None
+            _require(
+                type(proof) is _TransportEvidence
+                and proof is self._retirement_evidence_token
+                and proof.fence is fence
+                and proof.boot_id == fence.boot_id
+            )
+            self.check_removal_fence(fence)
+            node = self._phase_node(fence.cleanup)
+            stamp = self._window(fence.boot_id, fence.deadline_ns)
+            _require(proof.observed_ns <= stamp["monotonic_ns"])
+            self._flush_node(node, fence.boot_id, fence.deadline_ns)
+            if "removed.json" in node.records:
+                _require(fence.cleanup is not None and proof.kind == "inspect_404")
+                digest = node.hashes["removed.json"]
+            else:
+                digest = self._receipt(
+                    node,
+                    "removed.json",
+                    {
+                        "removal_intent_sha256": fence.removal_intent_sha256,
+                        "evidence_kind": proof.kind,
+                    },
+                    stamp,
+                )
+            retained = self._phase_node(fence.cleanup)
+            _require(retained.hashes["removed.json"] == digest)
+            self._window(fence.boot_id, fence.deadline_ns)
+            self._removed_ack = digest
+
+    def _terminal(
+        self, node: _Node, fields: dict[str, Any], boot: str, deadline: int
+    ) -> None:
+        self._flush_node(node, boot, deadline)
+        digest = self._receipt(node, "closed.json", fields, self._window(boot, deadline))
+        retained = self._history()[-1]
+        _require(
+            retained.snapshot.probe_id == node.snapshot.probe_id
+            and retained.snapshot.intent_sha256 == node.snapshot.intent_sha256
+            and retained.hashes["closed.json"] == digest
+        )
+        self._window(boot, deadline)
+
+    def close_success(self) -> bytes:
+        with _sanitized():
+            _require(not self._terminal_issued)
+            self._terminal_issued = True
+            node = self._owned_node()
+            fence = self._removal_token
+            _require(
+                fence is not None
+                and fence.cleanup is None
+                and self._start_dispatched
+                and not self._cleanup_issued
+                and self._natural_stopped_ack is not None
+                and self._natural_stopped_ack == node.hashes.get("stopped.json")
+                and self._output_ack is not None
+                and self._output_ack == node.hashes.get("output.json")
+                and node.snapshot.output_status == "valid"
+                and self._removed_ack is not None
+                and self._removed_ack == node.hashes.get("removed.json")
+            )
+            fence = cast(ProbeRemovalFence, fence)
+            self.check_removal_fence(fence)
+            with self._folder(node.snapshot.probe_id) as directory:
+                canonical = _read_bytes(directory, "configuration.bin", self._uid)
+            self._terminal(
+                node,
+                {
+                    "outcome": "succeeded",
+                    "reason": "completed",
+                    "output_sha256": self._output_ack,
+                    "removed_sha256": self._removed_ack,
+                },
+                fence.boot_id,
+                fence.deadline_ns,
+            )
+            return canonical
+
+    def close_failed(self, reason: str) -> None:
+        with _sanitized():
+            _require(not self._terminal_issued)
+            self._terminal_issued = True
+            _require(type(reason) is str and reason in _FAILED_REASONS)
+            fence = self._removal_token
+            _require(fence is not None)
+            fence = cast(ProbeRemovalFence, fence)
+            self.check_removal_fence(fence)
+            node = self._phase_node(fence.cleanup)
+            _require(
+                self._removed_ack is not None
+                and self._removed_ack == node.hashes.get("removed.json")
+            )
+            self._terminal(
+                node,
+                {
+                    "outcome": "failed",
+                    "reason": reason,
+                    "output_sha256": node.hashes.get("output.json"),
+                    "removed_sha256": self._removed_ack,
+                },
+                fence.boot_id,
+                fence.deadline_ns,
+            )
+
+    def abandon(self, token: ProbeCleanup) -> None:
+        with _sanitized():
+            _require(not self._terminal_issued)
+            self._terminal_issued = True
+            node = self._cleanup_node(token)
+            _require(set(node.records) == {"intent.json"})
+            self._terminal(
+                node,
+                {
+                    "outcome": "abandoned_before_create",
+                    "reason": "abandoned_before_create",
+                    "output_sha256": None,
+                    "removed_sha256": None,
+                },
+                token.boot_id,
+                token.final_deadline_ns,
+            )
+
+    def _entry_absence_evidence(self, token: ProbeSetup) -> _TransportEvidence:
+        """Fixed transport only, after complete exact full-predecessor-CID404 EOF."""
+        with _sanitized():
+            _require(not self._entry_evidence_issued)
+            self._entry_evidence_issued = True
+            self.check_setup(token)
+            _require(token.predecessor_container_id is not None)
+            stamp = self._window(token.boot_id, token.deadline_ns)
+            proof = _TransportEvidence(token, "entry_404", stamp["boot_id"], stamp["monotonic_ns"])
+            self._entry_evidence = proof
+            return proof
+
+    def record_entry_absence(self, token: ProbeSetup, proof: _TransportEvidence) -> None:
+        with _sanitized():
+            _require(not self._entry_absence_issued)
+            self._entry_absence_issued = True
+            self._entry_absence_ack = None
+            self.check_setup(token)
+            _require(
+                type(proof) is _TransportEvidence
+                and proof is self._entry_evidence
+                and proof.fence is token
+                and proof.kind == "entry_404"
+                and proof.boot_id == token.boot_id
+            )
+            history = self._history()
+            _require(bool(history))
+            entry = history[-1].snapshot
+            _require(
+                entry == self._entry_snapshot
+                and entry.closed_outcome is not None
+                and entry.container_id is not None
+                and entry.container_id == token.predecessor_container_id
+            )
+            now = self._window(token.boot_id, token.deadline_ns)
+            _require(proof.observed_ns <= now["monotonic_ns"])
+            self._flush_entry(token, history)
+            _require(self._history()[-1].snapshot == entry)
+            self.check_setup(token)
+            self._entry_absence_ack = entry

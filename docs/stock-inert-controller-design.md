@@ -96,8 +96,9 @@ large historical payload reads inside fixed dispatch/cleanup budgets.
 Root freezes setup to 20 seconds, RUN to 30, TERM grace to 10, KILL to 5, final stopped
 observation to 5, output retrieval to 5 and retirement to 15. Every Engine exchange
 has at most five seconds, shortened by its enclosing absolute cap. Setup starts before
-metadata reads. START persists its original RUN origin/deadline before dispatch;
-all normal phases derive from that origin, never response times. Retirement allows
+metadata reads. START persists its original RUN origin/deadline before dispatch.
+Normal STOP must be acknowledged within that RUN cap; output and entry into retirement
+must occur before STOP+5seconds. No late response renews those windows. Retirement allows
 one inspect and one DELETE within one 15-second cap, including local validation.
 
 These caps bound checks and exchanges, not uninterruptible filesystem/kernel work or
@@ -181,9 +182,9 @@ removed/closed with .json suffix. No caller-selected basename is admitted.
 Filesystem primitives do not assert transport provenance or durability merely from
 readable bytes. They sanitize all operational failures and never repair a partial
 namespace. The namespace opener now validates complete bounded lineage and original artifacts;
-setup/CREATE/CID/prestart/START writers and fences are implemented locally.
-STOP/output/retirement/closed recovery and fixed native transports remain incomplete.
-No runnable controller uses this foundation.
+setup/CREATE/CID/prestart/START and cleanup/STOP/output/retirement/closed writers
+and fences are implemented locally. Fixed native transports and the controller
+remain incomplete. No runnable controller uses this store yet.
 
 Receipt field spellings are frozen as follows (common fields above are implicit):
 
@@ -263,8 +264,8 @@ UTC continuity is checked, including rollback relative to the last sampled clock
 A discontinuity burns admission/CREATE/START and leaves only later bounded cleanup.
 Metadata receipts use the operation's pre-write timestamp, not its acknowledgement
 clock. Fresh entry durability is reconfirmed explicitly; it is not inferred from a
-validated content cache. Root still has to implement STOP/output/removal/closed
-writers and the fixed transports/controller before this protocol is runnable.
+validated content cache. The remaining writer contracts are detailed below; fixed
+transports/controller must still compose them before this protocol is runnable.
 
 ## Cleanup and stopped-state writer contract
 
@@ -308,3 +309,58 @@ Every writer/reconfirmation/signal claim burns its one-use state before fallible
 validation. Complete bytes after failed acknowledgement remain non-authoritative;
 torn artifact/receipt inventory is an incident, never synthesized automatically.
 Actual fixed transport provenance and output/removal/closed writers follow separately.
+
+## Output, retirement and terminal writer contract
+
+prepare_output(cleanup=None) issues one exact ProbeOutputFence only after this
+session has acknowledged the retained STOP. Normal output ends at STOP+5seconds;
+cleanup output has one fresh five-second window shortened by its original final cap.
+claim_output consumes the one retrieval attempt before wire. record_output persists
+the entire original finite framed body before decoding and before its valid/invalid
+receipt. Valid canonical bytes are separately retained. A failed durability or late
+acknowledgement cannot recreate output authority. The actual transport must establish
+complete HTTP framing and EOF before calling this writer; transport failure is not
+an invalid complete body. Recovery may retain output diagnostics but cannot succeed.
+
+prepare_removal(cleanup=None) persists the immutable full-CID/STOP removal intent
+before any retirement GET. Normal mode requires current STOP and output acknowledgements;
+cleanup may use a valid retained STOP chain. ProbeRemovalFence has one nonrenewing
+15second cap, shortened by cleanup's original final cap. Existing removal intents
+remain unchanged: a later explicit recovery invocation receives one fresh bounded
+cleanup cap, never a new START or successful RUN.
+
+Normal retirement must enter before the original STOP+5second output deadline;
+then its15second cap includes persistence. Thus timely output followed by an arbitrary
+pause cannot create a new normal completion window. A retained recovery removal
+intent is freshly fsynced/read back before a retirement fence can permit its GET.
+
+claim_retirement consumes the one full-CID inspection attempt. A complete owned
+nonrunning inspection with exactly the retained lifetime permits claim_removal once,
+which freshly flushes STOP and intent before the non-force DELETE. Current diagnostic
+changes disable natural success. Already-recorded removed plus a present resource is
+contradictory and unresolved. There is no second GET/DELETE attempt in this invocation.
+
+Only the fixed transport calls _retirement_evidence after complete scoped 404 or
+closed empty204 EOF. This registers one exact private evidence object bound to the
+issued fence and current clock. record_removed consumes that same registered object,
+not an equal copy or supplied dataclass. New removed receipts are exclusive writes;
+existing complete unacknowledged receipts require fresh exact404 plus fresh unchanged
+fsync/readback. Generic/name/wrong-CID404 and incomplete HTTP cannot mint evidence.
+These private interfaces define composition, not a sandbox against arbitrary root code.
+
+close_success requires current normal ownership, actual START dispatch, a clean natural
+STOP, timely complete valid output and this session's acknowledged resource removal.
+It persists/revalidates closed success and checks the original retirement deadline
+before returning canonical bytes. Any recovery/shutdown/signal/clock change blocks it.
+close_failed requires current removal acknowledgement and a documented safe reason;
+abandon requires cleanup ownership of a valid no-CREATE intent only. All terminal
+writers consume their one attempt before fallible validation. Complete terminal bytes
+after a failed acknowledgement remain data, never returned successful output.
+
+For a closed predecessor CID, only the fixed transport calls _entry_absence_evidence
+following its complete exact full-CID404. record_entry_absence consumes that exact
+registered object, freshly flushes unchanged complete history and binds it to this
+setup's original20second cap. begin requires that current acknowledgement for the same
+closed entry. Copying tokens/evidence, reading old closed records or generic404 cannot
+admit a successor; no setup deadline is renewed. A closed no-CID abandonment requires
+fresh history durability but no daemon absence observation.
