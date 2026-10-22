@@ -23,6 +23,64 @@ _HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
+def _source_inventory(
+    directory: int, tree: str, *, count: int, total: int
+) -> dict[str, tuple[int, ...]]:
+    from trading_bot.runtime.stock_backup_files import _stamp
+    from trading_bot.runtime.stock_snapshot_bundle import _file_limit
+
+    rows: dict[str, tuple[int, ...]] = {}
+    size = 0
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if len(rows) >= count:
+                raise ValueError
+            limit = _file_limit(tree + "/" + entry.name)
+            info = entry.stat(follow_symlinks=False)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_nlink != 1
+                or not 0 <= info.st_size <= limit
+            ):
+                raise ValueError
+            size += info.st_size
+            if size > total:
+                raise ValueError
+            rows[entry.name] = _stamp(info)
+    return rows
+
+
+def _projected_snapshot_files(data_root: Path, *, archive_files: int, archive_bytes: int) -> int:
+    """Count current copied files without creating missing source lock anchors.
+
+    The caller holds the operations barrier. This is bounded admission against
+    current metadata, not an inode reservation against unrelated filesystem users.
+    """
+    from trading_bot.runtime.stock_backup_files import _directory as private_directory
+    from trading_bot.runtime.stock_snapshot_bundle import _MAXIMUM_FILES
+
+    copied = 0
+    for tree, count, total in (
+        ("archive", min(archive_files, _MAXIMUM_FILES - 4), archive_bytes),
+        ("exports", 63, 63 * 262144),
+    ):
+        with private_directory(data_root / tree, os.geteuid()) as directory:
+            rows = _source_inventory(directory, tree, count=count, total=total)
+            if rows != _source_inventory(directory, tree, count=count, total=total):
+                raise ValueError
+            # The snapshot lease creates and copies its mutex when absent.
+            projected = len(rows) + (".stock-research.lock" not in rows)
+            if projected > count:
+                raise ValueError
+            copied += projected
+            # Three root records and the SQLite ledger also enter the bundle.
+            if copied + 4 > _MAXIMUM_FILES:
+                raise ValueError
+    return copied
+
+
 def read_local_stock_state(
     *, loaded: LoadedConfig, control_dir: Path, export_dir: Path, now: datetime
 ) -> dict[str, object]:
@@ -90,6 +148,7 @@ async def create_local_snapshot_bundle(
 
     Partial private staging is retained on failure and counts toward the four
     attempt limit. It is never treated as a completed encrypted backup.
+    Caller holds the outer operations lock throughout admission and creation.
     """
     try:
         from trading_bot.runtime.stock_backup_files import _directory as private_directory
@@ -138,10 +197,19 @@ async def create_local_snapshot_bundle(
                         raise ValueError
             if len(attempts) >= 4 or identifier in attempts:
                 raise ValueError
+            copied_files = _projected_snapshot_files(
+                data_root,
+                archive_files=policy.stock_worker.max_archive_files,
+                archive_bytes=policy.stock_worker.max_archive_bytes,
+            )
             space = os.fstatvfs(directory)
             # Reserve the worst-case snapshot, intermediate DB and bundled copy.
             required = 3 * (policy.stock_worker.max_archive_bytes + 256 * 1024**2) + 100 * 1024**2
-            if space.f_bavail * space.f_frsize < required or space.f_favail < 256:
+            # Every retained archive/export name is copied, including pending
+            # files and locks. Keep256 additional inodes for the finite snapshot
+            # directories, records, SQLite scratch/journals and bundle overhead.
+            required_inodes = copied_files + 256
+            if space.f_bavail * space.f_frsize < required or space.f_favail < required_inodes:
                 raise ValueError
             snapshot = destination_root / identifier
             result = await create_stock_snapshot(

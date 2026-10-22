@@ -134,11 +134,22 @@ def monitor_stock(
             from trading_bot.runtime.stock_operation_receipts import StockOperationReceipts
 
             receipts = StockOperationReceipts(receipt_root).all(now=now)
+            # Historical receipts remain valid evidence for their own release.
+            # They cannot establish recovery coverage for the installed bytes.
+            bindings = {
+                "config_hash": release.config_hash,
+                "code_hash": code_hash,
+                "release_id": release.release_id,
+                "image_digest": release.image_digest,
+            }
+            current_receipts = tuple(
+                row for row in receipts if all(row[key] == value for key, value in bindings.items())
+            )
             times = {
                 kind: max(
                     (
                         datetime.fromisoformat(cast(str, row["at"]))
-                        for row in receipts
+                        for row in current_receipts
                         if row["kind"] == kind
                     ),
                     default=None,

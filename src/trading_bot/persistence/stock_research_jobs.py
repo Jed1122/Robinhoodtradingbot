@@ -29,12 +29,13 @@ from trading_bot.logging import contains_registered_secret
 from trading_bot.market_data.recording import canonical_json, content_hash
 from trading_bot.persistence.audit import _stage_audit_event, serialize_audit_details
 from trading_bot.persistence.base import _require_validated_session_factory
-from trading_bot.persistence.models import AuditEventRow
+from trading_bot.persistence.models import AuditEventRow, ConfigurationVersionRow
 
 type Phase = Literal["discovery", "enrichment"]
 type Status = Literal["succeeded", "blocked", "failed", "cancelled"]
 
 _MAX_EVENTS = 100000
+_MAX_CONFIGURATIONS = 256
 _ZERO = "0" * 64
 _SCOPE = "robinhood_stock_research_v1"
 _CATEGORY = "stock_research"
@@ -68,7 +69,7 @@ _REASONS = frozenset(
         "control_denied",
     }
 )
-# Exact whitespace-normalized audit guards from immutable migration0002. Merely
+# Exact whitespace-normalized history guards from immutable migration0002. Merely
 # retaining a trigger name (for example with a no-op body) does not satisfy this check.
 _AUDIT_GUARDS = {
     "trg_audit_events_append_only_insert": (
@@ -82,6 +83,18 @@ _AUDIT_GUARDS = {
     ),
     "trg_audit_events_append_only_rowid": (
         "679614b08cc50371eceae47b9fa64269326a3efd967146e2605100597a89e04d"
+    ),
+    "trg_configuration_versions_append_only_insert": (
+        "797a0e8d5315624d9c517b06b91104bc1e0d194b1978b418046688f26cee67d6"
+    ),
+    "trg_configuration_versions_append_only_update": (
+        "7c102acd77b1bc8173253a54541ee545181d7762dae873287f8d68ee4266f4db"
+    ),
+    "trg_configuration_versions_append_only_delete": (
+        "20880b527dc23bdcf325a3933a2a9fc49a29cc51079cf206b95348f6a32c161a"
+    ),
+    "trg_configuration_versions_append_only_rowid": (
+        "bdbaf3e269299c7a6b02d9a825f747c30678cb0712ff4a47f0e81d76af9c71e8"
     ),
 }
 
@@ -355,6 +368,7 @@ class SqlStockResearchJobs:
         )
         _check(_sha(code_hash), "stock_worker_code_required")
         self._config = StockWorkerAppConfig.model_validate(restored.config.model_dump())
+        self._loaded = restored
         self._config_hash, self._code_hash = str(loaded.config_hash), str(code_hash)
         self._clock = clock
         self._last_seen: datetime | None = None
@@ -381,7 +395,8 @@ class SqlStockResearchJobs:
             await session.execute(
                 text(
                     "SELECT name, sql FROM sqlite_master "
-                    "WHERE type='trigger' AND tbl_name='audit_events'"
+                    "WHERE type='trigger' AND tbl_name IN "
+                    "('audit_events', 'configuration_versions')"
                 )
             )
         ).all()
@@ -496,6 +511,92 @@ class SqlStockResearchJobs:
         except Exception:
             raise StockResearchJobError("stock_job_history_unavailable") from None
 
+    def _configuration(self, row: ConfigurationVersionRow, now: datetime) -> LoadedConfig:
+        _check(
+            _sha(row.config_hash)
+            and _sha(row.code_hash)
+            and row.id == str(content_hash((_SCOPE, "configuration", row.config_hash)))
+            and row.source == _SCOPE
+            and row.corrects_id is None
+            and require_utc(row.created_at) <= now
+        )
+        canonical = row.canonical_nonsecret_config_json
+        _check(type(canonical) is str and 0 < len(canonical) <= 1048576)
+        loaded = restore_loaded_config(canonical.encode(), ConfigHash(row.config_hash))
+        _check(type(loaded.config) is StockWorkerAppConfig)
+        return loaded
+
+    async def _retain_configuration(self, session: AsyncSession, now: datetime) -> None:
+        row = await session.scalar(
+            select(ConfigurationVersionRow).where(
+                ConfigurationVersionRow.config_hash == self._config_hash
+            )
+        )
+        if row is not None:
+            _check(self._configuration(row, now) == self._loaded)
+            return
+        hashes = list(
+            (
+                await session.scalars(
+                    select(ConfigurationVersionRow.config_hash).limit(_MAX_CONFIGURATIONS + 1)
+                )
+            ).all()
+        )
+        _check(len(hashes) < _MAX_CONFIGURATIONS, "stock_job_configuration_capacity")
+        session.add(
+            ConfigurationVersionRow(
+                id=str(content_hash((_SCOPE, "configuration", self._config_hash))),
+                config_hash=self._config_hash,
+                code_hash=self._code_hash,
+                created_at=now,
+                source=_SCOPE,
+                canonical_nonsecret_config_json=self._loaded.canonical_json.decode(),
+                corrects_id=None,
+            )
+        )
+
+    async def configuration_history(self, *, expected_state_hash: str) -> dict[str, LoadedConfig]:
+        """Read exact original graphs for a verified chain, without policy substitution.
+
+        The current canonical graph also supports same-configuration legacy ledgers.
+        Unknown older graphs cannot be reconstructed or backfilled by this reader.
+        """
+        self._factory_check()
+        try:
+            _check(_sha(expected_state_hash), "stock_job_stale_state")
+            async with self._factory() as session:
+                await session.execute(text("BEGIN IMMEDIATE"))
+                records, now = await self._read(session)
+                _check(
+                    self._state(records, now).state_hash == expected_state_hash,
+                    "stock_job_stale_state",
+                )
+                required = {self._config_hash} | {
+                    row.config_hash for row in records if isinstance(row, StockResearchClaim)
+                }
+                _check(len(required) <= _MAX_CONFIGURATIONS, "stock_job_configuration_capacity")
+                rows = list(
+                    (
+                        await session.scalars(
+                            select(ConfigurationVersionRow)
+                            .where(ConfigurationVersionRow.config_hash.in_(required))
+                            .limit(_MAX_CONFIGURATIONS + 1)
+                        )
+                    ).all()
+                )
+                _check(len(rows) <= _MAX_CONFIGURATIONS)
+                history = {self._config_hash: self._loaded}
+                for row in rows:
+                    graph = self._configuration(row, now)
+                    history[row.config_hash] = graph
+                _check(set(history) == required)
+                await session.rollback()
+                return history
+        except StockResearchJobError:
+            raise
+        except Exception:
+            raise StockResearchJobError("stock_job_configuration_unavailable") from None
+
     def _require_source(
         self, state: StockResearchJobState, source_sha256: str | None, now: datetime
     ) -> None:
@@ -587,6 +688,7 @@ class SqlStockResearchJobs:
                     _ZERO,
                 )
                 claim = replace(claim, record_sha256=_hash_record(claim))
+                await self._retain_configuration(session, now)
                 _stage_audit_event(session, _event(claim))
                 await session.commit()
                 return claim

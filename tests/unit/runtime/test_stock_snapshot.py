@@ -97,6 +97,41 @@ async def reserve(sample, *, at=NOW):
         await engine.dispose()
 
 
+def config_b(tmp_path):
+    policy = tmp_path / "config-b.yaml"
+    policy.write_text(
+        "minimum_market_cap_usd: 3000000000\n"
+        "market_cap_boundaries_usd: [3000000000]\nshortlist_count: 1\n"
+    )
+    return load_config(
+        ROOT / "configs/base.yaml",
+        ROOT / "configs/hybrid/paper.yaml",
+        ROOT / "configs/hybrid/safety-envelope.yaml",
+        {},
+        hybrid_policy_path=ROOT / "configs/hybrid/policy.yaml",
+        stock_research_policy_path=policy,
+        stock_worker_policy_path=ROOT / "configs/hybrid/stock-worker.yaml",
+    )
+
+
+def change_retained_configuration(database, config_hash, *, replacement=None):
+    """Tamper a harmless fixture, restoring the exact append-only guards afterward."""
+    operation = "delete" if replacement is None else "update"
+    name = f"trg_configuration_versions_append_only_{operation}"
+    with closing(sqlite3.connect(database)) as db, db:
+        original = db.execute("SELECT sql FROM sqlite_master WHERE name = ?", (name,)).fetchone()[0]
+        db.execute(f'DROP TRIGGER "{name}"')
+        if replacement is None:
+            db.execute("DELETE FROM configuration_versions WHERE config_hash = ?", (config_hash,))
+        else:
+            db.execute(
+                "UPDATE configuration_versions SET canonical_nonsecret_config_json = ? "
+                "WHERE config_hash = ?",
+                (replacement.decode(), config_hash),
+            )
+        db.execute(original)
+
+
 async def discovery(sample, *, at=NOW, candidate=False, partial=False):
     from trading_bot.runtime.stock_capture import _json
 
@@ -634,6 +669,107 @@ async def test_older_export_reconstructs_at_saved_generation_without_renewing_so
     assert copied.read_bytes() == original and made.pending_count == 1
     assert json.loads(copied.read_bytes())["generated_at"] == "2026-10-22T12:00:00Z"
     assert await module().verify_stock_snapshot(sample["destination"]) == made
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("acquire_under_b", [False, True])
+async def test_config_a_to_b_history_replays_original_reports_and_retained_a_export(
+    sample, tmp_path, acquire_under_b
+):
+    from trading_bot.runtime.stock_dashboard_export import export_stock_dashboard
+
+    original = sample["loaded"]
+    first = await discovery(sample, candidate=True)
+    engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
+    try:
+        await export_stock_dashboard(
+            loaded=original,
+            code_hash=CODE,
+            factory=async_session_factory(engine),
+            archive_dir=sample["archive_dir"],
+            export_dir=sample["export_dir"],
+            clock=lambda: NOW,
+        )
+    finally:
+        await engine.dispose()
+    old_export = (sample["export_dir"] / "stock-research.json").read_bytes()
+    old_report = (sample["archive_dir"] / (first.report_sha256 + ".stock-screen.json")).read_bytes()
+    sample["loaded"] = config_b(tmp_path)
+    assert sample["loaded"].config_hash != original.config_hash
+    second = (
+        await discovery(sample, candidate=True, at=NOW + timedelta(hours=1))
+        if acquire_under_b
+        else None
+    )
+    sample["now"] += timedelta(hours=1)
+    made = await module().create_stock_snapshot(**sample)
+    count = 2 if acquire_under_b else 1
+    assert (made.claim_count, made.result_count, made.pending_count) == (count, count, 0)
+    spent = first.attempted_calls + (second.attempted_calls if second else 0)
+    assert made.budget_by_day == (("2026-10-22", spent),)
+    root = sample["destination"]
+    assert (root / "canonical-config.json").read_bytes() == sample["loaded"].canonical_json
+    assert (root / "exports/stock-research.json").read_bytes() == old_export
+    assert (
+        root / "archive" / (first.report_sha256 + ".stock-screen.json")
+    ).read_bytes() == old_report
+    assert json.loads(old_report)["as_of"] == NOW.isoformat()
+    assert await module().verify_stock_snapshot(root) == made
+
+
+@pytest.mark.asyncio
+async def test_config_upgrade_replays_retained_original_enrichment(sample, tmp_path):
+    source = await discovery(sample, candidate=True)
+    result = await enrichment(sample, source, at=NOW + timedelta(hours=1))
+    sample["loaded"], sample["now"] = config_b(tmp_path), NOW + timedelta(hours=2)
+    made = await module().create_stock_snapshot(**sample)
+    assert (made.claim_count, made.result_count) == (2, 2)
+    copied = sample["destination"] / "archive" / (result.report_sha256 + ".stock-dossiers.json")
+    assert json.loads(copied.read_bytes())["dossiers"][0]["symbol"] == "ALFA"
+    assert await module().verify_stock_snapshot(sample["destination"]) == made
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["missing", "different_graph", "malformed"])
+async def test_historical_graph_missing_or_substitution_denies_even_rehashed_snapshot(
+    sample, tmp_path, change
+):
+    original = sample["loaded"]
+    await discovery(sample, candidate=True)
+    sample["loaded"], sample["now"] = config_b(tmp_path), NOW + timedelta(hours=1)
+    await module().create_stock_snapshot(**sample)
+    root = sample["destination"]
+    ledger = root / "state/ledger.sqlite3"
+    replacement = {
+        "missing": None,
+        "different_graph": sample["loaded"].canonical_json,
+        "malformed": b"{}",
+    }[change]
+    change_retained_configuration(ledger, str(original.config_hash), replacement=replacement)
+    path = root / "manifest.json"
+    row = json.loads(path.read_bytes())
+    row["files"]["state/ledger.sqlite3"] = {
+        "sha256": hashlib.sha256(ledger.read_bytes()).hexdigest(),
+        "size": ledger.stat().st_size,
+    }
+    path.write_bytes(json.dumps(row, sort_keys=True, separators=(",", ":")).encode())
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await module().verify_stock_snapshot(root)
+
+
+@pytest.mark.asyncio
+async def test_legacy_current_graph_fallback_never_invents_unknown_previous_policy(
+    sample, tmp_path
+):
+    await discovery(sample, candidate=True)
+    change_retained_configuration(sample["database"], str(sample["loaded"].config_hash))
+    made = await module().create_stock_snapshot(**sample)
+    assert await module().verify_stock_snapshot(sample["destination"]) == made
+    sample["loaded"], sample["now"] = config_b(tmp_path), NOW + timedelta(hours=1)
+    sample["destination"] = sample["destination"].with_name("unknown-legacy-graph")
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await module().create_stock_snapshot(**sample)
+    assert not (sample["destination"] / "manifest.json").exists()
 
 
 @pytest.mark.asyncio

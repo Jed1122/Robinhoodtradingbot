@@ -120,6 +120,11 @@ replays every committed capture/report. It preserves pending charges, control
 identity and original acquisition/export timestamps. No observation is refreshed
 merely because it was backed up.
 
+New claims retain their canonical configuration in the same ledger transaction.
+Replay uses each claim's original configuration and the retained export's original
+policy. Existing history without a saved graph is supported only when its hash
+matches the current canonical configuration; unknown older policies fail closed.
+
 The canonical snapshot contains only `state/ledger.sqlite3`, `archive/`, `exports/`,
 `canonical-config.json`, `saved-control.json` and a hashed `manifest.json`.
 No OAuth, unrelated ledger or executable operations namespace is included.
@@ -144,6 +149,8 @@ or interrupted publication blocks further admission and requires audited retenti
 work. The2GiB canonical bundle limit is smaller than the configurable8GiB archive
 ceiling: larger configurations fail closed and require a separately reviewed
 backup-capacity change. Monitor free storage and reserve enough temporary space.
+Snapshot admission counts the bounded archive/export inventory and reserves an
+additional 256 inodes for records, directories, SQLite scratch and bundle overhead.
 
 ## Off-host copy and application restore
 
@@ -177,6 +184,9 @@ backup/copy/restore times. Launcher exit0 is only lifecycle completion; export
 generated_at is not acquisition freshness. Empty validated rankings may be valid.
 Running control grants must match the installed configuration and image-derived
 code identity before an observation can resolve retained incidents.
+Backup, off-host and restore freshness also require receipts bound to the current
+configuration, code, release and image. Historical receipts remain retained but
+cannot establish recovery coverage for an upgraded deployment.
 Retained enrichment currently refreshes every6hours while source TTL is2hours;
 stale dossiers remain suppressed and visible as `source_stale`, rather than
 silently extending their evidence lifetime.

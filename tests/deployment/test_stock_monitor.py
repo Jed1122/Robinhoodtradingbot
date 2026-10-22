@@ -22,6 +22,7 @@ from tests.unit.runtime.test_stock_local_state import local as _local
 from trading_bot.runtime.stock_dashboard_export import publish_stock_dashboard
 from trading_bot.runtime.stock_incidents import StockIncidentSpool
 from trading_bot.runtime.stock_local_state import read_local_stock_state
+from trading_bot.runtime.stock_operation_receipts import StockOperationReceipts
 from trading_bot.runtime.stock_research_controls import StockResearchControlError
 
 release = _release
@@ -145,6 +146,48 @@ def test_unusable_projection_preserves_previous_unresolved_research_incidents(
 def test_paused_state_observes_backup_gaps_without_research_false_alarm(observed):
     assert run(observed)["status"] == "observed"
     assert active(observed[-1]) == {"backup_missing", "offhost_copy_missing", "restore_missing"}
+
+
+@pytest.mark.parametrize(
+    "binding", ["config_hash", "code_hash", "release_id", "image_digest", None]
+)
+def test_recovery_health_uses_only_receipts_for_the_installed_release(
+    observed, monkeypatch, binding
+):
+    release, _, receipt_root, _ = observed
+    code = hashlib.sha256(f"oci-image:{release.image_digest}".encode()).hexdigest()
+    at = module.datetime.now(module.UTC) - timedelta(seconds=10)
+    fields = {
+        "ciphertext_sha256": "a" * 64,
+        "ciphertext_bytes": 512,
+        "snapshot_manifest_sha256": "d" * 64,
+        "config_hash": release.config_hash,
+        "code_hash": code,
+        "release_id": release.release_id,
+        "image_digest": release.image_digest,
+    }
+    if binding is not None:
+        fields[binding] = "sha256:" + "f" * 64 if binding == "image_digest" else "f" * 64
+    receipts = StockOperationReceipts(receipt_root)
+    for index, kind in enumerate(("backup", "offhost", "restore")):
+        receipts.record(kind=kind, at=at + timedelta(seconds=index), **fields)
+    original = module.evaluate_stock_health
+    seen = []
+
+    def evaluate(**kwargs):
+        seen.append(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(module, "evaluate_stock_health", evaluate)
+    assert run(observed)["status"] == "observed"
+    assert len(seen) == 1
+    for index, name in enumerate(
+        ("backup_created_at", "offhost_copied_at", "restore_verified_at")
+    ):
+        assert seen[0][name] == (at + timedelta(seconds=index) if binding is None else None)
+    assert active(observed[-1]) == (
+        set() if binding is None else {"backup_missing", "offhost_copy_missing", "restore_missing"}
+    )
 
 
 @pytest.mark.parametrize("binding", ["config_hash", "code_hash", "matching"])

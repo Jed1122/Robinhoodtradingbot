@@ -9,14 +9,14 @@ from pathlib import Path
 
 import pytest
 from alembic import command
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trading_bot.config import load_config
 from trading_bot.domain import CodeHash
 from trading_bot.persistence import async_session_factory, create_engine
 from trading_bot.persistence.audit import _stage_audit_event
-from trading_bot.persistence.models import AuditEventRow
+from trading_bot.persistence.models import AuditEventRow, ConfigurationVersionRow
 
 ROOT = Path(__file__).parents[3]
 NOW = datetime(2026, 10, 21, 12, tzinfo=UTC)
@@ -156,6 +156,150 @@ async def test_budget_survives_config_and_code_change_and_midnight(
 
 
 @pytest.mark.asyncio
+async def test_claim_retains_canonical_configuration_once_across_later_code_versions(
+    sqlite_engine, migrated
+):
+    loaded, clock = config(), Clock()
+    owner = store(sqlite_engine, loaded=loaded, clock=clock)
+    first = await reserve(owner)
+    await finish(owner, first)
+    async with async_session_factory(sqlite_engine)() as session:
+        rows = list((await session.scalars(select(ConfigurationVersionRow))).all())
+        assert len(rows) == 1
+        retained = rows[0]
+        assert retained.config_hash == str(loaded.config_hash)
+        assert retained.canonical_nonsecret_config_json.encode() == loaded.canonical_json
+        assert retained.created_at == NOW and retained.code_hash == first.code_hash
+        assert retained.corrects_id is None
+    clock.current += timedelta(hours=1)
+    newer = store(sqlite_engine, loaded=loaded, clock=clock, code="next-reviewed-build")
+    second = await reserve(newer)
+    async with async_session_factory(sqlite_engine)() as session:
+        rows = list((await session.scalars(select(ConfigurationVersionRow))).all())
+        assert len(rows) == 1 and rows[0].code_hash == first.code_hash
+    state = await newer.snapshot()
+    history = await newer.configuration_history(expected_state_hash=state.state_hash)
+    assert history[str(loaded.config_hash)] == loaded
+    assert state.reserved_today == 34 and second.code_hash != first.code_hash
+
+
+@pytest.mark.asyncio
+async def test_failed_new_config_admission_never_leaves_a_configuration_row(
+    sqlite_engine, migrated, tmp_path
+):
+    clock = Clock()
+    first_config = config()
+    await reserve(store(sqlite_engine, loaded=first_config, clock=clock))
+    policy = tmp_path / "too-little-budget.yaml"
+    policy.write_text("max_daily_calls: 32\n")
+    next_config = config(policy)
+    clock.current += timedelta(hours=1)
+    with pytest.raises(ValueError, match="daily_budget"):
+        await reserve(store(sqlite_engine, loaded=next_config, clock=clock))
+    async with async_session_factory(sqlite_engine)() as session:
+        rows = list((await session.scalars(select(ConfigurationVersionRow))).all())
+        assert [row.config_hash for row in rows] == [str(first_config.config_hash)]
+
+
+@pytest.mark.asyncio
+async def test_claim_write_failure_rolls_back_its_new_canonical_configuration(
+    sqlite_engine, migrated, monkeypatch
+):
+    module = importlib.import_module("trading_bot.persistence.stock_research_jobs")
+
+    def fail(*args, **kwargs):
+        raise OSError("fictional interrupted claim transaction")
+
+    monkeypatch.setattr(module, "_stage_audit_event", fail)
+    with pytest.raises(module.StockResearchJobError, match="admission_failed"):
+        await reserve(store(sqlite_engine))
+    async with async_session_factory(sqlite_engine)() as session:
+        assert list((await session.scalars(select(ConfigurationVersionRow))).all()) == []
+        assert list((await session.scalars(select(AuditEventRow))).all()) == []
+
+
+@pytest.mark.asyncio
+async def test_configuration_history_is_bound_to_exact_observed_chain(sqlite_engine, migrated):
+    owner = store(sqlite_engine)
+    before = await owner.snapshot()
+    claim = await reserve(owner)
+    with pytest.raises(ValueError, match="stale_state"):
+        await owner.configuration_history(expected_state_hash=before.state_hash)
+    with pytest.raises(ValueError, match="stale_state"):
+        await owner.configuration_history(expected_state_hash=True)
+    loaded = config()
+    assert await owner.configuration_history(expected_state_hash=claim.record_sha256) == {
+        str(loaded.config_hash): loaded
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["id", "source", "created_at", "corrects_id", "canonical"])
+async def test_malformed_retained_current_graph_never_hides_behind_legacy_fallback(
+    sqlite_engine, migrated, field
+):
+    clock, owner = Clock(), store(sqlite_engine)
+    first = await reserve(owner)
+    async with async_session_factory(sqlite_engine).begin() as session:
+        row = await session.scalar(select(ConfigurationVersionRow))
+        original = await session.scalar(
+            text(
+                "SELECT sql FROM sqlite_master "
+                "WHERE name='trg_configuration_versions_append_only_update'"
+            )
+        )
+        await session.execute(text("DROP TRIGGER trg_configuration_versions_append_only_update"))
+        values = {
+            "id": {"id": digest("fictional-wrong-retention-identity")},
+            "source": {"source": "unknown_source"},
+            "created_at": {"created_at": NOW + timedelta(days=1)},
+            "corrects_id": {"corrects_id": row.id},
+            "canonical": {"canonical_nonsecret_config_json": "{}"},
+        }[field]
+        await session.execute(update(ConfigurationVersionRow).values(**values))
+        await session.execute(text(original))
+    with pytest.raises(ValueError):
+        await owner.configuration_history(expected_state_hash=first.record_sha256)
+    clock.current += timedelta(hours=1)
+    with pytest.raises(ValueError):
+        await reserve(store(sqlite_engine, clock=clock))
+    assert (await owner.snapshot()).claims == (first,)
+
+
+@pytest.mark.asyncio
+async def test_retention_capacity_denies_new_graph_without_new_claim(
+    sqlite_engine, migrated, tmp_path, monkeypatch
+):
+    module = importlib.import_module("trading_bot.persistence.stock_research_jobs")
+    monkeypatch.setattr(module, "_MAX_CONFIGURATIONS", 1)
+    owner = store(sqlite_engine)
+    first = await reserve(owner)
+    policy = tmp_path / "new-graph.yaml"
+    policy.write_text("max_daily_calls: 64\n")
+    changed = store(sqlite_engine, loaded=config(policy), clock=Clock(NOW + timedelta(hours=1)))
+    with pytest.raises(ValueError, match="configuration_capacity"):
+        await reserve(changed)
+    async with async_session_factory(sqlite_engine)() as session:
+        assert len(list((await session.scalars(select(ConfigurationVersionRow))).all())) == 1
+    assert (await owner.snapshot()).claims == (first,)
+    with pytest.raises(ValueError, match="configuration_capacity"):
+        await changed.configuration_history(expected_state_hash=first.record_sha256)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["insert", "update", "delete", "rowid"])
+async def test_retained_configuration_requires_actual_append_only_guards(
+    sqlite_engine, migrated, operation
+):
+    async with async_session_factory(sqlite_engine).begin() as session:
+        await session.execute(
+            text(f'DROP TRIGGER "trg_configuration_versions_append_only_{operation}"')
+        )
+    with pytest.raises(ValueError, match="schema_denied"):
+        await store(sqlite_engine).snapshot()
+
+
+@pytest.mark.asyncio
 async def test_backward_clock_and_cadence_change_do_not_create_admission(sqlite_engine, migrated):
     module = importlib.import_module("trading_bot.persistence.stock_research_jobs")
     clock = Clock()
@@ -216,6 +360,9 @@ async def test_commit_failure_never_returns_a_usable_claim(
     fresh = store(sqlite_engine)
     state = await fresh.snapshot()
     assert state.reserved_today == (17 if ack_lost else 0)
+    async with async_session_factory(sqlite_engine)() as session:
+        rows = list((await session.scalars(select(ConfigurationVersionRow))).all())
+        assert len(rows) == (1 if ack_lost else 0)
     if ack_lost:
         with pytest.raises(module.StockResearchJobError):
             await reserve(fresh)

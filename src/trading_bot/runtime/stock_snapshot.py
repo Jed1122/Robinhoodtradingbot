@@ -38,7 +38,8 @@ from trading_bot.persistence.stock_research_jobs import (
 )
 from trading_bot.runtime.stock_archive import _read
 from trading_bot.runtime.stock_archive_lease import StockArchiveLease
-from trading_bot.runtime.stock_dashboard_export import StockDashboardReader, _projection
+from trading_bot.runtime.stock_dashboard_export import _projection
+from trading_bot.runtime.stock_dashboard_export import _read as _read_export
 from trading_bot.runtime.stock_dossier_report import compile_stock_dossier_report
 from trading_bot.runtime.stock_research_controls import (
     StockControlRecord,
@@ -367,7 +368,6 @@ async def _replay(
     root: Path, loaded: LoadedConfig, code_hash: CodeHash, now: datetime, window: _Window
 ) -> dict[str, Any]:
     _require(type(loaded.config) is StockWorkerAppConfig)
-    policy = StockWorkerAppConfig.model_validate(loaded.config.model_dump())
     database = root / "state" / "ledger.sqlite3"
     check = sqlite3.connect(
         "file:" + quote(str(database), safe="/") + "?mode=rw", uri=True, timeout=0.1
@@ -382,6 +382,7 @@ async def _replay(
         factory = async_session_factory(engine)
         jobs = SqlStockResearchJobs(factory, loaded=loaded, code_hash=code_hash, clock=lambda: now)
         state = await jobs.snapshot()
+        configurations = await jobs.configuration_history(expected_state_hash=state.state_hash)
         claims = {row.claim_id: row for row in state.claims}
         reports: dict[str, dict[str, Any]] = {}
         with StockArchiveLease(root / "archive") as archive:
@@ -390,8 +391,9 @@ async def _replay(
                 claim = claims[result.claim_id]
                 if result.manifest_sha256 is None:
                     continue
-                # Unknown historical policies require their own retained canonical graph.
-                _require(claim.config_hash == str(loaded.config_hash))
+                policy = StockWorkerAppConfig.model_validate(
+                    configurations[claim.config_hash].config.model_dump()
+                )
                 source = reports.get(str(claim.source_result_sha256))
                 _require(claim.phase == "discovery" or source is not None)
                 symbols = () if source is None else _symbols(source)
@@ -437,7 +439,10 @@ async def _replay(
                     _require({row["symbol"] for row in report["dossiers"]} == set(symbols))
                 reports[result.record_sha256] = report
             if (root / "exports" / "stock-research.json").exists():
-                view = StockDashboardReader(root=root / "exports", loaded=loaded)()
+                with _directory(root / "exports") as exports:
+                    view = _read_export(exports)
+                projection_config = configurations[view.config_hash]
+                policy = StockWorkerAppConfig.model_validate(projection_config.config.model_dump())
                 _require(view.generated_at <= now)
                 records: list[StockResearchClaim | StockResearchResult] = [
                     *state.claims,
@@ -452,7 +457,7 @@ async def _replay(
                 )
                 past = SqlStockResearchJobs(
                     factory,
-                    loaded=loaded,
+                    loaded=projection_config,
                     code_hash=CodeHash(view.code_hash),
                     clock=lambda: view.generated_at,
                 )._state(prior, view.generated_at)
@@ -465,7 +470,7 @@ async def _replay(
                 )
                 expected_view = _projection(
                     state=past,
-                    loaded=loaded,
+                    loaded=projection_config,
                     code_hash=CodeHash(view.code_hash),
                     policy=policy,
                     now=view.generated_at,
