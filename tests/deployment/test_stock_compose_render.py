@@ -389,3 +389,30 @@ def test_untrusted_executable_metadata_never_launches_a_child(scenario, monkeypa
         with pytest.raises(ValueError):
             renderer._render(lease)
         assert not commands.calls and lease.compose_bytes is None
+
+
+def test_exact_observed_ubuntu_compose_build_retains_policy_comparison(scenario, monkeypatch):
+    native, _, _ = scenario
+    with built(native, monkeypatch) as lease:
+        probe(scenario, monkeypatch, lease)
+        commands = Commands(scenario, lease)
+        commands.version = b"2.40.3+ds1-0ubuntu1~24.04.1\n"
+        commands.install(monkeypatch)
+        result = api()._render(lease)
+        assert json.loads(result) == model(lease)
+        assert (
+            lease.root / "attempts" / lease.source.digest / "compose-version.stdout"
+        ).read_bytes() == commands.version
+
+
+@pytest.mark.parametrize("version", [b"2.40.3+unreviewed\n", b"2.40.3+ds1-0ubuntu1~24.04.2\n"])
+def test_no_arbitrary_compose_package_suffix(scenario, monkeypatch, version):
+    native, _, _ = scenario
+    with built(native, monkeypatch) as lease:
+        probe(scenario, monkeypatch, lease)
+        commands = Commands(scenario, lease)
+        commands.version = version
+        commands.install(monkeypatch)
+        with pytest.raises(ValueError):
+            api()._render(lease)
+        assert len(commands.calls) == 1

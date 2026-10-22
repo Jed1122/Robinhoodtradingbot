@@ -36,6 +36,9 @@ from infra.hybrid.stock_release_producer import (
 )
 
 _DOCKER = Path("/usr/bin/docker")
+# Exact upstream and observed Ubuntu rebuilds only. Both still undergo the
+# complete closed resolved-policy comparison; arbitrary package suffixes deny.
+_COMPOSE_VERSIONS = frozenset({b"2.40.3\n", b"2.40.3+ds1-0ubuntu1~24.04.1\n"})
 
 
 def _workspace(lease: _Lease) -> Path:
@@ -219,7 +222,7 @@ def _render(lease: _Lease) -> bytes:
         )
         with _executable(lease) as binary_check:
             version, _ = _invoke(lease, binary_check, version_argv, workspace, env, version=True)
-            _require(version == b"2.40.3\n")
+            _require(version in _COMPOSE_VERSIONS)
             raw, cap = _invoke(lease, binary_check, render_argv, workspace, env, version=False)
             value = json.loads(
                 raw.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_constant

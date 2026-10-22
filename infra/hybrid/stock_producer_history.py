@@ -354,7 +354,7 @@ def _chain(
 ) -> str:
     """Revalidate every original semantic/hash link; no native operation occurs."""
     from infra.hybrid.stock_build_engine import _body, _source_request
-    from infra.hybrid.stock_compose_render import _recipe
+    from infra.hybrid.stock_compose_render import _COMPOSE_VERSIONS, _recipe
 
     raw = {
         name.removeprefix("attempt/"): data
@@ -503,7 +503,7 @@ def _chain(
         started_clock=clock(rendering["started_clock"]),
     )
     _require(
-        raw["compose-version.stdout"] == b"2.40.3\n"
+        raw["compose-version.stdout"] in _COMPOSE_VERSIONS
         and raw["compose-version.stderr"] == raw["compose-render.stderr"] == b""
     )
     model = json.loads(

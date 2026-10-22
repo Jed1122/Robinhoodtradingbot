@@ -269,3 +269,19 @@ def test_fully_rehashed_semantically_invalid_native_chains_are_denied(
     with pytest.raises(ValueError), opened(state, release_root=release_root):
         pytest.fail("Balanced invalid native chain was accepted")
     assert not (old.root / "attempts" / state[3]).exists()
+
+
+def test_history_accepts_only_the_exact_observed_ubuntu_renderer(scenario, monkeypatch):
+    from test_stock_compose_render import Commands
+
+    original = Commands.__init__
+
+    def distro(self, *args):
+        original(self, *args)
+        self.version = b"2.40.3+ds1-0ubuntu1~24.04.1\n"
+
+    monkeypatch.setattr(Commands, "__init__", distro)
+    old = complete(scenario, monkeypatch)
+    state = next_source(scenario)
+    with opened(state, release_root=scenario[1]) as current:
+        assert old.source.digest in current.completed_sources
