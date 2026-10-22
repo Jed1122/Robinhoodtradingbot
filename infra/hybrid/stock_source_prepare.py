@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import NoReturn
 
-from infra.hybrid.stock_build_inputs import inspect_source
+from infra.hybrid.stock_build_inputs import SourceArchive, inspect_source
 from infra.hybrid.stock_release import _close_all, _fingerprint, _open_directory
 from infra.hybrid.stock_release_producer import _file, _read_binary
 
@@ -202,6 +202,41 @@ def _write_source(directory: int, name: str, raw: bytes, uid: int) -> None:
     _require(stamp == _fingerprint(os.stat(name, dir_fd=directory, follow_symlinks=False)))
 
 
+def _assert_head(repo: Path, head: str, deadline: float) -> None:
+    _require(_native(repo, _STATUS, deadline) == b"")
+    _require(_native(repo, ("rev-parse", "--verify", "HEAD"), deadline) == (head + "\n").encode())
+
+
+def _capture_source(repo: Path, *, deadline: float) -> SourceArchive:
+    """Own a fresh local capture; no supplied archive or receipt can replace this call."""
+    _require(isinstance(repo, Path) and repo.is_absolute() and ".." not in repo.parts)
+    uid, cap = os.geteuid(), min(deadline, time.monotonic() + 30)
+    descriptor = _open_directory(repo, trusted_uid=uid, release_root=repo)
+    try:
+        _require(_native(repo, _STATUS, cap) == b"")
+        head_raw = _native(repo, ("rev-parse", "--verify", "HEAD"), cap)
+        _require(re.fullmatch(rb"(?:[0-9a-f]{40}|[0-9a-f]{64})\n", head_raw) is not None)
+        head = head_raw[:-1].decode("ascii")
+        attributes = _attributes(repo, head, cap)
+        raw = _native(
+            repo,
+            ("archive", "--format=tar", head, "--", *_PATHS),
+            cap,
+            limit=16 * 1024 * 1024,
+            archive=True,
+        )
+        source = inspect_source(raw, expected_sha256=hashlib.sha256(raw).hexdigest())
+        _require(source.commit == head)
+        _assert_head(repo, head, cap)
+        _require(not os.path.lexists(attributes) and not os.path.lexists(repo / ".gitattributes"))
+        _identity(descriptor, repo, uid)
+        _remaining(cap)
+    finally:
+        _close_all((descriptor,))
+    _remaining(cap)
+    return source
+
+
 def _prepare_source(output: Path, *, repo: Path) -> str:
     """Private disposable-repository fixture seam; the public repository is fixed."""
     try:
@@ -215,38 +250,19 @@ def _prepare_source(output: Path, *, repo: Path) -> str:
                 descriptors.append(_open_directory(path, trusted_uid=uid, release_root=path))
             repository, parent = descriptors
             _require(not os.path.lexists(output))
-            _require(_native(repo, _STATUS, deadline) == b"")
-            head_raw = _native(repo, ("rev-parse", "--verify", "HEAD"), deadline)
-            _require(re.fullmatch(rb"(?:[0-9a-f]{40}|[0-9a-f]{64})\n", head_raw) is not None)
-            head = head_raw[:-1].decode("ascii")
-            attributes = _attributes(repo, head, deadline)
-            raw = _native(
-                repo,
-                ("archive", "--format=tar", head, "--", *_PATHS),
-                deadline,
-                limit=16 * 1024 * 1024,
-                archive=True,
-            )
-            digest = hashlib.sha256(raw).hexdigest()
-            _require(inspect_source(raw, expected_sha256=digest).commit == head)
-            _require(_native(repo, _STATUS, deadline) == b"")
-            _require(_native(repo, ("rev-parse", "--verify", "HEAD"), deadline) == head_raw)
-            _require(
-                not os.path.lexists(attributes) and not os.path.lexists(repo / ".gitattributes")
-            )
+            source = _capture_source(repo, deadline=deadline)
             _identity(repository, repo, uid)
             _identity(parent, output.parent, uid)
             _remaining(deadline)
-            _write_source(parent, output.name, raw, uid)
+            _write_source(parent, output.name, source.raw, uid)
             _identity(repository, repo, uid)
             _identity(parent, output.parent, uid)
-            _require(_native(repo, _STATUS, deadline) == b"")
-            _require(_native(repo, ("rev-parse", "--verify", "HEAD"), deadline) == head_raw)
+            _assert_head(repo, source.commit, deadline)
             _remaining(deadline)
         finally:
             _close_all(reversed(descriptors))
         _remaining(deadline)
-        return digest
+        return source.digest
     except _ERRORS:
         _deny()
 

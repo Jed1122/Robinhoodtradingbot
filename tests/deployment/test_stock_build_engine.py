@@ -122,6 +122,9 @@ def test_durable_owned_build_sends_exact_tar_then_inspects_only_terminal_id(scen
             assert intent["request_sha256"] == hashlib.sha256(request).hexdigest()
             assert intent["source_copy_sha256"] == sha
             assert intent["engine_sha256"] == hashlib.sha256(version).hexdigest()
+            prepared = (directory / "source-preparation.json").read_bytes()
+            assert intent["source_preparation_sha256"] == hashlib.sha256(prepared).hexdigest()
+            assert json.loads(prepared)["source_sha256"] == sha
 
     wire = Wire(
         [response(version), response(terminal()), response(metadata)], check_dispatch
@@ -276,16 +279,18 @@ def test_idle_expiry_or_shutdown_preserves_partial_response_without_replay(
     assert not (directory / "build-complete.json").exists()
 
 
-def test_intent_fsync_failure_prevents_post(scenario, monkeypatch):
+def test_engine_evidence_fsync_failure_prevents_post(scenario, monkeypatch):
     state, module, version, _ = scenario
     wire = Wire([response(version)]).install(monkeypatch, module)
     original = state[0].os.fsync
     with pytest.raises(ValueError), opened(state) as lease:
 
         def fail_dispatch(fd):
-            if Path("/dev/fd/" + str(fd)).is_file():
-                # Failing all later regular-file fsyncs includes the original request.
-                raise OSError("fixture disk failure")
+            target = state[1] / "attempts" / state[3] / "engine.bin"
+            if target.exists():
+                info, expected = state[0].os.fstat(fd), target.stat()
+                if (info.st_dev, info.st_ino) == (expected.st_dev, expected.st_ino):
+                    raise OSError("fixture engine evidence durability failure")
             original(fd)
 
         monkeypatch.setattr(state[0].os, "fsync", fail_dispatch)
@@ -432,3 +437,52 @@ def test_request_and_dispatch_durability_are_required_before_any_post(
     wire.join()
     assert reached and len(wire.requests) == 1
     assert not (target.parent / "build-complete.json").exists()
+
+
+@pytest.mark.parametrize("kind", ["dirty", "new_head"])
+def test_build_requires_fresh_owned_source_matching_the_staged_archive(scenario, monkeypatch, kind):
+    from test_stock_source_prepare import git
+
+    state, module, version, metadata = scenario
+    repo = state[2]
+    if kind == "dirty":
+        (repo / "src/trading_bot/__init__.py").write_text("uncommitted fixture change")
+    else:
+        git(repo, "commit", "--allow-empty", "-qm", "fixture new source identity")
+    wire = Wire([response(version), response(terminal()), response(metadata)]).install(
+        monkeypatch, module
+    )
+    with opened(state) as lease, pytest.raises(ValueError):
+        module._build(lease)
+    wire.join()
+    assert not wire.requests
+    directory = state[1] / "attempts" / state[3]
+    assert not (directory / "dispatch.json").exists()
+
+
+@pytest.mark.parametrize("failure", ["fsync", "shutdown"])
+def test_owned_source_acknowledgement_must_finish_before_any_engine_call(
+    scenario, monkeypatch, failure
+):
+    state, module, _, _ = scenario
+    producer, root, _, sha, _, _, shutdown = state
+    target = root / "attempts" / sha / "source-preparation.json"
+    original = producer.os.fsync
+    reached = False
+
+    def interrupted(fd):
+        nonlocal reached
+        if target.exists():
+            info, expected = producer.os.fstat(fd), target.stat()
+            if (info.st_dev, info.st_ino) == (expected.st_dev, expected.st_ino):
+                reached = True
+                if failure == "fsync":
+                    raise OSError("fixture source acknowledgement failure")
+                shutdown[0] = True
+        original(fd)
+
+    with pytest.raises(ValueError), opened(state) as lease:
+        monkeypatch.setattr(producer.os, "fsync", interrupted)
+        module._build(lease)
+    monkeypatch.setattr(producer.os, "fsync", original)
+    assert reached and not (target.parent / "dispatch.json").exists()

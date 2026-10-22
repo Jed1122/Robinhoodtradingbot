@@ -52,17 +52,36 @@ blocks another build. Task3 must implement complete successful-history validatio
 that permits a different source, while preserving incident blocking and rejecting
 same-source replay. No successful old receipt is currently accepted as authority.
 
-Task3 must own source preparation, the fresh existing probe, scrubbed reviewed
-Compose render, four canonical durable files, existing loader verification and final
-clock/shutdown/context publication gate. The nested probe shutdown context must
+Task3 is in progress. Clean-source preparation and nested shutdown composition are
+implemented locally. Actual13nested-signal failures were reproduced, then corrected
+without adding a public probe override or renewing its independent caps. The actual
+clean6c8fbe2checkout preparer wrote4,864,000bytes mode0600 with SHA256
+`11ccafc1e30f535bb5e391276fc4f69a0c0f3302cf0dfdcdecab91819e4e713d`.
+No archive was extracted, uploaded or built.
+
+The build now owns one fresh clean Git capture matching the staged bytes. Actual
+dirty-source and changed-HEAD REDs proved the missing gate before implementation;
+source acknowledgement must finish durably before any Engine call. Original source
+and dispatch receipts are bound by hash, and failed acknowledgement remains spent.
+Corrected integrated acceptance passed **908tests in73.59seconds**, with97.67%combined
+statement/branch coverage over producer/build/preparer/supervisor. Ruffall, strict
+mypy464, changed-host Bandit, offline lock and diff checks passed. These are prefix
+checks, not completed Task3 or native Docker evidence.
+
+Remaining Task3 work is the fresh existing probe bridge, scrubbed reviewed Compose
+render, four canonical durable files, complete successful-history admission, existing
+loader verification and final clock/shutdown/context publication gate. The nested probe shutdown context must
 share the producer's sticky signal state without renewing either clock window.
 One fresh whole-branch review and the eventual actual source-specific full remain
 required.
 
-The separate corrected-controller full was verified still running at8629cad in the
-frozen runtime checkout, session55324/PID89926, at2:14elapsed and93%progress. It must not be duplicated or restarted and
-cannot certify this later producer. Only after it actually terminates may another
-full be queued. Actual native producer/probe proof, paused installation, OAuth lifecycle,
+The separate corrected-controller full at clean `8629cad` completed with actual
+exit0:15,010passed,33optional skips,1existing Starlette/httpx deprecation warning,
+8,366.09seconds and89.04%repository branch coverage. Original handle55324 is terminal;
+do not restart it. The separate IEX code full at clean `f625775` also completed with
+actual exit0:15,239passed,33optional skips,1same warning,8,233.20seconds and89.13%
+coverage. Neither certifies this later producer; its source-specific full remains
+pending completion and the one whole-branch review. Actual native producer/probe proof, paused installation, OAuth lifecycle,
 backups/restore, scheduled stock research, qualified data/strategies and nonempty broker
 reconciliation remain independent. No mandatory60-day paper wait or automatic live
 activation follows from this checkpoint.

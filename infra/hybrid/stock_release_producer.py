@@ -38,6 +38,7 @@ _SLOTS = {
     "image.bin": (1, 1048576),
     "dispatch.json": (1, 4096),
     "build-complete.json": (1, 4096),
+    "source-preparation.json": (1, 4096),
 }
 _ERRORS = (OSError, ValueError, TypeError, KeyError, OverflowError, AttributeError)
 _ACTIVE: _Lease | None = None
@@ -216,6 +217,8 @@ class _Lease:
         self.deadline_ns = int(origin["monotonic_ns"]) + 1_200_000_000_000
         self.last_clock = origin
         self.closed = False
+        self.preparation_started = False
+        self.prepared = False
         self.started = False
         self.dispatched = False
         self.pins: list[tuple[int, str, tuple[int, ...]]] = []
@@ -286,7 +289,7 @@ class _Lease:
     def record(self, name: str, value: dict[str, Any]) -> str:
         self._filesystem()
         _require(
-            name in {"dispatch.json", "build-complete.json"}
+            name in {"dispatch.json", "build-complete.json", "source-preparation.json"}
             and name not in self.inventories[self.attempt_fd]
         )
         digest, stamp = _write_binary(self.attempt_fd, name, _canonical(value), self.uid)
@@ -298,13 +301,19 @@ class _Lease:
 
     def begin_build(self) -> int:
         now = self.check()
-        _require(not self.started)
+        _require(self.prepared and not self.started)
         self.started = True
         return min(self.deadline_ns, int(now["monotonic_ns"]) + 900_000_000_000)
 
     def claim(self, request: bytes, deadline_ns: int) -> None:
         self.check(not_after_ns=deadline_ns)
-        _require(self.started and not self.dispatched and "engine.bin" in self.hashes)
+        _require(
+            self.prepared
+            and self.started
+            and not self.dispatched
+            and "source-preparation.json" in self.hashes
+            and "engine.bin" in self.hashes
+        )
         self.retain("build-request.http", request)
         self.record(
             "dispatch.json",
@@ -314,6 +323,7 @@ class _Lease:
                 "namespace_id": self.namespace["namespace_id"],
                 "source_sha256": self.source.digest,
                 "source_copy_sha256": self.hashes["source.tar"],
+                "source_preparation_sha256": self.hashes["source-preparation.json"],
                 "engine_sha256": self.hashes["engine.bin"],
                 "request_sha256": self.hashes["build-request.http"],
                 "build_deadline_ns": deadline_ns,
@@ -451,3 +461,35 @@ def _lease(
                 lease.closed = True
                 _ACTIVE = None
             _close_all(reversed(descriptors))
+
+
+def _current_source(lease: _Lease) -> None:
+    """Current-context acknowledgement of one fresh matching clean Git capture."""
+    from infra.hybrid.stock_source_prepare import _capture_source
+
+    _require(type(lease) is _Lease)
+    origin = lease.check()
+    _require(not lease.preparation_started)
+    lease.preparation_started = True
+    source = _capture_source(lease.assets_root, deadline=lease.deadline_ns / 1_000_000_000)
+    lease.check()
+    _require(
+        source.raw == lease.source.raw
+        and source.digest == lease.source.digest
+        and source.commit == lease.source.commit
+    )
+    lease.record(
+        "source-preparation.json",
+        {
+            "schema_version": 1,
+            "kind": "stock_source_preparation",
+            "namespace_id": lease.namespace["namespace_id"],
+            "source_sha256": source.digest,
+            "commit": source.commit,
+            "source_copy_sha256": lease.hashes["source.tar"],
+            "started_clock": origin,
+            "completed_clock": lease.check(),
+        },
+    )
+    lease.check()
+    lease.prepared = True

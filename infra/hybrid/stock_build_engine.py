@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 from infra.hybrid.stock_build_inputs import build_image_id
 from infra.hybrid.stock_container import ImageProfile, _object, verify_engine_version, verify_image
 from infra.hybrid.stock_engine import StockEngineReader, _connection
-from infra.hybrid.stock_release_producer import _Lease
+from infra.hybrid.stock_release_producer import _current_source, _Lease
 
 _LIMIT = 1048576 + 8192
 _ERRORS = (OSError, ValueError, TypeError, KeyError, OverflowError, AttributeError, RecursionError)
@@ -125,6 +125,7 @@ def _build(lease: _Lease) -> ImageProfile:
     """Private actual-context operation; supplied data or old receipts cannot dispatch."""
     try:
         _require(type(lease) is _Lease)
+        _current_source(lease)
         deadline = lease.begin_build()
         version = StockEngineReader._get("/version", not_after_ns=deadline)
         lease.retain("engine.bin", version)

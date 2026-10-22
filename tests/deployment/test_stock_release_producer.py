@@ -1,13 +1,13 @@
 """Real private filesystem lease; no native build, daemon or credentials."""
 
-import hashlib
 import importlib
 import os
 import time
 from pathlib import Path
 
 import pytest
-from test_stock_build_inputs import FILES, archive
+from test_stock_build_inputs import FILES
+from test_stock_source_prepare import git
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ("Dockerfile", ".docker-base-image", "compose.stock-research.yml")
@@ -41,8 +41,18 @@ def scenario(tmp_path, monkeypatch):
         (assets / name).write_bytes(raw)
         (assets / name).chmod(0o644)
         monkeypatch.setitem(FILES, name, raw)
-    raw = archive()
-    sha = hashlib.sha256(raw).hexdigest()
+    for name, body in FILES.items():
+        path = assets / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+    git(assets, "init", "-q")
+    git(assets, "add", ".")
+    git(assets, "commit", "-qm", "fixture reviewed source")
+    from infra.hybrid.stock_source_prepare import _prepare_source
+
+    staged = tmp_path / "staged.tar"
+    sha = _prepare_source(staged, repo=assets)
+    raw = staged.read_bytes()
     root = tmp_path / "producer"
     module._initialize(root, trusted_uid=os.geteuid())
     source = root / "inputs" / (sha + ".tar")
