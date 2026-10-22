@@ -6,9 +6,10 @@ No native mutation, deployment, image build/pull, credential/provider/account/or
 control change or live activation is performed during these local tasks.
 
 Prior probe-profile branch remains frozen at 0af7687; source there is independently
-reviewed 68ed801. Primary f05dbe8 full35732 is still running. Do not mutate it or start
-a duplicate full. Once terminal, root may integrate the accepted frozen prior branch
-and run one revision-specific full there while this isolated controller work continues.
+reviewed 68ed801. Primary f05dbe8 full35732 completed exit0:13008passed/33optional skips/89.04%coverage.
+Root fast-forwarded the accepted frozen prior branch0af7687 and started one new full
+(session4761, /tmp/stock-operations-full-suite-0af7687.log). Do not mutate that frozen
+primary revision or start a duplicate full while this isolated controller continues.
 This plan's final integrated source requires its own later full before readiness.
 
 ## Task 1: Pure probe ownership/lifecycle observations

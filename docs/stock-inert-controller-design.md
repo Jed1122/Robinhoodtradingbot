@@ -180,8 +180,9 @@ removed/closed with .json suffix. No caller-selected basename is admitted.
 
 Filesystem primitives do not assert transport provenance or durability merely from
 readable bytes. They sanitize all operational failures and never repair a partial
-namespace. While lifecycle/lineage code is incomplete, the namespace opener admits
-only the initialized empty layout. No runnable controller uses this foundation.
+namespace. The namespace opener now validates complete bounded lineage and original artifacts;
+lifecycle writers and transport fences remain unimplemented. No runnable controller
+uses this foundation.
 
 Receipt field spellings are frozen as follows (common fields above are implicit):
 
@@ -211,3 +212,8 @@ removed hashes. Failed outcomes require a non-completed, non-abandonment reason 
 removed hash. Abandonment has no output/removed references and its own reason only.
 Individual record validity never establishes cross-record lineage, acknowledged
 transport/durability, normal ownership or permission to publish success.
+
+Historical node caches retain validated receipt/profile facts and exact named-file
+fingerprints, not all original payload bytes. The temporary byte cache is cleared
+after each newly validated node. Originals remain on disk and are reread when a
+node fingerprint changes; this limits historical-payload memory on the small host.

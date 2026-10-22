@@ -1,7 +1,7 @@
 """Dedicated private probe persistence foundation; no worker or Engine authority.
 
-The namespace opener deliberately admits only an empty initialized layout until
-probe lineage/lifecycle validation is implemented. Readable bytes are not a durable
+The namespace opener validates the complete bounded retained history. Dispatch
+fences and lifecycle writers are not yet implemented. Readable bytes are not a durable
 acknowledgement, a transport observation or permission to dispatch.
 """
 
@@ -17,12 +17,16 @@ import sys
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 from infra.hybrid.stock_attempts import _canonical, _check_clock, _integer, _read, _write_new
-from infra.hybrid.stock_container import _object
-from infra.hybrid.stock_probe_observation import _lifetime
+from infra.hybrid.stock_container import ImageProfile, _object, verify_engine_version, verify_image
+from infra.hybrid.stock_prestart import verify_creation
+from infra.hybrid.stock_probe_observation import ProbeObservation, _lifetime, observe_probe
+from infra.hybrid.stock_probe_output import decode_probe_output
+from infra.hybrid.stock_probe_profile import probe_request, verify_probe_created
 from infra.hybrid.stock_release import _close_all, _fingerprint, _open_directory
 
 PROBES_ROOT = Path("/var/lib/hybrid-stock-probes")
@@ -227,14 +231,9 @@ def _initialize(root: Path, *, trusted_uid: int) -> None:
             _close_all(fd for fd in (lock, directory, parent) if fd is not None)
 
 
-@dataclass(frozen=True, slots=True)
-class _ProbeNamespace:
-    namespace_id: str
-
-
 @contextmanager
-def _open_namespace(root: Path, *, trusted_uid: int) -> Iterator[_ProbeNamespace]:
-    """Locked empty-layout foundation; unfinished lineage is not yet admitted."""
+def _open_namespace(root: Path, *, trusted_uid: int) -> Iterator[ProbeStore]:
+    """Classify the complete locked entry once; no restart reconstructs dispatch."""
     with _sanitized():
         _path(root, trusted_uid)
         directory = _open_directory(
@@ -243,6 +242,7 @@ def _open_namespace(root: Path, *, trusted_uid: int) -> Iterator[_ProbeNamespace
             release_root=Path("/") if root == PROBES_ROOT else root,
         )
         lock: int | None = None
+        store: ProbeStore | None = None
         try:
             _directory_info(os.fstat(directory), trusted_uid)
             lock = os.open(
@@ -252,15 +252,20 @@ def _open_namespace(root: Path, *, trusted_uid: int) -> Iterator[_ProbeNamespace
             )
             _file_info(os.fstat(lock), trusted_uid, low=0, high=0)
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            _require(set(os.listdir(directory)) == {"namespace.json", "launcher.lock"})
             value, _ = _read(directory, "namespace.json", trusted_uid)
             _validate_namespace(value, os.fstat(directory), os.fstat(lock))
             _require(
                 _fingerprint(os.fstat(lock))
                 == _fingerprint(os.stat("launcher.lock", dir_fd=directory, follow_symlinks=False))
             )
-            yield _ProbeNamespace(value["namespace_id"])
+            store = ProbeStore(root, directory, lock, trusted_uid, value)
+            entry = store.snapshot()
+            store._entry_snapshot = entry
+            store._recovery_only = entry is not None and entry.closed_outcome is None
+            yield store
         finally:
+            if store is not None:
+                store._closed = True
             _close_all(fd for fd in (lock, directory) if fd is not None)
 
 
@@ -271,7 +276,7 @@ def initialize_probes() -> None:
         _initialize(PROBES_ROOT, trusted_uid=0)
 
 
-def probes() -> AbstractContextManager[_ProbeNamespace]:
+def probes() -> AbstractContextManager[ProbeStore]:
     """Fixed production path/UID; no caller-selected alternate namespace."""
     with _sanitized():
         _require(sys.platform == "linux" and os.geteuid() == 0)
@@ -481,3 +486,434 @@ def _decode_receipt(
                     and value["removed_sha256"] is None
                 )
         return dict(value)
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeSnapshot:
+    """Copied retained facts. No acknowledgement, dispatch or publication authority."""
+
+    probe_id: str
+    intent_sha256: str
+    image_digest: str
+    boot_id: str
+    setup_started_ns: int
+    setup_deadline_ns: int
+    container_id: str | None
+    run_started_ns: int | None
+    run_deadline_ns: int | None
+    stopped: ProbeObservation | None
+    output_status: str | None
+    closed_outcome: str | None
+    receipt_hashes: tuple[tuple[str, str], ...]
+
+
+@dataclass(slots=True)
+class _Node:
+    snapshot: ProbeSnapshot
+    records: dict[str, dict[str, Any]]
+    hashes: dict[str, str]
+    image: ImageProfile
+
+
+def _native_key(timestamp: str) -> tuple[str, str]:
+    # _lifetime validated RFC3339Nano first. Preserve nanoseconds for success checks.
+    return timestamp[:19], timestamp[20:-1].ljust(9, "0") if timestamp[19] == "." else "000000000"
+
+
+class ProbeStore:
+    """Locked read/classification foundation; lifecycle writers remain unavailable."""
+
+    def __init__(self, root: Path, directory: int, lock: int, uid: int, namespace: dict[str, Any]):
+        self._root, self._directory, self._lock, self._uid = root, directory, lock, uid
+        self._namespace = dict(namespace)
+        self._closed = False
+        self._recovery_only = True
+        self._entry_snapshot: ProbeSnapshot | None = None
+        self._content = _ContentCache()
+        self._nodes: dict[str, tuple[tuple[int, ...], dict[str, tuple[int, ...]], _Node]] = {}
+
+    @property
+    def namespace_id(self) -> str:
+        return str(self._namespace["namespace_id"])
+
+    @property
+    def recovery_only(self) -> bool:
+        return self._recovery_only
+
+    def _guard(self) -> None:
+        _require(not self._closed and os.geteuid() == self._uid)
+        _directory_info(os.fstat(self._directory), self._uid)
+        _file_info(os.fstat(self._lock), self._uid, low=0, high=0)
+        _require(
+            _fingerprint(os.fstat(self._lock))
+            == _fingerprint(os.stat("launcher.lock", dir_fd=self._directory, follow_symlinks=False))
+        )
+        value, _ = _read(self._directory, "namespace.json", self._uid)
+        _validate_namespace(value, os.fstat(self._directory), os.fstat(self._lock))
+        _require(value == self._namespace)
+        current = _open_directory(
+            self._root,
+            trusted_uid=self._uid,
+            release_root=Path("/") if self._root == PROBES_ROOT else self._root,
+        )
+        try:
+            info = os.fstat(current)
+            _directory_info(info, self._uid)
+            _require((info.st_dev, info.st_ino) == (value["root_device"], value["root_inode"]))
+        finally:
+            _close_all((current,))
+
+    @contextmanager
+    def _folder(self, probe_id: str) -> Iterator[int]:
+        _require(_matches(probe_id, r"[0-9a-f]{32}"))
+        descriptor = os.open(probe_id, _DIRECTORY, dir_fd=self._directory)
+        try:
+            _directory_info(os.fstat(descriptor), self._uid)
+            yield descriptor
+            _require(
+                _fingerprint(os.fstat(descriptor))
+                == _fingerprint(os.stat(probe_id, dir_fd=self._directory, follow_symlinks=False))
+            )
+        finally:
+            _close_all((descriptor,))
+
+    def _node(self, probe_id: str) -> _Node:
+        with self._folder(probe_id) as directory:
+            names = set(os.listdir(directory))
+            _require("intent.json" in names and names <= set(_RECEIPT_KEYS) | set(_SLOTS))
+            stamps = {}
+            for name in names:
+                info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                low, high = _slot(name) if name in _SLOTS else (1, 4096)
+                _file_info(info, self._uid, low=low, high=high)
+                stamps[name] = _fingerprint(info)
+            parent = _fingerprint(os.fstat(directory))
+            cached = self._nodes.get(probe_id)
+            if cached is not None and cached[0] == parent and cached[1] == stamps:
+                _require(set(os.listdir(directory)) == names)
+                _require(_fingerprint(os.fstat(directory)) == parent)
+                return cached[2]
+            intent, intent_hash = _read(directory, "intent.json", self._uid)
+            intent = _decode_receipt(
+                _canonical(intent),
+                "intent.json",
+                namespace_id=self.namespace_id,
+                probe_id=probe_id,
+                intent_sha256=None,
+            )
+            records, hashes = {"intent.json": intent}, {"intent.json": intent_hash}
+            for name in _RECEIPT_KEYS:
+                if name in names and name != "intent.json":
+                    value, digest = _read(directory, name, self._uid)
+                    records[name] = _decode_receipt(
+                        _canonical(value),
+                        name,
+                        namespace_id=self.namespace_id,
+                        probe_id=probe_id,
+                        intent_sha256=intent_hash,
+                    )
+                    hashes[name] = digest
+            artifacts = {
+                name: self._content.read(directory, name, self._uid) for name in names & set(_SLOTS)
+            }
+            node = self._bind_node(probe_id, records, hashes, artifacts)
+            # A node caches validated facts under exact named-file fingerprints.
+            # Original payloads stay on disk; do not accumulate hundreds of MiB
+            # across retained history on the intended small host.
+            self._content = _ContentCache()
+            _require(
+                stamps
+                == {
+                    name: _fingerprint(os.stat(name, dir_fd=directory, follow_symlinks=False))
+                    for name in names
+                }
+            )
+            _require(set(os.listdir(directory)) == names)
+            _require(_fingerprint(os.fstat(directory)) == parent)
+            self._nodes[probe_id] = (parent, stamps, node)
+            return node
+
+    def _bind_node(
+        self,
+        probe_id: str,
+        records: dict[str, dict[str, Any]],
+        hashes: dict[str, str],
+        artifacts: dict[str, bytes],
+    ) -> _Node:
+        intent = records["intent.json"]
+        expected = {"engine.bin", "image.bin", "request.bin"}
+
+        def artifact(slot: str, receipt: dict[str, Any], prefix: str) -> bytes:
+            _require(slot in artifacts)
+            raw = artifacts[slot]
+            _require(
+                len(raw) == receipt[prefix + "_size"]
+                and hashlib.sha256(raw).hexdigest() == receipt[prefix + "_sha256"]
+            )
+            expected.add(slot)
+            return raw
+
+        engine_raw, image_raw = (
+            artifact("engine.bin", intent, "engine"),
+            artifact("image.bin", intent, "image"),
+        )
+        image = verify_image(image_raw, intent["image_digest"], verify_engine_version(engine_raw))
+        _require(artifact("request.bin", intent, "request") == probe_request(image, probe_id))
+        create, cid, created, start, stopped, output, removal, removed, closed = (
+            records.get(name + ".json")
+            for name in (
+                "create",
+                "cid",
+                "created",
+                "start",
+                "stopped",
+                "output",
+                "removal-intent",
+                "removed",
+                "closed",
+            )
+        )
+        if create is not None:
+            _require(
+                create["request_sha256"] == intent["request_sha256"]
+                and create["boot_id"] == intent["boot_id"]
+            )
+            _require(
+                intent["monotonic_ns"]
+                <= create["monotonic_ns"]
+                < create["dispatch_deadline_ns"]
+                <= intent["setup_deadline_ns"]
+            )
+        container_id = None
+        if cid is not None:
+            if create is None:
+                _deny()
+            _require(cid["create_sha256"] == hashes["create.json"])
+            container_id = str(cid["container_id"])
+            slot = (
+                "create-response.bin"
+                if cid["evidence_kind"] == "create_response"
+                else "discovery.bin"
+            )
+            raw = artifact(slot, cid, "observation")
+            if cid["evidence_kind"] == "create_response":
+                _require(
+                    verify_creation(raw) == container_id and cid["boot_id"] == intent["boot_id"]
+                )
+                _require(cid["monotonic_ns"] >= create["monotonic_ns"])
+            else:
+                observe_probe(
+                    raw,
+                    probe_id=probe_id,
+                    container_id=container_id,
+                    image_digest=intent["image_digest"],
+                )
+                _require(created is None and start is None)
+        if created is not None:
+            if cid is None or container_id is None:
+                _deny()
+            _require(
+                cid["evidence_kind"] == "create_response"
+                and created["cid_sha256"] == hashes["cid.json"]
+            )
+            raw = artifact("prestart.bin", created, "prestart")
+            verify_probe_created(raw, image=image, probe_id=probe_id, container_id=container_id)
+            _require(
+                created["boot_id"] == intent["boot_id"]
+                and created["monotonic_ns"] >= cid["monotonic_ns"]
+            )
+        if start is not None:
+            if created is None:
+                _deny()
+            _require(
+                start["created_sha256"] == hashes["created.json"]
+                and start["container_id"] == container_id
+            )
+            _require(
+                start["boot_id"] == intent["boot_id"]
+                and created["monotonic_ns"] <= start["monotonic_ns"] < intent["setup_deadline_ns"]
+            )
+        observation = None
+        if stopped is not None:
+            if cid is None or container_id is None:
+                _deny()
+            _require(
+                stopped["container_id"] == container_id
+                and stopped["start_sha256"] == hashes.get("start.json")
+            )
+            raw = artifact("stopped.bin", stopped, "inspection")
+            observation = observe_probe(
+                raw,
+                probe_id=probe_id,
+                container_id=container_id,
+                image_digest=intent["image_digest"],
+            )
+            _require(observation.status in ("created", "exited", "dead"))
+            for field in (
+                "status",
+                "exit_code",
+                "oom_killed",
+                "error_present",
+                "container_started_at",
+                "container_finished_at",
+            ):
+                _require(stopped[field] == getattr(observation, field))
+            _require(observation.status != "created" or start is None)
+        if output is not None:
+            _require(stopped is not None and output["stopped_sha256"] == hashes["stopped.json"])
+            raw = artifact("framed-logs.bin", output, "framed")
+            try:
+                canonical = decode_probe_output(raw)
+            except ValueError:
+                canonical = None
+            if output["status"] == "valid":
+                _require(
+                    canonical is not None
+                    and artifact("configuration.bin", output, "canonical") == canonical
+                )
+            else:
+                _require(canonical is None)
+        if removal is not None:
+            _require(
+                stopped is not None
+                and removal["container_id"] == container_id
+                and removal["stopped_sha256"] == hashes["stopped.json"]
+            )
+        if removed is not None:
+            _require(
+                removal is not None
+                and removed["removal_intent_sha256"] == hashes["removal-intent.json"]
+            )
+        if closed is not None:
+            _require(
+                closed["output_sha256"] == hashes.get("output.json")
+                and closed["removed_sha256"] == hashes.get("removed.json")
+            )
+            if closed["outcome"] == "abandoned_before_create":
+                _require(set(records) == {"intent.json", "closed.json"})
+            else:
+                _require(removed is not None)
+                if closed["outcome"] == "succeeded":
+                    _require(
+                        set(records) == set(_RECEIPT_KEYS)
+                        and output is not None
+                        and output["status"] == "valid"
+                    )
+                    # Exact complete record membership above and the mandatory
+                    # stopped binding establish these types; casts add no authority.
+                    observation = cast(ProbeObservation, observation)
+                    output, stopped, start, removal = (
+                        records[name]
+                        for name in (
+                            "output.json",
+                            "stopped.json",
+                            "start.json",
+                            "removal-intent.json",
+                        )
+                    )
+                    _require(
+                        observation.status == "exited"
+                        and observation.exit_code == 0
+                        and not observation.oom_killed
+                        and not observation.error_present
+                    )
+                    _require(
+                        _native_key(observation.container_finished_at)
+                        >= _native_key(observation.container_started_at)
+                    )
+                    ordered = [records[name] for name in _RECEIPT_KEYS]
+                    _require(all(record["boot_id"] == intent["boot_id"] for record in ordered))
+                    _require(
+                        all(
+                            left["monotonic_ns"] <= right["monotonic_ns"]
+                            for left, right in pairwise(ordered)
+                        )
+                    )
+                    _require(
+                        start is not None
+                        and stopped is not None
+                        and stopped["monotonic_ns"] < start["run_deadline_ns"]
+                    )
+                    _require(output["monotonic_ns"] < stopped["monotonic_ns"] + 5000000000)
+                    _require(
+                        removal is not None
+                        and closed["monotonic_ns"] < removal["retirement_deadline_ns"]
+                    )
+        _require(set(artifacts) == expected)
+        snapshot = ProbeSnapshot(
+            probe_id,
+            hashes["intent.json"],
+            intent["image_digest"],
+            intent["boot_id"],
+            intent["setup_started_ns"],
+            intent["setup_deadline_ns"],
+            container_id,
+            None if start is None else start["monotonic_ns"],
+            None if start is None else start["run_deadline_ns"],
+            observation,
+            None if output is None else output["status"],
+            None if closed is None else closed["outcome"],
+            tuple(sorted(hashes.items())),
+        )
+        return _Node(snapshot, records, hashes, image)
+
+    def _history(self) -> list[_Node]:
+        self._guard()
+        names = set(os.listdir(self._directory))
+        _require(len(names) <= 131)
+        identifiers = names - {"namespace.json", "launcher.lock", "active.json"}
+        _require(
+            all(_matches(name, r"[0-9a-f]{32}") for name in identifiers) and len(identifiers) <= 128
+        )
+        if "active.json" not in names:
+            _require(not identifiers)
+            return []
+        head, _ = _read(self._directory, "active.json", self._uid)
+        _require(
+            set(head) == {"schema_version", "kind", "namespace_id", "probe_id", "intent_sha256"}
+        )
+        _require(
+            type(head["schema_version"]) is int
+            and head["schema_version"] == 1
+            and head["kind"] == "stock_probe_active"
+        )
+        _require(
+            head["namespace_id"] == self.namespace_id
+            and _matches(head["probe_id"], r"[0-9a-f]{32}")
+            and _hash(head["intent_sha256"])
+        )
+        nodes = {probe_id: self._node(probe_id) for probe_id in identifiers}
+        _require(
+            head["probe_id"] in nodes
+            and nodes[head["probe_id"]].snapshot.intent_sha256 == head["intent_sha256"]
+        )
+        seen, cids, ordered = set(), set(), []
+        current = head["probe_id"]
+        while current is not None:
+            _require(current in nodes and current not in seen)
+            seen.add(current)
+            node = nodes[current]
+            cid = node.snapshot.container_id
+            _require(cid is None or cid not in cids)
+            if cid is not None:
+                cids.add(cid)
+            ordered.append(node)
+            intent = node.records["intent.json"]
+            predecessor = intent["predecessor_probe_id"]
+            if predecessor is not None:
+                _require(predecessor in nodes)
+                prior = nodes[predecessor]
+                _require(
+                    prior.snapshot.closed_outcome is not None
+                    and prior.hashes.get("closed.json") == intent["predecessor_closed_sha256"]
+                )
+            current = predecessor
+        _require(seen == identifiers)
+        self._guard()
+        _require(set(os.listdir(self._directory)) == names)
+        return list(reversed(ordered))
+
+    def snapshot(self) -> ProbeSnapshot | None:
+        with _sanitized():
+            history = self._history()
+            return None if not history else history[-1].snapshot
