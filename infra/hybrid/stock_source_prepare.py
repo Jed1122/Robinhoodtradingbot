@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import selectors
 
 # Fixed local Git, no shell and a scrubbed environment.
 import subprocess  # nosec B404
@@ -18,6 +17,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from infra.hybrid.stock_build_inputs import SourceArchive, inspect_source
+from infra.hybrid.stock_process import _capture
 from infra.hybrid.stock_release import _close_all, _fingerprint, _open_directory
 from infra.hybrid.stock_release_producer import _file, _read_binary
 
@@ -81,61 +81,13 @@ def _remaining(deadline: float) -> float:
 
 def _git(repo: Path, arguments: tuple[str, ...], *, limit: int, deadline: float) -> bytes:
     """Only internal fixed Git argument tuples reach this private process boundary."""
-    _remaining(deadline)
-    # Fixed Git and internal tuples; never a shell.
-    process = subprocess.Popen(  # nosec B603
-        [*_PREFIX, *arguments],
+    return _capture(
+        (*_PREFIX, *arguments),
         cwd=repo,
         env=dict(_ENV),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        close_fds=True,
-    )
-    failed = False
-    try:
-        if process.stdout is None or process.stderr is None:
-            _deny()
-        streams = (process.stdout, process.stderr)
-        buffers = {stream.fileno(): bytearray() for stream in streams}
-        bounds = {streams[0].fileno(): limit, streams[1].fileno(): 16384}
-        with selectors.DefaultSelector() as selector:
-            for stream in streams:
-                os.set_blocking(stream.fileno(), False)
-                selector.register(stream.fileno(), selectors.EVENT_READ)
-            while selector.get_map():
-                for key, _ in selector.select(_remaining(deadline)):
-                    descriptor = key.fd
-                    data = os.read(
-                        descriptor, min(65536, bounds[descriptor] + 1 - len(buffers[descriptor]))
-                    )
-                    if not data:
-                        selector.unregister(descriptor)
-                    else:
-                        buffers[descriptor].extend(data)
-                        _require(len(buffers[descriptor]) <= bounds[descriptor])
-                    _remaining(deadline)
-        process.wait(timeout=_remaining(deadline))
-        _remaining(deadline)
-        _require(process.returncode == 0)
-        return bytes(buffers[streams[0].fileno()])
-    finally:
-        try:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=1)
-        finally:
-            for closing_stream in (process.stdout, process.stderr):
-                if closing_stream is not None:
-                    try:
-                        closing_stream.close()
-                    except OSError:
-                        failed = True
-        _require(not failed)
+        limit=limit,
+        deadline=deadline,
+    ).stdout
 
 
 def _native(

@@ -63,6 +63,9 @@ def release(tmp_path):
     model = expand(model)
     worker = model["services"]["stock-research"]
     worker["mem_limit"] = worker["memswap_limit"] = "536870912"
+    for volume in worker["volumes"]:
+        # The pinned typed Compose serializer omits the false bool, not its pointer.
+        volume["bind"] = {}
     observation = {
         "status": "succeeded",
         "schema_version": 1,
@@ -130,6 +133,31 @@ def test_verified_release_binds_the_complete_policy_and_observed_limits(release)
     assert result.max_run_seconds == 450 and result.scan_interval_seconds == 3600
     assert result.compose_sha256 == release[4]["compose_sha256"]
     assert result.attestation_path == release[1] / "runtime-image-attestation.json"
+
+
+def test_compose_2403_typed_json_omits_false_bind_options(release):
+    # compose-go v2.9.1 serializes the present Bind pointer but omits its false bool.
+    for volume in release[2]["services"]["stock-research"]["volumes"]:
+        volume["bind"] = {}
+    release[5]()
+    assert load(release).image_digest == IMAGE
+
+
+@pytest.mark.parametrize(
+    "bind",
+    [
+        {"create_host_path": True},
+        {"create_host_path": False},
+        {"create_host_path": 0},
+        None,
+        {"propagation": "rshared"},
+    ],
+)
+def test_only_exact_pinned_bind_serialization_is_accepted(release, bind):
+    release[2]["services"]["stock-research"]["volumes"][0]["bind"] = bind
+    release[5]()
+    with pytest.raises(ValueError, match=r"^stock_release_unavailable$"):
+        load(release)
 
 
 @pytest.mark.parametrize(

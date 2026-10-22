@@ -70,10 +70,13 @@ attempt. Bound retained attempts to128; pruning is a later explicit operator pro
 Persist original source/intent/request identity before build dispatch. One attempt owns
 one build dispatch. Complete durable old bytes never reconstruct acknowledgement or
 permit replay. Any uncertain build, missed cap, shutdown, failed probe/render/write/
-fsync/close or namespace substitution suppresses publication and leaves an incident.
-An incident blocks subsequent production until a separately verified operator action;
-do not infer daemon termination from timeout/disconnection. Successful histories permit
-a different source only after their complete closure/namespace checks. No auto cleanup,
+fsync/close or namespace substitution suppresses the current successful result. An
+incomplete or uncertain native history blocks subsequent production; do not infer
+daemon termination from timeout/disconnection. The [terminal closure clarification](stock-release-producer-closure.md)
+distinguishes independently completed historical native facts from a lost caller result;
+readable old bytes never reconstruct acknowledgement. Successful historical facts permit
+a different source only after their complete closure/namespace and fresh durability
+checks. No auto cleanup,
 force removal, image deletion or build cancellation success claim is introduced.
 
 Keep raw source, version/image metadata, bounded request/build response, actual probe
@@ -117,6 +120,27 @@ No interpolation input from the user's environment or default dotenv file is adm
 Render without image resolution, canonicalize the complete model and check the existing
 policy. Actual plugin availability/normalization remains a native gate, never a fallback.
 
+The pinned Compose2.40.3 uses compose-go2.9.1's typed JSON encoder, which retains an
+explicit bind object but omits its false `create_host_path` member. The exact resolved
+policy therefore requires `"bind":{}` for each of the six mounts. The reviewed YAML
+continues to set `create_host_path: false`; Engine requests omit `CreateMountpoint`
+(false by default), and prestart checks continue to reject its enabling. No permissive
+normalization or alternate shape is
+accepted by the release loader. This is a closed serialization correction, not a change
+to host-path creation permission. An actual native render remains independently required.
+[Bind serialization](https://github.com/compose-spec/compose-go/blob/v2.9.1/types/types.go#L545-L553),
+[Mount execution](https://github.com/docker/compose/blob/v2.40.3/pkg/compose/create.go#L1136-L1152).
+
+The producer-owned renderer uses a new private directory containing the original
+verified template, an empty explicit env file and three separate empty directories
+for Docker config, HOME and executable PATH. It does not create `config.json` or copy
+the user's configuration. Exact argv fixes the local socket, project name/directory,
+template/env file and disables both image-resolution modes. Version and config are
+separate single-use child calls with original at-most5second caps, bounded stdout and
+16KiB stderr, reaping and post-cleanup clock/shutdown checks. Both must have empty stderr.
+Raw outputs, template, intent and completion are retained outside the release schemas.
+This does not attest the installed Docker/Compose binary or system plugin search paths.
+
 ## Publication
 
 Keep the existing four exact schemas, bounds, derived paths,0444 modes and canonical
@@ -126,6 +150,10 @@ from the actual probe and full resolved Compose model. Fsync each original file 
 directory, read back/revalidate identities, and pass the exact manifest through the
 existing production loader before a terminal producer receipt. Final success follows
 terminal durability, lock/handler cleanup and original-cap/clock/shutdown checks.
+The terminal facts record is constructed only after all owned native/file work is
+complete; it never asserts acknowledgement of its own publication or caller success.
+Historical recognition uses the separate closed-chain/fresh-flush protocol linked above
+and cannot return an old manifest as a successful current producer result.
 The public result is the fixed manifest path; CLI formatting shares that final gate.
 
 File verification, local fixtures and public documentation do not prove a native build,

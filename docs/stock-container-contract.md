@@ -22,6 +22,16 @@ Its SHA-256 is `compose_sha256`; hash the whole resolved model, not the template
 Compose's implementation-specific service hash. Retain the template/source digest
 and rendering version separately. Unsupported normalized fields deny admission.
 
+The producer pins Compose2.40.3, whose compose-go2.9.1 typed JSON encoder emits each
+explicit false bind option as `"bind":{}`. That is the exact resolved release shape;
+do not reinsert the omitted member or accept alternate resolved forms. The source YAML
+still explicitly sets `create_host_path: false`. The independent native Engine request
+continues to omit `CreateMountpoint`, and prestart rejects enabling it. The complete
+resolved model and its dependent hashes must be regenerated for this representation;
+there is no silent artifact migration. Native output is still unverified.
+[Typed bind encoding](https://github.com/compose-spec/compose-go/blob/v2.9.1/types/types.go#L545-L553),
+[Compose mount execution](https://github.com/docker/compose/blob/v2.40.3/pkg/compose/create.go#L1136-L1152).
+
 The release directory is `/opt/hybrid-stock-research/releases/<source-archive-sha256>`.
 It is independent of the attestation release key, avoiding a path/hash cycle. Publish
 `stock-compose.resolved.json`, the existing canonical image/config/Compose attestation

@@ -81,9 +81,40 @@ statement/branch coverage over producer/build/preparer/supervisor. Ruffall, stri
 mypy464, changed-host Bandit, offline lock and diff checks passed. This establishes
 fixture composition, not a native build/probe or completed public release producer.
 
-Remaining Task3 work is the scrubbed reviewed Compose render, four canonical durable
-files, complete successful-history admission, existing loader verification and final
-clock/shutdown/context publication gate.
+The scrubbed Compose render and four-file publication are now implemented as private
+stages. Actual21missing-renderer REDs preceded implementation, as did21missing-publisher
+REDs. They compose the owned source/build/probe, actual bounded local child capture,
+strict complete-model comparison and existing loader. The Compose typed-JSON bind
+representation mismatch was reproduced first and corrected exactly; the reviewed YAML
+and native host-path creation policy remain unchanged. No native Compose proof is claimed.
+
+The bounded process helper also fixes an observed orphan-child gap: an exited launcher
+could leave a pipe-holding child running. Its safe local heartbeat RED was reproduced
+and reaped by the fixture; failure cleanup now stops the helper's own new process group.
+The helper cannot establish daemon build/container termination. Deep JSON, bad versions,
+unapproved models, polluted config/environment, binary or namespace replacement,
+short/failed writes, chmod/fsync/close failures, shutdown and late boundaries deny
+current acknowledgement. Complete readable files do not grant a current result.
+
+The actual corrected focused run passed **222tests in75.65seconds**, with98.43%combined
+statement/branch coverage over process/render/publication (process100%). The initial
+180-test coverage run failed the95%gate and was not accepted; meaningful native pipe,
+launch, bounds and cleanup cases were added without lowering the threshold.
+
+The actual deployment/architecture/stock-worker integration exited0: **3,331passed,
+4optional skips in231.70seconds**, with **98.59% combined statement/branch coverage**
+across eight affected host modules. The four skips require an absent local `age`
+executable and do not prove backup/restore. Ruffall, strict mypy452(src+eight host
+modules), expanded Bandit, offline lock and diff checks passed. These are local
+fixture/child-process checks, not native Docker, broker or deployed runtime evidence.
+
+Remaining Task3 work is complete successful-history admission, terminal facts and final
+clock/shutdown/context/CLI publication gates. Root explicitly clarified the distinction
+between independently completed historical native facts and a lost current caller
+result in the [terminal contract](stock-release-producer-closure.md). Its full closed-chain
+and fresh durability protocol still needs implementation and failure tests. The
+[operations guide](stock-release-producer-operations.md) identifies the available
+library interfaces and unimplemented public producer accurately.
 One fresh whole-branch review and the eventual actual source-specific full remain
 required.
 

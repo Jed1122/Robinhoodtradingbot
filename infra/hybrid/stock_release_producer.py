@@ -22,6 +22,7 @@ from infra.hybrid.stock_attempts import _canonical, _check_clock, _clock, _read,
 from infra.hybrid.stock_build_inputs import SourceArchive, inspect_source
 from infra.hybrid.stock_probe_store import _clock_key
 from infra.hybrid.stock_release import (
+    RELEASE_ROOT,
     _close_all,
     _fingerprint,
     _open_directory,
@@ -51,8 +52,18 @@ _SLOTS = {
     "probe-intent.json": (1, 4096),
     "probe-result.json": (1, 4096),
     "configuration.bin": (1, 4096),
+    "compose-template.yml": (1, 1048576),
+    "compose.env": (0, 0),
+    "compose-version.stdout": (0, 128),
+    "compose-version.stderr": (0, 16384),
+    "compose-render.stdout": (0, 65536),
+    "compose-render.stderr": (0, 16384),
+    "render-intent.json": (1, 4096),
+    "render-complete.json": (1, 4096),
+    "publication-intent.json": (1, 4096),
+    "publication-files.json": (1, 4096),
 }
-_ERRORS = (OSError, ValueError, TypeError, KeyError, OverflowError, AttributeError)
+_ERRORS = (OSError, ValueError, TypeError, KeyError, OverflowError, AttributeError, RecursionError)
 _ACTIVE: _Lease | None = None
 
 
@@ -215,8 +226,10 @@ class _Lease:
         namespace: dict[str, Any],
         shutdown: list[bool],
         origin: dict[str, Any],
+        release_root: Path,
     ) -> None:
         self.source, self.root, self.assets_root, self.uid = source, root, assets_root, uid
+        self.release_root, self.descriptors = release_root, descriptors
         (
             self.root_fd,
             self.lock_fd,
@@ -236,6 +249,10 @@ class _Lease:
         self.built_image: ImageProfile | None = None
         self.probe_started = False
         self.probe_result: ProbeResult | None = None
+        self.render_started = False
+        self.compose_bytes: bytes | None = None
+        self.publication_started = False
+        self.published_manifest: Path | None = None
         self.pins: list[tuple[int, str, tuple[int, ...]]] = []
         self.directories = [
             (self.root_fd, root),
@@ -311,6 +328,10 @@ class _Lease:
                 "source-preparation.json",
                 "probe-intent.json",
                 "probe-result.json",
+                "render-intent.json",
+                "render-complete.json",
+                "publication-intent.json",
+                "publication-files.json",
             }
             and name not in self.inventories[self.attempt_fd]
         )
@@ -358,6 +379,25 @@ class _Lease:
         self.dispatched = True  # Spent before connection/send; uncertainty is never replayable.
 
 
+def _child_directory(lease: _Lease, parent: int, name: str, path: Path) -> int:
+    """Register original directory identity before acknowledging its durability."""
+    lease.check()
+    _require(name not in lease.inventories[parent])
+    os.mkdir(name, 0o700, dir_fd=parent)
+    descriptor = os.open(name, _DIRECTORY, dir_fd=parent)
+    lease.descriptors.append(descriptor)
+    info = os.fstat(descriptor)
+    _directory(info, lease.uid)
+    lease.directories.append((descriptor, path))
+    lease.directory_ids.append((info.st_dev, info.st_ino))
+    lease.inventories[parent].add(name)
+    lease.inventories[descriptor] = set()
+    os.fsync(descriptor)
+    os.fsync(parent)
+    lease.check()
+    return descriptor
+
+
 @contextmanager
 def _lease(
     source_sha256: str,
@@ -366,11 +406,13 @@ def _lease(
     root: Path = PRODUCER_ROOT,
     assets_root: Path = _ASSETS_ROOT,
     trusted_uid: int = 0,
+    release_root: Path = RELEASE_ROOT,
 ) -> Iterator[_Lease]:
     global _ACTIVE
     with _sanitized():
         _path(root, trusted_uid)
         _path(assets_root, trusted_uid)
+        _path(release_root, trusted_uid)
         _require(type(source_sha256) is str and _HEX.fullmatch(source_sha256) is not None)
         _require(
             _ACTIVE is None
@@ -462,7 +504,15 @@ def _lease(
             os.fsync(attempt)
             os.fsync(attempts)
             lease = _Lease(
-                source, root, assets_root, trusted_uid, descriptors, namespace, shutdown, origin
+                source,
+                root,
+                assets_root,
+                trusted_uid,
+                descriptors,
+                namespace,
+                shutdown,
+                origin,
+                release_root,
             )
             _ACTIVE = lease
             lease.inventories[directory] = {"inputs", "attempts", "producer.lock", "namespace.json"}

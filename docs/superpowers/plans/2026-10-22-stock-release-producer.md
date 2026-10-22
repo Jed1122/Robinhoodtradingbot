@@ -10,6 +10,12 @@
 
 **Spec:** `docs/stock-release-producer-design.md`
 
+**Task3 clarification:** [Terminal facts and current acknowledgement](../../stock-release-producer-closure.md).
+Historical distinct-source admission must validate the complete closed chain and obtain
+fresh actual durability acknowledgements. It cannot reconstruct a prior caller result,
+return an old successful manifest, replay a source or adopt old native authority. This
+clarifies the original post-terminal lost-ack gap; all current-call final gates remain.
+
 ## Global Constraints
 
 - Work only in the producer checkout; frozen controller8629cad/full55324 remains unchanged.
@@ -56,6 +62,10 @@
 ## Task 3: Source preparation, fresh probe, rendering and durable release
 
 **Files:** Complete producer module, add `infra/hybrid/stock_source_prepare.py`, integration tests and `docs/stock-release-producer-operations.md`.
+
+Private supporting modules `stock_process.py`, `stock_compose_render.py` and
+`stock_release_publication.py` share the existing producer lease and validators;
+they do not create separate configuration, runtime authority or public CLI overrides.
 
 **Interfaces:** `prepare_source(output: Path) -> str` owns bounded clean Git archive; public `produce_release(source_sha256: str) -> Path` owns all operations and returns only after final gate. CLI accepts only source SHA. Private fixture seams replace native filesystem/socket/process/clock boundaries, not the verifier/store/controller decisions.
 

@@ -179,7 +179,8 @@ def _policy(image: str, attestation: Path) -> dict[str, Any]:
             "type": "bind",
             "source": "/var/lib/hybrid-stock-research/" + name,
             "target": "/stock-" + name,
-            "bind": {"create_host_path": False},
+            # compose-go2.9.1 omits this bool when false, retaining the Bind pointer.
+            "bind": {},
         }
         for name in ("state", "archive", "controls", "exports", "oauth")
     ]
@@ -189,7 +190,7 @@ def _policy(image: str, attestation: Path) -> dict[str, Any]:
             "source": str(attestation),
             "target": "/run/trading-bot/stock-image-attestation.json",
             "read_only": True,
-            "bind": {"create_host_path": False},
+            "bind": {},
         }
     )
     return {

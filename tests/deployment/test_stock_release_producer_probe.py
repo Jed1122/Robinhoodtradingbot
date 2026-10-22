@@ -37,7 +37,7 @@ def operation():
 
 
 @contextmanager
-def built(scenario, monkeypatch):
+def built(scenario, monkeypatch, **filesystem):
     build, _ = scenario
     state, engine, version, metadata = build
     wire = Wire([response(version), response(terminal()), response(metadata)]).install(
@@ -45,7 +45,7 @@ def built(scenario, monkeypatch):
     )
     with _shutdown() as requested:
         state = (*state[:6], requested)
-        with opened(state) as lease:
+        with opened(state, **filesystem) as lease:
             result = engine._build(lease)
             wire.join()
             assert result.image_digest.startswith("sha256:")
