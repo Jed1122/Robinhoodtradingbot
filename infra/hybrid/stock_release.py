@@ -271,7 +271,7 @@ def _validate_manifest(value: dict[str, Any], release_id: str) -> None:
     _require(value["scan_interval_seconds"] % 60 == 0)
 
 
-def _validate_observation(value: dict[str, Any], manifest: dict[str, Any]) -> None:
+def _validate_configuration_observation(value: dict[str, Any]) -> None:
     _require(
         set(value)
         == {
@@ -291,14 +291,33 @@ def _validate_observation(value: dict[str, Any], manifest: dict[str, Any]) -> No
         value["status"] == "succeeded" and value["kind"] == "stock_research_configuration_identity"
     )
     _require(type(value["schema_version"]) is int and value["schema_version"] == 1)
-    _require(value["live_enabled"] is False and value["config_hash"] == manifest["config_hash"])
-    for name in ("max_run_seconds", "scan_interval_seconds"):
-        _require(type(value[name]) is int and value[name] == manifest[name])
+    _require(value["live_enabled"] is False and _hex(value["config_hash"]))
+    _require(_integer(value["max_run_seconds"], 60, 450))
+    _require(_integer(value["scan_interval_seconds"], 900, 3600))
+    _require(value["scan_interval_seconds"] % 60 == 0)
     _require(_integer(value["max_daily_calls"], 1, 1024))
     _require(_integer(value["max_calls_per_cycle"], 1, 32))
     _require(value["max_daily_calls"] >= value["max_calls_per_cycle"])
     _require(_integer(value["maximum_source_age_seconds"], 60, 86400))
     _require(value["maximum_source_age_seconds"] % 60 == 0)
+
+
+def normalize_configuration_observation(raw: bytes) -> bytes:
+    """Normalize supplied probe output only; no image or execution provenance."""
+    try:
+        _require(type(raw) is bytes and 0 < len(raw) <= 4096)
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_constant)
+        _require(type(value) is dict)
+        _validate_configuration_observation(value)
+        return _canonical(value)
+    except (ValueError, TypeError, KeyError, OverflowError, RecursionError):
+        raise ValueError("stock_release_unavailable") from None
+
+
+def _validate_observation(value: dict[str, Any], manifest: dict[str, Any]) -> None:
+    _validate_configuration_observation(value)
+    for name in ("config_hash", "max_run_seconds", "scan_interval_seconds"):
+        _require(value[name] == manifest[name])
 
 
 def _load_release(path: Path, *, trusted_uid: int, release_root: Path) -> StockRelease:
