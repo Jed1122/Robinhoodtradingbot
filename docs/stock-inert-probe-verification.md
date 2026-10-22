@@ -52,10 +52,19 @@ namespace: Docker manages private IPC and an init-executable bind separately.
 - Ruff and strict mypy over source plus nine host modules passed (453 files).
 - Expanded Bandit over application source and the nine host modules exited zero
   with no findings; existing unused-annotation warnings remain.
+- The six-file normalizer/profile/output/release/prestart/image selection passed
+  835 checks with 99.80% combined statement/branch coverage over release, prestart
+  and the two new modules. No source changed after this check.
 
-Independent whole-increment review and the exact integrated revision's full
-repository regression remain separate pending gates at
-this checkpoint. The primary's earlier full run remains running on frozen f05dbe8;
+Fresh whole-increment review at `68ed801b2eabc3525e691c52f877d42bea66d379`
+returned READY_FOR_ROOT_ACCEPTANCE with no Critical, Important or Minor findings.
+The reviewer independently passed 835 checks and the diff check. Root retained all
+five exclusions as explicit gates: native serialization/isolation; HTTP/log/process
+completion; controller ownership/recovery/cleanup; image provenance/release production;
+and full integration/deployment/broker/live readiness. No re-review or fix was needed.
+
+The exact integrated revision's full repository regression remains pending.
+The primary's earlier full run remains running on frozen f05dbe8;
 no result is inferred for this later code. No native Docker, provider, credential,
 account, order, transfer or live operation occurred.
 

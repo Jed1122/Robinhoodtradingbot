@@ -200,7 +200,10 @@ integration occurred. See the [SEC adapter contract](sec-submissions.md).
 Follow the [operations plan](superpowers/plans/2026-10-21-stock-research-operations.md).
 The container contract freezes the resolved Compose hash preimage, hard deadline and
 termination semantics, paused installation precondition and owned orphan-container
-recovery receipt. Implement and test the root launcher and trusted release producer next.
+recovery receipt. The repeated root launcher is locally implemented; its full
+acceptance remains pending. The separate [inert probe prerequisites](stock-inert-probe-verification.md)
+are also locally checked. Implement the bounded native probe controller and trusted
+release producer next, preserving the production worker profile.
 Use a sibling stock namespace outside the dashboard's
 whole-parent state mount, and keep credentials worker-only. Never initialize or resume
 controls from the timer or launcher.

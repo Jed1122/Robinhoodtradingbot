@@ -7,6 +7,7 @@ this increment. They supply the missing configuration observation for trusted re
 production; this path is separate from the research worker.
 The product objective remains continuous individual-stock research followed by
 qualified, risk-controlled automatic investing after separate live activation.
+See the [local verification record](stock-inert-probe-verification.md).
 
 ## Scope and dependency
 
