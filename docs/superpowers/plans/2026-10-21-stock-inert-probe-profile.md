@@ -1,7 +1,8 @@
 # Inert stock configuration profile and output validation
 
-Status: planned, not implemented. Root-owned local continuation after the repeated
-research-cycle increment. No deployment, Docker mutation, image build/pull, OAuth,
+Status: Tasks 1–3 implemented locally; integrated review and full acceptance pending.
+Root-owned local continuation after the repeated research-cycle increment.
+No deployment, Docker mutation, image build/pull, OAuth,
 provider, account, order, control or live operation belongs to this plan.
 
 Spec: [inert probe boundary](../../stock-inert-probe-design.md).

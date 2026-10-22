@@ -1,8 +1,10 @@
 # Inert stock-configuration probe boundary
 
 Design checkpoint after `57c819dd24b1a881e91f2557fae91a45fefecb30`.
-This path is not implemented or native-verified. It supplies the missing configuration
-observation for trusted release production; it is separate from the research worker.
+The data-only profile and output checks are implemented locally. The native controller,
+transport, evidence production and intended-host verification are not implemented by
+this increment. They supply the missing configuration observation for trusted release
+production; this path is separate from the research worker.
 The product objective remains continuous individual-stock research followed by
 qualified, risk-controlled automatic investing after separate live activation.
 
