@@ -387,3 +387,52 @@ logs path uses16KiB and requires multiplexed content type, including valid empty
 bodies which are then invalid probe output. Shared production-worker defaults and
 routes are unchanged; this dedicated parser composes only shared bounded socket/time
 primitives, avoiding expanded authority on existing worker transports.
+
+## Controller and operator contract
+
+run_probe(image_digest) accepts only one exact sha256 immutable image ID, constructs
+fixed probes()/StockProbeEngine dependencies and installs the existing SIGINT/SIGTERM
+shared shutdown context before admission. It never initializes a missing namespace.
+The private composition seam accepts the actual held store and shared state solely
+for local integration fixtures; pure verifiers/store/transport operations are real.
+
+A fresh normal owner performs one setup/CREATE/prestart/START chain. An uncertain START
+reply may still be resolved under its original RUN only when the same session actually
+claimed START, all strict prior records remain valid, no shutdown occurred and clocks
+remain continuous. Timely actual clean exit, complete valid output and removal ACK
+remain required. No other exception reconstructs launch or successful-run authority.
+
+The controller polls fresh owned observations at most once per second without catch-up.
+Each inspection/signal operation advances one shared next-observation time; phase
+transitions cannot burst missed polls or renew fixed caps. A queued created state with
+START is nonterminal. Normal observation failure/expiry/shutdown enters cleanup once.
+Cleanup only abandons valid no-CREATE intent, discovers uncertain CREATE by exact name,
+records actual STOP, or supervises known START under its fixed TERM/KILL/final windows.
+Each signal requires its own fresh owned-running GET. Failed signal acknowledgement
+is not STOP; bounded subsequent observations are new state reads, not signal retries.
+
+If STOP already exists, recovery proceeds directly through its scoped retirement chain.
+Recovery never starts a replacement or publishes configuration. Unknown/torn state,
+name404, changed lifetime or nonterminal state after final cap remains unresolved.
+No normal or cleanup retirement/finalizer error triggers another native cleanup attempt
+in the same invocation. All original receipts remain unchanged.
+
+Normal nonclean STOP or invalid complete output closes failed after one retirement.
+Shutdown after STOP may use the existing acknowledged normal retirement/failure path;
+it does not need to burn that ACK by beginning another cleanup. Shutdown during/after
+terminal success persistence suppresses publication and does not rewrite closed bytes.
+Publication requires successful finalization, handler restoration, store-context exit
+and a final shared-shutdown check. Reconstructed closed bytes never return configuration.
+
+The CLI is python -m infra.hybrid.stock_probe_controller IMAGE_ID and exposes no flags
+or root/socket/cap/credential override. Exit0 is only fresh success; failed/recovery-only
+results use exit2, unresolved/unavailable exit1. Success emits one bounded JSON result
+with owned probe/CID/image and canonical configuration observation. Failures contain
+only safe status/reason/identifiers, never provider/daemon payloads or secret values.
+
+Task4 integration clarifies inspect_probe's optional fixed cleanup phase selector:
+TERM/KILL/FINAL maps only to that exact issued cleanup token's original10/15/20second
+cap. Normal RUN rejects a selector; no numeric deadline or extension is accepted.
+Controller monitors explicitly select their current phase, so each native read is
+shortened to that phase rather than merely to final cleanup. Unselected standalone
+cleanup inspection remains bounded by FINAL. This adds no CLI/agent setting.

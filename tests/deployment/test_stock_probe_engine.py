@@ -769,3 +769,44 @@ def test_content_length_without_final_eof_does_not_acknowledge_create(scenario, 
         client.close()
         thread.join(timeout=2)
         assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("phase", ["TERM", "KILL", "FINAL"])
+def test_cleanup_inspection_selects_only_fixed_original_phase_cap(scenario, monkeypatch, phase):
+    from test_stock_probe_cleanup import cleanup, running, started
+
+    api = module()
+    with opened(scenario) as store:
+        target = started(store, scenario)
+        token = cleanup(store)
+        wire = Wire([response(200, encoded(running(target)))]).install(monkeypatch, api)
+        original = api._deadline
+        caps = []
+
+        def capture(cap):
+            caps.append(cap)
+            return original(cap)
+
+        monkeypatch.setattr(api, "_deadline", capture)
+        api.StockProbeEngine().inspect_probe(store, cleanup=token, phase=phase)
+        expected = {
+            "TERM": token.term_deadline_ns,
+            "KILL": token.kill_deadline_ns,
+            "FINAL": token.final_deadline_ns,
+        }[phase]
+        assert caps == [expected]
+        wire.join()
+
+
+@pytest.mark.parametrize("phase", ["RUN", "later", "", 123, True])
+def test_unknown_or_numeric_cleanup_phase_cannot_extend_any_exchange(scenario, monkeypatch, phase):
+    from test_stock_probe_cleanup import cleanup, started
+
+    api = module()
+    wire = Wire([]).install(monkeypatch, api)
+    with opened(scenario) as store:
+        started(store, scenario)
+        token = cleanup(store)
+        with pytest.raises(ValueError):
+            api.StockProbeEngine().inspect_probe(store, cleanup=token, phase=phase)
+        assert not wire.threads

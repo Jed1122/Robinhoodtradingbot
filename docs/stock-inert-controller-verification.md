@@ -2,7 +2,7 @@
 
 The individual-stock product remains continuous research, qualified selection and
 risk-controlled automatic investing after separate explicit live activation. The
-new controller is **partial and not deployable**. No native container, broker,
+new controller is **implemented locally and not deployment-ready**. No native container, broker,
 credential, account, order or deployment operation was performed in this increment.
 
 ## Implemented and verified locally
@@ -30,12 +30,13 @@ exact session evidence identity and crash/clock/durability tests. The actual tra
 must still establish scoped HTTP status/body/EOF before minting private evidence;
 the tests use fictional wire evidence. Fixed Engine operations now implement metadata,
 CREATE/CID, strict prestart, START, scoped polling/discovery/signals, finite logs and
-non-force retirement. Supervision/CLI, whole-increment review and this controller's
+non-force retirement. Controller supervision and a fixed-image CLI now compose the
+actual store/verifiers/transports. Whole-increment review and this controller's
 actual full regression are pending.
 
 ## Actual verification
 
-The current local deployment/architecture regression passed **2,863 tests in48.99
+The current local deployment/architecture regression passed **2,923 tests in48.08
 seconds**, with four optional local-age checks skipped. The terminal-writer group
 passed94 checks in7.25seconds. Task2's final acceptance passed1,016store checks
 in16.98seconds at100% statement/branch coverage; the observer separately reached
@@ -48,12 +49,26 @@ These include partial-send/disconnection and
 complete Content-Length without final EOF, one shared signal-exchange budget and
 no retry after ambiguous CREATE/START. Existing worker transport files are unchanged.
 
+The current controller/transport candidate passed123checks in11.75seconds at96.96%
+combined statement/branch coverage (controller94%, transport100%). These use actual
+files, verifiers, store and HTTP transport with fictional socket/clock/root boundaries.
+Task4's final acceptance rerun is next. They include repeated shutdown, original
+cleanup windows, old-boot recovery, ambiguous acknowledgements, queued-created states,
+handler/store-context failure and suppression of publication during terminal fsync.
+
+Integration exposed a cleanup poll using the final cap during TERM/KILL. Root observed
+the failing phase-budget test before adding fixed TERM/KILL/FINAL selectors derived
+only from the existing cleanup token. Normal RUN rejects a selector and no numeric
+deadline override exists. The same integration test then passed. A successor fixture
+also required Docker's CID-derived hostname to change along with its fictional CID;
+only that fixture was corrected, with no relaxed prestart policy.
+
 The127-predecessor successor-admission test used an actual advancing local monotonic
 clock and completed its observed setup in2.248seconds without extending the20second
 setup or5secondCREATE cap. This local fictional-history test does not qualify host
 capacity or native exchange timing.
 
-Ruff passed. Strict mypy passed459 source files including the stock host modules.
+Ruff passed. Strict mypy passed460 source files including the stock host modules.
 The dependency lock check and diff check passed. Bandit over src plus the stock
 host modules reported no findings. The broader scan of every infra/hybrid script
 reported12 inherited Low findings in unchanged prepare.py/watchdog.py; these were
@@ -74,8 +89,10 @@ certify these later controller changes.
 
 ## Next required work
 
-Implement controller supervision/CLI, then obtain one fresh whole-increment review and run
-revision-specific integrated checks. Preserve the running primary full unchanged.
+Complete Task4 acceptance, obtain one fresh whole-increment review and run the actual
+source-specific full once the earlier primary full terminates. Preserve that running
+primary full unchanged. See [operator interface](stock-inert-controller-operations.md)
+for the fixed roots, outputs, incident handling and remaining native gates.
 
 Only afterward perform an actual credential-free intended-host probe. Source/image
 provenance, trusted release production, paused installation, OAuth ownership and

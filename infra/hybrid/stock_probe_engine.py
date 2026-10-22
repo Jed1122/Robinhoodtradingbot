@@ -282,7 +282,9 @@ class StockProbeEngine:
         except _ERRORS:
             _deny()
 
-    def inspect_probe(self, store: ProbeStore, *, cleanup: ProbeCleanup | None = None) -> bytes:
+    def inspect_probe(
+        self, store: ProbeStore, *, cleanup: ProbeCleanup | None = None, phase: str | None = None
+    ) -> bytes:
         try:
             _production_store(store)
             node = store._phase_node(cleanup)
@@ -290,10 +292,19 @@ class StockProbeEngine:
             if target.container_id is None:
                 _deny()
             if cleanup is None:
+                _require(phase is None)
                 _require(store._start_dispatched and target.run_deadline_ns is not None)
                 boot, cap = target.boot_id, cast(int, target.run_deadline_ns)
             else:
-                boot, cap = cleanup.boot_id, cleanup.final_deadline_ns
+                _require(
+                    phase is None or (type(phase) is str and phase in ("TERM", "KILL", "FINAL"))
+                )
+                cap = {
+                    "TERM": cleanup.term_deadline_ns,
+                    "KILL": cleanup.kill_deadline_ns,
+                    "FINAL": cleanup.final_deadline_ns,
+                }["FINAL" if phase is None else phase]
+                boot = cleanup.boot_id
 
             def check() -> None:
                 current = store._phase_node(cleanup)
