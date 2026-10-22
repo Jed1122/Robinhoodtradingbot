@@ -45,6 +45,10 @@ probe labels, Linux platform, restart count zero, no auto-remove and restart pol
 Accept only a closed exact State schema with correct scalar types and consistent
 created/running/exited/dead facts, PID and lifetime timestamps. Unknown, paused,
 restarting or removing states deny. Do not expose raw error text; retain error presence.
+Native created status follows zero StartedAt, including a failed start with a nonzero
+FinishedAt/exit/error. Running may retain an older FinishedAt. Preserve exact native
+wall-clock timestamps for cleanup even if clocks step; chronological ordering belongs
+to success qualification, not to minimal scoped cleanup ownership.
 
 This minimal ownership observation supports cleanup of an owned never-started probe
 even when the full prestart policy comparison failed. It never substitutes for that
@@ -153,3 +157,6 @@ Successful output is a configuration observation bound to one actual inert probe
 It does not establish build/source provenance, a research worker, OAuth lifecycle,
 scheduled operation, qualified market data/strategy, broker reconciliation or live
 authorization. Root producer, paused installation and intended-host proof follow.
+
+Pinned native state reference: [Moby 29 state implementation](https://github.com/moby/moby/blob/d105562beff448ae44d6e3a2f7738b235fd197b5/daemon/container/state.go).
+This is source evidence, not intended-host lifecycle verification.
