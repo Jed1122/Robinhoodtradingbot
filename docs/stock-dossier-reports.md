@@ -23,7 +23,7 @@ repeat `--additional-capture ROOT MANIFEST` up to twice. The Python publisher ac
 the same ordered references as `additional_captures=((Path(...), manifest), ...)`.
 It validates every input before reading, opens distinct private canonical directories
 with the existing no-symlink guards, holds nonblocking archive leases, and rehashes
-every manifest and committed observation. Combined input remains bounded to32
+every manifest and committed observation. Combined input remains bounded to 32
 observations. Duplicate receipts, altered/missing inputs or an owned additional
 archive prevent publication. A worker-owned primary directory handle is borrowed
 without relocking it; additional captures still require their own leases.
@@ -57,7 +57,7 @@ the technical summary. Raw close-times-volume is a proxy; currency, corporate ac
 and actual exchange-session coverage remain unverified. No predictive score or
 strategy eligibility follows from these descriptions.
 
-Visible native catalog/fact observations select schema version3. The report binds
+Visible native catalog/fact observations select schema version 3. The report binds
 one unambiguous exact index/catalog/facts chain per requested filing ID, preserving
 native rows, reported units, value states, receipt availability and evidence hashes
 inside the matched company's `filing_evidence`. Missing, ambiguous or contradictory
@@ -65,7 +65,7 @@ chains appear in `filing_evidence_denials` with fixed reason codes and receipt h
 When several index collections claim one company, all its index collections are
 withheld from the join rather than selecting a vintage; independent company and
 fundamental observations survive. No-new-source reports remain byte-identical
-schema2, including legacy dossier hashes. Future catalog/fact receipts do not change
+schema 2, including legacy dossier hashes. Future catalog/fact receipts do not change
 that schema selection. Unit/entity semantics, source qualification and strategy
 eligibility remain unresolved; filing facts do not become a buy score.
 

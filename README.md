@@ -9,10 +9,10 @@ separate research and benchmark work; they do not define the stock universe.
 
 The stock collector screens companies for quality, growth and valuation, retains
 source-backed company dossiers, and enforces call budgets and independent collector
-controls. The latest verified filing integration joined27 retained observations into
-10 company dossiers, including20 exact-filing facts for one company, with no binding
+controls. The latest verified filing integration joined 27 retained observations into
+10 company dossiers, including 20 exact-filing facts for one company, with no binding
 or normalization denials. The dashboard now fetches connected visible snapshots
-every30seconds. These are research capabilities, not evidence of investment merit
+every 30 seconds. These are research capabilities, not evidence of investment merit
 or verified continuous production operation. No live order path is enabled.
 
 See [filing integration and verification](docs/stock-filing-dossier-verification.md),
@@ -20,7 +20,7 @@ See [filing integration and verification](docs/stock-filing-dossier-verification
 [remaining repeated-worker work](docs/stock-repeated-cycle-design.md). Next work
 connects filing refreshes to durable scheduled collection and the shortlist, then
 validates stock policy inputs and risk-gated order proposals. Research can conclude
-that no purchase is justified. There is no fixed60-day paper waiting requirement;
+that no purchase is justified. There is no fixed 60-day paper waiting requirement;
 validation, reconciliation, risk controls and explicit live authorization still apply.
 
 ## Existing foundation

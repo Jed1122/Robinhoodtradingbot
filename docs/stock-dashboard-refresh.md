@@ -57,15 +57,15 @@ not prove continuous collector operation or qualify an investment strategy.
 
 ## Root integration and rendered check
 
-Root reviewed every changed file and integrated candidate5504be75 as
-`35a07439c36dd4b5a5ec3b2a09a71f1d05e7e62d`. Independent local reruns passed all67
+Root reviewed every changed file and integrated candidate 5504be75 as
+`35a07439c36dd4b5a5ec3b2a09a71f1d05e7e62d`. Independent local reruns passed all 67
 dashboard tests and the TypeScript/Vite production build. No backend source changed;
-the separately verified filing backend remains source0914482.
+the separately verified filing backend remains source 0914482.
 
 The rendered flow was manual connection -> Research -> automatic GET -> updated
 fictional stock score -> disconnect -> reconnect -> authorization denial stops
 polling. Existing Playwright/Chromium checked the built app at
-`http://127.0.0.1:5191/` at1440x1000 and390x844. Browser plugin was unavailable;
+`http://127.0.0.1:5191/` at 1440x1000 and 390x844. Browser plugin was unavailable;
 the already installed Playwright runtime was used without installing dependencies.
 This test used fictional API responses and a virtual browser clock, not a timed
 production trial or a broker connection.
@@ -74,9 +74,9 @@ production trial or a broker connection.
 | --- | --- |
 | Intended URL/title and meaningful content | Passed both viewports |
 | Framework error overlay | None |
-| Relevant console errors/warnings | None; expected fixture401 was checked separately |
-|30-second GET updates rendered score | Passed |
-| No preconnection requests; disconnect and401 stop polling | Passed |
+| Relevant console errors/warnings | None; expected fixture 401 was checked separately |
+| 30-second GET updates rendered score | Passed |
+| No preconnection requests; disconnect and 401 stop polling | Passed |
 | Automatic control requests | Zero |
 | Browser credential storage | Empty local/session storage |
 | Layout width and screenshots | No document overflow; both viewports inspected |
