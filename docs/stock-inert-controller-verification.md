@@ -41,8 +41,10 @@ passed94 checks in7.25seconds. Task2's final acceptance passed1,016store checks
 in16.98seconds at100% statement/branch coverage; the observer separately reached
 100% in its611-check regression. These are fictional filesystem/wire observations,
 not native Docker or broker evidence. Tasks1and2 are complete locally. The63transport
-checks passed in3.21seconds with100% statement/branch coverage over the new transport;
-Task3's final acceptance rerun is next. These include partial-send/disconnection and
+checks passed in3.21seconds with100% statement/branch coverage over the new transport.
+Task3's actual acceptance passed394transport/worker/terminal checks in19.35seconds,
+again at100% transport statement/branch coverage. Tasks1through3 are complete locally.
+These include partial-send/disconnection and
 complete Content-Length without final EOF, one shared signal-exchange budget and
 no retry after ambiguous CREATE/START. Existing worker transport files are unchanged.
 
@@ -72,8 +74,7 @@ certify these later controller changes.
 
 ## Next required work
 
-Complete Task3's acceptance rerun, implement controller supervision/CLI, then obtain
-one fresh whole-increment review and run
+Implement controller supervision/CLI, then obtain one fresh whole-increment review and run
 revision-specific integrated checks. Preserve the running primary full unchanged.
 
 Only afterward perform an actual credential-free intended-host probe. Source/image
