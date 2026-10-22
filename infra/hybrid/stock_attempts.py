@@ -1220,6 +1220,18 @@ class AttemptStore:
             _require(type(fence) is RemovalFence and self._removal_fence is fence)
             self._check_removal(fence)
 
+    def check_removal_observation(self, fence: RemovalFence, raw: bytes) -> None:
+        """Bind a fresh stopped observation to the retained predecessor lifetime."""
+        with _sanitized():
+            self.check_removal_fence(fence)
+            target = self._history()[fence.target_attempt_id]
+            _require(target.stopped_sha256 == fence.target_stopped_sha256)
+            facts = _stopped(raw, target.attempt, fence.target_container_id)
+            with self._attempt_directory(target.attempt.attempt_id) as directory:
+                retained = self._receipt(directory, "stopped.json", target.attempt)
+                _require(_exact({key: retained[key] for key in facts}, facts))
+            self.check_removal_fence(fence)
+
     def record_removed(self, fence: RemovalFence, proof: RetirementProof) -> None:
         with _sanitized():
             issued = self._removal_fence

@@ -64,6 +64,9 @@ def opened(scenario):
 
 def started(store, scenario):
     intent = store.begin(scenario[2])
+    claim = store.claim_create(scenario[2])
+    fence = store.prepare_create(claim, "a" * 64, scenario[1]["monotonic_ns"] + 5000000000)
+    store.check_create_fence(fence)
     store.record_created(
         CreatedContainer(CID, intent.attempt_id, RELEASE, IMAGE, "c" * 64, intent.compose_sha256)
     )

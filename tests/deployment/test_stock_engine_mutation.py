@@ -44,7 +44,12 @@ def scenario(tmp_path, monkeypatch):
         "utc": "2026-10-21T21:00:00+00:00",
         "monotonic_ns": time.monotonic_ns(),
     }
-    monkeypatch.setattr(stock_attempts, "_clock", lambda: clock.copy())
+    initial_ns = clock["monotonic_ns"]
+    monkeypatch.setattr(
+        stock_attempts,
+        "_clock",
+        lambda: {**clock, "monotonic_ns": time.monotonic_ns() + clock["monotonic_ns"] - initial_ns},
+    )
     # Only this fictional test substitutes the production fixed-root guard.
     monkeypatch.setattr(api, "_production_store", lambda store: None)
     attestation = RELEASE_ROOT / RELEASE / "runtime-image-attestation.json"
@@ -95,6 +100,14 @@ def opened(scenario):
 
 def verified(intent):
     return CreatedContainer(CID, intent.attempt_id, RELEASE, IMAGE, "c" * 64, intent.compose_sha256)
+
+
+def prepare_dispatch(store, release):
+    claim = store.claim_create(release)
+    now = stock_attempts._clock()["monotonic_ns"]
+    fence = store.prepare_create(claim, "a" * 64, now + 5000000000)
+    store.check_create_fence(fence)
+    return fence
 
 
 def response(status, body=b"", *, length=True):
@@ -181,13 +194,19 @@ def test_create_derives_exact_name_and_policy_body_without_start_or_cid_receipt(
             ).encode()
         )
         assert body == worker_request(release, image, intent.attempt_id)
-        assert set(path.name for path in (root / intent.attempt_id).iterdir()) == {"intent.json"}
+        assert set(path.name for path in (root / intent.attempt_id).iterdir()) == {
+            "intent.json",
+            "create.json",
+        }
+        create = json.loads((root / intent.attempt_id / "create.json").read_bytes())
+        assert create["request_sha256"] == hashlib.sha256(body).hexdigest()
 
 
 def test_start_derives_issued_fence_and_does_not_claim_completion(scenario, monkeypatch):
     _, root, _, release, _ = scenario
     with opened(scenario) as store:
         intent = store.begin(release)
+        prepare_dispatch(store, release)
         store.record_created(verified(intent))
         fence, requests = exchange(monkeypatch, scenario, store, response(204), operation="start")
         assert fence.container_id == CID and fence.attempt_id == intent.attempt_id
@@ -209,6 +228,7 @@ def test_dispatch_is_one_use_across_transport_objects_even_after_lost_ack(
     with opened(scenario) as store:
         intent = store.begin(release)
         if operation == "start":
+            prepare_dispatch(store, release)
             store.record_created(verified(intent))
         reply = (
             (
@@ -275,6 +295,7 @@ def test_start_requires_fresh_204_and_empty_response(scenario, monkeypatch, repl
     _, _, _, release, _ = scenario
     with opened(scenario) as store:
         intent = store.begin(release)
+        prepare_dispatch(store, release)
         store.record_created(verified(intent))
         with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
             exchange(monkeypatch, scenario, store, reply, operation="start")
@@ -284,6 +305,7 @@ def test_connection_delay_cannot_extend_fence_or_send_expired_start(scenario, mo
     _, _, clock, release, _ = scenario
     with opened(scenario) as store:
         intent = store.begin(release)
+        prepare_dispatch(store, release)
         store.record_created(verified(intent))
 
         def expire():
@@ -332,6 +354,7 @@ def test_connect_and_partial_send_errors_never_refund_the_dispatch(
     with opened(scenario) as store:
         intent = store.begin(release)
         if operation == "start":
+            prepare_dispatch(store, release)
             store.record_created(verified(intent))
         monkeypatch.setattr(api, "_connection", lambda deadline: PartialPeer())
         for _ in range(2):
@@ -357,6 +380,7 @@ def test_failed_connection_consumes_permission_without_retry(scenario, monkeypat
     with opened(scenario) as store:
         intent = store.begin(release)
         if operation == "start":
+            prepare_dispatch(store, release)
             store.record_created(verified(intent))
         monkeypatch.setattr(api, "_connection", unavailable)
         for _ in range(2):
@@ -375,6 +399,7 @@ def test_failed_receipt_flush_sends_no_start_bytes(scenario, monkeypatch, stage)
     with opened(scenario) as store:
         intent = store.begin(release)
         monkeypatch.setattr(api, "_connection", lambda deadline: pytest.fail("Socket opened"))
+        prepare_dispatch(store, release)
         if stage == "start":
             store.record_created(verified(intent))
         with monkeypatch.context() as scoped:
@@ -398,6 +423,7 @@ def test_reopened_and_closed_stores_cannot_dispatch(scenario, monkeypatch, opera
     with opened(scenario) as store:
         intent = store.begin(release)
         if operation == "start":
+            prepare_dispatch(store, release)
             store.record_created(verified(intent))
     with opened(scenario) as recovered:
         for candidate in (store, recovered):
@@ -422,6 +448,7 @@ def test_start_exchange_rejects_caller_release_or_image_overrides(scenario, monk
     api, _, _, release, image = scenario
     with opened(scenario) as store:
         intent = store.begin(release)
+        prepare_dispatch(store, release)
         store.record_created(verified(intent))
         monkeypatch.setattr(api, "_connection", lambda deadline: pytest.fail("Socket opened"))
         with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
@@ -446,6 +473,7 @@ def test_final_namespace_check_blocks_send_after_connection(scenario, monkeypatc
     with opened(scenario) as store:
         intent = store.begin(release)
         if phase == "start":
+            prepare_dispatch(store, release)
             store.record_created(verified(intent))
         monkeypatch.setattr(api, "_connection", lambda deadline: NoSendPeer())
         with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
@@ -462,6 +490,7 @@ def test_one_absolute_io_budget_includes_connection_delay(scenario, monkeypatch,
     with opened(scenario) as store:
         intent = store.begin(release)
         if operation == "start":
+            prepare_dispatch(store, release)
             store.record_created(verified(intent))
         with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
             exchange(
@@ -574,6 +603,7 @@ def test_extra_response_bytes_in_a_later_read_deny_acknowledgement(
     with opened(scenario) as store:
         intent = store.begin(release)
         if operation == "start":
+            prepare_dispatch(store, release)
             store.record_created(verified(intent))
         monkeypatch.setattr(api, "_connection", lambda deadline: SegmentedPeer())
         with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
@@ -608,10 +638,53 @@ def test_slow_response_cannot_renew_the_absolute_io_budget(scenario, monkeypatch
             return chunks.pop(0)
 
     with opened(scenario) as store:
-        store.begin(release)
         with monkeypatch.context() as scoped:
             scoped.setattr(api.time, "monotonic", lambda: tick["now"])
+            scoped.setattr(
+                stock_attempts,
+                "_clock",
+                lambda: {
+                    "boot_id": BOOT,
+                    "utc": "2026-10-21T21:00:00+00:00",
+                    "monotonic_ns": int(tick["now"] * 1000000000),
+                },
+            )
+            store.begin(release)
             scoped.setattr(api, "_connection", lambda deadline: SlowPeer())
             with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
                 api.StockEngineMutator().create_worker(store, release, image)
         assert len(received) == 1 and tick["now"] == 1006
+
+
+def test_create_fence_is_acknowledged_before_connecting_or_sending(scenario, monkeypatch):
+    _, root, _, release, image = scenario
+    with opened(scenario) as store:
+        attempt = store.begin(release)
+
+        def require_fence():
+            path = root / attempt.attempt_id / "create.json"
+            assert path.exists(), "Transport must durably fence CREATE before socket acquisition"
+            value = json.loads(path.read_bytes())
+            expected_body = worker_request(release, image, attempt.attempt_id)
+            assert value["request_sha256"] == hashlib.sha256(expected_body).hexdigest()
+
+        result, requests = exchange(
+            monkeypatch,
+            scenario,
+            store,
+            response(201, encoded({"Id": CID, "Warnings": []})),
+            on_connect=require_fence,
+        )
+        assert result == CID and len(requests) == 1
+
+
+def test_create_fence_flush_failure_sends_no_request(scenario, monkeypatch):
+    api, _, _, release, image = scenario
+    with opened(scenario) as store:
+        store.begin(release)
+        monkeypatch.setattr(api, "_connection", lambda deadline: pytest.fail("Socket opened"))
+        monkeypatch.setattr(
+            stock_attempts.os, "fsync", lambda fd: (_ for _ in ()).throw(OSError("fictional"))
+        )
+        with pytest.raises(ValueError, match=r"^stock_engine_mutation_unavailable$"):
+            api.StockEngineMutator().create_worker(store, release, image)

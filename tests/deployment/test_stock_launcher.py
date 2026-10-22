@@ -1,5 +1,6 @@
 """First-attempt integration through real receipts/supervision, fictional daemon only."""
 
+import hashlib
 import importlib
 import json
 import os
@@ -12,7 +13,7 @@ from test_stock_prestart import policy as policy
 
 from infra.hybrid import stock_attempts, stock_supervisor
 from infra.hybrid.stock_engine_mutation import _production_store
-from infra.hybrid.stock_prestart import CreatedContainer
+from infra.hybrid.stock_prestart import CreatedContainer, worker_request
 
 NS = 1_000_000_000
 BOOT = "11111111-2222-4333-8444-555555555555"
@@ -104,7 +105,11 @@ class Daemon:
     def create_worker(self, store, release, profile):
         self.store = store
         claim = store.claim_create(release)
-        store.check_create_claim(claim)
+        body = worker_request(release, profile, claim.attempt_id)
+        fence = store.prepare_create(
+            claim, hashlib.sha256(body).hexdigest(), self.clock["monotonic_ns"] + 5 * NS
+        )
+        store.check_create_fence(fence)
         assert release is self.policy[0] and profile.image_digest == IMAGE
         self.event("create")
         return CID
@@ -184,6 +189,9 @@ def test_every_nonempty_namespace_denies_without_release_or_daemon_work(scenario
     with opened(scenario) as store:
         store.begin(daemon.policy[0])
         if state != "intent":
+            claim = store.claim_create(daemon.policy[0])
+            fence = store.prepare_create(claim, "a" * 64, daemon.clock["monotonic_ns"] + 5 * NS)
+            store.check_create_fence(fence)
             store.record_created(verified(store))
         if state == "fenced":
             store.prepare_start()

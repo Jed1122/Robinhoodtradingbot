@@ -59,10 +59,17 @@ def opened(scenario):
 
 def started(store, scenario):
     intent = store.begin(scenario[2])
+    dispatch_prepared(store, scenario)
     store.record_created(
         CreatedContainer(CID, intent.attempt_id, RELEASE, IMAGE, "c" * 64, intent.compose_sha256)
     )
     return intent, store.prepare_start()
+
+
+def dispatch_prepared(store, scenario):
+    claim = store.claim_create(scenario[2])
+    fence = store.prepare_create(claim, "a" * 64, scenario[1]["monotonic_ns"] + 5 * NS)
+    store.check_create_fence(fence)
 
 
 def observation(intent, *, status="running", exit_code=0, oom=False, error=""):
@@ -351,6 +358,7 @@ def test_missing_or_pending_start_state_cannot_become_terminal_authority(
         if stage != "empty":
             intent = store.begin(scenario[2])
             if stage != "intent":
+                dispatch_prepared(store, scenario)
                 store.record_created(
                     CreatedContainer(
                         CID, intent.attempt_id, RELEASE, IMAGE, "c" * 64, intent.compose_sha256

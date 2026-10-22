@@ -7,6 +7,7 @@ container-policy verification, observed termination nor successful research.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import socket
@@ -57,7 +58,7 @@ def _production_store(store: AttemptStore) -> None:
     _require(store._root == OPERATIONS_ROOT and store._uid == 0)
 
 
-def _response(peer: socket.socket, deadline: float, expected: int) -> bytes:
+def _response_status(peer: socket.socket, deadline: float, expected: set[int]) -> tuple[int, bytes]:
     buffered = b""
     while b"\r\n\r\n" not in buffered:
         _require(len(buffered) < _HEAD_LIMIT)
@@ -69,7 +70,8 @@ def _response(peer: socket.socket, deadline: float, expected: int) -> bytes:
     status = re.fullmatch(rb"HTTP/1\.[01] ([0-9]{3})(?: [\x20-\x7e]*)?", lines[0])
     if status is None:
         _deny()
-    _require(int(status[1]) == expected)
+    code = int(status[1])
+    _require(code in expected)
     headers: dict[str, str] = {}
     for line in lines[1:]:
         name, separator, value = line.partition(b":")
@@ -79,14 +81,18 @@ def _response(peer: socket.socket, deadline: float, expected: int) -> bytes:
         _require(key not in headers)
         headers[key] = value.decode("ascii").strip(" \t")
     _require("transfer-encoding" not in headers)
-    if expected == 204:
+    if code == 204:
         _require(headers.get("content-length", "0") == "0" and not initial)
         body = b""
     else:
         body = _body(peer, deadline, headers, initial)
     # HTTP/1.0 + Connection:close: even a delayed extra body byte denies acknowledgement.
     _require(not _receive(peer, deadline, 1))
-    return body
+    return code, body
+
+
+def _response(peer: socket.socket, deadline: float, expected: int) -> bytes:
+    return _response_status(peer, deadline, {expected})[1]
 
 
 class StockEngineMutator:
@@ -104,6 +110,7 @@ class StockEngineMutator:
             _require(type(operation) is str and operation in {"create", "start"})
             deadline = time.monotonic() + _IO_SECONDS
             fence = None
+            create_fence = None
             if operation == "create":
                 _require(type(release) is StockRelease and type(image) is ImageProfile)
                 scoped_release, scoped_image = (
@@ -112,6 +119,9 @@ class StockEngineMutator:
                 )
                 claim = store.claim_create(scoped_release)
                 body = worker_request(scoped_release, scoped_image, claim.attempt_id)
+                create_fence = store.prepare_create(
+                    claim, hashlib.sha256(body).hexdigest(), int(deadline * 1000000000)
+                )
                 path = (
                     "/v"
                     + API_VERSION
@@ -133,7 +143,9 @@ class StockEngineMutator:
             _remaining(deadline)
             with _connection(deadline) as peer:
                 if fence is None:
-                    store.check_create_claim(claim)
+                    if create_fence is None:
+                        _deny()
+                    store.check_create_fence(create_fence)
                 else:
                     store.check_start_fence(fence)
                 peer.settimeout(_remaining(deadline))
