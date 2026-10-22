@@ -182,3 +182,32 @@ Filesystem primitives do not assert transport provenance or durability merely fr
 readable bytes. They sanitize all operational failures and never repair a partial
 namespace. While lifecycle/lineage code is incomplete, the namespace opener admits
 only the initialized empty layout. No runnable controller uses this foundation.
+
+Receipt field spellings are frozen as follows (common fields above are implicit):
+
+| .json basename | Exact additional fields |
+| --- | --- |
+| intent | profile_version, image_digest, engine_sha256, engine_size, image_sha256, image_size, request_sha256, request_size, setup_started_ns, setup_deadline_ns, predecessor_probe_id, predecessor_closed_sha256 |
+| create | request_sha256, dispatch_deadline_ns |
+| cid | create_sha256, container_id, evidence_kind, observation_sha256, observation_size |
+| created | cid_sha256, prestart_sha256, prestart_size |
+| start | created_sha256, container_id, run_deadline_ns |
+| stopped | container_id, start_sha256, inspection_sha256, inspection_size, status, exit_code, oom_killed, error_present, container_started_at, container_finished_at |
+| output | stopped_sha256, framed_sha256, framed_size, status, canonical_sha256, canonical_size |
+| removal-intent | container_id, stopped_sha256, retirement_deadline_ns |
+| removed | removal_intent_sha256, evidence_kind |
+| closed | outcome, reason, output_sha256, removed_sha256 |
+
+CID evidence is either create_response (original create-response.bin, at most4KiB)
+or name_inspection (original discovery.bin, at most1MiB). The latter is recovery-only:
+a lost CREATE response cannot be reconstructed from a name lookup, and name inspection
+never permits START. Both retain the original observation and its hash/size. This
+explicit variant reconciles the CID schema with the recovery row above.
+
+Safe closed reasons are completed, abandoned_before_create, setup_failed,
+prestart_failed, start_uncertain, process_failed, run_expired, shutdown,
+invalid_output and recovery. Success requires reason completed and nonnull output/
+removed hashes. Failed outcomes require a non-completed, non-abandonment reason and
+removed hash. Abandonment has no output/removed references and its own reason only.
+Individual record validity never establishes cross-record lineage, acknowledged
+transport/durability, normal ownership or permission to publish success.
