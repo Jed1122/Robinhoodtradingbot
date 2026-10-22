@@ -65,16 +65,41 @@ receipts and recovery remain necessary. Shutdown never authorizes another launch
 
 Store TDD passed 150 tests. Store, mutation, retirement, supervisor, termination and
 legacy first-attempt tests passed 394 checks at the Task 2 checkpoint. The combined
-new cycle and shutdown increment passed 417 checks, including 21 composition tests
+new cycle and shutdown increment initially passed 417 checks, including 21 composition tests
 using real temporary manifest files, actual persistence/verifiers/transports and a
 fictional Engine wire. They cover three successive runs, admission/CID/START/STOP
 write failures, lost CREATE/DELETE/START acknowledgements, typed absence, shutdown,
 legacy denial and manifest-directory rejection. No native Docker or broker action
-occurs in these tests. Integrated review and revision-specific full regression are
-separate acceptance gates, still pending at this checkpoint.
-The broader stock deployment, architecture, worker configuration/CLI and persistent
-worker selection passed 1028 checks. Ruff, mypy over application source and the five
-affected host modules, expanded Bandit and the dependency-lock check also passed.
+occurs in these tests.
+
+The independent whole-increment review found one Important issue: repeated complete
+receipt reads could exhaust fixed dispatch and termination budgets as history grew.
+Root reproduced the issue, observed three failing regressions, and fixed it without
+changing deadlines. The store reuses already validated file contents only within
+the same held-lock context, while every named file retains its checked device,
+inode, mode, owner, group, link count, size, modification time and change time.
+Changed metadata forces the original strict content validation. Complete inventory,
+lineage and historical CID checks still run; the cache grants no acknowledgement or
+execution authority. A changed-ancestor regression confirms rejection remains active.
+
+After that fix, the seven focused modules passed 421 checks with 95.45% combined
+branch coverage across the five affected host modules. The broader stock deployment,
+architecture, worker configuration/CLI and persistent worker selection passed 1032
+checks. Ruff, mypy over application source and the five affected host modules,
+expanded Bandit and the dependency-lock check also passed. The review's one finding
+has a root RED/GREEN fix; there was no second review. Revision-specific full
+repository regression remains a separate pending gate.
+
+Actual wall-clock probes on the development host used complete valid fictional
+histories and the real store, with only the root guard and signal wire replaced.
+They measured CREATE claim, durable preparation and final fence check within the
+unchanged five-second budget: 2.232 seconds after 4096 retained attempts and 4.678
+seconds after 8191. At 6000 attempts, TERM and KILL each sent their actual fictional
+GET and POST in 1.421 and 1.335 seconds; at the maximum 8192 attempts they took 1.931
+and 2.001 seconds. These are local observations, not native-host timing guarantees.
+The upper CREATE case leaves little headroom; intended-host capacity thresholds and
+cleanup headroom must be verified before scheduled operation. No deadline was renewed,
+no record was pruned, and no native Engine or broker request was made by these probes.
 
 The fixed-root command is:
 

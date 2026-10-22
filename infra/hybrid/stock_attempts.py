@@ -501,6 +501,9 @@ class AttemptStore:
         # The opener classifies the checked entry state before exposing this store.
         self._entry_unfinished = True
         self._entry_terminal: tuple[str, str, str, str] | None = None
+        # Per-lock content validation, usable only while every named file retains
+        # its checked inode/owner/mode/links/size/mtime/ctime. Never an authority.
+        self._snapshots: dict[str, tuple[AttemptSnapshot, dict[str, tuple[int, ...]]]] = {}
 
     def _validate(self) -> None:
         _require(not self._closed and os.geteuid() == self._uid)
@@ -699,6 +702,13 @@ class AttemptStore:
         with self._attempt_directory(attempt.attempt_id) as directory:
             names = set(os.listdir(directory))
             _require(attempt.schema_version == 2 or names.issubset(_V1_FILES))
+            stamps = {
+                name: _fingerprint(os.stat(name, dir_fd=directory, follow_symlinks=False))
+                for name in names
+            }
+            cached = self._snapshots.get(attempt.attempt_id)
+            if cached is not None and cached[0].attempt == attempt and cached[1] == stamps:
+                return cached[0]
             created = self._created_and_start(directory, attempt)
             receipts = {
                 name: self._receipt(directory, name, attempt) for name in names - {"intent.json"}
@@ -740,7 +750,7 @@ class AttemptStore:
                         )
                     )
                     _require(abandoned["removed_sha256"] == hashes.get("removed.json"))
-            return AttemptSnapshot(
+            result = AttemptSnapshot(
                 attempt,
                 container_id,
                 fence,
@@ -752,6 +762,15 @@ class AttemptStore:
                 hashes.get("removed.json"),
                 hashes.get("abandoned.json"),
             )
+            _require(
+                stamps
+                == {
+                    name: _fingerprint(os.stat(name, dir_fd=directory, follow_symlinks=False))
+                    for name in set(os.listdir(directory))
+                }
+            )
+            self._snapshots[attempt.attempt_id] = (result, stamps)
+            return result
 
     def _history(self) -> dict[str, AttemptSnapshot]:
         active = self._active()
@@ -761,14 +780,26 @@ class AttemptStore:
         cids = set()
         for attempt_id in self._inventory():
             with self._attempt_directory(attempt_id) as directory:
-                value, digest = _read(directory, "intent.json", self._uid)
-            attempt = _intent(
-                value,
-                digest,
-                self._namespace["namespace_id"],
-                attempt_id,
-                self._namespace["schema_version"],
-            )
+                stamp = _fingerprint(
+                    os.stat("intent.json", dir_fd=directory, follow_symlinks=False)
+                )
+                cached = self._snapshots.get(attempt_id)
+                if cached is not None and cached[1]["intent.json"] == stamp:
+                    attempt = cached[0].attempt
+                    _require(
+                        attempt.attempt_id == attempt_id
+                        and attempt.namespace_id == self._namespace["namespace_id"]
+                        and attempt.schema_version == self._namespace["schema_version"]
+                    )
+                else:
+                    value, digest = _read(directory, "intent.json", self._uid)
+                    attempt = _intent(
+                        value,
+                        digest,
+                        self._namespace["namespace_id"],
+                        attempt_id,
+                        self._namespace["schema_version"],
+                    )
             state = self._local_snapshot(attempt)
             history[attempt_id] = state
             if active.schema_version == 2 and state.container_id is not None:

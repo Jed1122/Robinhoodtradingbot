@@ -92,6 +92,8 @@ class Engine:
                     FinishedAt="2026-10-21T21:00:02Z",
                 )
                 result = b"truncated" if self.fault == "start_ack" else response(204)
+            elif method == "POST" and suffix.endswith(("/kill?signal=TERM", "/kill?signal=KILL")):
+                result = response(204)
             elif method == "DELETE" and suffix.endswith("?force=false&v=false&link=false"):
                 del self.containers[cid]
                 result = b"truncated" if self.fault == "delete_ack" else response(204)
@@ -451,3 +453,91 @@ def test_cli_without_a_manifest_fails_closed_without_a_native_runtime():
     )
     assert result.returncode == 1 and result.stdout == ""
     assert json.loads(result.stderr) == {"status": "unavailable"}
+
+
+def history(cycle):
+    identifiers = []
+    for _ in range(3):
+        with opened(cycle) as store:
+            run(store, cycle[1])
+            identifiers.append(store.snapshot().attempt.attempt_id)
+    return identifiers
+
+
+def slow_ancestor_reads(cycle, monkeypatch, ancestors):
+    # Controlled historical I/O latency, not a renewed transport deadline.
+    inodes = {(cycle[0] / item).stat().st_ino for item in ancestors}
+    original = stock_attempts._read
+
+    def delayed(directory, name, uid):
+        if os.fstat(directory).st_ino in inodes:
+            cycle[4]["monotonic_ns"] += 3 * NS
+        return original(directory, name, uid)
+
+    monkeypatch.setattr(stock_attempts, "_read", delayed)
+
+
+def test_retained_history_io_cannot_exhaust_a_new_create_dispatch_budget(cycle, monkeypatch):
+    prior = history(cycle)
+    with opened(cycle) as store:
+        # Complete history was validated at entry, before any dispatch budget.
+        actual = stock_engine_retirement.StockEngineRetirer
+
+        class AfterRetirement:
+            def retire_predecessor(self, target):
+                actual().retire_predecessor(target)
+                slow_ancestor_reads(cycle, monkeypatch, prior[:-1])
+
+        monkeypatch.setattr(stock_launcher, "StockEngineRetirer", AfterRetirement)
+        assert run(store, cycle[1]).status == "completed"
+        assert store.snapshot().stopped_sha256
+    assert cycle[3].counter == 4
+
+
+@pytest.mark.parametrize("signal_name", ["TERM", "KILL"])
+def test_retained_history_io_preserves_the_actual_termination_post_budget(
+    cycle, monkeypatch, signal_name
+):
+    prior = history(cycle)
+    root, _, loaded, daemon, _ = cycle
+    with opened(cycle) as store:
+        current = store.snapshot()
+        store.record_stopped(stock_engine.StockEngineReader().inspect(current.container_id))
+        attempt = store.begin(loaded)
+        stock_engine_retirement.StockEngineRetirer().retire_predecessor(store)
+        mutator = stock_engine_mutation.StockEngineMutator()
+        cid = mutator.create_worker(store, loaded, daemon.policy[1])
+        observed = stock_engine.StockEngineReader().inspect(cid)
+        store.record_created(
+            stock_prestart.verify_created(
+                observed,
+                release=loaded,
+                image=daemon.policy[1],
+                attempt_id=attempt.attempt_id,
+                container_id=cid,
+            )
+        )
+        fence = mutator.start_worker(store)
+        daemon.containers[cid]["State"].update(
+            Status="running", Running=True, Pid=42, FinishedAt="0001-01-01T00:00:00Z"
+        )
+        slow_ancestor_reads(cycle, monkeypatch, prior[:-1])
+        stock_engine_termination.StockEngineTerminator().signal_active(store, signal_name)
+        assert daemon.requests[-1][:2] == (
+            "POST",
+            "/v1.52/containers/" + cid + "/kill?signal=" + signal_name,
+        )
+        assert store.snapshot().start_fence == fence
+        assert not (root / attempt.attempt_id / "stopped.json").exists()
+
+
+def test_unchanged_history_optimization_still_rejects_changed_ancestor_bytes(cycle):
+    prior = history(cycle)
+    with opened(cycle) as store:
+        path = cycle[0] / prior[0] / "stopped.json"
+        raw = json.loads(path.read_bytes())
+        raw["utc"] = "2026-10-21T21:00:01+00:00"
+        path.write_bytes(encoded(raw))
+        with pytest.raises(ValueError, match=r"^stock_launcher_unavailable$"):
+            run(store, cycle[1])
+    assert cycle[3].counter == 3
