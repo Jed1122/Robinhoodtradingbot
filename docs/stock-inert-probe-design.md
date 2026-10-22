@@ -47,9 +47,38 @@ configuration hash, bounds, live state or successful observation caller-selectab
   the immutable image, full returned CID, exact command/environment, namespaces,
   declared and resolved mounts, hardening and resource limits before START.
 
-The no-network profile must first be tested against pinned Docker API 1.52 source.
+The no-network profile follows pinned Docker API 1.52 source.
 Request declarations and supplied inspection fixtures establish local consistency;
 only intended-host observations establish applied compatibility.
+
+The exact data-only request uses the existing worker configuration field shape,
+with entrypoint `python -m trading_bot.runtime.stock_research_identity`, arguments
+`--config-root /app/configs`, explicit `NetworkDisabled=true`, no release fields and
+labels `org.hybrid.stock.managed=stock-configuration-probe` and
+`org.hybrid.stock.probe=<32-hex-probe-ID>`. Its generated name is
+`hybrid-stock-probe-<32-hex-probe-ID>`. Environment is exactly the reviewed image
+environment. Healthcheck is the same disabled image-owned timing profile. All
+attach/TTY/stdin flags are false, StopSignal is SIGTERM and StopTimeout is 10.
+
+Reuse only the worker's neutral zero/empty HostConfig defaults and strict comparison
+helpers. The probe fixes LogConfig to json-file/max-size=1m/max-file=1; NetworkMode
+none; no port bindings; RestartPolicy no/0; ConsoleSize 0/0; CapDrop ALL; cgroup/IPC
+private; read-only root; no-new-privileges:true; ShmSize 67108864; Runtime runc; Init
+true; Memory and MemorySwap 536870912; NanoCpus 500000000; PidsLimit 128; daemon-default
+masked/read-only paths. Mounts and Tmpfs are omitted from the request. Their inspect
+fields may be omitted or exactly []/{} respectively; no other null/empty equivalence
+is added. Required top-level resolved Mounts is exactly []. Config.Volumes retains
+only the existing field-specific null/empty-map normalization.
+
+Never-started NetworkSettings is exactly
+`{"SandboxID":"","SandboxKey":"","Ports":{},"Networks":{}}`. Disabled networking
+returns before creating an endpoint in the [pinned implementation](https://raw.githubusercontent.com/moby/moby/d105562beff448ae44d6e3a2f7738b235fd197b5/daemon/container_operations.go);
+[inspect](https://raw.githubusercontent.com/moby/moby/d105562beff448ae44d6e3a2f7738b235fd197b5/daemon/inspect.go)
+allocates empty maps. A `none` endpoint alone is a different profile and denies.
+Empty Mounts/Tmpfs omission follows their [serialization tags](https://raw.githubusercontent.com/moby/moby/d105562beff448ae44d6e3a2f7738b235fd197b5/api/types/container/hostconfig.go).
+Private IPC's /dev/shm and the daemon's read-only init-executable bind are separate
+OCI-managed mounts: an empty inspected application-mount list does not assert they
+are absent. See [OCI construction](https://raw.githubusercontent.com/moby/moby/d105562beff448ae44d6e3a2f7738b235fd197b5/daemon/oci_linux.go).
 
 ## Native evidence and uncertainty
 

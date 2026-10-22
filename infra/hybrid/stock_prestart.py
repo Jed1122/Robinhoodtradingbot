@@ -112,17 +112,7 @@ def _configuration(release: StockRelease, image: ImageProfile, attempt_id: str) 
     _require(hashlib.sha256(release.compose_bytes).hexdigest() == release.compose_sha256)
     _require(_exact(model, _policy(image.image_digest, attestation)))
     worker = model["services"]["stock-research"]
-    health = _object(image.disabled_healthcheck)
-    expected_health = {
-        "Test": ["NONE"],
-        "Interval": 15000000000,
-        "Timeout": 3000000000,
-        "StartPeriod": 5000000000,
-        "Retries": 3,
-    }
-    if "StartInterval" in health:
-        _require(type(health["StartInterval"]) is int and health.pop("StartInterval") == 0)
-    _require(_exact(health, expected_health))
+    health = _image_healthcheck(image)
     return {
         "Hostname": "",
         "Domainname": "",
@@ -150,19 +140,22 @@ def _configuration(release: StockRelease, image: ImageProfile, attempt_id: str) 
     }
 
 
-def _host_config(release: StockRelease) -> dict[str, Any]:
-    worker = _object(release.compose_bytes)["services"]["stock-research"]
-    mounts: list[dict[str, Any]] = []
-    for volume in worker["volumes"]:
-        mount = {
-            "Type": "bind",
-            "Source": volume["source"],
-            "Target": volume["target"],
-            "BindOptions": {"Propagation": "private"},
-        }
-        if volume.get("read_only") is True:
-            mount["ReadOnly"] = True
-        mounts.append(mount)
+def _image_healthcheck(image: ImageProfile) -> dict[str, Any]:
+    health = _object(image.disabled_healthcheck)
+    expected_health = {
+        "Test": ["NONE"],
+        "Interval": 15000000000,
+        "Timeout": 3000000000,
+        "StartPeriod": 5000000000,
+        "Retries": 3,
+    }
+    if "StartInterval" in health:
+        _require(type(health["StartInterval"]) is int and health.pop("StartInterval") == 0)
+    _require(_exact(health, expected_health))
+    return health
+
+
+def _host_defaults() -> dict[str, Any]:
     host: dict[str, Any] = {
         name: 0
         for name in (
@@ -202,6 +195,23 @@ def _host_config(release: StockRelease) -> dict[str, Any]:
     host.update(
         {name: False for name in ("AutoRemove", "Privileged", "PublishAllPorts", "OomKillDisable")}
     )
+    return host
+
+
+def _host_config(release: StockRelease) -> dict[str, Any]:
+    worker = _object(release.compose_bytes)["services"]["stock-research"]
+    mounts: list[dict[str, Any]] = []
+    for volume in worker["volumes"]:
+        mount = {
+            "Type": "bind",
+            "Source": volume["source"],
+            "Target": volume["target"],
+            "BindOptions": {"Propagation": "private"},
+        }
+        if volume.get("read_only") is True:
+            mount["ReadOnly"] = True
+        mounts.append(mount)
+    host = _host_defaults()
     host.update(
         {
             "LogConfig": {"Type": "json-file", "Config": worker["logging"]["options"]},
@@ -346,6 +356,24 @@ def _state() -> dict[str, Any]:
     }
 
 
+def _verify_container_metadata(record: dict[str, Any], fixed: dict[str, Any]) -> None:
+    paths = {"ResolvConfPath", "HostnamePath", "HostsPath", "LogPath"}
+    required = set(fixed) | paths | {"Created", "Driver", "Config", "HostConfig", "Mounts"}
+    optional = {"GraphDriver", "Storage", "ImageManifestDescriptor"}
+    _require(required.issubset(record) and set(record).issubset(required | optional))
+    for key, value in fixed.items():
+        _require(_exact(record[key], value))
+    for key in paths | {"Driver"}:
+        _require(
+            type(record[key]) is str and len(record[key]) <= 4096 and "\x00" not in record[key]
+        )
+    _require(bool(record["Driver"]))
+    _require(type(record["Created"]) is str and _TIMESTAMP.fullmatch(record["Created"]) is not None)
+    _require(datetime.fromisoformat(record["Created"]).year >= 1970)
+    for key in optional & set(record):
+        _require(type(record[key]) is dict)
+
+
 def verify_created(
     raw: bytes,
     *,
@@ -376,23 +404,7 @@ def verify_created(
             "ExecIDs": None,
             "NetworkSettings": _network(),
         }
-        paths = {"ResolvConfPath", "HostnamePath", "HostsPath", "LogPath"}
-        required = set(fixed) | paths | {"Created", "Driver", "Config", "HostConfig", "Mounts"}
-        optional = {"GraphDriver", "Storage", "ImageManifestDescriptor"}
-        _require(required.issubset(record) and set(record).issubset(required | optional))
-        for key, value in fixed.items():
-            _require(_exact(record[key], value))
-        for key in paths | {"Driver"}:
-            _require(
-                type(record[key]) is str and len(record[key]) <= 4096 and "\x00" not in record[key]
-            )
-        _require(bool(record["Driver"]))
-        _require(
-            type(record["Created"]) is str and _TIMESTAMP.fullmatch(record["Created"]) is not None
-        )
-        _require(datetime.fromisoformat(record["Created"]).year >= 1970)
-        for key in optional & set(record):
-            _require(type(record[key]) is dict)
+        _verify_container_metadata(record, fixed)
         _verify_config(record["Config"], expected_config)
         _verify_host(record["HostConfig"], expected_host)
         expected_mounts = [
