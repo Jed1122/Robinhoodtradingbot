@@ -1,7 +1,8 @@
 """Dedicated private probe persistence foundation; no worker or Engine authority.
 
-The namespace opener validates the complete bounded retained history. Dispatch
-fences and lifecycle writers are not yet implemented. Readable bytes are not a durable
+The namespace opener validates complete bounded retained history. The setup and
+CREATE/CID/prestart/START prefix has durable one-use fences; STOP/output/retirement
+and native controller paths remain incomplete. Readable bytes are not a durable
 acknowledgement, a transport observation or permission to dispatch.
 """
 
@@ -21,12 +22,20 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
-from infra.hybrid.stock_attempts import _canonical, _check_clock, _integer, _read, _write_new
+from infra.hybrid.stock_attempts import (
+    _canonical,
+    _check_clock,
+    _clock,
+    _integer,
+    _read,
+    _reconfirm_durability,
+    _write_new,
+)
 from infra.hybrid.stock_container import ImageProfile, _object, verify_engine_version, verify_image
 from infra.hybrid.stock_prestart import verify_creation
 from infra.hybrid.stock_probe_observation import ProbeObservation, _lifetime, observe_probe
 from infra.hybrid.stock_probe_output import decode_probe_output
-from infra.hybrid.stock_probe_profile import probe_request, verify_probe_created
+from infra.hybrid.stock_probe_profile import CreatedProbe, probe_request, verify_probe_created
 from infra.hybrid.stock_release import _close_all, _fingerprint, _open_directory
 
 PROBES_ROOT = Path("/var/lib/hybrid-stock-probes")
@@ -520,8 +529,73 @@ def _native_key(timestamp: str) -> tuple[str, str]:
     return timestamp[:19], timestamp[20:-1].ljust(9, "0") if timestamp[19] == "." else "000000000"
 
 
+@dataclass(frozen=True, slots=True)
+class ProbeSetup:
+    probe_id: str
+    image_digest: str
+    boot_id: str
+    started_ns: int
+    deadline_ns: int
+    predecessor_container_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeCreateFence:
+    probe_id: str
+    intent_sha256: str
+    receipt_sha256: str
+    request_sha256: str
+    boot_id: str
+    issued_ns: int
+    deadline_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeStartFence:
+    probe_id: str
+    intent_sha256: str
+    container_id: str
+    receipt_sha256: str
+    boot_id: str
+    started_ns: int
+    run_deadline_ns: int
+    dispatch_deadline_ns: int
+
+
+def _clock_key(utc: str) -> tuple[str, str]:
+    match = re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.([0-9]{1,9}))?(?:Z|\+00:00)",
+        utc,
+    )
+    if match is None:
+        _deny()
+    return utc[:19], (match[1] or "").ljust(9, "0")
+
+
+def _reconfirm_bytes(directory: int, name: str, raw: bytes, uid: int) -> None:
+    """Fresh unchanged-byte flush/readback, never inferred from content caching."""
+    with _sanitized():
+        low, high = _slot(name)
+        _require(type(raw) is bytes and low <= len(raw) <= high)
+        descriptor = os.open(name, _READ, dir_fd=directory)
+        try:
+            before = os.fstat(descriptor)
+            _file_info(before, uid, low=low, high=high)
+            _require(_read_bytes(directory, name, uid) == raw)
+            os.fsync(descriptor)
+            _require(_fingerprint(before) == _fingerprint(os.fstat(descriptor)))
+            _require(
+                _fingerprint(before)
+                == _fingerprint(os.stat(name, dir_fd=directory, follow_symlinks=False))
+            )
+        finally:
+            _close_all((descriptor,))
+        os.fsync(directory)
+        _require(_read_bytes(directory, name, uid) == raw)
+
+
 class ProbeStore:
-    """Locked read/classification foundation; lifecycle writers remain unavailable."""
+    """Root-private admission/dispatch sequencing; no Engine or live capability."""
 
     def __init__(self, root: Path, directory: int, lock: int, uid: int, namespace: dict[str, Any]):
         self._root, self._directory, self._lock, self._uid = root, directory, lock, uid
@@ -531,6 +605,24 @@ class ProbeStore:
         self._entry_snapshot: ProbeSnapshot | None = None
         self._content = _ContentCache()
         self._nodes: dict[str, tuple[tuple[int, ...], dict[str, tuple[int, ...]], _Node]] = {}
+        self._last_clock: dict[str, Any] | None = None
+        self._setup_issued = False
+        self._begin_issued = False
+        self._setup_token: ProbeSetup | None = None
+        self._owned_id: str | None = None
+        self._owned_intent: str | None = None
+        self._create_issued = False
+        self._create_dispatched = False
+        self._create_token: ProbeCreateFence | None = None
+        self._create_ack: str | None = None
+        self._cid_issued = False
+        self._cid_ack: str | None = None
+        self._created_issued = False
+        self._created_ack: str | None = None
+        self._start_issued = False
+        self._start_dispatched = False
+        self._start_token: ProbeStartFence | None = None
+        self._start_ack: str | None = None
 
     @property
     def namespace_id(self) -> str:
@@ -917,3 +1009,455 @@ class ProbeStore:
         with _sanitized():
             history = self._history()
             return None if not history else history[-1].snapshot
+
+    def _now(self) -> dict[str, Any]:
+        value = _clock()
+        _check_clock(value)
+        key = _clock_key(value["utc"])
+        previous = self._last_clock
+        self._last_clock = dict(value)
+        if previous is not None and (
+            value["boot_id"] != previous["boot_id"]
+            or value["monotonic_ns"] < previous["monotonic_ns"]
+            or key < _clock_key(previous["utc"])
+        ):
+            self._recovery_only = True
+            self._create_ack = self._created_ack = self._start_ack = None
+            _deny()
+        return value
+
+    def _window(self, boot_id: str, deadline_ns: int) -> dict[str, Any]:
+        now = self._now()
+        _require(now["boot_id"] == boot_id and now["monotonic_ns"] < deadline_ns)
+        return now
+
+    def _normal(self) -> None:
+        _require(not self._closed and not self._recovery_only)
+
+    def begin_setup(self, image_digest: str) -> ProbeSetup:
+        with _sanitized():
+            _require(not self._setup_issued)
+            self._setup_issued = True
+            self._setup_token = None
+            self._normal()
+            origin = self._now()
+            _require(_matches(image_digest, r"sha256:[0-9a-f]{64}"))
+            history = self._history()
+            entry = None if not history else history[-1].snapshot
+            _require(
+                entry == self._entry_snapshot
+                and (entry is None or entry.closed_outcome is not None)
+            )
+            if history:
+                closed = history[-1].records["closed.json"]
+                if closed["boot_id"] == origin["boot_id"] and (
+                    origin["monotonic_ns"] < closed["monotonic_ns"]
+                    or _clock_key(origin["utc"]) < _clock_key(closed["utc"])
+                ):
+                    self._recovery_only = True
+                    _deny()
+            probe_id = secrets.token_hex(16)
+            _require(
+                _matches(probe_id, r"[0-9a-f]{32}")
+                and all(node.snapshot.probe_id != probe_id for node in history)
+            )
+            _require(len(history) < 128)
+            deadline = origin["monotonic_ns"] + 20000000000
+            _require(_integer(deadline, 1))
+            self._window(origin["boot_id"], deadline)
+            token = ProbeSetup(
+                probe_id,
+                image_digest,
+                origin["boot_id"],
+                origin["monotonic_ns"],
+                deadline,
+                None if entry is None else entry.container_id,
+            )
+            self._setup_token = token
+            return token
+
+    def check_setup(self, token: ProbeSetup) -> None:
+        with _sanitized():
+            self._normal()
+            _require(token is self._setup_token and type(token) is ProbeSetup)
+            self._guard()
+            self._window(token.boot_id, token.deadline_ns)
+
+    def _flush_entry(self, token: ProbeSetup, history: list[_Node]) -> None:
+        self.check_setup(token)
+        _reconfirm_durability(self._directory, "namespace.json", self._namespace, self._uid)
+        os.fsync(self._lock)
+        for node in history:
+            with self._folder(node.snapshot.probe_id) as directory:
+                for name in sorted(os.listdir(directory)):
+                    self.check_setup(token)
+                    if name in node.records:
+                        _reconfirm_durability(directory, name, node.records[name], self._uid)
+                    else:
+                        _reconfirm_bytes(
+                            directory, name, _read_bytes(directory, name, self._uid), self._uid
+                        )
+                    self.check_setup(token)
+        if history:
+            head, _ = _read(self._directory, "active.json", self._uid)
+            _reconfirm_durability(self._directory, "active.json", head, self._uid)
+        os.fsync(self._directory)
+        parent = _open_directory(
+            self._root.parent,
+            trusted_uid=self._uid,
+            release_root=Path("/") if self._root == PROBES_ROOT else self._root.parent,
+        )
+        try:
+            os.fsync(parent)
+        finally:
+            _close_all((parent,))
+        self.check_setup(token)
+
+    def begin(self, token: ProbeSetup, engine_raw: bytes, image_raw: bytes) -> ProbeSnapshot:
+        with _sanitized():
+            _require(not self._begin_issued)
+            self._begin_issued = True
+            self._owned_id = self._owned_intent = None
+            self.check_setup(token)
+            history = self._history()
+            entry = None if not history else history[-1].snapshot
+            _require(entry == self._entry_snapshot)
+            # The later closed-CID recovery transport must supply fresh absence
+            # evidence. This incomplete prefix deliberately cannot bypass it.
+            _require(token.predecessor_container_id is None)
+            image = verify_image(image_raw, token.image_digest, verify_engine_version(engine_raw))
+            request = probe_request(image, token.probe_id)
+            self._flush_entry(token, history)
+            stamp = self._window(token.boot_id, token.deadline_ns)
+            intent = {
+                "schema_version": 1,
+                "kind": "stock_probe_intent",
+                "namespace_id": self.namespace_id,
+                "probe_id": token.probe_id,
+                "intent_sha256": None,
+                **stamp,
+                "profile_version": 1,
+                "image_digest": token.image_digest,
+                "engine_sha256": hashlib.sha256(engine_raw).hexdigest(),
+                "engine_size": len(engine_raw),
+                "image_sha256": hashlib.sha256(image_raw).hexdigest(),
+                "image_size": len(image_raw),
+                "request_sha256": hashlib.sha256(request).hexdigest(),
+                "request_size": len(request),
+                "setup_started_ns": token.started_ns,
+                "setup_deadline_ns": token.deadline_ns,
+                "predecessor_probe_id": None if entry is None else entry.probe_id,
+                "predecessor_closed_sha256": None
+                if not history
+                else history[-1].hashes["closed.json"],
+            }
+            _decode_receipt(
+                _canonical(intent),
+                "intent.json",
+                namespace_id=self.namespace_id,
+                probe_id=token.probe_id,
+                intent_sha256=None,
+            )
+            os.mkdir(token.probe_id, 0o700, dir_fd=self._directory)
+            directory = os.open(token.probe_id, _DIRECTORY, dir_fd=self._directory)
+            try:
+                _directory_info(os.fstat(directory), self._uid)
+                for name, raw in (
+                    ("engine.bin", engine_raw),
+                    ("image.bin", image_raw),
+                    ("request.bin", request),
+                ):
+                    self.check_setup(token)
+                    _write_bytes(directory, name, raw, self._uid)
+                    self.check_setup(token)
+                digest = _write_new(directory, "intent.json", intent, self._uid)
+            finally:
+                _close_all((directory,))
+            os.fsync(self._directory)
+            self.check_setup(token)
+            head = {
+                "schema_version": 1,
+                "kind": "stock_probe_active",
+                "namespace_id": self.namespace_id,
+                "probe_id": token.probe_id,
+                "intent_sha256": digest,
+            }
+            temporary = ".active-" + token.probe_id + ".tmp"
+            _write_new(self._directory, temporary, head, self._uid)
+            self.check_setup(token)
+            os.replace(
+                temporary, "active.json", src_dir_fd=self._directory, dst_dir_fd=self._directory
+            )
+            os.fsync(self._directory)
+            snapshot = self.snapshot()
+            _require(
+                snapshot is not None
+                and snapshot.probe_id == token.probe_id
+                and snapshot.intent_sha256 == digest
+            )
+            self.check_setup(token)
+            self._owned_id, self._owned_intent = token.probe_id, digest
+            return cast(ProbeSnapshot, snapshot)
+
+    def _owned_node(self) -> _Node:
+        self._normal()
+        _require(self._owned_id is not None and self._owned_intent is not None)
+        history = self._history()
+        _require(bool(history))
+        node = history[-1]
+        _require(
+            node.snapshot.probe_id == self._owned_id
+            and node.snapshot.intent_sha256 == self._owned_intent
+            and node.snapshot.closed_outcome is None
+        )
+        return node
+
+    def _receipt(
+        self, node: _Node, name: str, fields: dict[str, Any], stamp: dict[str, Any]
+    ) -> str:
+        value = {
+            "schema_version": 1,
+            "kind": "stock_probe_" + name.removesuffix(".json").replace("-", "_"),
+            "namespace_id": self.namespace_id,
+            "probe_id": node.snapshot.probe_id,
+            "intent_sha256": node.snapshot.intent_sha256,
+            **stamp,
+            **fields,
+        }
+        _decode_receipt(
+            _canonical(value),
+            name,
+            namespace_id=self.namespace_id,
+            probe_id=node.snapshot.probe_id,
+            intent_sha256=node.snapshot.intent_sha256,
+        )
+        with self._folder(node.snapshot.probe_id) as directory:
+            return _write_new(directory, name, value, self._uid)
+
+    def prepare_create(self) -> ProbeCreateFence:
+        with _sanitized():
+            _require(not self._create_issued)
+            self._create_issued = True
+            self._create_ack = None
+            self._create_token = None
+            node = self._owned_node()
+            _require("create.json" not in node.records and self._setup_token is not None)
+            setup = cast(ProbeSetup, self._setup_token)
+            self.check_setup(setup)
+            origin = self._now()
+            deadline = min(setup.deadline_ns, origin["monotonic_ns"] + 5000000000)
+            request_hash = node.records["intent.json"]["request_sha256"]
+            digest = self._receipt(
+                node,
+                "create.json",
+                {"request_sha256": request_hash, "dispatch_deadline_ns": deadline},
+                origin,
+            )
+            retained = self._owned_node()
+            _require(retained.hashes["create.json"] == digest)
+            self._window(origin["boot_id"], deadline)
+            token = ProbeCreateFence(
+                node.snapshot.probe_id,
+                node.snapshot.intent_sha256,
+                digest,
+                request_hash,
+                origin["boot_id"],
+                origin["monotonic_ns"],
+                deadline,
+            )
+            self._create_token, self._create_ack = token, digest
+            return token
+
+    def check_create_fence(self, token: ProbeCreateFence) -> None:
+        with _sanitized():
+            self._normal()
+            _require(
+                type(token) is ProbeCreateFence
+                and token is self._create_token
+                and self._create_ack == token.receipt_sha256
+            )
+            node = self._owned_node()
+            _require(
+                node.hashes.get("create.json") == token.receipt_sha256
+                and node.snapshot.probe_id == token.probe_id
+                and node.snapshot.intent_sha256 == token.intent_sha256
+            )
+            receipt = node.records["create.json"]
+            _require(
+                receipt["request_sha256"] == token.request_sha256
+                and receipt["dispatch_deadline_ns"] == token.deadline_ns
+            )
+            self._window(token.boot_id, token.deadline_ns)
+
+    def claim_create(self, token: ProbeCreateFence) -> None:
+        with _sanitized():
+            _require(not self._create_dispatched)
+            self._create_dispatched = True
+            self.check_create_fence(token)
+
+    def create_request(self, token: ProbeCreateFence) -> bytes:
+        with _sanitized():
+            self.check_create_fence(token)
+            with self._folder(token.probe_id) as directory:
+                raw = _read_bytes(directory, "request.bin", self._uid)
+            _require(hashlib.sha256(raw).hexdigest() == token.request_sha256)
+            self.check_create_fence(token)
+            return raw
+
+    def record_cid(self, token: ProbeCreateFence, response: bytes) -> str:
+        with _sanitized():
+            _require(not self._cid_issued)
+            self._cid_issued = True
+            self._cid_ack = None
+            self._normal()
+            _require(
+                token is self._create_token
+                and type(token) is ProbeCreateFence
+                and self._create_dispatched
+                and self._create_ack == token.receipt_sha256
+            )
+            node = self._owned_node()
+            _require(
+                node.hashes.get("create.json") == token.receipt_sha256
+                and "cid.json" not in node.records
+            )
+            cid = verify_creation(response)
+            _require(all(prior.snapshot.container_id != cid for prior in self._history()))
+            stamp = self._now()
+            _require(stamp["boot_id"] == token.boot_id)
+            with self._folder(token.probe_id) as directory:
+                raw_hash = _write_bytes(directory, "create-response.bin", response, self._uid)
+            digest = self._receipt(
+                node,
+                "cid.json",
+                {
+                    "create_sha256": token.receipt_sha256,
+                    "container_id": cid,
+                    "evidence_kind": "create_response",
+                    "observation_sha256": raw_hash,
+                    "observation_size": len(response),
+                },
+                stamp,
+            )
+            retained = self._owned_node()
+            _require(
+                retained.hashes["cid.json"] == digest and retained.snapshot.container_id == cid
+            )
+            now = self._now()
+            _require(now["boot_id"] == token.boot_id)
+            self._cid_ack = digest
+            return cid
+
+    def record_created(self, raw: bytes) -> CreatedProbe:
+        with _sanitized():
+            _require(not self._created_issued)
+            self._created_issued = True
+            self._created_ack = None
+            node = self._owned_node()
+            cid = node.snapshot.container_id
+            _require(
+                cid is not None
+                and self._cid_ack is not None
+                and node.hashes.get("cid.json") == self._cid_ack
+            )
+            _require(self._setup_token is not None)
+            setup = cast(ProbeSetup, self._setup_token)
+            self.check_setup(setup)
+            observation = verify_probe_created(
+                raw, image=node.image, probe_id=node.snapshot.probe_id, container_id=cast(str, cid)
+            )
+            stamp = self._now()
+            with self._folder(node.snapshot.probe_id) as directory:
+                raw_hash = _write_bytes(directory, "prestart.bin", raw, self._uid)
+            digest = self._receipt(
+                node,
+                "created.json",
+                {
+                    "cid_sha256": self._cid_ack,
+                    "prestart_sha256": raw_hash,
+                    "prestart_size": len(raw),
+                },
+                stamp,
+            )
+            retained = self._owned_node()
+            _require(retained.hashes["created.json"] == digest)
+            self.check_setup(setup)
+            self._created_ack = digest
+            return observation
+
+    def prepare_start(self) -> ProbeStartFence:
+        with _sanitized():
+            _require(not self._start_issued)
+            self._start_issued = True
+            self._start_ack = None
+            self._start_token = None
+            node = self._owned_node()
+            _require(
+                self._created_ack is not None
+                and node.hashes.get("created.json") == self._created_ack
+                and self._cid_ack is not None
+                and node.hashes.get("cid.json") == self._cid_ack
+            )
+            _require(
+                self._create_dispatched
+                and "start.json" not in node.records
+                and self._setup_token is not None
+                and node.snapshot.container_id is not None
+            )
+            setup = cast(ProbeSetup, self._setup_token)
+            self.check_setup(setup)
+            origin = self._now()
+            run_deadline = origin["monotonic_ns"] + 30000000000
+            dispatch_deadline = min(setup.deadline_ns, origin["monotonic_ns"] + 5000000000)
+            digest = self._receipt(
+                node,
+                "start.json",
+                {
+                    "created_sha256": self._created_ack,
+                    "container_id": node.snapshot.container_id,
+                    "run_deadline_ns": run_deadline,
+                },
+                origin,
+            )
+            retained = self._owned_node()
+            _require(retained.hashes["start.json"] == digest)
+            self.check_setup(setup)
+            self._window(origin["boot_id"], dispatch_deadline)
+            token = ProbeStartFence(
+                node.snapshot.probe_id,
+                node.snapshot.intent_sha256,
+                cast(str, node.snapshot.container_id),
+                digest,
+                origin["boot_id"],
+                origin["monotonic_ns"],
+                run_deadline,
+                dispatch_deadline,
+            )
+            self._start_token, self._start_ack = token, digest
+            return token
+
+    def check_start_fence(self, token: ProbeStartFence) -> None:
+        with _sanitized():
+            self._normal()
+            _require(
+                type(token) is ProbeStartFence
+                and token is self._start_token
+                and self._start_ack == token.receipt_sha256
+            )
+            node = self._owned_node()
+            _require(
+                node.hashes.get("start.json") == token.receipt_sha256
+                and node.hashes.get("created.json") == self._created_ack
+                and node.snapshot.container_id == token.container_id
+                and node.snapshot.probe_id == token.probe_id
+                and node.snapshot.intent_sha256 == token.intent_sha256
+            )
+            _require(self._setup_token is not None)
+            self.check_setup(cast(ProbeSetup, self._setup_token))
+            self._window(token.boot_id, token.dispatch_deadline_ns)
+
+    def claim_start(self, token: ProbeStartFence) -> None:
+        with _sanitized():
+            _require(not self._start_dispatched)
+            self._start_dispatched = True
+            self.check_start_fence(token)

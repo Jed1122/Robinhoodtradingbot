@@ -18,15 +18,21 @@ credential, account, order or deployment operation was performed in this increme
 - Per-lock cache checks exact named-file fingerprints and inventories. Historical
   nodes retain validated facts; large original payloads remain on disk.
 
-Task1 is complete. Task2 remains in progress: durable lifecycle writers, one-use
-CREATE/START/output/removal fences, clock-bound dispatch and acknowledgement recovery
-are not implemented. Fixed Engine transports, supervision/CLI, whole-increment
-review and this controller's actual full regression are also pending.
+- Setup admission, immutable metadata/request/intent/head acknowledgement and the
+  CREATE/CID/strict-prestart/START writer prefix now have one-use session fences.
+  Original setup/dispatch/RUN deadlines survive delays, lost acknowledgements and
+  reopening. Copied objects and complete unacknowledged bytes cannot issue a token.
+
+Task1 is complete. Task2 remains in progress: STOP/output/removal/closed recovery
+writers, fresh scoped closed-CID absence evidence and cleanup acknowledgements are
+not implemented. Fixed Engine transports, supervision/CLI, whole-increment review
+and this controller's actual full regression are also pending. A closed CID denies
+new admission until the missing actual absence path is implemented.
 
 ## Actual verification
 
-The current local focused run passed **1,793 tests in13.61 seconds**. Store tests
-passed799 checks with100% statement/branch coverage; the observer separately reached
+The current local focused run passed **1,867 tests in15.79 seconds**. Store tests
+passed873 checks with100% statement/branch coverage; the observer separately reached
 100% in its611-check regression. These are fictional filesystem/wire observations,
 not native Docker or broker evidence.
 
@@ -51,8 +57,8 @@ certify these later controller changes.
 
 ## Next required work
 
-Finish Task2's immutable lifecycle writers, one-use dispatch fences and fresh
-acknowledgement/clock behavior with crash-window tests. Then implement the fixed
+Finish Task2's STOP/output/removal/closed writers, cleanup fences, fresh scoped
+entry absence and acknowledgement behavior with crash-window tests. Then implement the fixed
 bounded transports and controller, obtain one fresh whole-increment review and run
 revision-specific integrated checks. Preserve the running primary full unchanged.
 

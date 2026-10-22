@@ -181,8 +181,9 @@ removed/closed with .json suffix. No caller-selected basename is admitted.
 Filesystem primitives do not assert transport provenance or durability merely from
 readable bytes. They sanitize all operational failures and never repair a partial
 namespace. The namespace opener now validates complete bounded lineage and original artifacts;
-lifecycle writers and transport fences remain unimplemented. No runnable controller
-uses this foundation.
+setup/CREATE/CID/prestart/START writers and fences are implemented locally.
+STOP/output/retirement/closed recovery and fixed native transports remain incomplete.
+No runnable controller uses this foundation.
 
 Receipt field spellings are frozen as follows (common fields above are implicit):
 
@@ -217,3 +218,50 @@ Historical node caches retain validated receipt/profile facts and exact named-fi
 fingerprints, not all original payload bytes. The temporary byte cache is cleared
 after each newly validated node. Originals remain on disk and are reread when a
 node fingerprint changes; this limits historical-payload memory on the small host.
+
+## Writer and fence contract
+
+These are internal root orchestration interfaces, not application/LLM tools. The
+later fixed transport obtains and consumes its own actual issued token. Supplied
+metadata and equal dataclass copies cannot reconstruct a token after reopening.
+
+- begin_setup(image_digest) captures boot/UTC/monotonic origin before Engine/image
+  reads, burns the invocation's one admission claim and returns ProbeSetup with
+  generated probe ID, immutable image, original20-second setup cap and prior full
+  CID or null. An unfinished entry never obtains this claim.
+- check_setup(token) requires exact issued object identity, unchanged namespace and
+  current original-domain time. BEGIN never restarts this cap.
+- begin(token, engine_bytes, image_bytes) verifies actual supplied metadata with the
+  existing pure verifiers, retains originals/request/intent and atomically advances
+  the checked head. Owned admission is acknowledged only after complete durability,
+  history/readback and post-operation original-cap checks. Prior closed-CID entries
+  additionally require fresh scoped absence evidence; readable terminal bytes alone
+  are insufficient. No controller invokes an incomplete writer surface.
+- prepare_create() persists/acknowledges one original CREATE receipt and returns
+  ProbeCreateFence. Its fixed deadline is the earlier of setup expiry and five
+  seconds from preparation. claim_create(token) consumes the sole dispatch before
+  fallible work; check_create_fence(token) rechecks actual identity, retained hash,
+  request and original time before wire. create_request(token) returns only the
+  retained fixed request after these checks.
+- record_cid(token, original_response) separately retains the actual complete CREATE
+  response/full CID. It never grants START. This one-use retention may complete after
+  setup expires, but the original cap still blocks prestart/START. Boot discontinuity
+  or an unacknowledged write leaves recovery-only ownership resolution.
+- record_created(original_inspection) requires the normal owner and its acknowledged
+  CID, then the existing full inert prestart verifier and complete original-byte/
+  receipt acknowledgement. Copied CreatedProbe data does not meet this condition.
+- prepare_start() requires those acknowledgements and persists the original30-second
+  RUN origin/deadline before returning ProbeStartFence. Its dispatch window is also
+  shortened by setup and five seconds. claim_start(token) consumes the sole dispatch;
+  check_start_fence(token) checks the exact issued object and unchanged records/time.
+  Lost acknowledgement retains this original RUN; no second START is issued.
+
+Every issuance/retention flag and candidate acknowledgement is burned/cleared before
+fallible validation or I/O. File/kernel delays never renew deadlines; any post-write
+failure leaves readable bytes non-authoritative. Current sampled boot/monotonic and
+UTC continuity is checked, including rollback relative to the last sampled clock.
+A discontinuity burns admission/CREATE/START and leaves only later bounded cleanup.
+Metadata receipts use the operation's pre-write timestamp, not its acknowledgement
+clock. Fresh entry durability is reconfirmed explicitly; it is not inferred from a
+validated content cache. Root still has to implement STOP/output/removal/closed
+writers and the fixed transports/controller before this protocol is runnable.
