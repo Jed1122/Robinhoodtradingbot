@@ -37,6 +37,12 @@ PAX fields other than `comment`, missing mandatory files/trees, truncation and n
 trailing bytes. Require two zero end blocks and512-byte alignment. Never extract to
 the host. The observed4,864,000-byte/527-entry archive fits these bounds.
 
+The exact prepared format is USTAR headers with one initial global PAX `comment`
+record, no path prefix or other extension header, NUL-terminated ASCII name fields
+and zero block padding. Each required tree contains an actual regular file. Other
+valid general-purpose tar encodings require regeneration through the prescribed
+preparer rather than silent normalization.
+
 The base file contains exactly one newline-terminated
 `python:3.12-slim-bookworm@sha256:<64 lowercase hex>` reference. Before native build,
 Dockerfile/base/Compose bytes must match the reviewed producer checkout assets,
