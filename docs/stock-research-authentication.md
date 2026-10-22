@@ -72,6 +72,30 @@ time. A known expired generation or unexpected 401 permits at most one guarded r
 within the connection; legacy tokens without observed absolute lifetime do not silently
 enter an interactive flow. Pending/denied stores fail before outbound traffic.
 
+Automatic renewal now writes a non-reusable `resource_validation_pending` record
+in the same rotated-token commit, before the first resource request. Acceptance
+is reset per generation and becomes durable active state only after an acknowledged
+MCP2xx. A post-renewal401/403 persists `reauthorization_required`; ambiguous first
+resource outcomes retain the pending fence. An existing active generation's403
+also denies further reuse. A failed persistence operation requires owner review;
+no statement here guarantees disk durability after physical storage failure.
+The explicit operator utility above deliberately remains token-endpoint-only and
+continues to report `runtime_reuse_verified=false`. It is not a background retry.
+
+Offline status is available under the same private store lease:
+
+```sh
+PYTHONPATH=src uv run python -m trading_bot.runtime.oauth_status \
+  --oauth-store /absolute/private/oauth-stock-research
+```
+
+It emits only lifecycle state/generation/flow and timestamps, never credentials,
+client identity or token hashes. `expires_at` includes the application safety
+margin. `natural_expiry_not_before` is response-received time plus the complete
+saved provider lifetime; a real natural-expiry trial must occur after this later
+bound, without edited clocks or explicit renewal. Saved active state does not
+prove current provider acceptance.
+
 ## Remaining authentication proofs
 
 Successful browser authorization proves neither indefinite background access nor

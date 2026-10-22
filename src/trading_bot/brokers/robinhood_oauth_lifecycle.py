@@ -98,7 +98,15 @@ class OAuthLifecycle:
             type(self.generation) is str
             and re.fullmatch("[0-9a-f]{32}", self.generation) is not None
         )
-        _check(self.state in {"active", "refresh_pending", "reauthorization_required"})
+        _check(
+            self.state
+            in {
+                "active",
+                "refresh_pending",
+                "resource_validation_pending",
+                "reauthorization_required",
+            }
+        )
         _check(self.flow in {"authorization_code", "explicit_refresh", "automatic_refresh"})
         _check(type(self.client_id) is str and 1 <= len(self.client_id) <= 4096)
         start = require_utc(self.request_started_at)

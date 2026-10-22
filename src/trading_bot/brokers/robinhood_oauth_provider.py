@@ -167,6 +167,8 @@ class LifecycleOAuthClientProvider(PinnedScopeOAuthClientProvider):
         self._token_request_started: datetime | None = None
         self._before_refresh: OAuthToken | None = None
         self._poisoned = False
+        self._resource_pending = False
+        self._resource_validated = False
         self.refreshes_completed = 0
 
     def _now(self) -> datetime:
@@ -189,7 +191,32 @@ class LifecycleOAuthClientProvider(PinnedScopeOAuthClientProvider):
             if self._record.state != "active" or self.context.current_tokens is None:
                 raise RuntimeError("official OAuth state requires owner review")
             self._record = self._record.observe(self._now())
-            await self._storage.set_tokens_with_lifecycle(self.context.current_tokens, self._record)
+            persisted = (
+                self._unusable_record("resource_validation_pending")
+                if self._resource_pending
+                else self._record
+            )
+            await self._storage.set_tokens_with_lifecycle(self.context.current_tokens, persisted)
+
+    def _unusable_record(self, state: str) -> OAuthLifecycle:
+        if self._record is None:
+            raise RuntimeError("official OAuth lifecycle unavailable")
+        return replace(
+            self._record,
+            state=state,
+            expires_in=None,
+            expires_at=None,
+            response_received_at=None,
+        )
+
+    async def _deny_resource_generation(self) -> None:
+        tokens = self.context.current_tokens
+        if tokens is None:
+            raise RuntimeError("official OAuth token unavailable")
+        denied = self._unusable_record("reauthorization_required").observe(self._now())
+        await self._storage.set_tokens_with_lifecycle(tokens, denied)
+        self._record = denied
+        raise RuntimeError("official OAuth owner sign-in required")
 
     def _metadata(self) -> tuple[dict[str, Any], dict[str, Any]]:
         if self.context.oauth_metadata is None or self.context.protected_resource_metadata is None:
@@ -358,7 +385,25 @@ class LifecycleOAuthClientProvider(PinnedScopeOAuthClientProvider):
         active = pending.activate(received_at=self._now(), expires_in=raw.get("expires_in"))
         active.validate_client(client, self._redirect_uri)
         tokens = OAuthToken.model_validate(raw)
-        await self._storage.set_tokens_with_lifecycle(tokens, active)
+        if refreshing:
+            # Acceptance belongs to this new generation, never an earlier one.
+            self._resource_validated = False
+            self._resource_pending = active.flow == "automatic_refresh"
+        # Automatic renewal cannot become restart-reusable before its first
+        # acknowledged resource response. Explicit renewal is a separate owner
+        # token-endpoint-only migration and does not claim resource validation.
+        persisted = (
+            replace(
+                active,
+                state="resource_validation_pending",
+                expires_in=None,
+                expires_at=None,
+                response_received_at=None,
+            )
+            if self._resource_pending
+            else active
+        )
+        await self._storage.set_tokens_with_lifecycle(tokens, persisted)
         # Context becomes usable only after the complete token generation is committed.
         self._record = active
         self.context.current_tokens = tokens
@@ -445,6 +490,11 @@ class LifecycleOAuthClientProvider(PinnedScopeOAuthClientProvider):
                 if str(outgoing.url) == OFFICIAL_MCP_ENDPOINT and self._record is not None:
                     if self._record.expires_at is None or self._now() >= self._record.expires_at:
                         raise RuntimeError("official OAuth expired generation denied")
+                    # Persist a non-reusable state before the first resource send
+                    # after rotation. Process death or a failed denial write must
+                    # not let a fresh daemon repeat a rejected refresh generation.
+                    if self.refreshes_completed and not self._resource_validated:
+                        self._resource_pending = True
                     await self._checkpoint()
                 if str(outgoing.url) == REGISTRATION_ENDPOINT:
                     self._metadata()
@@ -457,6 +507,16 @@ class LifecycleOAuthClientProvider(PinnedScopeOAuthClientProvider):
                         self._token_request_started = self._now()
                 response = yield outgoing
                 if str(outgoing.url) == OFFICIAL_MCP_ENDPOINT:
+                    if response.status_code == 403 and self._record is not None:
+                        await self._deny_resource_generation()
+                    if self._resource_pending:
+                        if response.status_code in {401, 403}:
+                            await self._deny_resource_generation()
+                        self._require_safe_challenge(response)
+                        if not 200 <= response.status_code < 300:
+                            raise RuntimeError("official OAuth resource validation uncertain")
+                        self._resource_pending = False
+                        self._resource_validated = True
                     await self._checkpoint()
                 self._require_safe_challenge(response)
                 if 300 <= response.status_code < 400:

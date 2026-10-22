@@ -230,6 +230,203 @@ async def test_unexpected_401_allows_only_one_refresh_and_read_retry(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("expired", [False, True])
+@pytest.mark.parametrize("status", [401, 403])
+async def test_post_refresh_rejection_is_durable_across_new_provider(tmp_path, expired, status):
+    p, storage = await provider(tmp_path, expired=expired)
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        if str(request.url) == TOKEN_ENDPOINT:
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fixture-rotated-access",
+                    "refresh_token": "fixture-rotated-refresh",
+                    "expires_in": 900,
+                    "token_type": "Bearer",
+                },
+            )
+        # The first401 triggers one refresh; the rotated generation is rejected.
+        return httpx.Response(401 if len(calls) == 1 and not expired else status)
+
+    with pytest.raises(RuntimeError):
+        async with httpx.AsyncClient(auth=p, transport=safe_transport(handler)) as client:
+            await client.get(OFFICIAL_MCP_ENDPOINT)
+    record = await storage.get_lifecycle()
+    assert record.state == "reauthorization_required"
+    assert record.expires_at is None
+    before = len(calls)
+    m = importlib.import_module("trading_bot.brokers.robinhood_oauth_provider")
+    fresh = m.LifecycleOAuthClientProvider(
+        OFFICIAL_MCP_ENDPOINT,
+        p.context.client_metadata,
+        storage,
+        clock=lambda: NOW + timedelta(seconds=902),
+    )
+    with pytest.raises(RuntimeError):
+        async with httpx.AsyncClient(auth=fresh, transport=safe_transport(handler)) as client:
+            await client.get(OFFICIAL_MCP_ENDPOINT)
+    assert len(calls) == before
+
+
+@pytest.mark.asyncio
+async def test_refreshed_resource_request_is_quarantined_before_dispatch(tmp_path):
+    p, storage = await provider(tmp_path)
+
+    async def handler(request):
+        if str(request.url) == TOKEN_ENDPOINT:
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fixture-new",
+                    "expires_in": 900,
+                    "token_type": "Bearer",
+                },
+            )
+        assert (await storage.get_lifecycle()).state == "resource_validation_pending"
+        with pytest.raises(RuntimeError):
+            await storage.get_tokens()
+        return httpx.Response(200)
+
+    async with httpx.AsyncClient(auth=p, transport=safe_transport(handler)) as client:
+        assert (await client.get(OFFICIAL_MCP_ENDPOINT)).status_code == 200
+    assert (await storage.get_lifecycle()).state == "active"
+
+
+@pytest.mark.asyncio
+async def test_failed_durable_denial_leaves_quarantine_not_reusable_token(tmp_path, monkeypatch):
+    p, storage = await provider(tmp_path)
+    original = storage.set_tokens_with_lifecycle
+
+    async def persist(tokens, lifecycle):
+        if lifecycle is not None and lifecycle.state == "reauthorization_required":
+            raise OSError("fixture private filesystem error")
+        await original(tokens, lifecycle)
+
+    monkeypatch.setattr(storage, "set_tokens_with_lifecycle", persist)
+
+    def handler(request):
+        if str(request.url) == TOKEN_ENDPOINT:
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fixture-new",
+                    "expires_in": 900,
+                    "token_type": "Bearer",
+                },
+            )
+        return httpx.Response(401)
+
+    with pytest.raises(RuntimeError, match="failed safely"):
+        async with httpx.AsyncClient(auth=p, transport=safe_transport(handler)) as client:
+            await client.get(OFFICIAL_MCP_ENDPOINT)
+    assert (await storage.get_lifecycle()).state == "resource_validation_pending"
+    with pytest.raises(RuntimeError):
+        await storage.get_tokens()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 429, 500, 503])
+async def test_uncertain_first_resource_response_preserves_nonreusable_generation(tmp_path, status):
+    p, storage = await provider(tmp_path)
+
+    def handler(request):
+        if str(request.url) == TOKEN_ENDPOINT:
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fixture-new",
+                    "expires_in": 900,
+                    "token_type": "Bearer",
+                },
+            )
+        return httpx.Response(status)
+
+    with pytest.raises(RuntimeError):
+        async with httpx.AsyncClient(auth=p, transport=safe_transport(handler)) as client:
+            await client.get(OFFICIAL_MCP_ENDPOINT)
+    assert (await storage.get_lifecycle()).state == "resource_validation_pending"
+    with pytest.raises(RuntimeError):
+        await storage.get_tokens()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 503])
+async def test_second_rotated_generation_is_independently_quarantined(tmp_path, status):
+    p, storage = await provider(tmp_path)
+    current = [NOW + timedelta(seconds=901)]
+    p._clock = lambda: current[0]
+    refreshes = []
+    observed = []
+
+    async def handler(request):
+        if str(request.url) == TOKEN_ENDPOINT:
+            refreshes.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fixture-new-" + str(len(refreshes)),
+                    "expires_in": 900,
+                    "token_type": "Bearer",
+                },
+            )
+        observed.append((len(refreshes), (await storage.get_lifecycle()).state))
+        return httpx.Response(200 if len(refreshes) == 1 else status)
+
+    async with httpx.AsyncClient(auth=p, transport=safe_transport(handler)) as client:
+        assert (await client.get(OFFICIAL_MCP_ENDPOINT)).status_code == 200
+        current[0] = NOW + timedelta(seconds=1802)
+        with pytest.raises(RuntimeError):
+            await client.get(OFFICIAL_MCP_ENDPOINT)
+    assert observed == [(1, "resource_validation_pending"), (2, "resource_validation_pending")]
+    assert (await storage.get_lifecycle()).state == (
+        "resource_validation_pending" if status == 503 else "reauthorization_required"
+    )
+    with pytest.raises(RuntimeError):
+        await storage.get_tokens()
+
+
+@pytest.mark.asyncio
+async def test_automatic_rotation_is_not_reusable_before_any_resource_send(tmp_path):
+    p, storage = await provider(tmp_path)
+    await p._initialize()
+    await p._refresh_token()
+    response = httpx.Response(
+        200,
+        request=httpx.Request("POST", TOKEN_ENDPOINT),
+        json={
+            "access_token": "fixture-new",
+            "expires_in": 900,
+            "token_type": "Bearer",
+        },
+    )
+    await p._handle_refresh_response(response)
+    assert (await storage.get_lifecycle()).state == "resource_validation_pending"
+    with pytest.raises(RuntimeError):
+        await storage.get_tokens()
+
+
+@pytest.mark.asyncio
+async def test_active_generation_403_denies_without_refresh_and_persists(tmp_path):
+    p, storage = await provider(tmp_path, expired=False)
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(403)
+
+    with pytest.raises(RuntimeError):
+        async with httpx.AsyncClient(auth=p, transport=safe_transport(handler)) as client:
+            await client.get(OFFICIAL_MCP_ENDPOINT)
+    assert calls == [OFFICIAL_MCP_ENDPOINT]
+    assert (await storage.get_lifecycle()).state == "reauthorization_required"
+    with pytest.raises(RuntimeError):
+        await storage.get_tokens()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("explicit", [False, True])
 async def test_existing_generation_cannot_be_rebound_before_refresh(tmp_path, explicit):
     p, s = await provider(tmp_path, expired=False)
