@@ -29,6 +29,15 @@ only `Dockerfile`, `.docker-base-image`, `pyproject.toml`, `uv.lock`, `alembic.i
 untracked files, environment file, key, account state or provider capture is included.
 The original archive bytes, including Git's commit comment, define the release hash.
 
+The preparer uses a scrubbed fixed local Git process, one original30second window,
+metadata caps of at most5seconds and an archive cap of at most20seconds. It rejects
+archive attribute overrides, dirty/changed HEAD and unsafe/existing output paths.
+The format and attribute behavior follow the [official Git archive contract](https://git-scm.com/docs/git-archive).
+The standalone preparation helper returns data identity only. The completed public
+producer must own a fresh clean capture that exactly matches the staged input before
+building; a caller's digest or old readable archive does not establish current
+source-preparation acknowledgement.
+
 The pure parser admits only uncompressed tar, at most16MiB, at most2,048 entries,
 each regular file at most1MiB, UID/GID0, modes0644/0755, regular files/directories,
 unique safe ASCII paths in that allowlist, and a consistent40-or64-hex Git comment.

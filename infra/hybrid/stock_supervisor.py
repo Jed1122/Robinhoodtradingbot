@@ -8,8 +8,9 @@ result. No service, timer, credential, provider, removal or trading composition.
 from __future__ import annotations
 
 import signal
+import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from types import FrameType
@@ -29,6 +30,8 @@ from infra.hybrid.stock_engine_mutation import _ERRORS, _production_store
 from infra.hybrid.stock_engine_termination import StockEngineTerminator, _owned_running
 
 _NS = 1_000_000_000
+_ShutdownScope = tuple[int, list[bool], Callable[[int, FrameType | None], None]]
+_ACTIVE_SHUTDOWN: _ShutdownScope | None = None
 
 
 def _deny() -> NoReturn:
@@ -55,10 +58,34 @@ class _Clock:
         return self.last
 
 
+def _check_shutdown(scope: _ShutdownScope) -> None:
+    owner, requested, handler = scope
+    _require(
+        _ACTIVE_SHUTDOWN is scope
+        and threading.get_ident() == owner
+        and type(requested) is list
+        and len(requested) == 1
+        and type(requested[0]) is bool
+        and all(signal.getsignal(number) is handler for number in (signal.SIGTERM, signal.SIGINT))
+    )
+
+
 @contextmanager
 def _shutdown() -> Iterator[list[bool]]:
+    """Nested owned operations share sticky state; only the outer scope owns handlers."""
+    global _ACTIVE_SHUTDOWN
+    _require(threading.current_thread() is threading.main_thread())
+    if _ACTIVE_SHUTDOWN is not None:
+        nested = _ACTIVE_SHUTDOWN
+        _check_shutdown(nested)
+        try:
+            yield nested[1]
+        finally:
+            _check_shutdown(nested)
+        return
     requested = [False]
     previous: list[tuple[int, Any]] = []
+    scope: _ShutdownScope | None = None
 
     def handler(_number: int, _frame: FrameType | None) -> None:
         requested[0] = True
@@ -68,14 +95,24 @@ def _shutdown() -> Iterator[list[bool]]:
             old = signal.getsignal(number)
             signal.signal(number, handler)
             previous.append((number, old))
+        scope = (threading.get_ident(), requested, handler)
+        _ACTIVE_SHUTDOWN = scope
         yield requested
     finally:
         failed = False
-        for restored_number, old in reversed(previous):
+        if scope is not None:
             try:
-                signal.signal(restored_number, old)
+                _check_shutdown(scope)
             except _ERRORS:
                 failed = True
+        try:
+            for restored_number, old in reversed(previous):
+                try:
+                    signal.signal(restored_number, old)
+                except _ERRORS:
+                    failed = True
+        finally:
+            _ACTIVE_SHUTDOWN = None
         _require(not failed)
 
 
