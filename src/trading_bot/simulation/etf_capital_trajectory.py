@@ -7,6 +7,7 @@ from decimal import Decimal, localcontext
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Instrument, require_bounded_decimal
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
+from trading_bot.market_data.etf_capital_observed import CapitalObservedDataset
 from trading_bot.market_data.etf_capital_owned import _own_capital_source
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_daily_policy import CapitalDailyPolicy, CapitalOpeningPolicy
@@ -165,7 +166,7 @@ def replay_capital_trajectory(request: CapitalTrajectoryRequest) -> CapitalTraje
 
 def _replay_prepared_capital_trajectory(
     *,
-    source: CapitalResearchDataset,
+    source: CapitalResearchDataset | CapitalObservedDataset,
     source_hash: str,
     prepared: _PreparedCapitalInput,
     terms: _CapitalOwnerTerms,

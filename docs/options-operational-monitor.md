@@ -74,14 +74,11 @@ The API is verified with credential-free fake sources and a real temporary SQLit
 database, including restart and append-only enforcement. Tests never read the private
 Databento key or call broker tools.
 
-Run the narrow verification from the repository using its verified development Python:
-
-```sh
-PYTHONPATH=src python -m pytest tests/unit/reconciliation/test_options_reconciliation.py tests/unit/lifecycle/test_options_expiry.py tests/unit/runtime/test_options_monitor.py tests/integration/persistence/test_options_monitor_store.py tests/smoke/test_critical_branch_coverage.py -q
-```
-
-The critical-coverage checker includes these new domain, reconciliation and runtime
-modules plus all lifecycle modules at the existing 90% per-file branch threshold.
+Historical verification only: the options-specific tests and their critical-coverage
+membership have been retired from the active stock bot suite. They are recoverable
+from Git history but are no longer current executable verification instructions.
+Use [stock verification](stock-bot-testing.md) for the active scope. These historical
+monitor results do not establish coverage of options code in the current stock suite.
 
 ## Remaining work, separated from external blockers
 

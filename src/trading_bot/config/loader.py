@@ -6,7 +6,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Annotated, Any, cast, get_args, get_origin
+from types import UnionType
+from typing import Annotated, Any, Union, cast, get_args, get_origin
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -17,7 +18,14 @@ from trading_bot.config.capital_research import (
     enforce_capital_research_envelope,
 )
 from trading_bot.config.hashing import hash_loaded_config
+from trading_bot.config.hybrid import HybridAppConfig, HybridSafetyEnvelope
 from trading_bot.config.models import AppConfig, SafetyEnvelope
+from trading_bot.config.stock_research import (
+    StockResearchAppConfig,
+    StockResearchSafetyEnvelope,
+    StockWorkerAppConfig,
+    StockWorkerSafetyEnvelope,
+)
 from trading_bot.domain import ConfigHash, ExecutionMode
 from trading_bot.domain.decimal_utils import _require_sha256_hex
 
@@ -48,6 +56,13 @@ def _restore_canonical_value(value: object, annotation: Any) -> object:
     """Decode the existing complete graph; canonical decimals are text."""
     if get_origin(annotation) is Annotated:
         return _restore_canonical_value(value, get_args(annotation)[0])
+    if get_origin(annotation) in (UnionType, Union):
+        members = get_args(annotation)
+        if value is None and type(None) in members:
+            return None
+        nonnull = [member for member in members if member is not type(None)]
+        if len(nonnull) == 1:
+            return _restore_canonical_value(value, nonnull[0])
     if annotation is Decimal:
         if type(value) is not str:
             raise ConfigLoadError("canonical configuration invalid")
@@ -84,8 +99,37 @@ def restore_loaded_config(canonical_json: bytes, expected_hash: ConfigHash) -> L
         research = "capital_research" in config_body
         if research != ("capital_research" in envelope_body):
             raise ConfigLoadError("canonical configuration invalid")
-        config_model = CapitalResearchAppConfig if research else AppConfig
-        envelope_model = CapitalResearchSafetyEnvelope if research else SafetyEnvelope
+        hybrid = "hybrid" in config_body
+        if hybrid != ("hybrid" in envelope_body) or (hybrid and research):
+            raise ConfigLoadError("canonical configuration invalid")
+        stocks = "stock_research" in config_body
+        if stocks != ("stock_research" in envelope_body) or (stocks and not hybrid):
+            raise ConfigLoadError("canonical configuration invalid")
+        worker = "stock_worker" in config_body
+        if worker != ("stock_worker" in envelope_body) or (worker and not stocks):
+            raise ConfigLoadError("canonical configuration invalid")
+        config_model = (
+            StockWorkerAppConfig
+            if worker
+            else StockResearchAppConfig
+            if stocks
+            else HybridAppConfig
+            if hybrid
+            else CapitalResearchAppConfig
+            if research
+            else AppConfig
+        )
+        envelope_model = (
+            StockWorkerSafetyEnvelope
+            if worker
+            else StockResearchSafetyEnvelope
+            if stocks
+            else HybridSafetyEnvelope
+            if hybrid
+            else CapitalResearchSafetyEnvelope
+            if research
+            else SafetyEnvelope
+        )
         config = config_model.model_validate(_restore_canonical_value(config_body, config_model))
         envelope = envelope_model.model_validate(
             _restore_canonical_value(envelope_body, envelope_model)
@@ -322,6 +366,40 @@ def _require_not_enabled(name: str, actual: bool, permitted: bool) -> None:
 
 def enforce_safety_envelope(config: AppConfig, envelope: SafetyEnvelope) -> None:
     """Reject every resolved value that weakens release-level safety."""
+
+    worker_pair = (
+        type(config) is StockWorkerAppConfig and type(envelope) is StockWorkerSafetyEnvelope
+    )
+    if (
+        isinstance(config, StockWorkerAppConfig)
+        or isinstance(envelope, StockWorkerSafetyEnvelope)
+    ) and (
+        not worker_pair
+        or cast(StockWorkerAppConfig, config).stock_worker
+        != cast(StockWorkerSafetyEnvelope, envelope).stock_worker
+    ):
+        raise UnsafeConfiguration("stock worker policy/envelope mismatch")
+    stock_pair = worker_pair or (
+        type(config) is StockResearchAppConfig and type(envelope) is StockResearchSafetyEnvelope
+    )
+    if (
+        isinstance(config, StockResearchAppConfig)
+        or isinstance(envelope, StockResearchSafetyEnvelope)
+    ) and (
+        not stock_pair
+        or cast(StockResearchAppConfig, config).stock_research
+        != cast(StockResearchSafetyEnvelope, envelope).stock_research
+    ):
+        raise UnsafeConfiguration("stock research policy/envelope mismatch")
+    if (isinstance(config, HybridAppConfig) or isinstance(envelope, HybridSafetyEnvelope)) and (
+        (
+            not stock_pair
+            and (type(config) is not HybridAppConfig or type(envelope) is not HybridSafetyEnvelope)
+        )
+        or cast(HybridAppConfig, config).hybrid != cast(HybridSafetyEnvelope, envelope).hybrid
+        or envelope.live_trading_permitted
+    ):
+        raise UnsafeConfiguration("hybrid policy/envelope mismatch or live authority")
 
     if isinstance(config, CapitalResearchAppConfig) or isinstance(
         envelope, CapitalResearchSafetyEnvelope
@@ -868,10 +946,19 @@ def load_config(
     environ: Mapping[str, str],
     *,
     research_policy_path: Path | None = None,
+    hybrid_policy_path: Path | None = None,
+    stock_research_policy_path: Path | None = None,
+    stock_worker_policy_path: Path | None = None,
 ) -> LoadedConfig:
     """Load base, one named mode, environment, and immutable safety envelope."""
 
-    if research_policy_path is not None and any(
+    if research_policy_path is not None and hybrid_policy_path is not None:
+        raise ConfigLoadError("select only one canonical policy extension")
+    if stock_research_policy_path is not None and hybrid_policy_path is None:
+        raise ConfigLoadError("stock research requires canonical hybrid policy")
+    if stock_worker_policy_path is not None and stock_research_policy_path is None:
+        raise ConfigLoadError("stock worker requires canonical stock policy")
+    if (research_policy_path is not None or hybrid_policy_path is not None) and any(
         key.upper().startswith(ENV_PREFIX) or key.upper() in ENV_ALIASES for key in environ
     ):
         raise ConfigLoadError("capital research rejects configuration environment overrides")
@@ -887,9 +974,31 @@ def load_config(
     if merged.get("mode") != selected_mode:
         raise ConfigLoadError("environment cannot select a mode different from the overlay")
 
+    config: AppConfig
+    envelope: SafetyEnvelope
     try:
         envelope_body = _load_yaml(safety_path)
-        if research_policy_path is None:
+        if hybrid_policy_path is not None:
+            policy = _load_yaml(hybrid_policy_path)
+            merged["hybrid"] = policy
+            envelope_body["hybrid"] = policy
+            if stock_research_policy_path is not None:
+                stock_policy = _load_yaml(stock_research_policy_path)
+                merged["stock_research"] = stock_policy
+                envelope_body["stock_research"] = stock_policy
+                if stock_worker_policy_path is not None:
+                    worker_policy = _load_yaml(stock_worker_policy_path)
+                    merged["stock_worker"] = worker_policy
+                    envelope_body["stock_worker"] = worker_policy
+                    config = StockWorkerAppConfig.model_validate(merged)
+                    envelope = StockWorkerSafetyEnvelope.model_validate(envelope_body)
+                else:
+                    config = StockResearchAppConfig.model_validate(merged)
+                    envelope = StockResearchSafetyEnvelope.model_validate(envelope_body)
+            else:
+                config = HybridAppConfig.model_validate(merged)
+                envelope = HybridSafetyEnvelope.model_validate(envelope_body)
+        elif research_policy_path is None:
             config = AppConfig.model_validate(merged)
             envelope = SafetyEnvelope.model_validate(envelope_body)
         else:

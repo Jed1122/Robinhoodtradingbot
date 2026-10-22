@@ -489,7 +489,7 @@ def _record_from_schema(tool: SanitizedToolSchema, observed_at: datetime) -> Cap
                 schema_sha256=tool.schema_sha256,
                 authenticated=False,
                 contains_account_data=False,
-                notes=("sanitized MCP 1.28.1 tools/list declaration",),
+                notes=("sanitized MCP tools/list declaration",),
             ),
         ),
         limitations=limitations,

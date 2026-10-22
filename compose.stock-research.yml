@@ -1,0 +1,79 @@
+name: hybrid-stock-research
+services:
+  stock-research:
+    image: ${STOCK_IMAGE:?immutable image ID required}
+    pull_policy: never
+    user: "10001:10001"
+    read_only: true
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    cpus: 0.5
+    mem_limit: 512m
+    memswap_limit: 512m
+    restart: "no"
+    stop_signal: SIGTERM
+    stop_grace_period: 10s
+    network_mode: bridge
+    healthcheck:
+      disable: true
+    volumes:
+      - type: bind
+        source: /var/lib/hybrid-stock-research/state
+        target: /stock-state
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/hybrid-stock-research/archive
+        target: /stock-archive
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/hybrid-stock-research/controls
+        target: /stock-controls
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/hybrid-stock-research/exports
+        target: /stock-exports
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/hybrid-stock-research/oauth
+        target: /stock-oauth
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${STOCK_ATTESTATION_FILE:?trusted release attestation required}
+        target: /run/trading-bot/stock-image-attestation.json
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs: ["/tmp:size=32m,mode=1777,noexec,nosuid,nodev"]
+    environment:
+      LIVE_TRADING_ENABLED: "false"
+      PREDICTION_LIVE_ENABLED: "false"
+    entrypoint: ["python", "-m", "trading_bot.runtime.stock_research_worker"]
+    command:
+      - --config-root
+      - /app/configs
+      - --database
+      - /stock-state/ledger.sqlite3
+      - --oauth-store
+      - /stock-oauth
+      - --archive-dir
+      - /stock-archive
+      - --control-dir
+      - /stock-controls
+      - --export-dir
+      - /stock-exports
+      - --image-digest
+      - ${STOCK_IMAGE:?immutable image ID required}
+      - --image-attestation
+      - /run/trading-bot/stock-image-attestation.json
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

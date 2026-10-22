@@ -13,7 +13,17 @@ from trading_bot.market_data.etf_capital_features import (
     _capital_feature_source,
     _capital_owned_raw_source,
 )
-from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
+from trading_bot.market_data.etf_capital_observed import (
+    CapitalDailyRangeView,
+    CapitalObservedDataset,
+    _capital_range_feature_source,
+)
+from trading_bot.market_data.etf_capital_owned import (
+    _own_capital_source,
+    _owned_capital_source_kind_valid,
+    _OwnedCapitalObservedSource,
+    _OwnedCapitalSource,
+)
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_benchmark import (
     EtfBenchmarkBar,
@@ -49,6 +59,44 @@ class CapitalPassiveRequest(_Offline):
     roundtrip_friction_pct: Decimal
     entry_fee: Decimal
     estimated_exit_fee: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class _CapitalObservedPassiveRequest(_Offline):
+    dataset: CapitalObservedDataset
+    initial_cash: Decimal
+    sessions: tuple[date, ...]
+    roundtrip_friction_pct: Decimal
+    entry_fee: Decimal
+    estimated_exit_fee: Decimal
+
+
+def _capital_owned_passive_request(
+    owned: _OwnedCapitalSource | _OwnedCapitalObservedSource,
+    initial_cash: Decimal,
+    sessions: tuple[date, ...],
+    roundtrip_friction_pct: Decimal,
+    entry_fee: Decimal,
+    estimated_exit_fee: Decimal,
+) -> CapitalPassiveRequest | _CapitalObservedPassiveRequest:
+    _check(_owned_capital_source_kind_valid(owned))
+    if type(owned) is _OwnedCapitalObservedSource:
+        return _CapitalObservedPassiveRequest(
+            owned.dataset,
+            initial_cash,
+            sessions,
+            roundtrip_friction_pct,
+            entry_fee,
+            estimated_exit_fee,
+        )
+    return CapitalPassiveRequest(
+        cast(_OwnedCapitalSource, owned).dataset,
+        initial_cash,
+        sessions,
+        roundtrip_friction_pct,
+        entry_fee,
+        estimated_exit_fee,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,14 +156,31 @@ def run_capital_passive_reference(request: CapitalPassiveRequest) -> CapitalPass
 
 
 def _capital_passive_values(
-    owned: _OwnedCapitalSource,
-    request: CapitalPassiveRequest,
+    owned: _OwnedCapitalSource | _OwnedCapitalObservedSource,
+    request: CapitalPassiveRequest | _CapitalObservedPassiveRequest,
     *,
     entry_notional: Decimal | None = None,
 ) -> tuple[EtfBenchmarkResult, tuple[Decimal, ...], date]:
     """Invocation-owned valuation seam; no public result or allocation authority."""
     try:
         with localcontext(_CONTEXT):
+            _check(_owned_capital_source_kind_valid(owned))
+            _check(
+                (
+                    type(owned) is _OwnedCapitalSource
+                    and type(request) is CapitalPassiveRequest
+                    and type(request.dataset) is CapitalResearchDataset
+                )
+                or (
+                    type(owned) is _OwnedCapitalObservedSource
+                    and type(request) is _CapitalObservedPassiveRequest
+                    and type(request.dataset) is CapitalObservedDataset
+                )
+            )
+            _check(request.dataset == owned.dataset)
+            _check(request.source_qualified is False and request.cost_qualified is False)
+            _check(request.execution_enabled is False and request.economic_admitted is False)
+            _check(request.evidence_promotable is False)
             loaded = restore_loaded_config(
                 owned.dataset.canonical_config, owned.dataset.config_hash
             )
@@ -154,11 +219,20 @@ def _capital_passive_values(
                     for row in declared_distributions
                 )
             )
-            source = _capital_owned_raw_source(
-                _capital_feature_source(
-                    archive, owned.dataset.calendar, actions, as_of_session=last
+            if type(owned) is _OwnedCapitalObservedSource:
+                source = _capital_range_feature_source(
+                    CapitalDailyRangeView(
+                        archive, owned.dataset.calendar, owned.dataset.start, owned.dataset.end
+                    ),
+                    actions,
+                    as_of_session=last,
                 )
-            )
+            else:
+                source = _capital_owned_raw_source(
+                    _capital_feature_source(
+                        archive, owned.dataset.calendar, actions, as_of_session=last
+                    )
+                )
             raw = dict(cast(tuple[tuple[date, Bar], ...], source.raw_rows))
             # Same exact bounded financial context as the existing mathematical
             # kernel. Excess intermediate precision/size denies, never rounds.

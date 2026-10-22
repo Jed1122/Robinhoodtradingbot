@@ -16,7 +16,8 @@ typecheck:
 	uv run mypy src
 
 test:
-	uv run pytest tests --cov=trading_bot --cov-branch --cov-fail-under=80
+	uv run pytest tests --cov --cov-branch --cov-fail-under=80 --cov-report=json:coverage.json
+	uv run python scripts/check_critical_branch_coverage.py --report coverage.json
 
 test-unit:
 	uv run pytest tests/unit tests/property -q
@@ -74,4 +75,4 @@ backup:
 	./infra/digitalocean/backup.sh
 
 restore-test:
-	uv run pytest tests/deployment/test_backup_restore.py -q
+	uv run pytest tests/deployment/test_hybrid_deployment.py::test_private_backup_restores_real_sqlite -q

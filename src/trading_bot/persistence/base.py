@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import stat
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any, cast
+from urllib.parse import quote
 from weakref import WeakSet
 
 from sqlalchemy import CheckConstraint, MetaData, String, Text, event
@@ -422,7 +427,7 @@ def _apply_sqlite_policy(dbapi_connection: object) -> None:
         raise PersistenceConfigurationError("SQLite recursive-trigger enforcement is disabled")
 
 
-def create_engine(database_url: str) -> AsyncEngine:
+def create_engine(database_url: str, *, existing_file_descriptor: int | None = None) -> AsyncEngine:
     """Create an async engine whose SQLite connections fail closed without WAL safety."""
     if type(database_url) is not str or not database_url.strip():
         raise PersistenceConfigurationError("database_url must be a nonempty exact string")
@@ -433,10 +438,59 @@ def create_engine(database_url: str) -> AsyncEngine:
     if url.drivername != "sqlite+aiosqlite":
         raise PersistenceConfigurationError("database_url must use sqlite+aiosqlite")
 
+    file_check: Callable[[], None] | None = None
+    if existing_file_descriptor is not None:
+        # The caller owns this descriptor through engine disposal. Holding it
+        # prevents inode reuse; rw URI mode independently prohibits creation if
+        # the pathname disappears between validation and SQLite's actual open.
+        try:
+            if (
+                type(existing_file_descriptor) is not int
+                or existing_file_descriptor < 0
+                or not url.database
+                or url.query
+            ):
+                raise ValueError
+            path = Path(url.database)
+            initial = os.fstat(existing_file_descriptor)
+
+            def validate_file() -> None:
+                try:
+                    held = os.fstat(existing_file_descriptor)
+                    named = path.lstat()
+                    parent = path.parent.lstat()
+                    if (
+                        not path.is_absolute()
+                        or path.resolve(strict=True) != path
+                        or not stat.S_ISDIR(parent.st_mode)
+                        or parent.st_uid != os.geteuid()
+                        or stat.S_IMODE(parent.st_mode) != 0o700
+                        or any(
+                            not stat.S_ISREG(info.st_mode)
+                            or info.st_uid != os.geteuid()
+                            or stat.S_IMODE(info.st_mode) != 0o600
+                            or info.st_nlink != 1
+                            or (info.st_dev, info.st_ino) != (initial.st_dev, initial.st_ino)
+                            for info in (held, named)
+                        )
+                    ):
+                        raise ValueError
+                except Exception:
+                    raise PersistenceConfigurationError("existing SQLite ledger changed") from None
+
+            validate_file()
+            file_check = validate_file
+            url = url.set(
+                database="file:" + quote(str(path), safe="/"),
+                query={"mode": "rw", "uri": "true"},
+            )
+        except Exception:
+            raise PersistenceConfigurationError("existing SQLite ledger is unavailable") from None
+
     try:
         engine = create_async_engine(
-            database_url,
-            pool_pre_ping=True,
+            url,
+            pool_pre_ping=existing_file_descriptor is None,
             hide_parameters=True,
         )
     except (ImportError, SQLAlchemyError, TypeError, ValueError) as exc:
@@ -445,6 +499,8 @@ def create_engine(database_url: str) -> AsyncEngine:
     @event.listens_for(engine.sync_engine, "connect")
     def configure_connection(dbapi_connection: object, connection_record: object) -> None:
         del connection_record
+        if file_check is not None:
+            file_check()
         _apply_sqlite_policy(dbapi_connection)
 
     @event.listens_for(engine.sync_engine, "checkout")
@@ -454,6 +510,8 @@ def create_engine(database_url: str) -> AsyncEngine:
         connection_proxy: object,
     ) -> None:
         del connection_record, connection_proxy
+        if file_check is not None:
+            file_check()
         _apply_sqlite_policy(dbapi_connection)
 
     _VALIDATED_ENGINES.add(engine)

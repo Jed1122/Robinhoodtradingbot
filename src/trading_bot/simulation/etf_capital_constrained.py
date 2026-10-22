@@ -7,7 +7,13 @@ from decimal import Decimal, localcontext
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Instrument, require_bounded_decimal
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
-from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
+from trading_bot.market_data.etf_capital_observed import CapitalObservedDataset
+from trading_bot.market_data.etf_capital_owned import (
+    _own_capital_source,
+    _owned_capital_source_kind_valid,
+    _OwnedCapitalObservedSource,
+    _OwnedCapitalSource,
+)
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_constrained_policy import (
     _capital_constrained_policy,
@@ -71,6 +77,22 @@ class CapitalConstrainedRequest(_Offline):
 
 
 @dataclass(frozen=True, slots=True)
+class _CapitalObservedConstrainedRequest(_Offline):
+    dataset: CapitalObservedDataset
+    initial_cash: Decimal
+    days: tuple[CapitalConstrainedDay, ...]
+    instruments: tuple[Instrument, ...]
+    episode_fee_bound: Decimal | None
+    entry_fee: Decimal
+    exit_fee: Decimal
+    roundtrip_friction_pct: Decimal
+    entry_outcome: _Outcome = "filled"
+    entry_fill_fraction: Decimal = Decimal(1)
+    exit_outcome: _Outcome = "filled"
+    exit_fill_fraction: Decimal = Decimal(1)
+
+
+@dataclass(frozen=True, slots=True)
 class CapitalConstrainedPoint:
     at: datetime
     equity: Decimal
@@ -90,9 +112,22 @@ class CapitalConstrainedResult(_Offline):
 
 
 def _constrained_inputs(
-    request: CapitalConstrainedRequest, owned: _OwnedCapitalSource
+    request: CapitalConstrainedRequest | _CapitalObservedConstrainedRequest,
+    owned: _OwnedCapitalSource | _OwnedCapitalObservedSource,
 ) -> tuple[tuple[CapitalConstrainedDay, ...], _CapitalOwnerTerms, tuple[Instrument, ...]]:
-    _check(type(request) is CapitalConstrainedRequest)
+    _check(_owned_capital_source_kind_valid(owned))
+    _check(
+        (
+            type(owned) is _OwnedCapitalSource
+            and type(request) is CapitalConstrainedRequest
+            and type(request.dataset) is CapitalResearchDataset
+        )
+        or (
+            type(owned) is _OwnedCapitalObservedSource
+            and type(request) is _CapitalObservedConstrainedRequest
+            and type(request.dataset) is CapitalObservedDataset
+        )
+    )
     _check(request.source_qualified is False and request.cost_qualified is False)
     _check(request.execution_enabled is False and request.economic_admitted is False)
     _check(request.evidence_promotable is False)
@@ -103,7 +138,7 @@ def _constrained_inputs(
         day.__post_init__()
         days.append(replace(day))
     schedule = tuple(days)
-    _check(type(owned) is _OwnedCapitalSource and request.dataset == owned.dataset)
+    _check(request.dataset == owned.dataset)
     source = owned.dataset
     loaded = restore_loaded_config(source.canonical_config, source.config_hash)
     cfg = _config(loaded)
@@ -164,9 +199,9 @@ def replay_capital_constrained(request: CapitalConstrainedRequest) -> CapitalCon
 
 
 def _replay_owned_capital_constrained(
-    request: CapitalConstrainedRequest,
+    request: CapitalConstrainedRequest | _CapitalObservedConstrainedRequest,
     *,
-    owned: _OwnedCapitalSource,
+    owned: _OwnedCapitalSource | _OwnedCapitalObservedSource,
     prepared: _PreparedCapitalInput,
 ) -> CapitalConstrainedResult:
     """Reuse invocation-owned market facts; independently reconstruct this account."""

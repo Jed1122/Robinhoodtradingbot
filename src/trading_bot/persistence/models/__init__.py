@@ -16,6 +16,7 @@ from trading_bot.persistence.models.decisions import (
     StrategyDecisionRow,
 )
 from trading_bot.persistence.models.etf import EtfReplayEventRow
+from trading_bot.persistence.models.hybrid import HybridEventRow
 from trading_bot.persistence.models.market import (
     BarRow,
     DataQualityEventRow,
@@ -63,6 +64,7 @@ __all__ = [
     "FeatureRow",
     "FillRow",
     "HeartbeatRow",
+    "HybridEventRow",
     "InstrumentRow",
     "KillSwitchEventRow",
     "LiveAuthorizationRow",

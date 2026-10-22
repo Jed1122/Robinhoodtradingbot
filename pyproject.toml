@@ -12,7 +12,8 @@ dependencies = [
   "alembic==1.18.5",
   "fastapi==0.139.0",
   "httpx==0.28.1",
-  "mcp==1.28.1",
+  "jsonschema==4.26.0",
+  "mcp==1.30.0",
   "prometheus-client==0.25.0",
   "pydantic==2.13.4",
   "pydantic-settings==2.14.2",
@@ -69,3 +70,25 @@ packages = ["trading_bot"]
 
 [tool.bandit]
 exclude_dirs = ["tests"]
+
+# The default suite now covers the individual-stock bot and shared equity safety.
+# Legacy strategy/native-data modules remain in the tree but are not verified here.
+[tool.coverage.run]
+branch = true
+source = ["src/trading_bot", "infra/hybrid"]
+omit = [
+  "*/etf_*.py",
+  "*/options*.py",
+  "*/robinhood_crypto*.py",
+  "*/robinhood_prediction.py",
+  "*/prediction*.py",
+  "*/databento*.py",
+  "*/capital_research.py",
+  "*/alpaca_capital_native.py",
+  "*/connected_research.py",
+  "*/equity_comparison.py",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

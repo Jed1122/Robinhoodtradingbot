@@ -6,6 +6,25 @@ economic acceptance criteria, credentials, account permissions, or live controls
 The separately dated account-ceiling amendment below records a later narrow exception.
 Later explicit operator instructions supersede this record.
 
+## Individual-stock research and investing priority — 2026-10-21
+
+The operator clarified: "I just want the bot to be able to research different
+stocks 24/7 and identify the best stocks to invest in," followed by "Once the bot
+identifies the stock it invest in it as well."
+
+The intended product is the complete individual-stock workflow: continuous research,
+evidence-backed opportunity selection, deterministic portfolio/risk/tax evaluation,
+authorized investment and subsequent position monitoring. Prioritize usable research
+and that connected workflow. ETFs remain optional diversified holdings and benchmarks;
+an ETF-only study or infrastructure work alone does not satisfy this direction.
+
+The earlier removal of a mandatory fixed paper-trading waiting period remains in
+effect. These product-direction statements do not claim current strategy qualification
+or operational readiness. The existing development prohibition on live orders and
+the separate live-activation process remain in effect until implementation,
+verification and the required explicit activation. No automatic mode transition
+follows a high research score, passing tests or deployment.
+
 ## Automatic integration and merging
 
 The operator requested: "Proceed with economic validation and update your

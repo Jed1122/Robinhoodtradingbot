@@ -1312,14 +1312,23 @@ def test_safe_logger_boundaries_preserve_application_caller_metadata() -> None:
     ]
 
 
-def test_existing_structlog_logger_preserves_application_caller_metadata() -> None:
+@pytest.mark.parametrize("preconfigured", [False, True])
+def test_existing_structlog_logger_preserves_application_caller_metadata(
+    preconfigured: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     captured: list[str | None] = []
 
     class CapturingHandler(stdlib_logging.Handler):
         def emit(self, record: stdlib_logging.LogRecord) -> None:
             captured.append(record.funcName)
 
-    logger = structlog.stdlib.LoggerFactory()("structlog-caller-metadata-test")
+    if preconfigured:
+        configure_logging("INFO")
+    # Arrange an existing third-party structlog logger even when an earlier app
+    # startup installed the manager's higher-priority safe logger class.
+    with monkeypatch.context() as context:
+        context.setattr(stdlib_logging.getLogger().manager, "loggerClass", None)
+        logger = structlog.stdlib.LoggerFactory()("structlog-caller-metadata-test")
     assert type(logger) is logging_module._STRUCTLOG_LOGGER_TYPE
     configure_logging("INFO")
     logger.handlers = [CapturingHandler()]
@@ -1807,6 +1816,81 @@ def test_post_configuration_last_resort_uses_the_redacting_json_sink(
         logger.propagate = original_propagate
 
 
+@pytest.mark.parametrize("placement", ["propagating", "nonpropagating", "last_resort"])
+@pytest.mark.parametrize("displaced_hooks", [False, True])
+def test_late_exact_null_handler_preserves_noop_and_propagation_without_hooks(
+    capsys: pytest.CaptureFixture[str], placement: str, displaced_hooks: bool
+) -> None:
+    sentinel = "null-handler-fictional-secret"
+    SecretRegistry().register(sentinel)
+    configure_logging("INFO")
+    logger = stdlib_logging.getLogger("late-exact-null-handler")
+    handler = stdlib_logging.NullHandler()
+    assert type(handler) is stdlib_logging.NullHandler and handler.lock is None
+    calls: list[str] = []
+
+    def displaced(record: stdlib_logging.LogRecord) -> bool:
+        del record
+        calls.append("displaced")
+        raise AssertionError("exact NullHandler must remain a no-op")
+
+    if displaced_hooks:
+        handler.__dict__.update(handle=displaced, filter=displaced, emit=displaced)
+    logger.propagate = placement == "propagating"
+    if placement == "last_resort":
+        logger.handlers = []
+        stdlib_logging.lastResort = handler
+    else:
+        logger.handlers = [handler]
+
+    logger.error("ordinary event %s", sentinel)
+
+    assert calls == []
+    output = capsys.readouterr()
+    assert output.out == ""
+    if placement == "propagating":
+        assert "ordinary event" in json.loads(output.err)["event"]
+        assert sentinel not in output.err
+    else:
+        assert output.err == ""
+
+
+@pytest.mark.parametrize("last_resort", [False, True])
+def test_null_handler_subclass_keeps_sanitized_base_dispatch(last_resort: bool) -> None:
+    sentinel = "null-subclass-fictional-secret"
+    SecretRegistry().register(sentinel)
+    configure_logging("INFO")
+    captured: list[str] = []
+    hook_calls: list[str] = []
+
+    class RecordingNullHandler(stdlib_logging.NullHandler):
+        def createLock(self) -> None:
+            stdlib_logging.Handler.createLock(self)
+
+        def handle(self, record: stdlib_logging.LogRecord) -> bool:
+            del record
+            hook_calls.append("handle")
+            raise AssertionError("displaced handle must not run")
+
+        def emit(self, record: stdlib_logging.LogRecord) -> None:
+            captured.append(record.getMessage())
+
+    handler = RecordingNullHandler()
+    logger = stdlib_logging.getLogger("late-null-handler-subclass")
+    logger.propagate = False
+    if last_resort:
+        logger.handlers = []
+        stdlib_logging.lastResort = handler
+    else:
+        logger.handlers = [handler]
+
+    logger.error("ordinary event %s", sentinel)
+
+    assert hook_calls == []
+    assert len(captured) == 1 and "ordinary event" in captured[0]
+    assert sentinel not in captured[0]
+
+
 def test_configure_logging_fails_closed_without_validated_size_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1967,7 +2051,7 @@ def test_configured_structlog_emits_secret_free_aware_utc_json(
     assert "Bearer" not in serialized
 
 
-def test_makefile_has_exact_baseline_targets_and_commands() -> None:
+def test_makefile_has_exact_stock_targets_and_commands() -> None:
     makefile = (_REPO_ROOT / "Makefile").read_text(encoding="utf-8")
 
     phony = next(line for line in makefile.splitlines() if line.startswith(".PHONY:"))
@@ -1976,13 +2060,15 @@ def test_makefile_has_exact_baseline_targets_and_commands() -> None:
     assert "lint:\n\tuv run ruff check ." in makefile
     assert "typecheck:\n\tuv run mypy src" in makefile
     assert (
-        "test:\n\tuv run pytest tests --cov=trading_bot --cov-branch --cov-fail-under=80"
+        "test:\n\tuv run pytest tests --cov --cov-branch --cov-fail-under=80"
+        " --cov-report=json:coverage.json\n\tuv run python "
+        "scripts/check_critical_branch_coverage.py --report coverage.json"
         in makefile
     )
     assert ("security:\n\tuv run bandit -c pyproject.toml -r src\n\tuv run pip-audit") in makefile
 
 
-def test_ci_is_read_only_and_has_only_the_baseline_offline_test_matrix() -> None:
+def test_ci_is_read_only_and_has_only_the_stock_offline_test_matrix() -> None:
     workflow = (_REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     folded = workflow.casefold()
 
@@ -1992,7 +2078,10 @@ def test_ci_is_read_only_and_has_only_the_baseline_offline_test_matrix() -> None
     assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in workflow
     assert "uv run ruff check ." in workflow
     assert "uv run mypy src" in workflow
-    assert "uv run pytest tests --cov=trading_bot --cov-branch --cov-fail-under=80" in workflow
+    assert "uv run pytest tests --cov --cov-branch --cov-fail-under=80" in workflow
+    assert "--cov-report=json:coverage.json" in workflow
+    assert "scripts/check_critical_branch_coverage.py --report coverage.json" in workflow
+    assert "--cov=trading_bot" not in workflow
     for forbidden in (
         "pull_request_target",
         "secret",

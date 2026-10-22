@@ -1,6 +1,220 @@
 # Parallel Orchestration Transition Report
 
-## Current architecture and panel — October 11
+## Individual-stock research checkpoint — October 21
+
+Latest local continuation: runtime 10a27f4 integrates the reviewed first-attempt
+launcher and pure SEC companyfacts-to-filing binding. Central verification passed
+1,563 tests with four optional age skips; Ruff, mypy (452 files), expanded Bandit,
+lock and diff checks passed. The launcher is explicitly first-attempt-only; its
+review cleared with one deferred fixture/documentation minor (the actual loader
+requires manifest.json). The SEC binder preserves receipt-time visibility and
+permanent unqualified flags. Neither is deployed. The primary is frozen at1537d7e
+for full verification; that earlier source excludes these latest changes.
+The [repeated-cycle design](docs/stock-repeated-cycle-design.md) documents the next
+root-owned durable dispatch/handoff/removal/recovery work, not an implemented timer.
+
+The corrected full baseline at a63a475 finished with 11,810 passed, 33 optional
+skips, one dependency deprecation warning and 88.77% combined branch coverage in
+4,258.53 seconds. Reviewed local integration advanced the primary to f04a63f;
+its 641 central deployment/reconciliation/adapter tests passed with four optional
+age skips, plus Ruff, strict mypy (445 files), expanded Bandit and lock checks.
+The f04a63f full run subsequently finished with 12,110 passed, 33 optional skips,
+one dependency warning and 88.80% combined coverage in 4,379.19 seconds. Later
+dispatch-source work remains separate until reviewed local integration and is
+not covered by either baseline result.
+
+The current investment workstream prioritizes individual companies. A local one-shot
+research owner now composes complete scanner plans, numerical screening, company
+dossiers, durable call reservations, cache verification and a shared private archive
+lease. It never invokes account or order tools. Failed/cancelled/ambiguous runs retain
+their full reserved budget. Runtime clocks, source age and exact request identities
+are checked before data calls and successful terminal persistence.
+
+Independent local review cleared the integrated worker after clock-boundary and
+existing-ledger opening fixes. Central checks passed 650 tests with 89.97% combined
+branch coverage over the changed runtime/persistence surface. These are fictional
+session and local database tests; they do not establish deployed collection or an
+investment advantage. The full frozen 7cd644d baseline subsequently completed with
+11,407 passed, 33 optional skips, one warning and 88.55% combined branch coverage.
+The primary integration branch advanced to 32f4de3 after exact diff review; its
+changed worker/CLI/persistence surface passed 455 central tests. That older full
+baseline does not certify the later worker or dashboard changes.
+
+The CLI also accepts the existing root-controlled deployed-image attestation through
+a required option pair, checks its full stock configuration hash and passes only the
+image-derived code hash to acquisition. This has local fictional-attestation tests;
+the stock deployment's attestation producer and executing-image proof remain absent.
+
+One authorized local worker discovery at 32f4de3 completed 17 stock-data calls using
+the dedicated saved grant; immediate restart returned `not_due` without another claim
+or capture. Recomputed retained evidence yielded 1,472 candidates, 1,058 scorable
+companies and ten research priorities, all investment-ineligible. This is separate
+from fictional tests and does not establish a scheduled service.
+
+The sanitized stock-dashboard export and authenticated filesystem-only feed are now
+implemented locally, with stock research priorities, evidence gaps, original source
+times and collector status on desktop/mobile. Central checks passed 417 tests with
+93.63% combined branch coverage over the changed backend surface, 57 frontend tests,
+a production frontend build, and fictional publisher-to-API rendered checks at both
+viewports. Independent backend/UI reviews cleared this bounded integration. No broker,
+credential or deployment operation was performed for that check. The dashboard's
+existing controls explicitly remain scoped to the hybrid portfolio journal.
+
+The subsequent collector gate is implemented locally with a private paused-by-default
+authority, sticky kill, code/config-bound explicit resume, generation fencing and a
+separate dispatch mutex spanning reservation, setup, actual calls and successful commit.
+Its focused/architecture checks passed 290 tests with 96.09% combined branch coverage;
+independent review cleared the corrected lost-anchor and operation-exception boundaries.
+This later feature is not covered by the dashboard baseline at 3cd8e8c. That full
+run ended with 11,597 passed, 33 optional skips, two test-context failures and 88.74%
+combined branch coverage. Both failures were reproduced with narrow ordered cases:
+a placeholder digest matched a registered fictional credential, and a logger test
+assumed an unconfigured manager. Test-only corrections preserve all production guards;
+independent reviews and the ordered 131-test regression passed. A corrected integrated
+full run is still required. Collector actuation is CLI-only; the dashboard still
+shows recorded cycle state and retains its separate hybrid controls. See the
+[control contract](docs/stock-research-controls.md).
+
+The next local source increment adds a configuration-only observation command sharing
+the worker/resume loader. It passed 285 focused/architecture tests with 97.77% combined
+branch coverage over probe/worker and independent review. It reports policy identity
+and bounds without code attestation or provider access. Actual inert-container
+observation, attestation production and runtime inspection remain unverified; see
+[operations status](docs/stock-research-operations.md).
+
+The isolated stock Compose policy and read-only retained-release verifier are now local
+source. The four closed canonical artifacts bind the exact resolved worker policy,
+image/config identity and observed bounds; public loading fixes root ownership and
+production paths. Verifier/policy checks passed 102 fictional tests with 99% verifier
+branch coverage. Separate Engine/image metadata parsers passed 67 tests with 100%
+branch coverage; deployment-related regression passed 245 with four optional local-age
+skips. Independent reviews cleared corrected cleanup and numeric-overflow cases. These
+components perform no Docker/provider operation. Actual container inspection, the
+trusted producer, supervisor, hard termination, timer and deployment are not complete.
+The [container contract](docs/stock-container-contract.md) distinguishes retained-record
+consistency from native image/runtime evidence and records the fixed API profile.
+
+The subsequent local data-only prestart gate builds a fixed raw API 1.52 worker
+request and compares supplied created-container metadata against complete identity,
+command, environment, request/resolved mounts, fresh state and resource policies.
+It initially passed 123 fictional cases. Review found Docker can normalize an allowed
+empty image volume map to null. The field-specific RED-to-GREEN fix and denial tests
+passed 129 cases with 100% branch coverage, and independent review cleared the gate
+after 374 deployment regression tests with four optional age skips. This gate performs
+no Docker call and does not establish actual CID inspection, applied hardening or
+permission to start. Primary a63a475 remains frozen for its running full test suite;
+this source increment is developed separately.
+
+The local GET-only Engine metadata reader now adds fixed Linux/root/socket/peer
+checks, immutable-image/full-CID/generated-attempt routes and a non-renewable bounded
+HTTP read budget. Its 42 fictional/socketpair tests passed with 98.48% branch coverage;
+review found the private shared transport needed its own closed route check. A RED
+regression reproduced the gap; that guard now rejects every unsupported path before
+connection. Independent review cleared the corrected 53 tests at 97.40% branch
+coverage and 427 deployment tests with four optional age skips. One separately
+authorized native `/version` GET then succeeded using the exact reviewed source,
+confirming API 1.52/Linux amd64 and the fixed-socket/root-peer/HTTP path. No host
+installation, Docker mutation, image/CID inspection or broker operation occurred.
+The reader has no write/retry operation and cannot start the worker; the supervisor
+remains unimplemented.
+
+The root operations attempt store is now local source, with explicit namespace
+initialization, stable nonblocking host flock, durable intent/CID/start/stop receipts
+and an atomic active pointer. Reopening never grants start authority; unfinished
+attempts block new ones. Root reproduced and corrected post-terminal-start and
+persistence-expired-fence cases before review. It passed 58 fictional/filesystem
+tests at 98.74% combined statement/branch coverage, plus 485 deployment regressions
+with four optional age skips. Review reproduced three durability/identity gaps;
+four RED cases failed before root's acknowledgement/hash, created/start linkage and
+fresh terminal-reconfirmation fixes. Follow-up review confirmed those fixes and found
+that failure of the first validation retained an earlier session acknowledgement.
+Two observed RED regressions now pass after acknowledgement invalidation was moved
+before validation. The store now passes 72 filesystem tests at 98.57% combined
+statement/branch coverage and 499 deployment tests with four optional age skips.
+Independent review cleared the final entry-order correction at e485be8. No production
+operations namespace, Docker writer, controller or native recovery is established.
+
+The next local increment adds an uncomposed create/start mutation library and
+store-owned fresh-create claim/final dispatch checks. Its shared exchange derives
+all routes/bodies and owns claim/fence issuance, including when called directly;
+another transport cannot replay a consumed permission. It passed 144 fictional
+tests at 100% combined coverage for the mutation library (98.93% across it and the
+attempt store), plus 571 deployment tests with four optional age skips. The combined
+deployment/architecture check passed 756 tests with those four skips. Independent
+store and transport reviews cleared 7af0a33, including additional replay, boot-drift,
+failed-validation and framing probes. Ruff, strict mypy (446 files), expanded Bandit
+and lock checks passed. No CLI/service imports it and no native mutation occurred.
+The subsequent root increment adds copied validated active receipt snapshots and
+scoped TERM/KILL dispatch, without a controller or service composition. Seventeen
+snapshot and 74 transport tests were observed RED; 235 focused tests then passed
+at 98% combined store/termination coverage. Central deployment/architecture and
+stock-data checks passed 1,047 tests with four optional age skips. Ruff, strict
+mypy (448 files), expanded Bandit and lock checks passed. Independent review is
+pending. Actual ownership/termination, polling, recovery, removal, supervision and
+deployment remain unverified or unimplemented.
+
+Independent transport review cleared 34ce7ba, including five extra in-memory probes.
+Store review returned NOT_READY for a pre-existing terminal-admission gap: `created`
+plus a start fence could acknowledge termination. Four regressions were observed RED;
+root now rejects new and retained receipts with that combination. Never-started
+`created` remains accepted. The corrected 239 focused and 1,051 central tests passed,
+with four optional age skips in the latter; Ruff/mypy448/Bandit/lock checks passed.
+The exact corrected store candidate still needs follow-up review before integration.
+
+The 36ed2a9 follow-up remained NOT_READY: an older retained receipt could store a
+false start-presence bit despite an actual start record. Two further RED regressions
+reproduced the historical-admission gap. Central stopped-receipt validation now
+compares the bit with actual start-record presence for every reader. The integrated
+check passes 1,053 tests with four optional age skips; static/lock checks pass.
+Independent review of this exact final correction is pending.
+
+The final protected-store follow-up is READY_FOR_INTEGRATION at 05557e8 after
+241 focused tests, 12 extra mismatch denials and two valid controls. Both reported
+store blockers are closed without receipt repair or a new authority grant. The
+transport remains the exact source reviewed at 34ce7ba. The primary full process
+at f04a63f is still running; subsequent code has not been merged into that frozen
+worktree. Supervisor, native lifecycle proof and deployment remain outstanding.
+
+The parallel pure stock-minute manifest adapter at ae991be passed independent review,
+200 focused tests and 58 negative probes. Root merged its three owned files at
+63a988e after exact diff review and reran 956 central checks with four optional age
+skips. It preserves raw bytes and false qualification flags without I/O. Private
+capture persistence, authenticated bounded acquisition, entitlement/retention and
+data/strategy acceptance are still outstanding.
+
+A separate fictional audit reproduced false-clean broker-neutral reconciliation for
+wrong-scope account snapshots/rows, changed position economics, changed executable
+order terms, changed fill times and duplicate rows within one order view. Twenty-seven
+regressions failed before root corrected account scoping, comparison fields and the
+cross-view-only overlap rule. Fifty focused service tests now pass with 100% combined
+statement/branch coverage. The integrated reconciliation, execution, persistence,
+risk, adapter and architecture check passed 1,891 tests with 99.03% combined coverage
+over reconciliation. Ruff, strict mypy (445 files), expanded Bandit and lock checks
+passed. Independent review cleared ca31b24 after 70 targeted tests, a 7,225-case
+order-view oracle and ten foreign-data retention probes. Native
+Robinhood nonempty/paginated mappings remain blocked; no provider schema or successful
+native reconciliation is inferred from these fixtures.
+
+Next: complete integrated verification, deployed image/config/control-path verification
+and a completion-relative timer with an actual process
+deadline. Then verify scheduled acquisition, authentication lifetime, encrypted backups,
+restore and watchdog alerts. Stock data/strategy qualification and nonempty brokerage
+reconciliation remain incomplete. Live execution remains disabled. See the
+[worker contract](docs/stock-research-worker.md) for current scope and limitations.
+
+Latest local continuation: active supervision now has fixed phase caps, scoped fresh
+observations, durable stopped recording and host-shutdown handling. Whole-increment
+review at a589e3b found a budget-renewal bug; nine RED tests preceded c891a94's fix.
+Corrected focused checks passed 362 tests (97% combined coverage, supervisor 96%).
+The independently reviewed pure SEC receipt adapter cb15c70 was merged at dce6c4f;
+it preserves receipt-time availability and all false qualification/compatibility
+flags without I/O. Root central verification passed 1,359 tests with four optional
+age skips plus 26 source/policy tests. Ruff/mypy450/Bandit/lock checks passed. The
+primary f04a63f full run remains pending; subsequent code is outside that frozen run.
+See [active supervision](docs/stock-active-supervision.md). Full fresh-cycle launch,
+older cleanup, producer, native proof and paused installation remain outstanding.
+
+## Historical architecture and panel — October 11
 
 Architecture resolution and implementation are complete: invocation-owned
 original-account continuation and private consumers reuse the SAME canonical

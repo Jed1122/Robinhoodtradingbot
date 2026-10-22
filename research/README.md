@@ -32,20 +32,10 @@ if actual != expected:
 PY
 ```
 
-Then run the same credential-free selection used by CI:
-
-```console
-PYTHONPATH=src uv run --project research --no-sync pytest \
-  tests/unit/research/test_options_pricing.py \
-  tests/unit/research/test_options_payoffs.py \
-  tests/unit/market_data/test_options_records.py \
-  tests/unit/market_data/test_options_data_codec.py \
-  tests/integration/market_data/test_options_parquet.py
-```
-
-Dependency installation is a separate setup phase and may access package indexes. The selected
-tests themselves use synthetic/local inputs and require no network, credentials, broker session,
-or cloud service.
+The options-specific test selection and dedicated CI workflow described by this
+historical research environment have been retired. This environment is not installed
+by current stock CI. Use the [stock bot verification guide](../docs/stock-bot-testing.md)
+for supported default checks. Legacy production modules remain unverified by that suite.
 
 ## Date and unit conventions
 

@@ -1,5 +1,42 @@
 # Robinhood multi-asset system
 
+## Individual-stock research and investing
+
+The active product goal is continuous individual-stock discovery and research,
+followed by evidence-based selection, deterministic risk checks, automated investing
+after separate live activation, and ongoing position monitoring. ETF studies remain
+separate research and benchmark work; they do not define the stock universe.
+
+The stock collector screens companies for quality, growth and valuation, retains
+source-backed company dossiers, and enforces call budgets and independent collector
+controls. The latest verified filing integration joined 27 retained observations into
+10 company dossiers, including 20 exact-filing facts for one company, with no binding
+or normalization denials. The dashboard now fetches connected visible snapshots
+every 30 seconds. These are research capabilities, not evidence of investment merit
+or verified continuous production operation. No live order path is enabled.
+
+See [filing integration and verification](docs/stock-filing-dossier-verification.md),
+[dashboard refresh checks](docs/stock-dashboard-refresh.md) and the
+[repeatable worker lifecycle](docs/stock-repeated-cycle-verification.md). The local
+repeatable lifecycle is implemented. The current stock/shared regression and
+independent test-scope review passed; see the [verification record](docs/stock-bot-test-verification-2026-10-22.md).
+Native runtime/deployment checks remain pending. Next work verifies unattended
+scheduled collection on the intended host, then validates stock policy inputs and
+risk-gated order proposals. Research can conclude
+that no purchase is justified. There is no fixed 60-day paper waiting requirement;
+validation, reconciliation, risk controls and explicit live authorization still apply.
+
+## Stock bot verification
+
+The default `pytest`, `pytest tests`, and `make test` suite covers the current stock
+bot and its shared equity safety components. Legacy ETF/options strategy, pricing,
+native-data and study tests and their dedicated workflow have been retired. Passive
+benchmarks and unsupported-asset rejection checks remain part of stock verification.
+Production legacy strategy code remains present but is outside this suite's claims.
+See [test scope, commands and coverage gates](docs/stock-bot-testing.md).
+
+## Existing foundation
+
 This repository currently implements a paper-safe, fail-closed foundation: canonical
 domain records, one strict configuration graph, capability evidence and sanitized
 schema-capture primitives, broker protocols, and pre-serialization structured-log
@@ -130,7 +167,7 @@ runtime-scope, or complete strategy-cycle composition. It therefore creates no l
 promotion observation. See [strategy research](docs/strategy-research.md) and
 [limitations](docs/limitations.md). No result is a profitability claim.
 
-The canonical equity research scope is the long-only ETF tuple `SPY`, `QQQ`, `IWM`, and `DIA`,
+The separate historical ETF research configuration uses `SPY`, `QQQ`, `IWM`, and `DIA`,
 with momentum and relative-strength candidate families. This is a research candidate universe,
 not an execution allowlist. The offline commands above remain deterministic configuration/result
 hash checks; paper promotion cannot be advanced by the current public CLI, and the real historical
@@ -270,3 +307,12 @@ successful default paused deployment has a healthy `/healthz`, a `503` `/readyz`
 `trading_bot_live_enabled 0.0`. The default service has no host volumes and cannot access OAuth or
 evidence state. The connected-shadow profile is explicit and locally write-incapable; its evidence
 ledger does not by itself authorize or activate live execution.
+# Hybrid equity extension
+
+The opt-in [hybrid equity application](docs/hybrid-equity.md) adds exact tax-lot and
+exit accounting, deterministic experimental execution, source-aware research,
+comparison commands and an authenticated responsive dashboard. Paper trading is
+optional, with no mandatory waiting period. Live execution remains unavailable
+pending strategy qualification, broker verification and separate user authorization.
+See [brokerage/security boundaries](docs/hybrid-broker-and-security.md) and the
+[release verification and remaining work](docs/hybrid-verification-2026-10-21.md).

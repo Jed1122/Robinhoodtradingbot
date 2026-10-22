@@ -104,7 +104,7 @@ current capability evidence and is intentionally excluded from the matrix.
 
 ## Capture boundary
 
-The capture core accepts only a session exposing MCP 1.28.1 `list_tools`. It retains
+The capture core accepts only a session exposing the pinned MCP 1.30.0 `list_tools` interface. It retains
 `name`, `description`, `inputSchema`, and explicit `outputSchema` (including `null`) plus
 a canonical digest over the named input/output schema object. It does not inspect full
 SDK objects, annotations, `_meta`, auth state, or account data, and it never invokes a

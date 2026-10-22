@@ -421,6 +421,17 @@ stores for market-data quality, authorization, reconciliation, research, and pro
 Promotion observations and aggregate evaluator decisions are append-only. Full strategy-cycle
 composition and a provider write adapter remain absent.
 
+Broker-neutral reconciliation requires one exact selected account. Local and broker
+account snapshots must independently match that account before collecting positions,
+orders or fills. Every returned row is scoped independently; foreign rows produce a
+material difference without retaining foreign identities or economic details. Position
+comparison includes quantity, asset class, average price and market value; order
+comparison includes type, time in force, limit/stop prices and lifecycle quantities;
+fill comparison includes execution time. Duplicate identities within either order
+view remain material. Only a single identical row shared by individually unique open
+and recent views is elided. These checks do not supply missing provider schemas,
+cost-basis history, account-wide completeness or fresh native brokerage evidence.
+
 Loss and activity evaluation is also pure and config-bound. `LossSnapshot` never resets its
 own counters: the future context loader must derive the daily boundary from the canonical
 trading-session calendar, derive the UTC weekly boundary, and attest daily reconciliation

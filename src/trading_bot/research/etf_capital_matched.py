@@ -5,10 +5,18 @@ from datetime import date
 from decimal import Decimal, localcontext
 
 from trading_bot.domain import ConfigHash, require_bounded_decimal
-from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
+from trading_bot.market_data.etf_capital_owned import (
+    _own_capital_source,
+    _owned_capital_source_kind_valid,
+    _OwnedCapitalObservedSource,
+    _OwnedCapitalSource,
+)
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_benchmark import EtfBenchmarkResult, _money_context
-from trading_bot.research.etf_capital_passive import CapitalPassiveRequest, _capital_passive_values
+from trading_bot.research.etf_capital_passive import (
+    _capital_owned_passive_request,
+    _capital_passive_values,
+)
 from trading_bot.research.etf_capital_path_economics import _capital_close_exposures, _ratio
 from trading_bot.simulation.etf_capital_account import replay_capital_action_account_prefixes
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
@@ -111,14 +119,14 @@ def _capital_matched_reference(
 
 
 def _capital_matched_values(
-    owned: _OwnedCapitalSource,
+    owned: _OwnedCapitalSource | _OwnedCapitalObservedSource,
     terms: _CapitalMatchedTerms,
     trajectory: CapitalTrajectoryResult,
     test_sessions: tuple[date, ...],
 ) -> CapitalMatchedReference:
     """Original terms only; no counterfeit public request for selected paths."""
     with localcontext(_CONTEXT):
-        _check(type(owned) is _OwnedCapitalSource and type(terms) is _CapitalMatchedTerms)
+        _check(_owned_capital_source_kind_valid(owned) and type(terms) is _CapitalMatchedTerms)
         require_bounded_decimal(terms.initial_cash, "initial capital", positive=True)
         for value in (terms.roundtrip_friction_pct, terms.entry_fee, terms.exit_fee):
             require_bounded_decimal(value, "declared cost", nonnegative=True)
@@ -142,8 +150,8 @@ def _capital_matched_values(
             notional = Decimal(0) if mean == 0 else (terms.initial_cash - terms.entry_fee) * mean
         kernel, quantities, baseline = _capital_passive_values(
             owned,
-            CapitalPassiveRequest(
-                owned.dataset,
+            _capital_owned_passive_request(
+                owned,
                 terms.initial_cash,
                 test_sessions,
                 terms.roundtrip_friction_pct,

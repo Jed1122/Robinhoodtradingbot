@@ -5,12 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, localcontext
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, cast, overload
 
 from trading_bot.config.loader import restore_loaded_config
 from trading_bot.domain import Instrument, require_bounded_decimal
 from trading_bot.market_data.etf_capital_dataset import CapitalResearchDataset
-from trading_bot.market_data.etf_capital_owned import _own_capital_source, _OwnedCapitalSource
+from trading_bot.market_data.etf_capital_observed import CapitalObservedDataset
+from trading_bot.market_data.etf_capital_owned import (
+    _own_capital_observed_source,
+    _own_capital_source,
+    _owned_capital_source_kind_valid,
+    _OwnedCapitalObservedSource,
+    _OwnedCapitalSource,
+)
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.etf_capital_feasibility import _config
 from trading_bot.research.etf_capital_prepared import (
@@ -18,6 +25,7 @@ from trading_bot.research.etf_capital_prepared import (
     _PreparedCapitalInput,
     _validate_owned_capital_days,
 )
+from trading_bot.research.etf_capital_protocol import CapitalStudyProtocol
 from trading_bot.research.etf_capital_selection import (
     CapitalTrainingOutcome,
     CapitalTrainingSelection,
@@ -27,7 +35,6 @@ from trading_bot.research.etf_capital_signals import (
     CapitalCandidate,
     CapitalWalkForwardFold,
     capital_candidates,
-    capital_walk_forward_folds,
 )
 from trading_bot.simulation.etf_capital_daily_entry import _CONTEXT, _Offline
 from trading_bot.simulation.etf_capital_daily_owner import (
@@ -47,6 +54,9 @@ if TYPE_CHECKING:
         _CapitalPanelRetention,
     )
     from trading_bot.research.etf_capital_panel_models import (
+        CapitalObservedPanelFold,
+        CapitalObservedPanelPath,
+        CapitalObservedPanelTraining,
         CapitalPanelFold,
         CapitalPanelPath,
         CapitalPanelTraining,
@@ -72,6 +82,26 @@ class CapitalWalkForwardRequest(_Offline):
     entry_fill_fraction: Decimal = Decimal(1)
     exit_outcome: _Outcome = "filled"
     exit_fill_fraction: Decimal = Decimal(1)
+
+
+@dataclass(frozen=True, slots=True)
+class CapitalObservedWalkForwardRequest(_Offline):
+    dataset: CapitalObservedDataset
+    initial_cash: Decimal
+    instruments: tuple[Instrument, ...]
+    episode_fee_bound: Decimal | None
+    entry_fee: Decimal
+    exit_fee: Decimal
+    roundtrip_friction_pct: Decimal
+    weekly_review_sessions: tuple[date, ...] = ()
+    entry_outcome: _Outcome = "filled"
+    entry_fill_fraction: Decimal = Decimal(1)
+    exit_outcome: _Outcome = "filled"
+    exit_fill_fraction: Decimal = Decimal(1)
+
+
+type _WalkRequest = CapitalWalkForwardRequest | CapitalObservedWalkForwardRequest
+type _OwnedSource = _OwnedCapitalSource | _OwnedCapitalObservedSource
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,8 +136,29 @@ class CapitalWalkForwardResult(_Offline):
     input_hash: str
 
 
+@dataclass(frozen=True, slots=True)
+class CapitalObservedWalkForwardResult(_Offline):
+    folds: tuple[CapitalWalkForwardAttempt, ...]
+    selected: CapitalTrajectoryResult
+    fixed: tuple[CapitalFixedTrajectory, ...]
+    used_sessions: tuple[date, ...]
+    unused_sessions: tuple[date, ...]
+    input_hash: str
+
+
+def _walk_forward_protocol(request: _WalkRequest, owned: _OwnedSource) -> CapitalStudyProtocol:
+    _check(_owned_capital_source_kind_valid(owned))
+    if type(owned) is _OwnedCapitalObservedSource:
+        _check(type(request) is CapitalObservedWalkForwardRequest)
+        _check(type(request.dataset) is CapitalObservedDataset)
+        return CapitalStudyProtocol("observed-252x84-v2")
+    _check(type(request) is CapitalWalkForwardRequest)
+    _check(type(request.dataset) is CapitalResearchDataset)
+    return CapitalStudyProtocol("legacy-750x126-v1")
+
+
 def _walk_forward_inputs(
-    request: CapitalWalkForwardRequest, owned: _OwnedCapitalSource
+    request: _WalkRequest, owned: _OwnedSource
 ) -> tuple[
     _CapitalOwnerTerms,
     tuple[Instrument, ...],
@@ -115,11 +166,11 @@ def _walk_forward_inputs(
     tuple[CapitalWalkForwardFold, ...],
     tuple[date, ...],
 ]:
-    _check(type(request) is CapitalWalkForwardRequest)
+    protocol = _walk_forward_protocol(request, owned)
     _check(request.source_qualified is False and request.cost_qualified is False)
     _check(request.execution_enabled is False and request.economic_admitted is False)
     _check(request.evidence_promotable is False)
-    _check(type(owned) is _OwnedCapitalSource and request.dataset == owned.dataset)
+    _check(request.dataset == owned.dataset)
     source = owned.dataset
     loaded = restore_loaded_config(source.canonical_config, source.config_hash)
     cfg = _config(loaded)
@@ -130,7 +181,7 @@ def _walk_forward_inputs(
         for s in source.calendar.sessions
         if source.start <= s.session_date < source.end
     )
-    folds = capital_walk_forward_folds(dates)
+    folds = protocol.folds(dates)
     _check(type(request.weekly_review_sessions) is tuple)
     reviews = request.weekly_review_sessions
     _check(all(type(day) is date for day in reviews))
@@ -162,15 +213,35 @@ def _walk_forward_inputs(
 
 def replay_capital_walk_forward(request: CapitalWalkForwardRequest) -> CapitalWalkForwardResult:
     """Freshly own original public inputs, never accept prepared state."""
+    _check(type(request) is CapitalWalkForwardRequest)
+    return cast(CapitalWalkForwardResult, _replay_public_capital_walk_forward(request))
+
+
+def replay_capital_observed_walk_forward(
+    request: CapitalObservedWalkForwardRequest,
+) -> CapitalObservedWalkForwardResult:
+    """Explicit shorter conditional-development study, never legacy admission."""
+    _check(type(request) is CapitalObservedWalkForwardRequest)
+    return cast(CapitalObservedWalkForwardResult, _replay_public_capital_walk_forward(request))
+
+
+def _replay_public_capital_walk_forward(
+    request: _WalkRequest,
+) -> CapitalWalkForwardResult | CapitalObservedWalkForwardResult:
     try:
         with localcontext(_CONTEXT):
-            _check(type(request) is CapitalWalkForwardRequest)
+            _check(type(request) in (CapitalWalkForwardRequest, CapitalObservedWalkForwardRequest))
             _check(request.source_qualified is False and request.cost_qualified is False)
             _check(request.execution_enabled is False and request.economic_admitted is False)
             _check(request.evidence_promotable is False)
-            owned = _own_capital_source(request.dataset)
+            owned: _OwnedSource
+            if type(request) is CapitalObservedWalkForwardRequest:
+                owned = _own_capital_observed_source(request.dataset)
+            else:
+                owned = _own_capital_source(cast(CapitalWalkForwardRequest, request).dataset)
+            protocol = _walk_forward_protocol(request, owned)
             _, _, dates, _, _ = _walk_forward_inputs(request, owned)
-            prepared = _prepare_owned_capital_days(owned, sessions=dates[:1423])
+            prepared = _prepare_owned_capital_days(owned, sessions=dates[: protocol.used_count])
             return _replay_owned_capital_walk_forward(request, owned=owned, prepared=prepared)
     except (ValueError, TypeError, AttributeError, ArithmeticError, StopIteration, KeyError):
         raise ValueError("capital_walk_forward_invalid") from None
@@ -178,31 +249,31 @@ def replay_capital_walk_forward(request: CapitalWalkForwardRequest) -> CapitalWa
 
 @overload
 def _replay_owned_capital_walk_forward(
-    request: CapitalWalkForwardRequest,
+    request: _WalkRequest,
     *,
-    owned: _OwnedCapitalSource,
+    owned: _OwnedSource,
     prepared: _PreparedCapitalInput,
     retention: None = None,
-) -> CapitalWalkForwardResult: ...
+) -> CapitalWalkForwardResult | CapitalObservedWalkForwardResult: ...
 
 
 @overload
 def _replay_owned_capital_walk_forward(
-    request: CapitalWalkForwardRequest,
+    request: _WalkRequest,
     *,
-    owned: _OwnedCapitalSource,
+    owned: _OwnedSource,
     prepared: _PreparedCapitalInput,
     retention: _CapitalPanelRetention,
 ) -> _CapitalCompactWalkForward: ...
 
 
 def _replay_owned_capital_walk_forward(
-    request: CapitalWalkForwardRequest,
+    request: _WalkRequest,
     *,
-    owned: _OwnedCapitalSource,
+    owned: _OwnedSource,
     prepared: _PreparedCapitalInput,
     retention: _CapitalPanelRetention | None = None,
-) -> CapitalWalkForwardResult | _CapitalCompactWalkForward:
+) -> CapitalWalkForwardResult | CapitalObservedWalkForwardResult | _CapitalCompactWalkForward:
     """Derive all training scores internally, then carry complete test accounts.
 
     Later rolling training may use already elapsed earlier-fold dates. Current
@@ -218,13 +289,18 @@ def _replay_owned_capital_walk_forward(
             )
 
             _check(retention is None or type(retention) is _CapitalPanelRetention)
+            protocol = _walk_forward_protocol(request, owned)
             terms, instruments, dates, folds, reviews = _walk_forward_inputs(request, owned)
             source = owned.dataset
-            used = dates[:1423]
+            used = dates[: protocol.used_count]
             sessions_by_date = {s.session_date: s for s in source.calendar.sessions}
             _validate_owned_capital_days(owned, prepared, required_sessions=used, exact=True)
             if retention is not None:
                 _check(retention.owned is owned and retention.prepared is prepared)
+                _check(
+                    type(retention.protocol) is CapitalStudyProtocol
+                    and retention.protocol == protocol
+                )
                 _check(
                     retention.terms
                     == _CapitalMatchedTerms(
@@ -234,7 +310,7 @@ def _replay_owned_capital_walk_forward(
                         terms.exit_fee,
                     )
                 )
-                _check(retention.test_sessions == dates[770:1400])
+                _check(retention.test_sessions == dates[protocol.test_start : protocol.test_end])
 
             def trajectory(
                 schedule: tuple[CapitalTrajectoryDay, ...],
@@ -255,7 +331,7 @@ def _replay_owned_capital_walk_forward(
                 )
 
             attempts: list[CapitalWalkForwardAttempt] = []
-            compact_folds: list[CapitalPanelFold] = []
+            compact_folds: list[CapitalPanelFold | CapitalObservedPanelFold] = []
             selections: list[CapitalTrainingSelection] = []
             fold_identities = []
             for fold in folds:
@@ -263,7 +339,7 @@ def _replay_owned_capital_walk_forward(
                 selection_date = dates[dates.index(fold.test_sessions[0]) - 1]
                 selection_at = sessions_by_date[selection_date].closes_at
                 training_attempts: list[CapitalTrainingAttempt] = []
-                retained: list[CapitalPanelTraining] = []
+                retained: list[CapitalPanelTraining | CapitalObservedPanelTraining] = []
                 outcomes_list: list[CapitalTrainingOutcome] = []
                 for candidate in capital_candidates():
                     schedule = tuple(
@@ -312,9 +388,12 @@ def _replay_owned_capital_walk_forward(
                         retention.fold(fold, cutoff, selection_at, tuple(retained), selection)
                     )
             recorded = tuple(attempts)
-            # At session895, the open belongs to fold0 and the close prepares
-            # fold1. Selection knowledge at close must not reach backward.
-            starts = tuple(769 + 126 * index for index in range(5))
+            # A boundary open belongs to the old fold; its close prepares the
+            # new one. Selection knowledge at close must not reach backward.
+            starts = tuple(
+                protocol.baseline_index + protocol.test_count_per_fold * index
+                for index in range(protocol.fold_count)
+            )
 
             def close_candidate(index: int) -> CapitalCandidate | None:
                 return selections[
@@ -323,16 +402,24 @@ def _replay_owned_capital_walk_forward(
 
             schedule = tuple(
                 CapitalTrajectoryDay(
-                    day, close_candidate(index), index < 1399, index < 1400, day in reviews
+                    day,
+                    close_candidate(index),
+                    index < protocol.test_end - 1,
+                    index < protocol.test_end,
+                    day in reviews,
                 )
-                for index, day in enumerate(dates[769:1423], start=769)
+                for index, day in enumerate(
+                    dates[protocol.baseline_index : protocol.used_count],
+                    start=protocol.baseline_index,
+                )
             )
             opening_candidates = tuple(
-                close_candidate(index - 1) if index > 769 else None for index in range(769, 1423)
+                close_candidate(index - 1) if index > protocol.baseline_index else None
+                for index in range(protocol.baseline_index, protocol.used_count)
             )
             selected = trajectory(schedule, opening_candidates=opening_candidates)
             selected_hash = selected.input_hash
-            compact_paths: list[CapitalPanelPath] = []
+            compact_paths: list[CapitalPanelPath | CapitalObservedPanelPath] = []
             if retention is not None:
                 compact_paths.append(retention.path(selected, 0, None))
                 del selected
@@ -349,7 +436,9 @@ def _replay_owned_capital_walk_forward(
             fixed = tuple(fixed_results)
             identity = content_hash(
                 (
-                    "capital-owned-walk-forward-v1",
+                    "capital-owned-walk-forward-v1"
+                    if type(owned) is _OwnedCapitalSource
+                    else ("capital-observed-owned-walk-forward-v1", protocol.protocol_hash),
                     owned.source_hash,
                     prepared.input_hash,
                     source.config_hash,
@@ -365,7 +454,7 @@ def _replay_owned_capital_walk_forward(
                     terms.exit_fill_fraction,
                     reviews,
                     used,
-                    dates[1423:],
+                    dates[protocol.used_count :],
                     tuple(fold_identities),
                     selected_hash,
                     tuple(fixed_identities),
@@ -376,6 +465,13 @@ def _replay_owned_capital_walk_forward(
                 return _CapitalCompactWalkForward(
                     tuple(compact_folds), tuple(compact_paths), identity
                 )
-            return CapitalWalkForwardResult(recorded, selected, fixed, used, dates[1423:], identity)
+            result_type = (
+                CapitalObservedWalkForwardResult
+                if type(owned) is _OwnedCapitalObservedSource
+                else CapitalWalkForwardResult
+            )
+            return result_type(
+                recorded, selected, fixed, used, dates[protocol.used_count :], identity
+            )
     except (ValueError, TypeError, AttributeError, ArithmeticError, StopIteration, KeyError):
         raise ValueError("capital_walk_forward_invalid") from None

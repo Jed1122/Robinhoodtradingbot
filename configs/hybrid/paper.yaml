@@ -1,0 +1,17 @@
+mode: paper
+live_trading_enabled: false
+portfolio:
+  expected_starting_equity_usd: 1000
+  live_account_equity_ceiling_usd: 1000
+  max_total_gross_exposure_pct: 90
+  min_cash_reserve_pct: 10
+  max_gross_exposure_usd: 900
+crypto:
+  enabled: false
+prediction_markets:
+  simulation_enabled: false
+  live_enabled: false
+loss_limits:
+  max_daily_loss_pct: 1
+  max_weekly_loss_pct: 3
+  max_peak_to_trough_drawdown_pct: 10
