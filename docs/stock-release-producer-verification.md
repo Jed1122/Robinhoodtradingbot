@@ -26,15 +26,41 @@ tar.umask0022 was parsed locally:4,864,000bytes and527entries. The retained Git 
 is supplied metadata, not independent authentication of repository history. No archive
 was extracted, uploaded or built. The source-preparation command itself remainsTask3.
 
-Task2 must implement the exclusive root producer namespace, durable one-use build
-claim, bounded fixed Engine operation and exact resulting-image verification. Task3
-must own source preparation, the fresh existing probe, scrubbed reviewed Compose
-render, four canonical durable files, existing loader verification and final clock/
-shutdown/context publication gate. One fresh whole-branch review and the eventual
-actual source-specific full remain required.
+Task2 is implemented and accepted locally at `d4d6334`. The private Linux-root
+namespace has explicit initialization, a permanent nonblocking exclusive lock,
+strict inventories and original inode bindings. The fixed one-use build operation
+persists the original source, version, exact HTTP request and dispatch record before
+any POST, retains complete or partial responses, accepts only the final quiet image
+record, and inspects that exact image through the existing profile verifier.
 
-The separate corrected-controller full is still running at8629cad in the frozen
-runtime checkout, session55324/PID89926. It must not be duplicated or restarted and
+Original producer/build/upload limits and shared shutdown checks apply throughout;
+idle timeouts continue only on the same socket. Disk failures, partial sends,
+ambiguous replies, lost connections and close failures never replay a request.
+Observed admission and readback replacement failures were reproduced first and
+fixed by carrying the original file identities through acknowledgement.
+
+The actual Task2 acceptance process exited0: **525passed in38.94seconds**, with
+**99.50% combined statement/branch coverage** over both new modules. A separate
+worker/prestart/attempt/mutation regression passed **338tests in3.54seconds**.
+Ruff, strict mypy463source files, expanded source/stock-module Bandit, offline lock
+and diff checks passed. Bandit retained existing annotation/suppression warnings;
+no finding was emitted. All transport tests used local socketpairs with native
+Docker default-denied. No native build, provider call or credential use occurred.
+
+This remains an intermediate private build library. Every retained attempt currently
+blocks another build. Task3 must implement complete successful-history validation
+that permits a different source, while preserving incident blocking and rejecting
+same-source replay. No successful old receipt is currently accepted as authority.
+
+Task3 must own source preparation, the fresh existing probe, scrubbed reviewed
+Compose render, four canonical durable files, existing loader verification and final
+clock/shutdown/context publication gate. The nested probe shutdown context must
+share the producer's sticky signal state without renewing either clock window.
+One fresh whole-branch review and the eventual actual source-specific full remain
+required.
+
+The separate corrected-controller full was verified still running at8629cad in the
+frozen runtime checkout, session55324/PID89926, at2:14elapsed and93%progress. It must not be duplicated or restarted and
 cannot certify this later producer. Only after it actually terminates may another
 full be queued. Actual native producer/probe proof, paused installation, OAuth lifecycle,
 backups/restore, scheduled stock research, qualified data/strategies and nonempty broker
