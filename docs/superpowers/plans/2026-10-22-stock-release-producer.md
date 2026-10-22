@@ -28,7 +28,7 @@
 - Root namespace substitution, overlapping publishers and complete unacknowledged files must not yield publication/replay: Task2 filesystem cases.
 - Ambient client credentials/dotenv/proxies or Compose normalization drift must not affect release identity: Task3 scrubbed renderer/real-loader composition.
 
-## Task1: Bounded source and quiet build-result data
+## Task 1: Bounded source and quiet build-result data
 
 **Files:** Create `infra/hybrid/stock_build_inputs.py`; test `tests/deployment/test_stock_build_inputs.py`.
 
@@ -41,7 +41,7 @@
 - [ ] Run the same group with branch coverage at least95%; expected all pass. Validate an actual clean Git archive locally without Docker/provider use.
 - [ ] Commit the owned module/tests, then task-done the whole group.
 
-## Task2: Exclusive producer state and fixed owned build
+## Task 2: Exclusive producer state and fixed owned build
 
 **Files:** Create `infra/hybrid/stock_release_producer.py` and `infra/hybrid/stock_build_engine.py`; tests `test_stock_release_producer.py`, `test_stock_build_engine.py`.
 
@@ -53,7 +53,7 @@
 - [ ] Verify narrow state/transport groups at least95% combined coverage, existing probe/worker groups and strict static checks.
 - [ ] Commit/task-done; this intermediate library must not claim a usable release or native proof.
 
-## Task3: Source preparation, fresh probe, rendering and durable release
+## Task 3: Source preparation, fresh probe, rendering and durable release
 
 **Files:** Complete producer module, add `infra/hybrid/stock_source_prepare.py`, integration tests and `docs/stock-release-producer-operations.md`.
 
