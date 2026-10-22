@@ -5,6 +5,33 @@ risk-controlled automatic investing after separate explicit live activation. The
 new controller is **implemented locally and not deployment-ready**. No native container, broker,
 credential, account, order or deployment operation was performed in this increment.
 
+## Latest acceptance checkpoint — October 22
+
+Task4 acceptance completed with1,139 passing checks in30.37seconds. The subsequent
+fresh whole-branch review returned one Important final-publication timing/clock gap,
+reproduced by root as28 failing composed tests before correction. All28 now pass;
+the corrected focused suite passed1,167checks in31.10seconds at96.67% combined
+controller/transport statement/branch coverage. The deployment/architecture group
+passed2,951checks in50.38seconds with four optional local-age skips. Ruff, strict
+mypy460, expanded stock-module Bandit, lock and diff checks passed. Existing broader
+12Low host-script findings remain unchanged. See the exhaustive
+[review disposition](stock-inert-controller-review.md), including deferred historical
+prose and all separate qualification gates.
+
+The private completion context now checks the original retirement cap, clock
+continuity and shared shutdown after store closure/handler restoration and after
+CLI serialization. Complete closed bytes may remain when publication is denied;
+they are neither rewritten nor treated as fresh success on reopen.
+
+Task5 remains incomplete until the actual corrected-source full suite terminates
+successfully. The earlier primary full at0af7687 is still running and cannot certify
+this later source; it remains unchanged. Only afterward may this revision's full
+start. No native intended-host probe, trusted release production or deployment has
+occurred. A separate [read-only broker checkpoint](stock-broker-reconciliation-2026-10-22.md)
+records only empty-position/recent-order evidence; it grants no nonempty fill/lot or
+background-authentication qualification. Historical sections below retain earlier
+checkpoints and should not be read as this latest acceptance status.
+
 ## Implemented and verified locally
 
 - Pure probe ownership/lifecycle observation, preserving failure facts for cleanup

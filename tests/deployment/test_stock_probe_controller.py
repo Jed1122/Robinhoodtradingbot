@@ -511,6 +511,82 @@ def test_store_context_exit_failure_suppresses_configuration(scenario, monkeypat
     assert sum(method == "DELETE" for method, _, _ in daemon.requests) == 1
 
 
+def change_publication_clock(scenario, daemon, change):
+    clock = scenario[2]
+    if change in ("late", "deadline"):
+        deadline = daemon.store._removal_token.deadline_ns
+        clock["monotonic_ns"] += deadline - scenario[0]._clock()["monotonic_ns"]
+        if change == "late":
+            clock["monotonic_ns"] += 60000000000
+    elif change == "monotonic":
+        clock["monotonic_ns"] -= 1000000000
+    elif change == "utc":
+        clock["utc"] = "2026-10-21T20:59:59+00:00"
+    elif change == "boot":
+        clock["boot_id"] = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    else:
+        clock["monotonic_ns"] = -1
+
+
+@pytest.mark.parametrize("boundary", ["store", "handlers"])
+@pytest.mark.parametrize("change", ["late", "deadline", "monotonic", "utc", "boot", "invalid"])
+@pytest.mark.parametrize("cli", [False, True])
+def test_final_context_clock_gate_denies_publication(
+    scenario, monkeypatch, capsys, boundary, change, cli
+):
+    api = module()
+    daemon = Daemon(scenario).install(monkeypatch, api)
+    original = api.probes if boundary == "store" else api._shutdown
+
+    @contextmanager
+    def changed_exit():
+        with original() as value:
+            yield value
+        change_publication_clock(scenario, daemon, change)
+
+    monkeypatch.setattr(api, "probes" if boundary == "store" else "_shutdown", changed_exit)
+    if cli:
+        monkeypatch.setattr(sys, "argv", ["probe", IMAGE])
+        assert api.main() == 1
+        captured = capsys.readouterr()
+        assert captured.out == "" and json.loads(captured.err) == {"status": "unavailable"}
+    else:
+        with pytest.raises(ValueError, match="stock_probe_controller_unavailable"):
+            api.run_probe(IMAGE)
+    daemon.join()
+    assert daemon.store._closed and daemon.gone
+    assert daemon.count("/create?") == daemon.count("/start") == 1
+    assert sum(method == "DELETE" for method, _, _ in daemon.requests) == 1
+    directory = next(p for p in scenario[1].iterdir() if p.is_dir())
+    closed = json.loads((directory / "closed.json").read_bytes())
+    assert closed["outcome"] == "succeeded"
+    assert closed["reason"] == "completed"
+
+
+@pytest.mark.parametrize("change", ["late", "monotonic", "utc", "boot"])
+def test_cli_serialization_stays_under_original_publication_gate(
+    scenario, monkeypatch, capsys, change
+):
+    api = module()
+    daemon = Daemon(scenario).install(monkeypatch, api)
+    original = json.dumps
+
+    def delayed_result(value, *args, **kwargs):
+        raw = original(value, *args, **kwargs)
+        if type(value) is dict and value.get("kind") == "stock_probe_result":
+            change_publication_clock(scenario, daemon, change)
+        return raw
+
+    monkeypatch.setattr(api.json, "dumps", delayed_result)
+    monkeypatch.setattr(sys, "argv", ["probe", IMAGE])
+    assert api.main() == 1
+    daemon.join()
+    captured = capsys.readouterr()
+    assert captured.out == "" and json.loads(captured.err) == {"status": "unavailable"}
+    assert daemon.store._closed and daemon.gone
+    assert sum(method == "DELETE" for method, _, _ in daemon.requests) == 1
+
+
 @pytest.mark.parametrize("mode", ["failure", "shutdown"])
 def test_handler_restoration_boundary_cannot_publish_configuration(scenario, monkeypatch, mode):
     api = module()

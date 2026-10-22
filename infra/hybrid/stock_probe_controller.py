@@ -11,7 +11,8 @@ import json
 import re
 import sys
 import time
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from typing import NoReturn
 
@@ -283,8 +284,9 @@ def _compose(store: ProbeStore, image_digest: str, requested: list[bool]) -> Pro
     return _result("succeeded", "completed", target, canonical)
 
 
-def run_probe(image_digest: str) -> ProbeResult:
-    """Fixed public entry: no store, socket, account, path, deadline or mode override."""
+@contextmanager
+def _completed_probe(image_digest: str) -> Iterator[ProbeResult]:
+    """Keep the original session's clock gate through preparation of public output."""
     try:
         _require(
             type(image_digest) is str
@@ -292,30 +294,46 @@ def run_probe(image_digest: str) -> ProbeResult:
         )
         with _shutdown() as requested, probes() as store:
             result = _compose(store, image_digest, requested)
-        if result.configuration is not None and requested[0]:
-            _deny()
-        return result
+            fence = store._removal_token
+        yield result
+        if result.configuration is not None:
+            if fence is None:
+                _deny()
+            _require(
+                store._closed
+                and fence is store._removal_token
+                and fence.cleanup is None
+            )
+            # No descriptors/history are used after closure, and no cap is renewed.
+            store._window(fence.boot_id, fence.deadline_ns)
+            _require(not requested[0])
     except _ERRORS:
         _deny()
+
+
+def run_probe(image_digest: str) -> ProbeResult:
+    """Fixed public entry: no store, socket, account, path, deadline or mode override."""
+    with _completed_probe(image_digest) as result:
+        return result
 
 
 def main() -> int:
     try:
         _require(len(sys.argv) == 2)
-        result = run_probe(sys.argv[1])
-        value = {
-            "schema_version": 1,
-            "kind": "stock_probe_result",
-            "status": result.status,
-            "reason": result.reason,
-            "probe_id": result.probe_id,
-            "container_id": result.container_id,
-            "image_digest": result.image_digest,
-        }
-        if result.configuration is not None:
-            value["configuration"] = json.loads(result.configuration)
-        raw = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        _require(len(raw.encode("utf-8")) <= 8192)
+        with _completed_probe(sys.argv[1]) as result:
+            value = {
+                "schema_version": 1,
+                "kind": "stock_probe_result",
+                "status": result.status,
+                "reason": result.reason,
+                "probe_id": result.probe_id,
+                "container_id": result.container_id,
+                "image_digest": result.image_digest,
+            }
+            if result.configuration is not None:
+                value["configuration"] = json.loads(result.configuration)
+            raw = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            _require(len(raw.encode("utf-8")) <= 8192)
         print(raw)
         return 0 if result.status == "succeeded" else 2
     except _ERRORS:

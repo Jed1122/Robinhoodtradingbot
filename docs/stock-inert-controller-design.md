@@ -422,7 +422,11 @@ Shutdown after STOP may use the existing acknowledged normal retirement/failure 
 it does not need to burn that ACK by beginning another cleanup. Shutdown during/after
 terminal success persistence suppresses publication and does not rewrite closed bytes.
 Publication requires successful finalization, handler restoration, store-context exit
-and a final shared-shutdown check. Reconstructed closed bytes never return configuration.
+and a final original-retirement-cap/continuous-clock/shared-shutdown check. The private
+completion context retains the actual session and original removal-fence identity
+through result preparation; CLI serialization precedes that same final check. No
+post-close descriptors/history are used, no cleanup is replayed, and no cap is renewed.
+Reconstructed closed bytes never return configuration.
 
 The CLI is python -m infra.hybrid.stock_probe_controller IMAGE_ID and exposes no flags
 or root/socket/cap/credential override. Exit0 is only fresh success; failed/recovery-only
