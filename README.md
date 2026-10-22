@@ -1,5 +1,30 @@
 # Robinhood multi-asset system
 
+## Individual-stock research and investing
+
+The active product goal is continuous individual-stock discovery and research,
+followed by evidence-based selection, deterministic risk checks, automated investing
+after separate live activation, and ongoing position monitoring. ETF studies remain
+separate research and benchmark work; they do not define the stock universe.
+
+The stock collector screens companies for quality, growth and valuation, retains
+source-backed company dossiers, and enforces call budgets and independent collector
+controls. The latest verified filing integration joined27 retained observations into
+10 company dossiers, including20 exact-filing facts for one company, with no binding
+or normalization denials. The dashboard now fetches connected visible snapshots
+every30seconds. These are research capabilities, not evidence of investment merit
+or verified continuous production operation. No live order path is enabled.
+
+See [filing integration and verification](docs/stock-filing-dossier-verification.md),
+[dashboard refresh checks](docs/stock-dashboard-refresh.md) and the
+[remaining repeated-worker work](docs/stock-repeated-cycle-design.md). Next work
+connects filing refreshes to durable scheduled collection and the shortlist, then
+validates stock policy inputs and risk-gated order proposals. Research can conclude
+that no purchase is justified. There is no fixed60-day paper waiting requirement;
+validation, reconciliation, risk controls and explicit live authorization still apply.
+
+## Existing foundation
+
 This repository currently implements a paper-safe, fail-closed foundation: canonical
 domain records, one strict configuration graph, capability evidence and sanitized
 schema-capture primitives, broker protocols, and pre-serialization structured-log
@@ -130,7 +155,7 @@ runtime-scope, or complete strategy-cycle composition. It therefore creates no l
 promotion observation. See [strategy research](docs/strategy-research.md) and
 [limitations](docs/limitations.md). No result is a profitability claim.
 
-The canonical equity research scope is the long-only ETF tuple `SPY`, `QQQ`, `IWM`, and `DIA`,
+The separate historical ETF research configuration uses `SPY`, `QQQ`, `IWM`, and `DIA`,
 with momentum and relative-strength candidate families. This is a research candidate universe,
 not an execution allowlist. The offline commands above remain deterministic configuration/result
 hash checks; paper promotion cannot be advanced by the current public CLI, and the real historical
