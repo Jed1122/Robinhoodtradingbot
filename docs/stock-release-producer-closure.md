@@ -49,8 +49,20 @@ post-receipt wording is deliberately narrowed to distinguish these different cla
 All current-call elapsed-time and fail-closed controls remain mandatory.
 
 This is reconciliation of intact completed facts, not incident repair or resume.
-Partial histories stay blocked; there is no new recovery command, operator approval,
+Partial histories stay blocked by default; there is no generic recovery command, operator approval,
 automatic pruning, image/container deletion or trading authority. The final public
 producer/history/final-gate composition has local tests; whole-branch acceptance remains
 incomplete. Native proof, scheduled research, stock data/strategy qualification and
 broker reconciliation are separate gates.
+
+## Versioned negative-only exception
+
+The [spent-build contract](stock-failed-build-reconciliation.md) adds one explicit
+root-owned operation for the exact independently reviewed six-file479/a54 incident.
+It can record backend termination and permanent source spending while preserving
+the original producer failure. It cannot create successful native/release facts,
+claim cleanup, rerun that source, reset the namespace or admit other partial shapes.
+Successful histories still use the unchanged positive chain above. The two terminal
+families are mutually exclusive and release-parent inventory includes only positive
+histories. Current/native acceptance of this exception remains separate from its
+implementation and tests.

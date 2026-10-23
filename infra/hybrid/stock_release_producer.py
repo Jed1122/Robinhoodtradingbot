@@ -64,6 +64,7 @@ _SLOTS = {
     "publication-intent.json": (1, 4096),
     "publication-files.json": (1, 4096),
     "terminal.json": (1, 8192),
+    "failed-build-terminal.json": (1, 16384),
 }
 _ERRORS = (OSError, ValueError, TypeError, KeyError, OverflowError, AttributeError, RecursionError)
 _ACTIVE: _Lease | None = None
@@ -277,7 +278,8 @@ class _Lease:
         self.root_fd, self.lock_fd, self.inputs_fd, self.attempts_fd = descriptors[:4]
         self.assets_fd, self.attempt_fd = descriptors[-2:]
         self.release_fd = history.release_fd
-        self.completed_sources = set(history.sources)
+        self.completed_sources = set(history.successful_sources)
+        self.history_sources = set(history.sources)
         self.namespace, self.shutdown, self.origin = namespace, shutdown, origin
         self.deadline_ns = int(origin["monotonic_ns"]) + 1_200_000_000_000
         self.last_clock = history.last_clock
@@ -313,7 +315,7 @@ class _Lease:
         self.inventories = {
             self.root_fd: set(os.listdir(self.root_fd)),
             self.inputs_fd: set(os.listdir(self.inputs_fd)),
-            self.attempts_fd: self.completed_sources | {source.digest},
+            self.attempts_fd: self.history_sources | {source.digest},
             self.attempt_fd: set(),
         }
         for fd, inventory in history.inventories.items():

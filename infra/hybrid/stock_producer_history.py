@@ -57,6 +57,8 @@ _ATTEMPT_FILES = (
 )
 _RENDER_FILES = ("compose-template.yml", "compose.env")
 _EMPTY_DIRS = ("docker-config", "home", "empty-path")
+_FAILED_FILES = frozenset(_ATTEMPT_FILES[:6])
+_FAILED_FACTS = "failed-build-terminal.json"
 _Pin = tuple[int, str, tuple[int, ...]]
 _Binding = tuple[int, str, int, int, bool]
 
@@ -181,6 +183,7 @@ class _History:
         origin: dict[str, Any],
         shutdown: list[bool],
         pins: list[_Pin],
+        pending_source: str | None = None,
     ) -> None:
         self.root, self.release_root, self.uid = root, release_root, uid
         self.descriptors, self.namespace = descriptors, namespace
@@ -202,9 +205,27 @@ class _History:
             len(self.sources) < 128
             and all(re.fullmatch(r"[0-9a-f]{64}", name) is not None for name in self.sources)
         )
+        self.successful_sources: set[str] = set()
+        self.failed_sources: set[str] = set()
+        _require(pending_source is None or pending_source in self.sources)
+        for source in sorted(self.sources):
+            fd = os.open(source, _DIRECTORY, dir_fd=descriptors[3])
+            try:
+                _directory(os.fstat(fd), uid)
+                names = set(os.listdir(fd))
+            finally:
+                release._close_all((fd,))
+            if source == pending_source:
+                _require(names == _FAILED_FILES)
+            elif names == set(_ATTEMPT_FILES) | {"render", "terminal.json"}:
+                self.successful_sources.add(source)
+            elif names == _FAILED_FILES | {_FAILED_FACTS}:
+                self.failed_sources.add(source)
+            else:
+                _require(False)
         if os.path.lexists(release_root):
             self.release_fd = _open(release_root, uid, production=root == PRODUCER_ROOT)
-            self._track(self.release_fd, release_root, self.sources)
+            self._track(self.release_fd, release_root, self.successful_sources)
         else:
             _require(not self.sources and root != PRODUCER_ROOT)
         self.check()
@@ -257,6 +278,82 @@ class _History:
         self.check()
 
     def validate(self, source: str) -> None:
+        if source in self.failed_sources:
+            self._validate_failed(source)
+        else:
+            _require(source in self.successful_sources)
+            self._validate_successful(source)
+
+    def failed_inputs(
+        self, source: str, *, pending: bool = False
+    ) -> tuple[dict[str, int], dict[str, _Binding], dict[str, tuple[bytes, tuple[int, ...]]]]:
+        _require(self.release_fd is not None and source in self.sources)
+        if self.release_fd is None:
+            raise ValueError("stock_producer_unavailable")
+        names = set(_FAILED_FILES) if pending else set(_FAILED_FILES) | {_FAILED_FACTS}
+        root_fd, _, inputs_fd, attempts_fd = self.descriptors[:4]
+        dirs = {
+            "producer": root_fd,
+            "inputs": inputs_fd,
+            "attempts": attempts_fd,
+            "release_root": self.release_fd,
+        }
+        dirs["attempt"] = self._directory(
+            attempts_fd, source, self.root / "attempts" / source, names
+        )
+        bindings = {
+            "namespace.json": (root_fd, "namespace.json", 1, 4096, False),
+            "producer.lock": (root_fd, "producer.lock", 0, 0, False),
+            "inputs/" + source + ".tar": (inputs_fd, source + ".tar", 1, 16777216, False),
+        }
+        for name in sorted(_FAILED_FILES):
+            low, high = _SLOTS[name]
+            bindings["attempt/" + name] = (dirs["attempt"], name, low, high, False)
+        retained = {name: self._read(binding) for name, binding in bindings.items()}
+        return dirs, bindings, retained
+
+    def _validate_failed(self, source: str) -> None:
+        from infra.hybrid.stock_build_profile import check_failed_capacity
+        from infra.hybrid.stock_failed_build_inputs import (
+            inspect_failed_build,
+            validate_failed_facts,
+        )
+
+        dirs, bindings, retained = self.failed_inputs(source)
+        evidence = inspect_failed_build(
+            source,
+            retained["namespace.json"][0],
+            retained["inputs/" + source + ".tar"][0],
+            {name: retained["attempt/" + name][0] for name in _FAILED_FILES},
+        )
+        binding = (dirs["attempt"], _FAILED_FACTS, 1, 16384, False)
+        raw, stamp = self._read(binding)
+        facts = validate_failed_facts(
+            raw,
+            evidence,
+            directories={
+                name: [os.fstat(fd).st_dev, os.fstat(fd).st_ino] for name, fd in dirs.items()
+            },
+            files={
+                name: {"sha256": _sha(value), "fingerprint": list(pin)}
+                for name, (value, pin) in retained.items()
+            },
+        )
+        completed = facts["reconciled_clock"]
+        _require(_clock_key(completed["utc"]) <= _clock_key(self.origin["utc"]))
+        if completed["boot_id"] == self.origin["boot_id"]:
+            _require(completed["monotonic_ns"] <= self.origin["monotonic_ns"])
+        check_failed_capacity(facts["capacity"])
+        self.check()
+        for name, original_binding in bindings.items():
+            value, pin = retained[name]
+            self._flush(original_binding, _sha(value), pin)
+        self._flush(binding, _sha(raw), stamp)
+        for fd in dirs.values():
+            os.fsync(fd)
+            self.check()
+
+    def _validate_successful(self, source: str) -> None:
         release_fd = self.release_fd
         _require(release_fd is not None)
         if release_fd is None:
