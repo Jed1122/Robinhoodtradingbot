@@ -58,11 +58,16 @@ broker reconciliation are separate gates.
 ## Versioned negative-only exception
 
 The [spent-build contract](stock-failed-build-reconciliation.md) adds one explicit
-root-owned operation for the exact independently reviewed six-file479/a54 incident.
+root-owned operation for exactly two compiled six-file cohorts:479/a54 and
+bac/8294. Each binds its own full commit, Git tree, archive digest, seven causal
+module hashes and source profile ID. The original479/a54 closure was acknowledged
+and independently read back on2026-10-23; do not repeat it. The bac/8294 closure
+remains pending actual public invocation and independent verification.
 It can record backend termination and permanent source spending while preserving
 the original producer failure. It cannot create successful native/release facts,
 claim cleanup, rerun that source, reset the namespace or admit other partial shapes.
 Successful histories still use the unchanged positive chain above. The two terminal
 families are mutually exclusive and release-parent inventory includes only positive
-histories. Current/native acceptance of this exception remains separate from its
-implementation and tests.
+histories. The [framing and historical-wire contract](superpowers/specs/2026-10-23-stock-build-http-framing-design.md)
+keeps legacy witnesses separate from forward framed exchanges. Implementation and
+fixture tests do not qualify a new release, the pending closure or continuous operation.

@@ -6,6 +6,18 @@ from pathlib import Path
 
 import pytest
 
+from infra.hybrid import stock_build_cohorts as cohorts
+
+
+def fixture_modules(monkeypatch, modules):
+    from dataclasses import replace
+
+    monkeypatch.setattr(
+        cohorts,
+        "_COHORTS",
+        (replace(cohorts._COHORTS[0], modules=tuple(modules.items())), *cohorts._COHORTS[1:]),
+    )
+
 
 def api():
     path = Path(__file__).resolve().parents[2] / "infra/hybrid/stock_build_profile.py"
@@ -270,6 +282,7 @@ def observed_host(monkeypatch):
     }
     engine = b"private recorded engine fixture"
     state = {
+        "source_commit": "479fca6ce789692d2a088b162fe6bcfeb2ad8336",
         "source_valid": True,
         "source_checks": 0,
         "version": version,
@@ -312,7 +325,7 @@ def observed_host(monkeypatch):
     monkeypatch.setattr(module, "_ENGINE_SHA", hashlib.sha256(engine).hexdigest())
 
     def source_check(commit, cap):
-        assert commit == "479fca6ce789692d2a088b162fe6bcfeb2ad8336"
+        assert commit == state["source_commit"]
         state["source_checks"] += 1
         if not state["source_valid"]:
             raise ValueError("stock_producer_unavailable")
@@ -362,7 +375,7 @@ def observed_host(monkeypatch):
 
     def observe():
         return module.observe_build_profile(
-            "479fca6ce789692d2a088b162fe6bcfeb2ad8336",
+            state["source_commit"],
             engine,
             origin,
             not_after_ns=time.monotonic_ns() + 10_000_000_000,
@@ -381,6 +394,16 @@ def test_whole_observer_returns_only_closed_negative_profile(observed_host):
     assert profile["source_tree"] == "98257c8083cc6395fde92c600b1683b783952955"
     assert profile["socket_activation"]["listener_inode"] == 6522
     assert not ({"manifest", "release", "producer_success"} & set(result))
+
+
+def test_whole_observer_selects_second_original_cohort_and_checks_it_twice(observed_host):
+    _, state, _, observe = observed_host
+    state["source_commit"] = "bac162fd6eb6178516a212d30846fb1a055c90fb"
+    result = observe()
+    assert result["daemon_profile"]["source_profile_id"] == "stock-producer-causal-bac-v1"
+    assert result["daemon_profile"]["source_tree"] == "21953af2db3189b5a3a9c03c22b3e35baea29683"
+    assert state["source_checks"] == 2
+    assert result["daemon_profile"]["profile_id"] == "ubuntu-docker-legacy-q-29.1.3-v1"
 
 
 def test_whole_observer_rejects_source_drift_during_engine_observation(observed_host):
@@ -575,7 +598,7 @@ def test_source_profile_requires_exact_whole_checkout_and_module_content(monkeyp
 
     module = api()
     raw = b"reviewed producer fixture bytes\n"
-    monkeypatch.setattr(module, "_MODULES", {"fixture.py": hashlib.sha256(raw).hexdigest()})
+    fixture_modules(monkeypatch, {"fixture.py": hashlib.sha256(raw).hexdigest()})
     monkeypatch.setattr(module, "_canonical_directory", lambda path: (1, 1))
     monkeypatch.setattr(
         module,
@@ -613,6 +636,65 @@ def test_source_profile_requires_exact_whole_checkout_and_module_content(monkeyp
         module._source_profile(
             "479fca6ce789692d2a088b162fe6bcfeb2ad8336", time.monotonic_ns() + 1_000_000_000
         )
+
+
+@pytest.mark.parametrize("changed_module", [False, True])
+@pytest.mark.parametrize(
+    "commit,tree,source_sha,other",
+    [
+        (
+            "479fca6ce789692d2a088b162fe6bcfeb2ad8336",
+            "98257c8083cc6395fde92c600b1683b783952955",
+            "a54a71ab93bbddb9b098678ba4fe638c12faefc0157ddc7cc3a7f7d1e120b674",
+            "bac162fd6eb6178516a212d30846fb1a055c90fb",
+        ),
+        (
+            "bac162fd6eb6178516a212d30846fb1a055c90fb",
+            "21953af2db3189b5a3a9c03c22b3e35baea29683",
+            "829465b9fcdc5efd10f61ee18ba7eea342cc697f5c3323486283c0c943a56e29",
+            "479fca6ce789692d2a088b162fe6bcfeb2ad8336",
+        ),
+    ],
+)
+def test_each_original_checkout_requires_its_own_complete_causal_files(
+    monkeypatch, changed_module, commit, tree, source_sha, other
+):
+    import subprocess
+    import time
+    from types import SimpleNamespace
+
+    module = api()
+    root = Path("/opt/hybrid-stock-research/source") / commit
+    monkeypatch.setattr(module, "_canonical_directory", lambda path: (1, 1))
+
+    def capture(path, **kwargs):
+        assert path == root
+        return SimpleNamespace(commit=commit, digest=source_sha)
+
+    def native(path, argv, cap):
+        assert path == root
+        if argv == ("rev-parse", "--verify", "HEAD^{tree}"):
+            return (tree + "\n").encode()
+        assert argv == ("status", "--porcelain=v1", "-z", "--untracked-files=all")
+        return b""
+
+    def read(path, *args):
+        assert path.parent == root / "infra/hybrid"
+        version = other if changed_module else commit
+        raw = subprocess.check_output(
+            ("/usr/bin/git", "show", version + ":infra/hybrid/" + path.name),
+            cwd=Path(__file__).resolve().parents[2],
+        )
+        return raw, (1, 2)
+
+    monkeypatch.setattr(module, "_capture_source", capture)
+    monkeypatch.setattr(module, "_native", native)
+    monkeypatch.setattr(module, "_read_file", read)
+    if changed_module:
+        with pytest.raises(ValueError):
+            module._source_profile(commit, time.monotonic_ns() + 5_000_000_000)
+    else:
+        module._source_profile(commit, time.monotonic_ns() + 5_000_000_000)
 
 
 @pytest.mark.parametrize("bad", [None, "hash", "link", "owner", "size", "target", "overread"])
@@ -792,7 +874,7 @@ def test_source_profile_denies_untrusted_inner_module_ancestor(monkeypatch):
     module = api()
     raw = b"reviewed producer fixture bytes\n"
     root = "/opt/hybrid-stock-research/source/479fca6ce789692d2a088b162fe6bcfeb2ad8336"
-    monkeypatch.setattr(module, "_MODULES", {"fixture.py": hashlib.sha256(raw).hexdigest()})
+    fixture_modules(monkeypatch, {"fixture.py": hashlib.sha256(raw).hexdigest()})
     monkeypatch.setattr(Path, "resolve", lambda path, strict: path)
     monkeypatch.setattr(
         Path,

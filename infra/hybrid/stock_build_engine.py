@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
+import errno
 import json
-import re
 import socket
 from typing import NoReturn
 from urllib.parse import urlencode
 
+from infra.hybrid.stock_build_http import WIRE_LIMIT, StockBuildHTTPResponse
 from infra.hybrid.stock_build_inputs import SourceArchive, build_image_id
 from infra.hybrid.stock_container import ImageProfile, _object, verify_engine_version, verify_image
 from infra.hybrid.stock_engine import StockEngineReader, _connection
 from infra.hybrid.stock_producer_diagnostics import phase
 from infra.hybrid.stock_release_producer import _current_source, _Lease
 
-_LIMIT = 1048576 + 8192
+_LIMIT = WIRE_LIMIT
 _ERRORS = (OSError, ValueError, TypeError, KeyError, OverflowError, AttributeError, RecursionError)
 
 
@@ -57,7 +58,7 @@ def _source_request(source: SourceArchive) -> bytes:
         }
     )
     return (
-        "POST /v1.52/build?" + query + " HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n"
+        "POST /v1.52/build?" + query + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
         "Content-Type: application/x-tar\r\nContent-Length: " + str(len(source.raw)) + "\r\n\r\n"
     ).encode("ascii") + source.raw
 
@@ -67,6 +68,7 @@ def _exchange(lease: _Lease, request: bytes, cap: int) -> bytes:
         lease.claim(request, cap)
     peer: socket.socket | None = None
     received = bytearray()
+    response = StockBuildHTTPResponse()
     try:
         with phase("connect"):
             peer = _connection(cap / 1_000_000_000)
@@ -99,10 +101,27 @@ def _exchange(lease: _Lease, request: bytes, cap: int) -> bytes:
                 _require(len(chunk) <= room)
                 with phase("lease_check"):
                     lease.check(not_after_ns=cap)
-                if not chunk:
-                    return bytes(received)
-                if b"\r\n\r\n" not in received:
-                    _require(len(received) < 8192)
+                _require(bool(chunk))
+            with phase("parse"):
+                complete = response.feed(chunk)
+            with phase("lease_check"):
+                lease.check(not_after_ns=cap)
+            if complete:
+                # A proven frame does not require socket EOF. Check only bytes
+                # already queued, without Python's positive-timeout readiness wait.
+                with phase("receive"):
+                    peer.settimeout(0.0)
+                    try:
+                        trailing = peer.recv(1, socket.MSG_PEEK)
+                    except OSError as error:
+                        if error.errno not in (errno.EAGAIN, errno.EWOULDBLOCK, errno.ECONNRESET):
+                            raise
+                        trailing = b""
+                    received.extend(trailing[: _LIMIT - len(received)])
+                    _require(not trailing)
+                with phase("lease_check"):
+                    lease.check(not_after_ns=cap)
+                return bytes(received)
     finally:
         try:
             if peer is not None:
@@ -114,26 +133,9 @@ def _exchange(lease: _Lease, request: bytes, cap: int) -> bytes:
 
 
 def _body(raw: bytes) -> bytes:
-    head, separator, body = raw.partition(b"\r\n\r\n")
-    _require(separator == b"\r\n\r\n" and len(head) + 4 <= 8192 and 0 < len(body) <= 1048576)
-    lines = head.split(b"\r\n")
-    _require(re.fullmatch(rb"HTTP/1\.[01] 200(?: [\x20-\x7e]*)?", lines[0]) is not None)
-    headers: dict[bytes, bytes] = {}
-    for line in lines[1:]:
-        name, colon, value = line.partition(b":")
-        _require(colon == b":" and re.fullmatch(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+", name) is not None)
-        _require(all(character == 9 or 32 <= character <= 126 for character in value))
-        key = name.lower()
-        _require(key not in headers)
-        headers[key] = value.strip(b" \t")
-    _require(
-        headers.get(b"content-type") == b"application/json" and b"transfer-encoding" not in headers
-    )
-    _require(headers.get(b"content-encoding", b"identity") == b"identity")
-    if b"content-length" in headers:
-        length = headers[b"content-length"]
-        _require(re.fullmatch(rb"[1-9][0-9]{0,6}", length) is not None and int(length) == len(body))
-    return body
+    response = StockBuildHTTPResponse()
+    _require(response.feed(raw))
+    return response.body()
 
 
 def _build(lease: _Lease) -> ImageProfile:

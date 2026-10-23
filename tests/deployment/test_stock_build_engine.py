@@ -140,7 +140,7 @@ def test_durable_owned_build_sends_exact_tar_then_inspects_only_terminal_id(scen
     assert wire.requests[0][0].split(b"\r\n")[0] == b"GET /version HTTP/1.0"
     head, sent = wire.requests[1]
     method, path, protocol = head.split(b"\r\n")[0].decode().split(" ")
-    assert (method, urlsplit(path).path, protocol) == ("POST", "/v1.52/build", "HTTP/1.0")
+    assert (method, urlsplit(path).path, protocol) == ("POST", "/v1.52/build", "HTTP/1.1")
     query = parse_qs(urlsplit(path).query)
     assert query == {
         "version": ["1"],
@@ -169,6 +169,29 @@ def test_durable_owned_build_sends_exact_tar_then_inspects_only_terminal_id(scen
     assert complete["image_digest"] == IMAGE
     assert complete["response_sha256"] == hashlib.sha256(response(terminal())).hexdigest()
     assert (directory / "image.bin").read_bytes() == metadata
+
+
+def test_framed_chunked_quiet_build_keeps_image_inspection_and_completion(scenario, monkeypatch):
+    state, module, version, metadata = scenario
+    body = terminal()
+    raw = (
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+        b"Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+        + format(len(body), "x").encode()
+        + b"\r\n"
+        + body
+        + b"\r\n0\r\n\r\n"
+    )
+    wire = Wire([response(version), raw, response(metadata)]).install(monkeypatch, module)
+    with opened(state) as lease:
+        assert module._build(lease).image_digest == IMAGE
+    wire.join()
+    directory = state[1] / "attempts" / state[3]
+    assert len(wire.requests) == 3
+    assert (directory / "build-response.http").read_bytes() == raw
+    assert json.loads((directory / "build-complete.json").read_bytes())["response_sha256"] == (
+        hashlib.sha256(raw).hexdigest()
+    )
 
 
 @pytest.mark.parametrize(
@@ -328,11 +351,11 @@ def test_same_socket_partial_io_keeps_one_dispatch(scenario, monkeypatch, kind):
                 raise TimeoutError("fixture upload idle")
             return self.peer.send(raw[:31] if kind == "partial_send" else raw)
 
-        def recv(self, size):
+        def recv(self, size, flags=0):
             if kind == "recv_timeout" and not self.read_once:
                 self.read_once = True
                 raise TimeoutError("fixture read idle")
-            return self.peer.recv(size)
+            return self.peer.recv(size, flags)
 
     monkeypatch.setattr(module, "_connection", lambda deadline: Partial(wire.connect(deadline)))
     with opened(state) as lease:
