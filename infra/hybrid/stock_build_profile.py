@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from infra.hybrid.stock_attempts import _check_clock, _clock
+from infra.hybrid.stock_build_cohorts import _commit_cohort
 from infra.hybrid.stock_container import _object, verify_engine_version
 from infra.hybrid.stock_engine import (
     _body,
@@ -32,26 +33,12 @@ from infra.hybrid.stock_release import _close_all, _fingerprint
 from infra.hybrid.stock_release_producer import _require, _sanitized
 from infra.hybrid.stock_source_prepare import _capture_source, _native
 
-_COMMIT = "479fca6ce789692d2a088b162fe6bcfeb2ad8336"
-_TREE = "98257c8083cc6395fde92c600b1683b783952955"
-_SOURCE = "a54a71ab93bbddb9b098678ba4fe638c12faefc0157ddc7cc3a7f7d1e120b674"
 _ENGINE_SHA = "657cc3c9b56b63ae49d7e175d83afa6eabdb68637ad552e26e015f43f0733d3a"
 _BINARY_SHA = "237b0603cc24496c74433aeb32d70a16931ae7e015f183b8f3c7c7db83c72a5f"
 _BINARY_BYTES = 83879288
 _UNITS = {
     "docker.service": "2e35580df3c26dc898440289f4abad013fbd62722f00c93f994dba002e468873",
     "docker.socket": "96c04477e86bd6f724560f3a78b7c0b00b539d5254a251d247641029fc7ad92e",
-}
-_MODULES = {
-    "stock_build_engine.py": "9ad12baf09172fbd485b08b2ec1df3ca76119ecf34ec452759f3ba5782e12064",
-    "stock_compose_render.py": "fbaba8973249e0b9afecab75c6c5a02868a68821e41639e1a51d11af00cc6d13",
-    "stock_probe_controller.py": "40929e4f45c695b0429373fea2e77e32ba1d4ec15c9e2b0fefed3db144b5a3f8",
-    "stock_producer.py": "8729100585927dd9588bd02fa6ef488e08202e8c5f4089987a7f16c7e85576dc",
-    "stock_release_producer.py": "2ff1bee7bc22173a61f27c8f4ae14254bd9723bed417a14e7efaf9e53746d6fa",
-    "stock_release_publication.py": (
-        "5a1dd309a61226df3dfae6403b19653a96147bf2496076b527e99144f409d1e7"
-    ),
-    "stock_source_prepare.py": "10d3fba54190e9861eac997bf7990a17f78194dc627482254a1379a7b5f8803c",
 }
 _ROOTS = {
     "producer": Path("/var/lib/hybrid-stock-producer"),
@@ -347,17 +334,17 @@ def _binary(pid: int, cap: int) -> tuple[int, ...]:
 
 
 def _source_profile(commit: str, cap: int) -> None:
-    _require(type(commit) is str and commit == _COMMIT)
-    path = Path("/opt/hybrid-stock-research/source") / _COMMIT
+    cohort = _commit_cohort(commit)
+    path = Path("/opt/hybrid-stock-research/source") / cohort.commit
     _canonical_directory(path)
     source = _capture_source(path, deadline=cap / 1_000_000_000)
-    _require(source.commit == _COMMIT and source.digest == _SOURCE)
+    _require(source.commit == cohort.commit and source.digest == cohort.source_sha256)
     _require(
         _native(path, ("rev-parse", "--verify", "HEAD^{tree}"), cap / 1_000_000_000)
-        == (_TREE + "\n").encode()
+        == (cohort.tree + "\n").encode()
     )
     _canonical_directory(path / "infra/hybrid")
-    for name, expected in _MODULES.items():
+    for name, expected in cohort.modules:
         raw, _ = _read_file(path / "infra/hybrid" / name, 1_048_576, 0o644, cap)
         _require(hashlib.sha256(raw).hexdigest() == expected)
     _require(
@@ -392,6 +379,7 @@ def observe_build_profile(
             type(original_engine) is bytes
             and hashlib.sha256(original_engine).hexdigest() == _ENGINE_SHA
         )
+        cohort = _commit_cohort(source_commit)
         _source_profile(source_commit, not_after_ns)
         common = _unit("docker.service", not_after_ns)
         socket_unit = _unit("docker.socket", not_after_ns)
@@ -448,8 +436,8 @@ def observe_build_profile(
                 "daemon_start_boottime_upper_ns": upper,
                 "boot_id": observed["boot_id"],
                 "observed_clock": observed,
-                "source_profile_id": "stock-producer-causal-479-v1",
-                "source_tree": _TREE,
+                "source_profile_id": cohort.profile_id,
+                "source_tree": cohort.tree,
                 "docker_root": "/var/lib/docker",
                 "socket_activation": {
                     "mode": "systemd_socket_activation",

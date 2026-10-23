@@ -1,8 +1,13 @@
 # Spent failed build reconciliation
 
 Implementation and fixture verification do not establish native qualification.
-This operation has not yet been used to change the preserved producer namespace.
-Live trading remains disabled.
+The original479/a54 incident received an acknowledged negative-only closure on
+2026-10-23 at04:19:31Z, independently read back with all original pins unchanged.
+Its `failed-build-terminal.json` SHA256 is
+`c7fb9ed64a21208a0bcca5db08e013e7df7c88bfc8c5a30afeb3435874099cbf`.
+Do not repeat that operation. The later bac/8294 incident still has only its six
+original files and requires a separate actual public reconciliation. Neither
+incident produced a release. Live trading remains disabled.
 
 The original479/a54 producer actually exited1. Its complete retained quiet legacy
 build marker can establish a narrower backend-termination fact under the exact
@@ -25,15 +30,29 @@ network namespace. Roots, profile, account, credentials, endpoints and deadlines
 cannot be supplied. No namespace initializer, Docker mutation, worker, control,
 credential, service/timer or trading operation is called.
 
-Initial qualification supports only commit
+The compiled exception supports exactly these two immutable original cohorts:
+
+- Commit
 `479fca6ce789692d2a088b162fe6bcfeb2ad8336`, tree
 `98257c8083cc6395fde92c600b1683b783952955`, archive
-`a54a71ab93bbddb9b098678ba4fe638c12faefc0157ddc7cc3a7f7d1e120b674`.
+`a54a71ab93bbddb9b098678ba4fe638c12faefc0157ddc7cc3a7f7d1e120b674`,
+profile `stock-producer-causal-479-v1`.
+- Commit
+`bac162fd6eb6178516a212d30846fb1a055c90fb`, tree
+`21953af2db3189b5a3a9c03c22b3e35baea29683`, archive
+`829465b9fcdc5efd10f61ee18ba7eea342cc697f5c3323486283c0c943a56e29`,
+profile `stock-producer-causal-bac-v1`.
+
+Selection derives from the original evidence; callers cannot register a profile.
 The original source must still be clean/root-owned and match its seven causal
 module hashes. The daemon binary, official systemd service/socket bytes, active
 MainPID, shared inherited listener and original same-boot clock must satisfy the
 [exact design](superpowers/specs/2026-10-23-spent-build-reconciliation-design.md).
 Peer PID1 identifies the inherited systemd listener, not the HTTP handler.
+The [framing and history contract](superpowers/specs/2026-10-23-stock-build-http-framing-design.md)
+freezes both failed HTTP/1.0 wire generations while requiring self-delimited
+HTTP/1.1 responses for future builds. The bac/8294 receive reset was not a complete
+exchange; its retained quiet marker cannot retroactively establish producer success.
 
 The target attempt must have exactly the original six build files and no release.
 All other histories must be independently valid positive or negative families.
@@ -69,8 +88,8 @@ containers, layers, mounts or temporary contexts may remain. There is no zero-re
 daemon-wide idleness or residue-size claim and no automatic garbage collection.
 Free headroom is an admission policy, not a reconstruction of cleanup success.
 
-Native incident closure, a new producer release and the original Task3 operational
-gates still require actual receipts: scheduled research, monitoring, encrypted
+The outstanding bac/8294 closure, a new producer release and the original Task3
+operational gates still require actual receipts: scheduled research, monitoring, encrypted
 scheduled backup, verified off-host copy/application restore, restart/reboot and
 official authentication expiry/revocation checks. None is established by a green
 fixture suite or this document. No fixed60day paper wait is required.

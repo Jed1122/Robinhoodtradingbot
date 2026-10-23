@@ -451,6 +451,8 @@ def _chain(
 ) -> str:
     """Revalidate every original semantic/hash link; no native operation occurs."""
     from infra.hybrid.stock_build_engine import _body, _source_request
+    from infra.hybrid.stock_build_legacy import _body as legacy_body
+    from infra.hybrid.stock_build_legacy import _source_request as legacy_request
     from infra.hybrid.stock_compose_render import _COMPOSE_VERSIONS, _recipe
 
     raw = {
@@ -508,7 +510,9 @@ def _chain(
     _require(
         _object(raw["engine.bin"]).get("Version") == "29.1.3" and engine.architecture == "amd64"
     )
-    _require(raw["build-request.http"] == _source_request(source))
+    legacy_wire = raw["build-request.http"] == legacy_request(source)
+    if not legacy_wire:
+        _require(raw["build-request.http"] == _source_request(source))
     dispatch = documents["dispatch.json"]
     build_cap = dispatch["build_deadline_ns"]
     dispatched = clock(dispatch["dispatch_clock"])
@@ -529,7 +533,8 @@ def _chain(
         origin=origin,
         dispatch_clock=dispatched,
     )
-    image_id = build_image_id(_body(raw["build-response.http"]))
+    response_body = (legacy_body if legacy_wire else _body)(raw["build-response.http"])
+    image_id = build_image_id(response_body)
     verify_image(raw["image.bin"], image_id, engine)
     build = documents["build-complete.json"]
     completed = clock(build["completed_clock"])
