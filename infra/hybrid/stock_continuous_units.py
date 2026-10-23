@@ -36,10 +36,14 @@ def _service(
     requires: str = "",
     retained: bool = False,
     boot_install: bool = False,
+    reduced_uid_helper: bool = False,
 ) -> bytes:
     dependency = f"Requires={requires}\n" if requires else ""
     ordered = requires or "docker.service"
     install = "\n[Install]\nWantedBy=multi-user.target\n" if boot_install else ""
+    # Explicit User=root in systemd255's seccomp setup drops CAP_SETUID before
+    # our setpriv helper can use it. System services already default to root.
+    user = "" if reduced_uid_helper else "User=root\n"
     return f"""# Generated stock operations unit; installation and activation are separate.
 [Unit]
 Description={description}
@@ -47,8 +51,7 @@ Description={description}
 
 [Service]
 Type=oneshot
-User=root
-Group=root
+{user}Group=root
 WorkingDirectory={checkout}
 Environment="PYTHONDONTWRITEBYTECODE=1" "PYTHONPATH={checkout}:{checkout}/src" "PYTHONNOUSERSITE=1"
 ExecStart={command}
@@ -123,7 +126,8 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
         stop=15,
         memory="256M",
         tasks=64,
-        cpu=10,
+        cpu=50,
+        reduced_uid_helper=True,
     )
     files[_PREFIX + "monitor.timer"] = _timer("monitor", 300)
     files[_PREFIX + "backup.service"] = _service(
@@ -144,6 +148,7 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
         memory="384M",
         tasks=64,
         cpu=25,
+        reduced_uid_helper=True,
     )
     files[_PREFIX + "backup.timer"] = _timer("backup", 86400)
     files[_PREFIX + "recovery.service"] = _service(
@@ -168,9 +173,10 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
         stop=15,
         memory="128M",
         tasks=32,
-        cpu=10,
+        cpu=50,
         requires="docker.service " + _PREFIX + "recovery.service",
         retained=True,
         boot_install=True,
+        reduced_uid_helper=True,
     )
     return files

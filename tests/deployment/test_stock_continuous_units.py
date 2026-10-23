@@ -19,6 +19,25 @@ PREFIX = "hybrid-stock-research-"
 OAUTH = "/var/lib/hybrid-stock-research/oauth"
 SPOOL = "/var/lib/hybrid-stock-maintenance"
 OPERATIONS = "/var/lib/hybrid-stock-operations"
+# Fixed fixture bytes from verified source28b62a9, before the CPU-only correction.
+PREVIOUS_UNIT_SHA256 = {
+    "hybrid-stock-research-backup.service":
+        "b2956535de3c28ae186cc49b3a1d9c224640bb040df7bddb90b0e7a59426cd7c",
+    "hybrid-stock-research-backup.timer":
+        "4ca749a093720d197243c5ce647490abb679425de66c99991ed8fdcf31b81f74",
+    "hybrid-stock-research-bootstrap.service":
+        "3db33e975c46951e383734418b2f9ef05be895962645c10c811e4e75e415e9f0",
+    "hybrid-stock-research-monitor.service":
+        "7c271a02c97fa6cb8c0f534e8d808dbe76a6331e6c6bc30a5e7960a00eb7b7ed",
+    "hybrid-stock-research-monitor.timer":
+        "32469a534850b689b51bc934c149e1d398b6232413738377f460f73efcfc407d",
+    "hybrid-stock-research-recovery.service":
+        "96b7ec68c0e03575ea7564f5056dd30555187ccc6266481dff4de9a7460cfe76",
+    "hybrid-stock-research.service":
+        "5c11030437c5478a4c3b5b4662f1638caf655f1291150967f013821252310349",
+    "hybrid-stock-research.timer":
+        "629eb4715751e238354cf54aaf20c9f633c784e346f32b86da2c2208e3955812",
+}
 
 
 def module():
@@ -79,6 +98,40 @@ def test_collector_cadence_and_deadline_remain_release_bound(release, cadence, d
         assert actual[name] == body
 
 
+def test_only_reduced_uid_helper_services_use_system_manager_root_without_ambient_caps(release):
+    all_units = units(release)
+    default_root = {
+        name
+        for name, value in all_units.items()
+        if value.has_section("Service") and "User" not in value["Service"]
+    }
+    assert default_root == {
+        PREFIX + "monitor.service",
+        PREFIX + "backup.service",
+        PREFIX + "bootstrap.service",
+    }
+    for name in default_root:
+        service = all_units[name]["Service"]
+        assert service["Group"] == "root"
+        assert not {"AmbientCapabilities", "CapabilityBoundingSet", "SecureBits"} & service.keys()
+    assert all_units[PREFIX + "recovery.service"]["Service"]["User"] == "root"
+    assert all_units["hybrid-stock-research.service"]["Service"]["User"] == "root"
+
+
+@pytest.mark.parametrize("name,previous_sha256", PREVIOUS_UNIT_SHA256.items())
+def test_only_monitor_and_bootstrap_cpu_lines_change_from_verified_units(
+    release, name, previous_sha256
+):
+    generated = module().unit_files(release, CHECKOUT)
+    assert set(generated) == set(PREVIOUS_UNIT_SHA256)
+    body = generated[name]
+    if name in {PREFIX + "monitor.service", PREFIX + "bootstrap.service"}:
+        assert parsed(body)["Service"]["CPUQuota"] == "50%"
+        assert body.count(b"CPUQuota=50%\n") == 1
+        body = body.replace(b"CPUQuota=50%\n", b"CPUQuota=10%\n", 1)
+    assert hashlib.sha256(body).hexdigest() == previous_sha256
+
+
 @pytest.mark.parametrize("operation", ["monitor", "backup"])
 def test_maintenance_uses_the_same_commit_venv_and_fixed_operation_manifest(release, operation):
     actual = units(release)[PREFIX + operation + ".service"]
@@ -114,10 +167,10 @@ def test_maintenance_timers_start_at_activation_and_repeat_only_after_completion
 @pytest.mark.parametrize(
     "operation,start,stop,memory,tasks,cpu",
     [
-        ("monitor", "60s", "15s", "256M", "64", "10%"),
+        ("monitor", "60s", "15s", "256M", "64", "50%"),
         ("backup", "300s", "45s", "384M", "64", "25%"),
         ("recovery", "45s", "15s", "128M", "32", "50%"),
-        ("bootstrap", "60s", "15s", "128M", "32", "10%"),
+        ("bootstrap", "60s", "15s", "128M", "32", "50%"),
     ],
 )
 def test_new_services_bound_resources_and_allow_only_local_unix_operations(
@@ -125,7 +178,7 @@ def test_new_services_bound_resources_and_allow_only_local_unix_operations(
 ):
     service = units(release)[PREFIX + operation + ".service"]["Service"]
     assert service["Type"] == "oneshot" and service["Restart"] == "no"
-    assert service["User"] == service["Group"] == "root"
+    assert service["Group"] == "root"
     assert service["UMask"] == "0077" and service["KillMode"] == "control-group"
     assert service["TimeoutStartSec"] == start and service["TimeoutStopSec"] == stop
     assert service["MemoryMax"] == memory and service["TasksMax"] == tasks
@@ -136,6 +189,26 @@ def test_new_services_bound_resources_and_allow_only_local_unix_operations(
     assert service["ProtectHome"] == service["PrivateTmp"] == "yes"
     assert service["InaccessiblePaths"] == OAUTH
     assert "CapabilityBoundingSet" not in service and "AmbientCapabilities" not in service
+    assert {
+        key: service[key]
+        for key in (
+            "PrivateDevices",
+            "ProtectKernelTunables",
+            "ProtectKernelModules",
+            "ProtectControlGroups",
+            "RestrictSUIDSGID",
+            "LockPersonality",
+            "SystemCallArchitectures",
+        )
+    } == {
+        "PrivateDevices": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectControlGroups": "yes",
+        "RestrictSUIDSGID": "yes",
+        "LockPersonality": "yes",
+        "SystemCallArchitectures": "native",
+    }
 
 
 def test_monitor_can_write_only_incidents_and_its_existing_read_lock_anchors(release):
@@ -168,6 +241,28 @@ def test_boot_recovery_never_receives_a_release_or_installs_a_direct_boot_trigge
     assert actual["Service"]["RemainAfterExit"] == "yes"
     assert actual["Unit"]["Requires"] == actual["Unit"]["After"] == "docker.service"
     assert "Install" not in actual
+
+
+@pytest.mark.parametrize(
+    "entry", ["infra.hybrid.stock_maintenance", "infra.hybrid.stock_bootstrap"]
+)
+def test_default_root_helper_services_still_deny_nonroot_before_reading_local_state(
+    monkeypatch, capsys, entry
+):
+    api = importlib.import_module(entry)
+    monkeypatch.setattr(api.os, "geteuid", lambda: 10001)
+    monkeypatch.setattr(api.sys, "platform", "linux")
+    argv = ["stock_bootstrap", MANIFEST]
+    if entry.endswith("stock_maintenance"):
+        argv = ["stock_maintenance", "monitor", MANIFEST]
+    monkeypatch.setattr(api.sys, "argv", argv)
+
+    def deny(*args, **kwargs):
+        pytest.fail("nonroot entry must not read the local release")
+
+    monkeypatch.setattr(api, "load_release", deny)
+    assert api.main() == 2
+    assert '"live_enabled":false' in capsys.readouterr().out
 
 
 def test_only_separate_bootstrap_is_enabled_by_multi_user_and_runs_after_recovery(release):

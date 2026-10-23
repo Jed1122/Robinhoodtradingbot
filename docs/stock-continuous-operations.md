@@ -68,6 +68,29 @@ properties/drop-ins and run native `systemd-analyze verify` before installation.
   receives the maintenance parent or the other service's store. Bootstrap receives
   only its operations and control-lock anchors.
 
+Monitor, backup and bootstrap deliberately omit `User=` while retaining
+`Group=root`: the system service manager's documented default user is root, and
+the entry points still reject a nonroot caller. On the observed systemd255
+host, explicit `User=root` with these seccomp restrictions removes `CAP_SETUID`
+from the parent's permitted/effective sets before `setpriv` can drop to10001.
+The [systemd255 execution source](https://github.com/systemd/systemd/blob/v255/src/core/exec-invoke.c#L4429-L4509)
+explains that behavior; the [system service default](https://github.com/systemd/systemd/blob/v255/man/systemd.exec.xml#L524-L527)
+lets these three services keep the existing helper boundary without introducing
+ambient capabilities. Recovery and collector units retain their existing bytes.
+The sandbox, writable paths, deadlines, memory limits and no-new-privileges
+settings remain unchanged. Monitor and bootstrap use a bounded 50% CPU quota,
+matching the collector; backup retains 25%. Their 45-second internal deadline
+and 60-second service timeout remain in force. An actual read-only bootstrap
+prequeue probe reached the helper deadline at 10%; changing only its CPU quota
+to 50% completed the helper in 20.425 seconds and the full probe in 20.794 seconds,
+within the existing 128MiB memory limit. That probe queued no collector and
+called no provider. It does not establish the monitor's native timing or replace
+each installed release's runtime verification.
+For each installed release, verify the actual sandboxed parent UID/GID0 and the
+executed helper's real/effective/saved UID/GID10001, empty supplementary groups,
+zero effective/permitted/inheritable/ambient capability sets and
+`NoNewPrivs=1`; renderer tests alone do not establish this native evidence.
+
 Paused/killed authority is never automatically resumed. Preserve control_id,
 generation and predecessor hash during upgrades and recovery. No host reboot is
 complete evidence until the actual post-boot identities, services, owned attempt,
