@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import stat
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -499,9 +500,16 @@ def create_engine(database_url: str, *, existing_file_descriptor: int | None = N
     @event.listens_for(engine.sync_engine, "connect")
     def configure_connection(dbapi_connection: object, connection_record: object) -> None:
         del connection_record
-        if file_check is not None:
-            file_check()
-        _apply_sqlite_policy(dbapi_connection)
+        try:
+            if file_check is not None:
+                file_check()
+            _apply_sqlite_policy(dbapi_connection)
+        except BaseException:
+            # The pool cannot dispose a driver rejected by its connect listener.
+            # Close it in the adapted async context, preserving the original error.
+            with suppress(BaseException):
+                cast(Any, dbapi_connection).close()
+            raise
 
     @event.listens_for(engine.sync_engine, "checkout")
     def validate_checkout(
