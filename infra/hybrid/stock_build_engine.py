@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from infra.hybrid.stock_build_inputs import SourceArchive, build_image_id
 from infra.hybrid.stock_container import ImageProfile, _object, verify_engine_version, verify_image
 from infra.hybrid.stock_engine import StockEngineReader, _connection
+from infra.hybrid.stock_producer_diagnostics import phase
 from infra.hybrid.stock_release_producer import _current_source, _Lease
 
 _LIMIT = 1048576 + 8192
@@ -27,7 +28,8 @@ def _require(condition: bool) -> None:
 
 
 def _budget(lease: _Lease, cap: int) -> float:
-    now = lease.check(not_after_ns=cap)
+    with phase("lease_check"):
+        now = lease.check(not_after_ns=cap)
     return min(1.0, (cap - int(now["monotonic_ns"])) / 1_000_000_000)
 
 
@@ -61,42 +63,54 @@ def _source_request(source: SourceArchive) -> bytes:
 
 
 def _exchange(lease: _Lease, request: bytes, cap: int) -> bytes:
-    lease.claim(request, cap)
+    with phase("claim"):
+        lease.claim(request, cap)
     peer: socket.socket | None = None
     received = bytearray()
     try:
-        peer = _connection(cap / 1_000_000_000)
-        upload_cap = min(cap, int(lease.check(not_after_ns=cap)["monotonic_ns"]) + 30_000_000_000)
+        with phase("connect"):
+            peer = _connection(cap / 1_000_000_000)
+        with phase("lease_check"):
+            upload_cap = min(
+                cap, int(lease.check(not_after_ns=cap)["monotonic_ns"]) + 30_000_000_000
+            )
         offset = 0
         while offset < len(request):
-            peer.settimeout(_budget(lease, upload_cap))
-            try:
-                sent = peer.send(request[offset : offset + 65536])
-            except TimeoutError:
-                continue  # Same socket and original cap; never another request.
-            _require(type(sent) is int and 0 < sent <= len(request) - offset)
+            with phase("send"):
+                peer.settimeout(_budget(lease, upload_cap))
+                try:
+                    sent = peer.send(request[offset : offset + 65536])
+                except TimeoutError:
+                    continue  # Same socket and original cap; never another request.
+                _require(type(sent) is int and 0 < sent <= len(request) - offset)
             offset += sent
-            lease.check(not_after_ns=upload_cap)
+            with phase("lease_check"):
+                lease.check(not_after_ns=upload_cap)
         while True:
-            peer.settimeout(_budget(lease, cap))
-            try:
-                chunk = peer.recv(min(65536, _LIMIT + 1 - len(received)))
-            except TimeoutError:
-                continue
-            room = _LIMIT - len(received)
-            received.extend(chunk[:room])  # Retain bounded original prefix even at overflow.
-            _require(len(chunk) <= room)
-            lease.check(not_after_ns=cap)
-            if not chunk:
-                return bytes(received)
-            if b"\r\n\r\n" not in received:
-                _require(len(received) < 8192)
+            with phase("receive"):
+                peer.settimeout(_budget(lease, cap))
+                try:
+                    chunk = peer.recv(min(65536, _LIMIT + 1 - len(received)))
+                except TimeoutError:
+                    continue
+            with phase("receive" if chunk else "eof"):
+                room = _LIMIT - len(received)
+                received.extend(chunk[:room])  # Retain bounded prefix even at overflow.
+                _require(len(chunk) <= room)
+                with phase("lease_check"):
+                    lease.check(not_after_ns=cap)
+                if not chunk:
+                    return bytes(received)
+                if b"\r\n\r\n" not in received:
+                    _require(len(received) < 8192)
     finally:
         try:
             if peer is not None:
-                peer.close()
+                with phase("close"):
+                    peer.close()
         finally:
-            lease.retain("build-response.http", bytes(received))
+            with phase("response_retain"):
+                lease.retain("build-response.http", bytes(received))
 
 
 def _body(raw: bytes) -> bytes:
@@ -126,39 +140,53 @@ def _build(lease: _Lease) -> ImageProfile:
     """Private actual-context operation; supplied data or old receipts cannot dispatch."""
     try:
         _require(type(lease) is _Lease)
-        _current_source(lease)
-        deadline = lease.begin_build()
-        version = StockEngineReader._get("/version", not_after_ns=deadline)
-        lease.retain("engine.bin", version)
-        lease.check(not_after_ns=deadline)
-        profile = verify_engine_version(version)
-        record = _object(version)
-        _require(record.get("Version") == "29.1.3" and profile.architecture == "amd64")
+        with phase("source"):
+            _current_source(lease)
+        with phase("begin_build"):
+            deadline = lease.begin_build()
+        with phase("version_get"):
+            version = StockEngineReader._get("/version", not_after_ns=deadline)
+        with phase("version_retain"):
+            lease.retain("engine.bin", version)
+        with phase("lease_check"):
+            lease.check(not_after_ns=deadline)
+        with phase("version_verify"):
+            profile = verify_engine_version(version)
+            record = _object(version)
+            _require(record.get("Version") == "29.1.3" and profile.architecture == "amd64")
         raw = _exchange(lease, _request(lease), deadline)
-        lease.check(not_after_ns=deadline)
-        image_id = build_image_id(_body(raw))
-        metadata = StockEngineReader._get(
-            "/v1.52/images/" + image_id + "/json", not_after_ns=deadline
-        )
-        lease.retain("image.bin", metadata)
-        lease.check(not_after_ns=deadline)
-        image = verify_image(metadata, image_id, profile)
-        lease.record(
-            "build-complete.json",
-            {
-                "schema_version": 1,
-                "kind": "stock_build_complete",
-                "image_digest": image.image_digest,
-                "namespace_id": lease.namespace["namespace_id"],
-                "source_sha256": lease.source.digest,
-                "dispatch_sha256": lease.hashes["dispatch.json"],
-                "response_sha256": lease.hashes["build-response.http"],
-                "image_sha256": lease.hashes["image.bin"],
-                "build_deadline_ns": deadline,
-                "completed_clock": lease.check(not_after_ns=deadline),
-            },
-        )
-        lease.check(not_after_ns=deadline)
+        with phase("lease_check"):
+            lease.check(not_after_ns=deadline)
+        with phase("parse"):
+            image_id = build_image_id(_body(raw))
+        with phase("image_get"):
+            metadata = StockEngineReader._get(
+                "/v1.52/images/" + image_id + "/json", not_after_ns=deadline
+            )
+        with phase("image_retain"):
+            lease.retain("image.bin", metadata)
+        with phase("lease_check"):
+            lease.check(not_after_ns=deadline)
+        with phase("image_verify"):
+            image = verify_image(metadata, image_id, profile)
+        with phase("build_complete"):
+            lease.record(
+                "build-complete.json",
+                {
+                    "schema_version": 1,
+                    "kind": "stock_build_complete",
+                    "image_digest": image.image_digest,
+                    "namespace_id": lease.namespace["namespace_id"],
+                    "source_sha256": lease.source.digest,
+                    "dispatch_sha256": lease.hashes["dispatch.json"],
+                    "response_sha256": lease.hashes["build-response.http"],
+                    "image_sha256": lease.hashes["image.bin"],
+                    "build_deadline_ns": deadline,
+                    "completed_clock": lease.check(not_after_ns=deadline),
+                },
+            )
+        with phase("lease_check"):
+            lease.check(not_after_ns=deadline)
         lease.built_image = image
         return image
     except _ERRORS:

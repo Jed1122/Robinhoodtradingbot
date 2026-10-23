@@ -17,6 +17,7 @@ import time
 from typing import NoReturn
 
 from infra.hybrid.stock_container import API_VERSION
+from infra.hybrid.stock_producer_diagnostics import _failure
 
 _IO_SECONDS = 5.0
 _HEAD_LIMIT = 8192
@@ -70,9 +71,14 @@ def _connection(deadline: float) -> socket.socket:
         _require(pid > 0 and uid == 0)
         _remaining(deadline)
         return peer
-    except BaseException:
+    except BaseException as error:
+        _failure(error)
         if peer is not None:
-            peer.close()
+            try:
+                peer.close()
+            except BaseException as cleanup_error:
+                _failure(cleanup_error, cleanup=True)
+                raise
         raise
 
 
@@ -155,21 +161,32 @@ class StockEngineReader:
 
     @staticmethod
     def _get(path: str, *, not_after_ns: int | None = None) -> bytes:
+        failed_id: int | None = None
+        body_finished = False
         try:
             _route(path)
             deadline = _deadline(not_after_ns)
             with _connection(deadline) as peer:
-                peer.settimeout(_remaining(deadline))
-                request = (
-                    "GET " + path + " HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"
-                ).encode("ascii")
-                peer.sendall(request)
-                headers, initial = _headers(peer, deadline)
-                body = _body(peer, deadline, headers, initial)
-                _require(not _receive(peer, deadline, 1))
-                _remaining(deadline)
-                return body
-        except (OSError, ValueError, TypeError, OverflowError, struct.error):
+                try:
+                    peer.settimeout(_remaining(deadline))
+                    request = (
+                        "GET " + path + " HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+                    ).encode("ascii")
+                    peer.sendall(request)
+                    headers, initial = _headers(peer, deadline)
+                    body = _body(peer, deadline, headers, initial)
+                    _require(not _receive(peer, deadline, 1))
+                    _remaining(deadline)
+                    body_finished = True
+                    return body
+                except (OSError, ValueError, TypeError, OverflowError, struct.error) as error:
+                    failed_id = id(error)
+                    _failure(error)
+                    raise
+        except (OSError, ValueError, TypeError, OverflowError, struct.error) as error:
+            _failure(
+                error, cleanup=body_finished or (failed_id is not None and id(error) != failed_id)
+            )
             _deny()
 
     def version(self) -> bytes:

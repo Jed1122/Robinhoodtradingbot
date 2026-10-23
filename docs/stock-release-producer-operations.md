@@ -25,7 +25,9 @@ inputs belong at `inputs/<sha>.tar`; each source owns one exclusive attempt unde
 `attempts/<sha>/`. Source preparation is repeated and matched inside the owning
 attempt. Completed histories require complete closed-chain validation and fresh
 flush/readback under the permanent actual lock before admitting a different source.
-Partial histories and same-source replay are denied. See the
+Partial histories and same-source replay are denied. The narrow
+[spent-build operation](stock-failed-build-reconciliation.md) can add negative facts
+for one qualified incident; it never supplies a successful release. See the
 [terminal closure contract](stock-release-producer-closure.md).
 
 The host profile is fixed Docker29.1.3/API1.52/Linuxamd64 and Compose2.40.3. The build
@@ -55,7 +57,8 @@ separate from the four immutable release files:
 The release directory is fixed at
 `/opt/hybrid-stock-research/releases/<source-sha256>/`; its parent must already be
 trusted and present. The release parent's inventory must match exactly the admitted
-completed histories; unknown or existing target releases are denied.
+successful completed histories only; spent-failed attempts have no release.
+Unknown or existing target releases are denied.
 Every file is exclusively created,
 mode0444, flushed, read back with original inode bindings and checked by the existing
 release loader. A consistent readable release is not terminal producer success.
@@ -88,6 +91,11 @@ boundary requires Linux/UID0. On success, one bounded JSON object contains `stat
 and the fixed derived `manifest` path. Require actual exit0 as well as complete JSON;
 a blocked/partial/late output is not acknowledgement. Formatting, descriptor and
 handler cleanup, identities and output checks share the original producer window.
+Failures may additionally emit one canonical stderr diagnostic up to1024bytes:
+allowlisted first phase, exception family/errno and bounded secondary cleanup facts.
+It contains no exception text, paths, response bytes, arguments or credentials.
+Success stderr remains empty. A diagnostic is never a retry instruction or evidence
+that the daemon completed a mutation.
 No credential, research start, service/timer, worker control or live-mode write follows.
 
 ## Verification and installation gates
