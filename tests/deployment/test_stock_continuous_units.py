@@ -19,6 +19,25 @@ PREFIX = "hybrid-stock-research-"
 OAUTH = "/var/lib/hybrid-stock-research/oauth"
 SPOOL = "/var/lib/hybrid-stock-maintenance"
 OPERATIONS = "/var/lib/hybrid-stock-operations"
+# Fixed fixture bytes from verified source28b62a9, before the CPU-only correction.
+PREVIOUS_UNIT_SHA256 = {
+    "hybrid-stock-research-backup.service":
+        "b2956535de3c28ae186cc49b3a1d9c224640bb040df7bddb90b0e7a59426cd7c",
+    "hybrid-stock-research-backup.timer":
+        "4ca749a093720d197243c5ce647490abb679425de66c99991ed8fdcf31b81f74",
+    "hybrid-stock-research-bootstrap.service":
+        "3db33e975c46951e383734418b2f9ef05be895962645c10c811e4e75e415e9f0",
+    "hybrid-stock-research-monitor.service":
+        "7c271a02c97fa6cb8c0f534e8d808dbe76a6331e6c6bc30a5e7960a00eb7b7ed",
+    "hybrid-stock-research-monitor.timer":
+        "32469a534850b689b51bc934c149e1d398b6232413738377f460f73efcfc407d",
+    "hybrid-stock-research-recovery.service":
+        "96b7ec68c0e03575ea7564f5056dd30555187ccc6266481dff4de9a7460cfe76",
+    "hybrid-stock-research.service":
+        "5c11030437c5478a4c3b5b4662f1638caf655f1291150967f013821252310349",
+    "hybrid-stock-research.timer":
+        "629eb4715751e238354cf54aaf20c9f633c784e346f32b86da2c2208e3955812",
+}
 
 
 def module():
@@ -99,6 +118,20 @@ def test_only_reduced_uid_helper_services_use_system_manager_root_without_ambien
     assert all_units["hybrid-stock-research.service"]["Service"]["User"] == "root"
 
 
+@pytest.mark.parametrize("name,previous_sha256", PREVIOUS_UNIT_SHA256.items())
+def test_only_monitor_and_bootstrap_cpu_lines_change_from_verified_units(
+    release, name, previous_sha256
+):
+    generated = module().unit_files(release, CHECKOUT)
+    assert set(generated) == set(PREVIOUS_UNIT_SHA256)
+    body = generated[name]
+    if name in {PREFIX + "monitor.service", PREFIX + "bootstrap.service"}:
+        assert parsed(body)["Service"]["CPUQuota"] == "50%"
+        assert body.count(b"CPUQuota=50%\n") == 1
+        body = body.replace(b"CPUQuota=50%\n", b"CPUQuota=10%\n", 1)
+    assert hashlib.sha256(body).hexdigest() == previous_sha256
+
+
 @pytest.mark.parametrize("operation", ["monitor", "backup"])
 def test_maintenance_uses_the_same_commit_venv_and_fixed_operation_manifest(release, operation):
     actual = units(release)[PREFIX + operation + ".service"]
@@ -134,10 +167,10 @@ def test_maintenance_timers_start_at_activation_and_repeat_only_after_completion
 @pytest.mark.parametrize(
     "operation,start,stop,memory,tasks,cpu",
     [
-        ("monitor", "60s", "15s", "256M", "64", "10%"),
+        ("monitor", "60s", "15s", "256M", "64", "50%"),
         ("backup", "300s", "45s", "384M", "64", "25%"),
         ("recovery", "45s", "15s", "128M", "32", "50%"),
-        ("bootstrap", "60s", "15s", "128M", "32", "10%"),
+        ("bootstrap", "60s", "15s", "128M", "32", "50%"),
     ],
 )
 def test_new_services_bound_resources_and_allow_only_local_unix_operations(

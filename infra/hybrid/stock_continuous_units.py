@@ -126,7 +126,7 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
         stop=15,
         memory="256M",
         tasks=64,
-        cpu=10,
+        cpu=50,
         reduced_uid_helper=True,
     )
     files[_PREFIX + "monitor.timer"] = _timer("monitor", 300)
@@ -173,7 +173,7 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
         stop=15,
         memory="128M",
         tasks=32,
-        cpu=10,
+        cpu=50,
         requires="docker.service " + _PREFIX + "recovery.service",
         retained=True,
         boot_install=True,
