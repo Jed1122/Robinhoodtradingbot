@@ -5,8 +5,11 @@ import copy
 import hashlib
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from dataclasses import fields
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
+from types import MemberDescriptorType
 
 import pytest
 
@@ -107,6 +110,288 @@ def filing_facts():
 
 def compile_rows(*rows):
     return compile_stock_dossier_report(observations=tuple(rows), as_of=AS_OF)
+
+
+def render_compatibility_rows(case):
+    i, c, f = index(), catalog(), filing_facts()
+    if case == "legacy":
+        return (i,)
+    if case == "empty_evidence":
+        return i, c
+    if case == "mixed_evidence":
+        return i, index("BETA", "filing-b"), c, f
+    if case == "extreme_decimal":
+        f["payload"]["data"]["facts"][0]["value"] = "1e1000"
+        f["payload"]["data"]["facts"][1]["value"] = "-0.00"
+    elif case == "future":
+        c["received_at"] = f["received_at"] = (AS_OF + timedelta(seconds=1)).isoformat()
+    elif case == "malformed":
+        c["payload"]["data"]["concepts"][0]["axis_names"] = "invalid-private-axis"
+    elif case == "no_companies":
+        return (c,)
+    else:
+        raise AssertionError(case)
+    return i, c, f
+
+
+@pytest.mark.parametrize(
+    ("case", "report_hash", "dossier_hashes"),
+    [
+        (
+            "empty_evidence",
+            "81896ee8d07637fbed20429b277cf50f16790dd198596797c09ca1adc1f8835b",
+            ("0b8c031f7fb886db46c2eb1a8006a99c5375139a7beb02b4d0ea097a5dbc6e37",),
+        ),
+        (
+            "mixed_evidence",
+            "e27494fbf637ba8643264afac2143b43f79989a104051f334c8cef4d264a0b51",
+            (
+                "5e862a6a0e8744094296e30c24705256e481a7d3fb6dd30d087647c79839351d",
+                "d88a30eda41f1bcf9711477255016aae4781f1e94acff97281c8184ab74ba35d",
+            ),
+        ),
+        (
+            "extreme_decimal",
+            "8c35d0ea128e2885fbf4282084f8d078291047df671bf19129fb23785e54c82a",
+            ("938d97062d0261173f20703150498cb5dd39a3ebe7cb3314619844072ecabdee",),
+        ),
+        (
+            "future",
+            "703e9a498136dc8f209d96d1cad60f9ae7927253ef9808268682bc72020426a1",
+            ("0b8c031f7fb886db46c2eb1a8006a99c5375139a7beb02b4d0ea097a5dbc6e37",),
+        ),
+        (
+            "malformed",
+            "df69067b960a6e2e119906ceed8eb225f3912e09907f0431457aa64a246c7420",
+            ("0b8c031f7fb886db46c2eb1a8006a99c5375139a7beb02b4d0ea097a5dbc6e37",),
+        ),
+        (
+            "no_companies",
+            "b51ded42a5bbbe5039588d72edfa3d0960f63095947b4c3251569aa43c1b7984",
+            (),
+        ),
+    ],
+)
+def test_complete_canonical_reports_keep_literal_legacy_identities(
+    case, report_hash, dossier_hashes
+):
+    # Captured from the unchanged compiler before the render-reuse implementation.
+    report = compile_rows(*render_compatibility_rows(case))
+    assert hashlib.sha256(canonical_json(report).encode()).hexdigest() == report_hash
+    assert tuple(report["dossier_hashes"]) == dossier_hashes
+    if case == "empty_evidence":
+        assert report["schema_version"] == 3 and report["dossiers"][0]["filing_evidence"] == []
+    elif case == "mixed_evidence":
+        assert report["dossiers"][0]["filing_evidence"]
+        assert report["dossiers"][1]["filing_evidence"] == []
+    elif case == "extreme_decimal":
+        records = report["dossiers"][0]["filing_evidence"][0]["facts"]["records"]
+        assert [row["numeric_value"] for row in records] == ["1E+1000", "-0.00"]
+
+
+def compiler_domain_rows():
+    fundamental = observation(
+        "get_equity_fundamentals",
+        {"symbols": ["ALFA"]},
+        {"data": {"results": [{"symbol": "ALFA", "market_cap": "2000000000"}]}},
+    )
+    financials = observation(
+        "get_financials",
+        {"symbols": ["ALFA"]},
+        {
+            "data": {
+                "results": [
+                    {
+                        "symbol": "ALFA",
+                        "period": "annual",
+                        "financials": [
+                            {"fiscal_year": 2026, "period_end_date": "2026-06-30", "revenue": "100"}
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+    history = observation(
+        "get_equity_historicals",
+        {"symbols": ["ALFA"], "adjustment_type": "none"},
+        {
+            "data": {
+                "results": [
+                    {
+                        "symbol": "ALFA",
+                        "interval": "day",
+                        "bounds": "regular",
+                        "bars": [
+                            {
+                                "begins_at": f"2026-10-{day}T04:00:00Z",
+                                "open_price": "20",
+                                "high_price": "22",
+                                "low_price": "19",
+                                "close_price": "21",
+                                "volume": 1000,
+                                "session": "reg",
+                                "interpolated": day == 20,
+                            }
+                            for day in (19, 20)
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+    earnings = observation(
+        "get_earnings_results",
+        {"symbol": "ALFA"},
+        {
+            "data": {
+                "results": [
+                    {
+                        "symbol": "ALFA",
+                        "year": 2026,
+                        "quarter": 2,
+                        "eps": {"actual": "1.2", "estimate": "1.1"},
+                        "report": {"date": "2026-08-01", "timing": "am", "verified": False},
+                    }
+                ]
+            }
+        },
+    )
+    return fundamental, financials, history, earnings, index(), catalog(), filing_facts()
+
+
+def test_compiler_owned_dossier_graph_has_only_exact_immutable_values(monkeypatch):
+    from trading_bot.market_data import (
+        stock_events,
+        stock_facts,
+        stock_filing_facts,
+        stock_history_projection,
+    )
+    from trading_bot.research import stock_dossiers
+    from trading_bot.runtime import stock_dossier_report
+
+    dto_types = {
+        stock_dossiers.StockDossier,
+        stock_dossiers.StockDossierHistory,
+        stock_dossiers.StockDossierSource,
+        stock_dossiers.StockResearchQuestion,
+        stock_facts.StockFundamentals,
+        stock_facts.StockFinancialPeriod,
+        stock_facts.StockDecimalMetric,
+        stock_facts.StockDailyBar,
+        stock_facts.StockInterpolatedBarOmission,
+        stock_facts.StockFactCollection,
+        stock_facts.StockObservationReceipt,
+        stock_events.StockEarningsEvent,
+        stock_events.StockFiling,
+        stock_events.StockEventReceipt,
+        stock_events.StockFilingCollection,
+        stock_history_projection.StockHistorySymbolOutcome,
+        stock_history_projection.StockHistoryProjectionContext,
+        stock_filing_facts.StockFilingEvidence,
+        stock_filing_facts.StockFilingCatalog,
+        stock_filing_facts.StockFilingConcept,
+        stock_filing_facts.StockFilingPeriod,
+        stock_filing_facts.StockFilingFacts,
+        stock_filing_facts.StockFilingFact,
+        stock_filing_facts.StockFilingReceipt,
+    }
+    seen = set()
+
+    def check(value):
+        kind = type(value)
+        if kind in {str, int, bool, type(None)}:
+            return
+        if kind is Decimal:
+            assert value.is_finite()
+            return
+        if kind is datetime:
+            assert value.tzinfo is UTC
+            return
+        if kind is date:
+            return
+        if kind is tuple:
+            for item in value:
+                check(item)
+            return
+        assert kind in dto_types
+        assert kind.__dataclass_params__.frozen
+        seen.add(kind)
+        for field in fields(value):
+            assert type(getattr(kind, field.name)) is MemberDescriptorType
+            check(getattr(value, field.name))
+
+    original = stock_dossier_report.build_stock_dossiers
+
+    def checked(**kwargs):
+        result = original(**kwargs)
+        check(result)
+        return result
+
+    monkeypatch.setattr(stock_dossier_report, "build_stock_dossiers", checked)
+    compile_rows(*compiler_domain_rows())
+    for case in ("empty_evidence", "mixed_evidence", "extreme_decimal", "future", "malformed"):
+        compile_rows(*render_compatibility_rows(case))
+    assert seen == dto_types
+
+
+def test_raw_custom_copy_behavior_is_not_retained_in_compiler_dossiers():
+    class CopyRefusingStr(str):
+        def __deepcopy__(self, memo):
+            raise AssertionError("raw string copied")
+
+    class CopyRefusingDict(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("raw mapping copied")
+
+    (original, *_) = compiler_domain_rows()
+    custom = CopyRefusingDict(original)
+    custom["tool"] = CopyRefusingStr(original["tool"])
+    custom["received_at"] = CopyRefusingStr(original["received_at"])
+    custom["arguments"] = CopyRefusingDict(original["arguments"])
+    custom["payload"] = CopyRefusingDict(original["payload"])
+    assert compile_rows(custom) == compile_rows(original)
+    custom["payload"] = copy.deepcopy(original["payload"])
+    custom["payload"]["data"]["results"][0]["market_cap"] = CopyRefusingStr("2000000000")
+    # A denial retains the raw tool label, whose subclass remains unencodable.
+    with pytest.raises(ValueError, match=r"^stock_dossier_report_invalid$"):
+        compile_rows(custom)
+    custom["tool"] = original["tool"]
+    denied = compile_rows(custom)
+    assert denied["company_count"] == 0
+    assert denied["normalization_denials"][0]["reason"] == "stock_observation_normalization_denied"
+
+
+@pytest.mark.parametrize("with_evidence", [False, True])
+@pytest.mark.parametrize("include_empty", [False, True])
+def test_render_hash_pair_matches_unchanged_public_oracles(with_evidence, include_empty):
+    from trading_bot.research import stock_dossiers
+
+    normalized_index, evidence = direct_evidence()
+    (dossier,) = stock_dossiers.build_stock_dossiers(
+        as_of=AS_OF,
+        facts=(),
+        history=(),
+        earnings=(),
+        filings=(normalized_index,),
+        filing_evidence=(evidence,) if with_evidence else (),
+    )
+    expected_document = stock_dossiers.stock_dossier_document(
+        dossier, include_empty_filing_evidence=include_empty
+    )
+    expected_hash = dossier.dossier_hash
+    document, observed_hash = stock_dossiers._stock_dossier_document_with_hash(
+        dossier, include_empty_filing_evidence=include_empty
+    )
+    assert canonical_json(document) == canonical_json(expected_document)
+    assert observed_hash == expected_hash
+    assert ("filing_evidence" in document) is (with_evidence or include_empty)
+    # Computing the digest must not pop the report-only empty field from this view.
+    assert document == expected_document
+    repeated = stock_dossiers._stock_dossier_document_with_hash(
+        dossier, include_empty_filing_evidence=include_empty
+    )
+    assert repeated == (document, observed_hash) and repeated[0] is not document
 
 
 def test_exact_legacy_report_and_dossier_hashes_are_preserved():

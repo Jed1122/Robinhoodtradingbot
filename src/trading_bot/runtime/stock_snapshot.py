@@ -384,7 +384,7 @@ async def _replay(
         state = await jobs.snapshot()
         configurations = await jobs.configuration_history(expected_state_hash=state.state_hash)
         claims = {row.claim_id: row for row in state.claims}
-        reports: dict[str, dict[str, Any]] = {}
+        discovery_symbols: dict[str, tuple[str, ...]] = {}
         with StockArchiveLease(root / "archive") as archive:
             for result in sorted(state.results, key=lambda row: row.sequence):
                 window.check()
@@ -394,9 +394,9 @@ async def _replay(
                 policy = StockWorkerAppConfig.model_validate(
                     configurations[claim.config_hash].config.model_dump()
                 )
-                source = reports.get(str(claim.source_result_sha256))
-                _require(claim.phase == "discovery" or source is not None)
-                symbols = () if source is None else _symbols(source)
+                source_symbols = discovery_symbols.get(str(claim.source_result_sha256))
+                _require(claim.phase == "discovery" or source_symbols is not None)
+                symbols = () if source_symbols is None else source_symbols
                 plan = _requests(claim.phase, policy, claim.claimed_at, symbols)
                 manifest, rows = _verified_capture(
                     archive=archive,
@@ -431,13 +431,13 @@ async def _replay(
                     )
                     _require(canonical_json(report) == canonical_json(expected))
                     _require(report["screen"]["coverage_complete"] is True)
+                    discovery_symbols[result.record_sha256] = _symbols(report)
                 else:
                     expected = compile_stock_dossier_report(observations=rows, as_of=at)
                     expected["source_manifest_sha256"] = result.manifest_sha256
                     _require(canonical_json(report) == canonical_json(expected))
                     _require(report["normalization_denials"] == [])
                     _require({row["symbol"] for row in report["dossiers"]} == set(symbols))
-                reports[result.record_sha256] = report
             if (root / "exports" / "stock-research.json").exists():
                 with _directory(root / "exports") as exports:
                     view = _read_export(exports)

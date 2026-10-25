@@ -41,7 +41,10 @@ from trading_bot.market_data.stock_history_projection import (
     StockHistoryProjectionBatch,
     normalize_history_by_symbol,
 )
-from trading_bot.research.stock_dossiers import build_stock_dossiers, stock_dossier_document
+from trading_bot.research.stock_dossiers import (
+    _stock_dossier_document_with_hash,
+    build_stock_dossiers,
+)
 from trading_bot.research.stock_technicals import compute_stock_technicals
 from trading_bot.runtime.stock_archive import _read, read_stock_observations
 from trading_bot.runtime.stock_capture import _duplicate_directory, _private_directory, _publish
@@ -248,6 +251,15 @@ def compile_stock_dossier_report(
             summary["history_status"] = feature.outcome.status
             summary["feature_sha256"] = feature.feature_hash
             technical_summaries.append(summary)
+        # Observe raw row metadata before rendering, as in the original report.
+        source_hashes = tuple(row["observation_sha256"] for row in visible)
+        source_authenticated = bool(visible) and all(
+            row["transport_authenticated"] for row in visible
+        )
+        rendered = tuple(
+            _stock_dossier_document_with_hash(row, include_empty_filing_evidence=filing_aware)
+            for row in dossiers
+        )
         # Shared canonical codec handles Decimal/date without float conversion.
         result: dict[str, Any] = json.loads(
             canonical_json(
@@ -256,19 +268,13 @@ def compile_stock_dossier_report(
                     "status": "descriptive_evidence_with_gaps",
                     "as_of": cutoff,
                     "company_count": len(dossiers),
-                    "source_observation_hashes": tuple(
-                        row["observation_sha256"] for row in visible
-                    ),
-                    "source_transport_authenticated": bool(visible)
-                    and all(row["transport_authenticated"] for row in visible),
+                    "source_observation_hashes": source_hashes,
+                    "source_transport_authenticated": source_authenticated,
                     "normalization_denials": denials,
                     "unprojected_observations": skipped,
                     "future_observations_excluded": future,
-                    "dossiers": tuple(
-                        stock_dossier_document(row, include_empty_filing_evidence=filing_aware)
-                        for row in dossiers
-                    ),
-                    "dossier_hashes": tuple(row.dossier_hash for row in dossiers),
+                    "dossiers": tuple(document for document, _ in rendered),
+                    "dossier_hashes": tuple(digest for _, digest in rendered),
                     "technical_features": technical_summaries,
                     "native_http_wire_receipt": False,
                     "source_qualified": False,

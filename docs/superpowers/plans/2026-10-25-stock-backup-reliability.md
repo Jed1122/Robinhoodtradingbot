@@ -81,5 +81,11 @@ upgrade checks; they do not authorize a new native image or research control.
 The PR's dependency audit identified three advisories in development-only
 `filelock` 3.29.7. A targeted lock update to 4.2.1 preserves all other package
 records and the complete production requirements export. The repaired all-group
-audit reports no known vulnerabilities. The final committed revision still needs
-its GitHub checks; the earlier full regression above remains revision-specific.
+audit reports no known vulnerabilities. Final CI run `40213605092` passed all six
+jobs at head `494e6c2fc50f8ea246a8084fd8783e9ac0ebf398`: each Python 3.12,
+3.13 and 3.14 suite passed 12,097 tests, with coverage 91.53%, 91.53% and 91.30%.
+PR #52 merged into `codex/robinhood-system-implementation` as
+`acdc0e0d141fb21fb91ea0b1da65eb63f1396b29`; its tree matches that tested head.
+This records source integration only. The deployed f4 release remains unchanged,
+and the native Task 3 requirements above remain open. Further measured replay
+work is tracked in `2026-10-25-stock-replay-performance.md`.

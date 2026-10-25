@@ -173,6 +173,21 @@ def stock_dossier_document(
     return document
 
 
+def _stock_dossier_document_with_hash(
+    dossier: StockDossier, *, include_empty_filing_evidence: bool = False
+) -> tuple[dict[str, Any], str]:
+    """Render one compiler-owned normalized dossier and reuse its original hash view."""
+    document = stock_dossier_document(
+        dossier, include_empty_filing_evidence=include_empty_filing_evidence
+    )
+    version = "stock-dossier-v2" if dossier.filing_evidence else "stock-dossier-v1"
+    hash_document = document
+    if include_empty_filing_evidence and not dossier.filing_evidence:
+        hash_document = document.copy()
+        hash_document.pop("filing_evidence")
+    return document, str(content_hash((version, hash_document)))
+
+
 @dataclass(slots=True)
 class _Parts:
     fundamentals: StockFundamentals | None = None
