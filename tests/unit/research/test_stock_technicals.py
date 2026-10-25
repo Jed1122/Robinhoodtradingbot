@@ -11,7 +11,10 @@ from decimal import ROUND_DOWN, Decimal, localcontext
 
 import pytest
 
-from trading_bot.market_data.stock_history_projection import normalize_history_by_symbol
+from trading_bot.market_data.stock_history_projection import (
+    StockHistoryProjectionBatch,
+    normalize_history_by_symbol,
+)
 
 AS_OF = datetime(2026, 10, 21, 18, tzinfo=UTC)
 RECEIVED = AS_OF - timedelta(hours=1)
@@ -37,7 +40,9 @@ def history(
     bad=False,
     received_at=RECEIVED,
     cutoff=CUTOFF,
+    symbols=None,
 ):
+    requested = (symbol,) if symbols is None else symbols
     bars = []
     for index, price in enumerate(prices):
         item = {
@@ -56,7 +61,10 @@ def history(
         bars[-1]["close_price"] = "999999"
     payload = {
         "data": {
-            "results": [{"symbol": symbol, "interval": "day", "bounds": "regular", "bars": bars}]
+            "results": [
+                {"symbol": requested_symbol, "interval": "day", "bounds": "regular", "bars": bars}
+                for requested_symbol in requested
+            ]
         }
     }
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
@@ -64,7 +72,7 @@ def history(
         payload,
         received_at=received_at,
         observation_sha256=digest,
-        requested_symbols=(symbol,),
+        requested_symbols=requested,
         request_adjustment_type="none" if raw else None,
         completed_before=cutoff if complete else None,
     )
@@ -105,6 +113,80 @@ def test_known_price_volume_windows_preserve_provenance_and_remain_unqualified()
     assert not hasattr(metrics, "relative_strength") and not hasattr(features, "score")
     with pytest.raises(AttributeError):
         features.total_bar_count = 0
+
+
+def test_multi_company_history_reuses_batch_hash_without_changing_features(monkeypatch):
+    source = history(range(1, 202), symbols=("ALFA", "BETA", "GAMMA"))
+    expected_batch_hash = source.observation_hash
+    original = StockHistoryProjectionBatch.observation_hash.fget
+    evaluations = []
+
+    def counted(batch):
+        evaluations.append(batch)
+        return original(batch)
+
+    monkeypatch.setattr(StockHistoryProjectionBatch, "observation_hash", property(counted))
+    features = compute(source)
+    assert evaluations == [source]
+    assert tuple(row.symbol for row in features) == ("ALFA", "BETA", "GAMMA")
+    assert tuple(row.outcome for row in features) == source.outcomes
+    assert all(row.projection_batch_hash == expected_batch_hash for row in features)
+    assert all(row.receipt == source.receipt for row in features)
+    assert all(
+        row.calculation_status == "calculated" and row.metrics.sma_50 == Decimal("176.5")
+        for row in features
+    )
+    # Literal output identities captured from the unchanged f4 implementation.
+    assert tuple(row.feature_hash for row in features) == (
+        "32c4803f447f27a697d4acc5e1e28a21ce212195b984a187218ede2bc2611dbc",
+        "f0c04c331e5a3dfe435bf66177f012d9e5d2f630ac049eed6fa097c5202070c4",
+        "dcc702291cc67191696d3c3803f08a89fb30b6a6cd16fa305a5796cafd72e276",
+    )
+    assert compute(source) == features
+    assert evaluations == [source, source]
+
+
+@pytest.mark.parametrize("kind", ["empty", "future", "malformed"])
+def test_unused_or_invalid_history_does_not_evaluate_batch_hash_early(monkeypatch, kind):
+    source = history([10, 11])
+    if kind == "empty":
+        source = replace(source, requested_symbols=(), outcomes=())
+    elif kind == "future":
+        source = replace(
+            source, receipt=replace(source.receipt, received_at=AS_OF + timedelta(seconds=1))
+        )
+    else:
+        outcome = source.outcomes[0]
+        source = replace(
+            source,
+            outcomes=(
+                replace(outcome, context=replace(outcome.context, original_source_sha256="f" * 64)),
+            ),
+        )
+
+    def premature(batch):
+        pytest.fail("batch hash evaluated before visibility and outcome validation")
+
+    monkeypatch.setattr(StockHistoryProjectionBatch, "observation_hash", property(premature))
+    if kind == "malformed":
+        with pytest.raises(ValueError, match=r"^stock_technicals_invalid$"):
+            compute(source)
+    else:
+        assert compute(source) == ()
+
+
+def test_cached_history_hash_does_not_skip_later_outcome_validation():
+    source = history([10, 11], symbols=("ALFA", "BETA"))
+    first, second = source.outcomes
+    invalid = replace(
+        source,
+        outcomes=(
+            first,
+            replace(second, context=replace(second.context, original_source_sha256="f" * 64)),
+        ),
+    )
+    with pytest.raises(ValueError, match=r"^stock_technicals_invalid$"):
+        compute(invalid)
 
 
 def test_insufficient_windows_are_null_while_true_zero_volume_and_volatility_remain_zero():

@@ -400,6 +400,7 @@ def build_stock_dossiers(
         _check(batch.receipt.tool == "get_equity_historicals")
         _check(type(batch.requested_symbols) is tuple and type(batch.outcomes) is tuple)
         _check(tuple(row.symbol for row in batch.outcomes) == batch.requested_symbols)
+        batch_hash: str | None = None
         for outcome in batch.outcomes:
             context, normalized = outcome.context, outcome.normalized
             _check(context.original_source_sha256 == batch.receipt.observation_sha256)
@@ -437,9 +438,11 @@ def build_stock_dossiers(
                     sum(row.completion_status == "unknown" for row in normalized.records),
                     sum(row.price_basis == "unknown" for row in normalized.records),
                 )
+            if batch_hash is None:
+                batch_hash = batch.observation_hash
             source = StockDossierSource(
                 batch.receipt,
-                batch.observation_hash,
+                batch_hash,
                 None if normalized is None else normalized.observation_hash,
                 batch.requested_symbols,
                 () if normalized is None else normalized.reported_symbols,

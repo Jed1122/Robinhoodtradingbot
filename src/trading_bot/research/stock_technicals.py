@@ -236,6 +236,7 @@ def compute_stock_technicals(
             continue
         _check(type(batch.outcomes) is tuple and type(batch.requested_symbols) is tuple)
         _check(tuple(outcome.symbol for outcome in batch.outcomes) == batch.requested_symbols)
+        batch_hash: str | None = None
         for outcome in batch.outcomes:
             _check(outcome.symbol not in seen)
             seen.add(outcome.symbol)
@@ -293,12 +294,14 @@ def compute_stock_technicals(
                 else:
                     status, reasons = "calculated", ("unqualified_descriptive_features",)
                     metrics, missing = _calculate(bars)
+            if batch_hash is None:
+                batch_hash = batch.observation_hash
             result.append(
                 StockTechnicalFeatures(
                     outcome.symbol,
                     as_of,
                     batch.receipt,
-                    batch.observation_hash,
+                    batch_hash,
                     outcome,
                     normalized_hash,
                     count,

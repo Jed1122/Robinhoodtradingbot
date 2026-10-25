@@ -34,12 +34,13 @@ def _service(
     tasks: int,
     cpu: int,
     requires: str = "",
+    after: str = "",
     retained: bool = False,
     boot_install: bool = False,
     reduced_uid_helper: bool = False,
 ) -> bytes:
     dependency = f"Requires={requires}\n" if requires else ""
-    ordered = requires or "docker.service"
+    ordered = after or requires or "docker.service"
     install = "\n[Install]\nWantedBy=multi-user.target\n" if boot_install else ""
     # Explicit User=root in systemd255's seccomp setup drops CAP_SETUID before
     # our setpriv helper can use it. System services already default to root.
@@ -148,6 +149,7 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
         memory="384M",
         tasks=64,
         cpu=25,
+        after="docker.service hybrid-stock-research.service",
         reduced_uid_helper=True,
     )
     files[_PREFIX + "backup.timer"] = _timer("backup", 86400)

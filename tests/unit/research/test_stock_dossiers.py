@@ -9,7 +9,10 @@ import pytest
 
 from trading_bot.market_data.stock_events import normalize_earnings_results, normalize_filing_index
 from trading_bot.market_data.stock_facts import normalize_financials, normalize_fundamentals
-from trading_bot.market_data.stock_history_projection import normalize_history_by_symbol
+from trading_bot.market_data.stock_history_projection import (
+    StockHistoryProjectionBatch,
+    normalize_history_by_symbol,
+)
 
 AS_OF = datetime(2026, 10, 21, 18, tzinfo=UTC)
 RECEIVED = AS_OF - timedelta(hours=1)
@@ -67,13 +70,14 @@ def financials(symbol="ALFA", period="annual", *, unavailable=(), empty=False, d
     )
 
 
-def history(symbol="ALFA", *, bad=False):
+def history(symbol="ALFA", *, bad=False, symbols=None):
+    requested = (symbol,) if symbols is None else symbols
     return normalize_history_by_symbol(
         {
             "data": {
                 "results": [
                     {
-                        "symbol": symbol,
+                        "symbol": requested_symbol,
                         "interval": "day",
                         "bounds": "regular",
                         "bars": [
@@ -89,12 +93,13 @@ def history(symbol="ALFA", *, bad=False):
                             }
                         ],
                     }
+                    for requested_symbol in requested
                 ]
             }
         },
         received_at=RECEIVED,
         observation_sha256="c" * 64,
-        requested_symbols=(symbol,),
+        requested_symbols=requested,
     )
 
 
@@ -234,6 +239,78 @@ def test_quarantined_history_retains_provenance_with_unknown_counts_and_no_parti
     assert "history_quarantined" in dossier.gaps
     assert dossier.sources[0].projection_context.original_source_sha256 == "c" * 64
     assert dossier.sources[0].normalized_observation_hash is None
+
+
+def test_multi_company_history_reuses_batch_hash_without_changing_dossiers(monkeypatch):
+    source = history(symbols=("ALFA", "BETA", "GAMMA"))
+    expected_batch_hash = source.observation_hash
+    original = StockHistoryProjectionBatch.observation_hash.fget
+    evaluations = []
+
+    def counted(batch):
+        evaluations.append(batch)
+        return original(batch)
+
+    monkeypatch.setattr(StockHistoryProjectionBatch, "observation_hash", property(counted))
+    dossiers = build(histories=(source,))
+    assert evaluations == [source]
+    assert tuple(row.symbol for row in dossiers) == ("ALFA", "BETA", "GAMMA")
+    assert tuple(row.history.outcome for row in dossiers) == source.outcomes
+    assert all(
+        row.sources[0].collection_observation_hash == expected_batch_hash for row in dossiers
+    )
+    assert all(row.sources[0].receipt == source.receipt for row in dossiers)
+    # Literal output identities captured from the unchanged f4 implementation.
+    assert tuple(row.dossier_hash for row in dossiers) == (
+        "f94629b8c26d23e27ad89176a464444792537244ab36b3a661cefe0bd582d612",
+        "9c15ae17462b4a11e3cf20bc2b72e7c118a1bc268d65831985f09d5c38451859",
+        "b8236e4f63ecda617bfcd4ac86b21e3aa6f1487c643ffa3146cda60f22c52867",
+    )
+    assert build(histories=(source,)) == dossiers
+    assert evaluations == [source, source]
+
+
+@pytest.mark.parametrize("kind", ["empty", "future", "malformed"])
+def test_unused_or_invalid_history_does_not_evaluate_batch_hash_early(monkeypatch, kind):
+    source = history()
+    if kind == "empty":
+        source = replace(source, requested_symbols=(), outcomes=())
+    elif kind == "future":
+        source = replace(
+            source, receipt=replace(source.receipt, received_at=AS_OF + timedelta(seconds=1))
+        )
+    else:
+        outcome = source.outcomes[0]
+        source = replace(
+            source,
+            outcomes=(
+                replace(outcome, context=replace(outcome.context, original_source_sha256="f" * 64)),
+            ),
+        )
+
+    def premature(batch):
+        pytest.fail("batch hash evaluated before visibility and outcome validation")
+
+    monkeypatch.setattr(StockHistoryProjectionBatch, "observation_hash", property(premature))
+    if kind == "malformed":
+        with pytest.raises(ValueError, match=r"^stock_dossiers_invalid$"):
+            build(histories=(source,))
+    else:
+        assert build(histories=(source,)) == ()
+
+
+def test_cached_history_hash_does_not_skip_later_outcome_validation():
+    source = history(symbols=("ALFA", "BETA"))
+    first, second = source.outcomes
+    invalid = replace(
+        source,
+        outcomes=(
+            first,
+            replace(second, context=replace(second.context, original_source_sha256="f" * 64)),
+        ),
+    )
+    with pytest.raises(ValueError, match=r"^stock_dossiers_invalid$"):
+        build(histories=(invalid,))
 
 
 def test_future_receipts_are_excluded_including_future_only_company_membership():
