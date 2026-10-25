@@ -114,6 +114,116 @@ def test_complete_encrypted_backup_reconstructs_actual_application(native, sampl
     assert controls.generation == 1
 
 
+def test_recovery_policy_publishes_distinct_receipt_and_restores_pending_state(
+    native, sample, monkeypatch
+):
+    from trading_bot.runtime.stock_backup_restore import restore_encrypted_stock_backup
+
+    root, release, key, calls, _ = native
+    expected_code = CodeHash(
+        hashlib.sha256(f"oci-image:{release.image_digest}".encode()).hexdigest()
+    )
+    monkeypatch.setattr(snapshot_tests, "CODE", expected_code)
+    asyncio.run(snapshot_tests.discovery(sample))
+    asyncio.run(snapshot_tests.reserve(sample, at=snapshot_tests.NOW + timedelta(hours=1)))
+
+    def helper(checkout, release, action, *, identifier, deadline):
+        assert action == "snapshot-integrity"
+        calls.append(action)
+        return asyncio.run(
+            create_local_snapshot_bundle(
+                loaded=sample["loaded"],
+                code_hash=str(expected_code),
+                data_root=root,
+                destination_root=root / "maintenance",
+                identifier=identifier,
+                now=module.datetime.now(module.UTC),
+                validation_policy="recovery_integrity_v1",
+            )
+        )
+
+    monkeypatch.setattr(module, "run_local_helper", helper)
+    result = module._backup_stock(
+        release.attestation_path.parent / "manifest.json",
+        checkout=CHECKOUT,
+        backup_root=root / "backups",
+        staging_root=root / "maintenance",
+        receipt_root=root / "receipts",
+        recipient_path=root / "keys/recipient.public",
+        helper_uid=os.geteuid(),
+        validation_policy="recovery_integrity_v1",
+    )
+    assert result["status"] == "backup_committed" and result["live_enabled"] is False
+    assert calls == ["lock", "snapshot-integrity", "unlock"]
+    assert list((root / "maintenance").iterdir()) == []
+    receipt = StockOperationReceipts(root / "receipts").latest(
+        "backup", now=module.datetime.now(module.UTC)
+    )
+    assert receipt["schema_version"] == 2
+    assert receipt["validation_policy"] == "recovery_integrity_v1"
+    assert receipt["snapshot_created_at"] == result["snapshot_created_at"]
+    cipher = root / "backups" / (receipt["ciphertext_sha256"] + ".stockbackup")
+    key_file = root / "keys/fixture-private"
+    key_file.write_bytes(bytes(key))
+    key_file.chmod(0o600)
+    restored = asyncio.run(
+        restore_encrypted_stock_backup(
+            cipher,
+            key_file,
+            destination=root / "integrity-restored",
+            expected_ciphertext_sha256=receipt["ciphertext_sha256"],
+            expected_snapshot_manifest_sha256=receipt["snapshot_manifest_sha256"],
+            now=module.datetime.now(module.UTC),
+            validation_policy="recovery_integrity_v1",
+        )
+    )
+    assert (restored.claim_count, restored.result_count, restored.pending_count) == (2, 1, 1)
+    assert restored.validation_policy == "recovery_integrity_v1"
+    assert restored.snapshot_created_at == receipt["snapshot_created_at"]
+    assert restored.offline_only is True
+
+
+@pytest.mark.parametrize(
+    "requested,produced",
+    [
+        ("full_replay_v1", "recovery_integrity_v1"),
+        ("recovery_integrity_v1", "full_replay_v1"),
+    ],
+)
+def test_coordinator_never_relabels_the_helpers_validation_policy(
+    native, sample, monkeypatch, requested, produced
+):
+    root, release, _, _, _ = native
+
+    def helper(checkout, release, action, *, identifier, deadline):
+        return asyncio.run(
+            create_local_snapshot_bundle(
+                loaded=sample["loaded"],
+                code_hash=hashlib.sha256(f"oci-image:{release.image_digest}".encode()).hexdigest(),
+                data_root=root,
+                destination_root=root / "maintenance",
+                identifier=identifier,
+                now=module.datetime.now(module.UTC),
+                validation_policy=produced,
+            )
+        )
+
+    monkeypatch.setattr(module, "run_local_helper", helper)
+    with pytest.raises(ValueError, match="stock_backup_unavailable"):
+        module._backup_stock(
+            release.attestation_path.parent / "manifest.json",
+            checkout=CHECKOUT,
+            backup_root=root / "backups",
+            staging_root=root / "maintenance",
+            receipt_root=root / "receipts",
+            recipient_path=root / "keys/recipient.public",
+            helper_uid=os.geteuid(),
+            validation_policy=requested,
+        )
+    assert list((root / "backups").iterdir()) == []
+    assert StockOperationReceipts(root / "receipts").all(now=module.datetime.now(module.UTC)) == ()
+
+
 def test_missing_public_recipient_never_creates_plaintext_snapshot(native):
     root, _, _, calls, _ = native
     (root / "keys/recipient.public").unlink()
@@ -408,4 +518,5 @@ def test_public_wrapper_requires_root_linux_and_binds_fixed_paths(monkeypatch):
         "receipt_root": module.Path("/var/lib/hybrid-stock-maintenance/receipts"),
         "recipient_path": module.Path("/etc/hybrid-stock-research/backup-recipient.public"),
         "helper_uid": 10001,
+        "validation_policy": "full_replay_v1",
     }

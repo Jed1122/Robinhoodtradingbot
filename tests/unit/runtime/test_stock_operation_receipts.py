@@ -14,6 +14,9 @@ NOW = datetime(2026, 10, 22, 23, 0, tzinfo=UTC)
 AT = NOW - timedelta(minutes=5)
 LOCK = ".stock-receipts.lock"
 ERROR = r"^stock_operation_receipts_unavailable$"
+FULL = "full_replay_v1"
+INTEGRITY = "recovery_integrity_v1"
+CREATED = AT - timedelta(days=1)
 
 
 def module():
@@ -442,3 +445,229 @@ def test_replaced_root_during_read_is_denied_without_adopting_replacement(setup,
     monkeypatch.setattr(api, "_read_record", replace_root)
     with pytest.raises(ValueError, match=ERROR):
         store.all(now=NOW)
+
+
+def test_policy_explicit_full_keeps_exact_legacy_receipt_bytes(setup):
+    _, root, store = setup
+    result = store.record(**fields(validation_policy=FULL, snapshot_created_at=None))
+    expected = {"schema_version": 1, **fields(at=AT.isoformat())}
+    assert result == expected and saved(root).read_bytes() == encoded(expected)
+    assert store.record(**fields()) == expected
+
+
+@pytest.mark.parametrize("created", [CREATED, AT, "2026-10-21T22:55:00+00:00"])
+def test_policy_full_cannot_accept_or_relabel_a_snapshot_time(setup, created):
+    _, root, store = setup
+    with pytest.raises(ValueError, match=ERROR):
+        store.record(**fields(validation_policy=FULL, snapshot_created_at=created))
+    assert list(root.iterdir()) == [root / LOCK]
+
+
+def test_policy_integrity_chain_keeps_closed_v2_and_original_snapshot_time(setup):
+    _, root, store = setup
+    records = []
+    for index, kind in enumerate(("backup", "offhost", "restore")):
+        at = AT + timedelta(seconds=index)
+        result = store.record(
+            **fields(kind=kind, at=at, validation_policy=INTEGRITY, snapshot_created_at=CREATED)
+        )
+        expected = {
+            "schema_version": 2,
+            **fields(kind=kind, at=at.isoformat()),
+            "validation_policy": INTEGRITY,
+            "snapshot_created_at": CREATED.isoformat(),
+        }
+        assert result == expected and saved(root, kind).read_bytes() == encoded(expected)
+        records.append(result)
+    assert store.all(now=NOW) == tuple(records)
+    assert store.latest("restore", now=NOW) == records[-1]
+
+
+@pytest.mark.parametrize("policy", [None, True, 1, "", "unknown", "FULL_REPLAY_V1"])
+def test_policy_unknown_input_is_denied_before_publication(setup, policy):
+    _, root, store = setup
+    with pytest.raises(ValueError, match=ERROR):
+        store.record(**fields(validation_policy=policy))
+    assert list(root.iterdir()) == [root / LOCK]
+
+
+@pytest.mark.parametrize(
+    "created",
+    [
+        None,
+        True,
+        CREATED.isoformat(),
+        CREATED.replace(tzinfo=None),
+        CREATED.astimezone(timezone(timedelta(hours=1))),
+        AT + timedelta(microseconds=1),
+    ],
+)
+def test_policy_integrity_requires_utc_snapshot_time_no_later_than_ack(setup, created):
+    _, root, store = setup
+    with pytest.raises(ValueError, match=ERROR):
+        store.record(**fields(validation_policy=INTEGRITY, snapshot_created_at=created))
+    assert list(root.iterdir()) == [root / LOCK]
+
+
+def test_policy_integrity_allows_snapshot_time_equal_to_ack_without_changing_clock(setup):
+    _, _, store = setup
+    value = store.record(**fields(validation_policy=INTEGRITY, snapshot_created_at=AT))
+    assert value["snapshot_created_at"] == value["at"] == AT.isoformat()
+    with pytest.raises(ValueError, match=ERROR):
+        store.all(now=AT - timedelta(microseconds=1))
+
+
+@pytest.mark.parametrize("kind", ["offhost", "restore"])
+@pytest.mark.parametrize("base_policy", [FULL, INTEGRITY])
+def test_policy_successor_cannot_cross_legacy_and_integrity_for_same_artifact(
+    setup, kind, base_policy
+):
+    _, root, store = setup
+    source = (
+        {}
+        if base_policy == FULL
+        else {"validation_policy": INTEGRITY, "snapshot_created_at": CREATED}
+    )
+    store.record(**fields(**source))
+    if kind == "restore":
+        store.record(**fields(kind="offhost", **source))
+    before = {path.name: path.read_bytes() for path in root.iterdir()}
+    other = (
+        {"validation_policy": INTEGRITY, "snapshot_created_at": CREATED}
+        if base_policy == FULL
+        else {}
+    )
+    with pytest.raises(ValueError, match=ERROR):
+        store.record(**fields(kind=kind, **other))
+    assert {path.name: path.read_bytes() for path in root.iterdir()} == before
+
+
+@pytest.mark.parametrize("kind", ["offhost", "restore"])
+def test_policy_integrity_successor_must_bind_original_snapshot_time(setup, kind):
+    _, root, store = setup
+    bound = {"validation_policy": INTEGRITY, "snapshot_created_at": CREATED}
+    store.record(**fields(**bound))
+    if kind == "restore":
+        store.record(**fields(kind="offhost", **bound))
+    with pytest.raises(ValueError, match=ERROR):
+        store.record(
+            **fields(
+                kind=kind,
+                validation_policy=INTEGRITY,
+                snapshot_created_at=CREATED + timedelta(seconds=1),
+            )
+        )
+    assert not saved(root, kind).exists()
+
+
+@pytest.mark.parametrize("base_policy", [FULL, INTEGRITY])
+def test_policy_existing_backup_cannot_be_relabelled_between_schemas(setup, base_policy):
+    _, root, store = setup
+    old = (
+        {}
+        if base_policy == FULL
+        else {"validation_policy": INTEGRITY, "snapshot_created_at": CREATED}
+    )
+    result = store.record(**fields(**old))
+    raw = saved(root).read_bytes()
+    new = (
+        {"validation_policy": INTEGRITY, "snapshot_created_at": CREATED}
+        if base_policy == FULL
+        else {}
+    )
+    with pytest.raises(ValueError, match=ERROR):
+        store.record(**fields(**new))
+    assert saved(root).read_bytes() == raw and store.all(now=NOW) == (result,)
+
+
+def test_policy_integrity_repeat_is_idempotent_but_changed_snapshot_time_is_not(setup):
+    _, root, store = setup
+    arguments = fields(validation_policy=INTEGRITY, snapshot_created_at=CREATED)
+    value = store.record(**arguments)
+    before = saved(root).stat()
+    store.record(**fields(ciphertext_sha256="1" * 64, at=AT + timedelta(seconds=1)))
+    assert store.record(**arguments) == value
+    assert saved(root).stat().st_ino == before.st_ino
+    assert saved(root).stat().st_mtime_ns == before.st_mtime_ns
+    with pytest.raises(ValueError, match=ERROR):
+        store.record(**(arguments | {"snapshot_created_at": CREATED + timedelta(seconds=1)}))
+    assert saved(root).read_bytes() == encoded(value)
+
+
+def test_policy_mixed_artifact_history_preserves_each_original_schema(setup):
+    _, _, store = setup
+    expected = []
+    for policy, digest, seconds in [(FULL, "a" * 64, 0), (INTEGRITY, "1" * 64, 3)]:
+        extra = (
+            {}
+            if policy == FULL
+            else {"validation_policy": INTEGRITY, "snapshot_created_at": CREATED}
+        )
+        for index, kind in enumerate(("backup", "offhost", "restore")):
+            expected.append(
+                store.record(
+                    **fields(
+                        kind=kind,
+                        ciphertext_sha256=digest,
+                        at=AT + timedelta(seconds=seconds + index),
+                        **extra,
+                    )
+                )
+            )
+    assert store.all(now=NOW) == tuple(expected)
+    assert all(
+        row["schema_version"] == 1 and "validation_policy" not in row for row in expected[:3]
+    )
+    assert all(
+        row["schema_version"] == 2 and row["snapshot_created_at"] == CREATED.isoformat()
+        for row in expected[3:]
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"schema_version": True},
+        {"schema_version": 1},
+        {"schema_version": 3},
+        {"validation_policy": FULL},
+        {"validation_policy": "unknown"},
+        {"validation_policy": True},
+        {"snapshot_created_at": AT.isoformat().replace("+00:00", "Z")},
+        {"snapshot_created_at": CREATED.replace(tzinfo=None).isoformat()},
+        {"snapshot_created_at": (AT + timedelta(seconds=1)).isoformat()},
+        {"snapshot_created_at": CREATED.astimezone(timezone(timedelta(hours=1))).isoformat()},
+    ],
+)
+def test_policy_retained_v2_rejects_invalid_policy_schema_and_snapshot_times(setup, change):
+    _, root, store = setup
+    value = store.record(**fields(validation_policy=INTEGRITY, snapshot_created_at=CREATED))
+    saved(root).write_bytes(encoded(value | change))
+    with pytest.raises(ValueError, match=ERROR):
+        store.all(now=NOW)
+
+
+@pytest.mark.parametrize("field", ["validation_policy", "snapshot_created_at"])
+def test_policy_retained_v2_requires_both_additional_fields(setup, field):
+    _, root, store = setup
+    value = store.record(**fields(validation_policy=INTEGRITY, snapshot_created_at=CREATED))
+    del value[field]
+    saved(root).write_bytes(encoded(value))
+    with pytest.raises(ValueError, match=ERROR):
+        store.all(now=NOW)
+
+
+@pytest.mark.parametrize("change", ["schema", "snapshot_time"])
+def test_policy_retained_successor_mismatch_blocks_even_latest_backup(setup, change):
+    _, root, store = setup
+    bound = {"validation_policy": INTEGRITY, "snapshot_created_at": CREATED}
+    store.record(**fields(**bound))
+    successor = store.record(**fields(kind="offhost", **bound))
+    if change == "schema":
+        successor["schema_version"] = 1
+        del successor["validation_policy"], successor["snapshot_created_at"]
+    else:
+        successor["snapshot_created_at"] = (CREATED + timedelta(seconds=1)).isoformat()
+    saved(root, "offhost").write_bytes(encoded(successor))
+    with pytest.raises(ValueError, match=ERROR):
+        store.latest("backup", now=NOW)

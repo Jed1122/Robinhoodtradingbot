@@ -1,10 +1,14 @@
 # Continuous individual-stock research operations
 
-This is the Task3 implementation/runbook. Local test results, native installation,
-scheduled acquisition, authentication lifetime, and restore evidence are separate
-acceptance records. Until current native receipts establish otherwise, the Task2
-installation remains paused. This document does not declare continuous operation,
-strategy qualification or live-trading readiness. Live trading stays disabled.
+The current initial-release gate is the user-approved
+[October 25 lean Task 3 design](superpowers/specs/2026-10-25-stock-lean-task3-design.md)
+and its [implementation plan](superpowers/plans/2026-10-25-stock-lean-task3.md).
+Local tests, native installation, scheduled acquisition, authentication lifetime
+and restore evidence remain separate records. Technical backup/restore sections
+below describe the legacy full-replay contract until the new explicit integrity
+policy is implemented and verified. Earlier plans remain historical records.
+This runbook declares neither full unattended qualification nor investment/live
+readiness. Live trading stays disabled.
 
 ## Runtime boundaries
 
@@ -141,7 +145,7 @@ generation/deadline under test and must be recorded honestly. A separate test
 grant is required for an official human revocation drill. Do not revoke the
 production grant or infer remote revocation from local credential deletion.
 
-## Coherent encrypted backups
+## Coherent encrypted backups (legacy full-replay contract)
 
 Explicitly initialize these dedicated directories; startup never resets them:
 
@@ -196,7 +200,7 @@ backup-capacity change. Monitor free storage and reserve enough temporary space.
 Snapshot admission counts the bounded archive/export inventory and reserves an
 additional 256 inodes for records, directories, SQLite scratch and bundle overhead.
 
-## Off-host copy and application restore
+## Off-host copy and application restore (legacy full-replay contract)
 
 Pull ciphertext and its trusted receipt over the existing strict-host-key SSH
 connection into a private receiver directory. Verify byte count and complete
@@ -241,10 +245,20 @@ valid observations may clear incidents. Journald/spool are local operational
 alerts; no email, chat message, financial action or automatic remediation is sent.
 Unknown observation, malformed state and clock rollback remain visible failures.
 
-Task3 completion requires the current full stock regression/static/coverage checks,
-independent source review, exact native release/sandbox/runtime receipts, multiple
-actual scheduled acquisitions, process/reboot recovery, scheduled encrypted backup,
-off-host ciphertext verification, decrypted application restore, natural-expiry
-renewal and separately revoked-test-grant denial. Missing evidence remains pending.
+For the October 25 lean release, use the linked design's criteria: current source
+checks and exact native identity, complete coherent hash/integrity-verified backup,
+actual isolated restore with killed controls, bounded automated backup/timer,
+monitoring/local alerts, auth fail-closed behavior and basic restart/reconciliation.
+Existing accepted reboot evidence may cover restart with a fresh read-only check;
+no new forced interruption is required. A successful manual backup is labeled
+manual; preserve the prior scheduled failure and actual freshness until later
+evidence changes them. Receipt policy and original snapshot time must remain
+explicit through backup/copy/restore and health.
+
+Full historical semantic replay/native performance fit, a new genuine scheduled
+backup success, the timed postcommit stop/reconnect drill, natural-expiry renewal/
+fresh reuse and isolated revoked-test-grant denial are deferred under the user's
+October 25 scope decision. They are unobserved qualifications, not passed checks.
+No core auth, ownership, uncertain-execution, risk, kill or logging guard is waived.
 Next project work is Task4 stock-data qualification and Task5 strategy validation;
 research ranking and successful deployment cannot enable real-money execution.

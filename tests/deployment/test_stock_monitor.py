@@ -181,13 +181,33 @@ def test_recovery_health_uses_only_receipts_for_the_installed_release(
     monkeypatch.setattr(module, "evaluate_stock_health", evaluate)
     assert run(observed)["status"] == "observed"
     assert len(seen) == 1
-    for index, name in enumerate(
-        ("backup_created_at", "offhost_copied_at", "restore_verified_at")
-    ):
+    for index, name in enumerate(("backup_created_at", "offhost_copied_at", "restore_verified_at")):
         assert seen[0][name] == (at + timedelta(seconds=index) if binding is None else None)
     assert active(observed[-1]) == (
         set() if binding is None else {"backup_missing", "offhost_copy_missing", "restore_missing"}
     )
+
+
+def test_later_recovery_receipts_do_not_refresh_the_original_snapshot_age(observed):
+    release, _, receipt_root, _ = observed
+    at = module.datetime.now(module.UTC) - timedelta(seconds=10)
+    snapshot_at = at - timedelta(hours=27)
+    fields = {
+        "ciphertext_sha256": "a" * 64,
+        "ciphertext_bytes": 512,
+        "snapshot_manifest_sha256": "d" * 64,
+        "config_hash": release.config_hash,
+        "code_hash": hashlib.sha256(f"oci-image:{release.image_digest}".encode()).hexdigest(),
+        "release_id": release.release_id,
+        "image_digest": release.image_digest,
+        "validation_policy": "recovery_integrity_v1",
+        "snapshot_created_at": snapshot_at,
+    }
+    receipts = StockOperationReceipts(receipt_root)
+    for index, kind in enumerate(("backup", "offhost", "restore")):
+        receipts.record(kind=kind, at=at + timedelta(seconds=index), **fields)
+    assert run(observed)["status"] == "observed"
+    assert active(observed[-1]) == {"backup_stale"}
 
 
 @pytest.mark.parametrize("binding", ["config_hash", "code_hash", "matching"])

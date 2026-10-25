@@ -75,6 +75,41 @@ async def test_reduced_owner_helper_bundles_real_migrated_application(sample, tm
 
 
 @pytest.mark.asyncio
+async def test_integrity_helper_packages_pending_ledger_without_historical_replay(
+    sample, tmp_path, monkeypatch
+):
+    from tests.unit.runtime.test_stock_snapshot import reserve
+    from trading_bot.runtime import stock_snapshot
+
+    await reserve(sample)
+    staging = tmp_path.resolve() / "maintenance"
+    staging.mkdir(mode=0o700)
+
+    async def forbidden_replay(*args, **kwargs):
+        pytest.fail("recovery integrity must not recompile historical reports")
+
+    monkeypatch.setattr(stock_snapshot, "_replay", forbidden_replay)
+    result = await module.create_local_snapshot_bundle(
+        loaded=sample["loaded"],
+        code_hash=str(sample["code_hash"]),
+        data_root=tmp_path.resolve(),
+        destination_root=staging,
+        identifier="a" * 32,
+        now=sample["now"],
+        validation_policy="recovery_integrity_v1",
+    )
+    bundle = staging / ("a" * 32 + ".bundle")
+    restored = tmp_path.resolve() / "integrity-unpacked"
+    unpack_snapshot(io.BytesIO(bundle.read_bytes()), destination=restored)
+    verified = await verify_stock_snapshot(restored, validation_policy="recovery_integrity_v1")
+    assert (verified.claim_count, verified.result_count, verified.pending_count) == (1, 0, 1)
+    assert verified.budget_by_day == (("2026-10-22", 17),)
+    assert verified.manifest_sha256 == result["snapshot"]["manifest_sha256"]
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await verify_stock_snapshot(restored)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("identifier", ["", "../outside", "a" * 31, "A" * 32])
 async def test_helper_cannot_select_arbitrary_staging(sample, tmp_path, identifier):
     staging = tmp_path.resolve() / "maintenance"

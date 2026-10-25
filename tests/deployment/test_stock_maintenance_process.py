@@ -136,6 +136,29 @@ def test_snapshot_helper_requires_one_closed_staging_identifier(release):
     )
 
 
+def test_integrity_snapshot_keeps_reduced_owner_and_closed_identifier(release):
+    command, environment = module.helper_invocation(
+        CHECKOUT, release, "snapshot-integrity", identifier="e" * 32
+    )
+    assert command[-4:] == (
+        "snapshot-integrity",
+        release.config_hash,
+        hashlib.sha256(("oci-image:" + release.image_digest).encode()).hexdigest(),
+        "e" * 32,
+    )
+    assert command[:5] == (
+        "/usr/bin/setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--no-new-privs",
+    )
+    assert environment["LIVE_TRADING_ENABLED"] == "false"
+    for identifier in (None, "../outside", "e" * 31):
+        with pytest.raises(ValueError, match="stock_maintenance_helper_unavailable"):
+            module.helper_invocation(CHECKOUT, release, "snapshot-integrity", identifier=identifier)
+
+
 @pytest.mark.parametrize(
     "action,identifier",
     [

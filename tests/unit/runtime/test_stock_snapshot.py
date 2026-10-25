@@ -447,6 +447,167 @@ async def test_snapshot_preserves_committed_reports_and_original_observation_tim
 
 
 @pytest.mark.asyncio
+async def test_recovery_integrity_preserves_pending_without_replay_and_requires_explicit_mode(
+    sample, monkeypatch
+):
+    pending = await reserve(sample)
+    implementation = module()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("integrity validation must not reconstruct historical reports or exports")
+
+    for name in (
+        "_replay",
+        "compile_stock_dossier_report",
+        "_screen_body",
+        "_cached",
+        "_projection",
+    ):
+        monkeypatch.setattr(implementation, name, forbidden)
+    made = await implementation.create_stock_snapshot(
+        **sample, validation_policy="recovery_integrity_v1"
+    )
+    assert (made.claim_count, made.result_count, made.pending_count) == (1, 0, 1)
+    assert made.state_sha256 == pending.record_sha256
+    assert made.budget_by_day == (("2026-10-22", 17),)
+    manifest = json.loads((sample["destination"] / "manifest.json").read_bytes())
+    assert manifest["schema_version"] == 2
+    assert manifest["kind"] == "stock_recovery_snapshot"
+    assert manifest["validation_policy"] == "recovery_integrity_v1"
+    assert set(manifest) == {
+        "schema_version",
+        "kind",
+        "created_at",
+        "config_hash",
+        "code_hash",
+        "control",
+        "application",
+        "files",
+        "validation_policy",
+    }
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await implementation.verify_stock_snapshot(sample["destination"])
+    assert (
+        await implementation.verify_stock_snapshot(
+            sample["destination"], validation_policy="recovery_integrity_v1"
+        )
+        == made
+    )
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        implementation.restore_snapshot_controls(
+            sample["destination"],
+            destination=sample["destination"].parent / "default-controls",
+            now=NOW,
+        )
+    controls = implementation.restore_snapshot_controls(
+        sample["destination"],
+        destination=sample["destination"].parent / "lean-controls",
+        now=NOW,
+        validation_policy="recovery_integrity_v1",
+    )
+    assert controls.offline_only is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", ["observation", "capture", "report"])
+async def test_recovery_integrity_requires_the_complete_retained_reference_graph(sample, missing):
+    result = await discovery(sample, candidate=True)
+    capture = sample["archive_dir"] / (result.manifest_sha256 + ".stock-capture.json")
+    names = {
+        "observation": json.loads(capture.read_bytes())["observations"][0]["file"],
+        "capture": capture.name,
+        "report": result.report_sha256 + ".stock-screen.json",
+    }
+    (sample["archive_dir"] / names[missing]).unlink()
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await module().create_stock_snapshot(**sample, validation_policy="recovery_integrity_v1")
+    assert not (sample["destination"] / "manifest.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_recovery_integrity_export_prefix_cannot_precede_its_last_record(sample):
+    from trading_bot.runtime.stock_dashboard_export import export_stock_dashboard
+
+    await discovery(sample, candidate=True)
+    engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
+    try:
+        await export_stock_dashboard(
+            loaded=sample["loaded"],
+            code_hash=CODE,
+            factory=async_session_factory(engine),
+            archive_dir=sample["archive_dir"],
+            export_dir=sample["export_dir"],
+            clock=lambda: NOW,
+        )
+    finally:
+        await engine.dispose()
+    future = await reserve(sample, at=NOW + timedelta(hours=1))
+    path = sample["export_dir"] / "stock-research.json"
+    value = json.loads(path.read_bytes())
+    value["state_sha256"] = future.record_sha256
+    path.write_bytes(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
+    sample["now"] = NOW + timedelta(hours=1)
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await module().create_stock_snapshot(**sample, validation_policy="recovery_integrity_v1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("policy", [None, True, "unknown"])
+async def test_unknown_snapshot_policy_denies_before_creating_staging(sample, policy):
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await module().create_stock_snapshot(**sample, validation_policy=policy)
+    assert not sample["destination"].exists()
+
+
+@pytest.mark.asyncio
+async def test_legacy_snapshot_keeps_full_replay_and_rejects_explicit_integrity_mode(
+    sample, monkeypatch
+):
+    implementation = module()
+    original = implementation._replay
+    calls = []
+
+    async def replay(*args):
+        calls.append(True)
+        return await original(*args)
+
+    monkeypatch.setattr(implementation, "_replay", replay)
+    made = await implementation.create_stock_snapshot(**sample)
+    assert await implementation.verify_stock_snapshot(sample["destination"]) == made
+    assert calls == [True, True]
+    manifest = json.loads((sample["destination"] / "manifest.json").read_bytes())
+    assert manifest["schema_version"] == 1 and manifest["kind"] == "stock_application_snapshot"
+    assert len(manifest) == 8 and "validation_policy" not in manifest
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await implementation.verify_stock_snapshot(
+            sample["destination"], validation_policy="recovery_integrity_v1"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("schema_version", 1),
+        ("schema_version", True),
+        ("kind", "stock_application_snapshot"),
+        ("validation_policy", "full_replay_v1"),
+        ("validation_policy", "unknown"),
+    ],
+)
+async def test_integrity_manifest_policy_and_version_are_closed(sample, field, value):
+    await module().create_stock_snapshot(**sample, validation_policy="recovery_integrity_v1")
+    path = sample["destination"] / "manifest.json"
+    manifest = json.loads(path.read_bytes())
+    manifest[field] = value
+    path.write_bytes(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode())
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await module().verify_stock_snapshot(
+            sample["destination"], validation_policy="recovery_integrity_v1"
+        )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("tree", ["archive_dir", "control_dir", "export_dir"])
 async def test_busy_application_mutex_never_acknowledges_a_snapshot(sample, tree):
     owner = (
@@ -518,7 +679,8 @@ async def test_offline_verifier_denies_tampering_and_open_inventory(sample, kind
 
 
 @pytest.mark.asyncio
-async def test_copied_ledger_must_retain_actual_audit_trigger_bodies(sample):
+@pytest.mark.parametrize("validation_policy", ["full_replay_v1", "recovery_integrity_v1"])
+async def test_copied_ledger_must_retain_actual_audit_trigger_bodies(sample, validation_policy):
     with closing(sqlite3.connect(sample["database"])) as db, db:
         db.execute("DROP TRIGGER trg_audit_events_append_only_update")
         db.execute(
@@ -526,7 +688,7 @@ async def test_copied_ledger_must_retain_actual_audit_trigger_bodies(sample):
             "BEGIN SELECT 1; END"
         )
     with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
-        await module().create_stock_snapshot(**sample)
+        await module().create_stock_snapshot(**sample, validation_policy=validation_policy)
 
 
 @pytest.mark.asyncio
@@ -610,15 +772,20 @@ async def test_database_inventory_denies_unsafe_wal_or_unrelated_state(sample):
 
 
 @pytest.mark.asyncio
-async def test_rehashed_manifest_cannot_substitute_booleans_for_integer_application_counts(sample):
+@pytest.mark.parametrize("validation_policy", ["full_replay_v1", "recovery_integrity_v1"])
+async def test_rehashed_manifest_cannot_substitute_booleans_for_integer_application_counts(
+    sample, validation_policy
+):
     await reserve(sample)
-    await module().create_stock_snapshot(**sample)
+    await module().create_stock_snapshot(**sample, validation_policy=validation_policy)
     path = sample["destination"] / "manifest.json"
     row = json.loads(path.read_bytes())
     row["application"]["claim_count"] = True
     path.write_bytes(json.dumps(row, sort_keys=True, separators=(",", ":")).encode())
     with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
-        await module().verify_stock_snapshot(sample["destination"])
+        await module().verify_stock_snapshot(
+            sample["destination"], validation_policy=validation_policy
+        )
 
 
 @pytest.mark.asyncio
@@ -956,8 +1123,9 @@ async def test_older_export_reconstructs_at_saved_generation_without_renewing_so
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("acquire_under_b", [False, True])
+@pytest.mark.parametrize("validation_policy", ["full_replay_v1", "recovery_integrity_v1"])
 async def test_code_a_to_b_replays_populated_history_without_promoting_old_heads(
-    sample, acquire_under_b
+    sample, acquire_under_b, validation_policy, monkeypatch
 ):
     from trading_bot.runtime.stock_dashboard_export import export_stock_dashboard
 
@@ -999,7 +1167,20 @@ async def test_code_a_to_b_replays_populated_history_without_promoting_old_heads
         assert current.code_hash == current_enrichment.code_hash == code_b
         expected_calls += current.attempted_calls + current_enrichment.attempted_calls
     sample["now"] = NOW + timedelta(hours=4)
-    made = await module().create_stock_snapshot(**sample)
+    if validation_policy == "recovery_integrity_v1":
+
+        def forbidden(*args, **kwargs):
+            pytest.fail("integrity must not compile historical reports or reconstruct exports")
+
+        for name in (
+            "_replay",
+            "compile_stock_dossier_report",
+            "_screen_body",
+            "_cached",
+            "_projection",
+        ):
+            monkeypatch.setattr(module(), name, forbidden)
+    made = await module().create_stock_snapshot(**sample, validation_policy=validation_policy)
     count = 4 if acquire_under_b else 2
     assert (made.claim_count, made.result_count, made.pending_count) == (count, count, 0)
     assert made.budget_by_day == (("2026-10-22", expected_calls),)
@@ -1009,20 +1190,21 @@ async def test_code_a_to_b_replays_populated_history_without_promoting_old_heads
     manifest = json.loads((copied / "manifest.json").read_bytes())
     assert manifest["code_hash"] == code_b
     assert json.loads(original_export)["code_hash"] == CODE
-    assert await module().verify_stock_snapshot(copied) == made
+    assert await module().verify_stock_snapshot(copied, validation_policy=validation_policy) == made
     # A new image cannot omit validation of old, no-longer-current enrichment.
     # Remove the old export so its cache reconstruction cannot mask that check.
     (sample["export_dir"] / "stock-research.json").unlink()
     old_path.unlink()
     sample["destination"] = copied.parent / "missing-old-code-report"
     with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
-        await module().create_stock_snapshot(**sample)
+        await module().create_stock_snapshot(**sample, validation_policy=validation_policy)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("acquire_under_b", [False, True])
+@pytest.mark.parametrize("validation_policy", ["full_replay_v1", "recovery_integrity_v1"])
 async def test_config_a_to_b_history_replays_original_reports_and_retained_a_export(
-    sample, tmp_path, acquire_under_b
+    sample, tmp_path, acquire_under_b, validation_policy, monkeypatch
 ):
     from trading_bot.runtime.stock_dashboard_export import export_stock_dashboard
 
@@ -1050,7 +1232,20 @@ async def test_config_a_to_b_history_replays_original_reports_and_retained_a_exp
         else None
     )
     sample["now"] += timedelta(hours=1)
-    made = await module().create_stock_snapshot(**sample)
+    if validation_policy == "recovery_integrity_v1":
+
+        def forbidden(*args, **kwargs):
+            pytest.fail("integrity must not compile historical reports or reconstruct exports")
+
+        for name in (
+            "_replay",
+            "compile_stock_dossier_report",
+            "_screen_body",
+            "_cached",
+            "_projection",
+        ):
+            monkeypatch.setattr(module(), name, forbidden)
+    made = await module().create_stock_snapshot(**sample, validation_policy=validation_policy)
     count = 2 if acquire_under_b else 1
     assert (made.claim_count, made.result_count, made.pending_count) == (count, count, 0)
     spent = first.attempted_calls + (second.attempted_calls if second else 0)
@@ -1062,7 +1257,7 @@ async def test_config_a_to_b_history_replays_original_reports_and_retained_a_exp
         root / "archive" / (first.report_sha256 + ".stock-screen.json")
     ).read_bytes() == old_report
     assert json.loads(old_report)["as_of"] == NOW.isoformat()
-    assert await module().verify_stock_snapshot(root) == made
+    assert await module().verify_stock_snapshot(root, validation_policy=validation_policy) == made
 
 
 @pytest.mark.asyncio
@@ -1079,13 +1274,14 @@ async def test_config_upgrade_replays_retained_original_enrichment(sample, tmp_p
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["missing", "different_graph", "malformed"])
+@pytest.mark.parametrize("validation_policy", ["full_replay_v1", "recovery_integrity_v1"])
 async def test_historical_graph_missing_or_substitution_denies_even_rehashed_snapshot(
-    sample, tmp_path, change
+    sample, tmp_path, change, validation_policy
 ):
     original = sample["loaded"]
     await discovery(sample, candidate=True)
     sample["loaded"], sample["now"] = config_b(tmp_path), NOW + timedelta(hours=1)
-    await module().create_stock_snapshot(**sample)
+    await module().create_stock_snapshot(**sample, validation_policy=validation_policy)
     root = sample["destination"]
     ledger = root / "state/ledger.sqlite3"
     replacement = {
@@ -1102,7 +1298,7 @@ async def test_historical_graph_missing_or_substitution_denies_even_rehashed_sna
     }
     path.write_bytes(json.dumps(row, sort_keys=True, separators=(",", ":")).encode())
     with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
-        await module().verify_stock_snapshot(root)
+        await module().verify_stock_snapshot(root, validation_policy=validation_policy)
 
 
 @pytest.mark.asyncio
@@ -1121,8 +1317,11 @@ async def test_legacy_current_graph_fallback_never_invents_unknown_previous_poli
 
 
 @pytest.mark.asyncio
-async def test_rehashed_ledger_with_foreign_key_corruption_is_rejected_on_restore(sample):
-    await module().create_stock_snapshot(**sample)
+@pytest.mark.parametrize("validation_policy", ["full_replay_v1", "recovery_integrity_v1"])
+async def test_rehashed_ledger_with_foreign_key_corruption_is_rejected_on_restore(
+    sample, validation_policy
+):
+    await module().create_stock_snapshot(**sample, validation_policy=validation_policy)
     root = sample["destination"]
     ledger = root / "state" / "ledger.sqlite3"
     with closing(sqlite3.connect(ledger)) as connection, connection:
@@ -1139,7 +1338,7 @@ async def test_rehashed_ledger_with_foreign_key_corruption_is_rejected_on_restor
     }
     path.write_bytes(json.dumps(row, sort_keys=True, separators=(",", ":")).encode())
     with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
-        await module().verify_stock_snapshot(root)
+        await module().verify_stock_snapshot(root, validation_policy=validation_policy)
 
 
 @pytest.mark.asyncio

@@ -54,6 +54,11 @@ from trading_bot.runtime.stock_research_worker import (
     _symbols,
     _verified_capture,
 )
+from trading_bot.runtime.stock_snapshot_policy import (
+    FULL_REPLAY_V1,
+    RECOVERY_INTEGRITY_V1,
+    SnapshotValidationPolicy,
+)
 
 _MAX_LEDGER_BYTES = 256 * 1024 * 1024
 _MAX_ARTIFACT_BYTES = 9_000_000
@@ -93,6 +98,10 @@ class ControlRestoreResult:
 def _require(value: bool) -> None:
     if not value:
         raise ValueError("stock_snapshot_unavailable")
+
+
+def _validation_policy(value: SnapshotValidationPolicy) -> None:
+    _require(type(value) is str and value in (FULL_REPLAY_V1, RECOVERY_INTEGRITY_V1))
 
 
 def _stamp(info: os.stat_result) -> tuple[int, ...]:
@@ -484,6 +493,108 @@ async def _replay(
         await engine.dispose()
 
 
+async def _recovery_integrity(
+    root: Path, loaded: LoadedConfig, code_hash: CodeHash, now: datetime, window: _Window
+) -> dict[str, Any]:
+    """Validate copied recovery state and retained references without report reconstruction."""
+    _require(type(loaded.config) is StockWorkerAppConfig)
+    database = root / "state" / "ledger.sqlite3"
+    check = sqlite3.connect(
+        "file:" + quote(str(database), safe="/") + "?mode=rw", uri=True, timeout=0.1
+    )
+    try:
+        _require(check.execute("PRAGMA integrity_check(1)").fetchall() == [("ok",)])
+        _require(check.execute("PRAGMA foreign_key_check").fetchone() is None)
+    finally:
+        check.close()
+    engine = create_engine(f"sqlite+aiosqlite:///{database}")
+    try:
+        factory = async_session_factory(engine)
+        jobs = SqlStockResearchJobs(factory, loaded=loaded, code_hash=code_hash, clock=lambda: now)
+        state = await jobs.snapshot()
+        configurations = await jobs.configuration_history(expected_state_hash=state.state_hash)
+        claims = {row.claim_id: row for row in state.claims}
+        discovery_symbols: dict[str, tuple[str, ...]] = {}
+        with StockArchiveLease(root / "archive") as archive:
+            for result in sorted(state.results, key=lambda row: row.sequence):
+                window.check()
+                claim = claims[result.claim_id]
+                if result.manifest_sha256 is None:
+                    continue
+                policy = StockWorkerAppConfig.model_validate(
+                    configurations[claim.config_hash].config.model_dump()
+                )
+                source_symbols = discovery_symbols.get(str(claim.source_result_sha256))
+                _require(claim.phase == "discovery" or source_symbols is not None)
+                symbols = () if source_symbols is None else source_symbols
+                manifest, _ = _verified_capture(
+                    archive=archive,
+                    root=root / "archive",
+                    claim=claim,
+                    plan=_requests(claim.phase, policy, claim.claimed_at, symbols),
+                    manifest_sha256=result.manifest_sha256,
+                    now=now,
+                )
+                _require(
+                    manifest["attempted_calls"] == result.attempted_calls
+                    and manifest["successful_calls"] == result.successful_calls
+                    and result.capture_plan_sha256 == claim.plan_sha256
+                )
+                completed = require_utc(datetime.fromisoformat(manifest["completed_at"]))
+                _require(completed <= result.recorded_at)
+                if result.report_sha256 is not None:
+                    suffix = (
+                        ".stock-screen.json"
+                        if result.phase == "discovery"
+                        else ".stock-dossiers.json"
+                    )
+                    report = _read(archive.directory_fd, result.report_sha256 + suffix, suffix)
+                    at = require_utc(datetime.fromisoformat(report["as_of"]))
+                    _require(
+                        completed <= at <= result.recorded_at and manifest["status"] == "complete"
+                    )
+                    if claim.phase == "discovery":
+                        _require(report["screen"]["coverage_complete"] is True)
+                        discovery_symbols[result.record_sha256] = _symbols(report)
+                    else:
+                        _require(report["normalization_denials"] == [])
+                        _require({row["symbol"] for row in report["dossiers"]} == set(symbols))
+            if (root / "exports" / "stock-research.json").exists():
+                with _directory(root / "exports") as exports:
+                    view = _read_export(exports)
+                projection_config = configurations[view.config_hash]
+                _require(view.generated_at <= now)
+                _require(
+                    view.code_hash in {str(code_hash), *(row.code_hash for row in state.claims)}
+                )
+                records: list[StockResearchClaim | StockResearchResult] = [
+                    *state.claims,
+                    *state.results,
+                ]
+                records.sort(key=lambda row: row.sequence)
+                hashes = {"0" * 64: 0} | {row.record_sha256: row.sequence for row in records}
+                _require(view.state_sha256 in hashes)
+                prior = [row for row in records if row.sequence <= hashes[view.state_sha256]]
+                _require(
+                    all(
+                        (row.claimed_at if isinstance(row, StockResearchClaim) else row.recorded_at)
+                        <= view.generated_at
+                        for row in prior
+                    )
+                )
+                past = SqlStockResearchJobs(
+                    factory,
+                    loaded=projection_config,
+                    code_hash=CodeHash(view.code_hash),
+                    clock=lambda: view.generated_at,
+                )._state(prior, view.generated_at)
+                _require(past.state_hash == view.state_sha256)
+        window.check()
+        return _summary(state)
+    finally:
+        await engine.dispose()
+
+
 def _hash_file(directory: int, name: str, limit: int, window: _Window) -> dict[str, Any]:
     descriptor = os.open(name, _READ, dir_fd=directory)
     try:
@@ -564,10 +675,12 @@ async def create_stock_snapshot(
     export_dir: Path,
     destination: Path,
     now: datetime,
+    validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
 ) -> SnapshotResult:
     """Exclusively create one copy. Caller owns the outer root operations barrier."""
     try:
         window, now = _Window(), require_utc(now)
+        _validation_policy(validation_policy)
         _require(_HEX.fullmatch(code_hash) is not None)
         _require(restore_loaded_config(loaded.canonical_json, loaded.config_hash) == loaded)
         _require(type(loaded.config) is StockWorkerAppConfig)
@@ -615,7 +728,8 @@ async def create_stock_snapshot(
             with _directory(destination) as directory:
                 _write_bytes(directory, "canonical-config.json", loaded.canonical_json, window)
                 _write_bytes(directory, "saved-control.json", _encode(saved.record), window)
-            application = await _replay(destination, loaded, code_hash, now, window)
+            validate = _replay if validation_policy == FULL_REPLAY_V1 else _recovery_integrity
+            application = await validate(destination, loaded, code_hash, now, window)
             for source, pattern, count, limit, total, original in pins:
                 _require(
                     _inventory(source, pattern, count=count, limit=limit, total=total) == original
@@ -631,6 +745,12 @@ async def create_stock_snapshot(
                 "application": application,
                 "files": _files(destination, loaded, window, published=False),
             }
+            if validation_policy == RECOVERY_INTEGRITY_V1:
+                manifest.update(
+                    schema_version=2,
+                    kind="stock_recovery_snapshot",
+                    validation_policy=RECOVERY_INTEGRITY_V1,
+                )
             raw = canonical_json(manifest).encode()
             _require(len(raw) <= _MAX_MANIFEST_BYTES)
             with _directory(destination) as directory:
@@ -644,8 +764,9 @@ async def create_stock_snapshot(
 
 
 def _load(
-    root: Path, window: _Window
+    root: Path, window: _Window, validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1
 ) -> tuple[dict[str, Any], bytes, LoadedConfig, StockControlState]:
+    _validation_policy(validation_policy)
     with _directory(root) as directory:
         raw = _read_bytes(directory, "manifest.json", _MAX_MANIFEST_BYTES, window)
         manifest = _json(raw)
@@ -661,11 +782,18 @@ def _load(
                 "application",
                 "files",
             }
+            | ({"validation_policy"} if validation_policy == RECOVERY_INTEGRITY_V1 else set())
         )
-        _require(type(manifest["schema_version"]) is int and manifest["schema_version"] == 1)
-        _require(manifest["kind"] == "stock_application_snapshot")
+        version = 1 if validation_policy == FULL_REPLAY_V1 else 2
+        kind = "stock_application_snapshot" if version == 1 else "stock_recovery_snapshot"
+        _require(type(manifest["schema_version"]) is int and manifest["schema_version"] == version)
+        _require(manifest["kind"] == kind)
+        if validation_policy == RECOVERY_INTEGRITY_V1:
+            _require(manifest["validation_policy"] == validation_policy)
         _require(_HEX.fullmatch(manifest["code_hash"]) is not None)
         now = require_utc(datetime.fromisoformat(manifest["created_at"]))
+        if validation_policy == RECOVERY_INTEGRITY_V1:
+            _require(now.isoformat() == manifest["created_at"])
         loaded = restore_loaded_config(
             _read_bytes(directory, "canonical-config.json", 1048576, window),
             ConfigHash(manifest["config_hash"]),
@@ -676,16 +804,24 @@ def _load(
     return manifest, raw, loaded, control
 
 
-async def verify_stock_snapshot(root: Path, *, now: datetime | None = None) -> SnapshotResult:
-    """Replay the isolated copied application at its saved time; never renew source TTL."""
+async def verify_stock_snapshot(
+    root: Path,
+    *,
+    now: datetime | None = None,
+    validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
+) -> SnapshotResult:
+    """Apply the requested policy at the saved time; never renew source TTL."""
     try:
         window = _Window()
-        manifest, raw, loaded, _ = _load(root, window)
+        manifest, raw, loaded, _ = _load(root, window, validation_policy)
         observed = require_utc(datetime.fromisoformat(manifest["created_at"]))
         _require(now is None or observed <= require_utc(now))
-        application = await _replay(root, loaded, CodeHash(manifest["code_hash"]), observed, window)
+        validate = _replay if validation_policy == FULL_REPLAY_V1 else _recovery_integrity
+        application = await validate(
+            root, loaded, CodeHash(manifest["code_hash"]), observed, window
+        )
         _require(canonical_json(application) == canonical_json(manifest["application"]))
-        _require(_load(root, window)[1] == raw)
+        _require(_load(root, window, validation_policy)[1] == raw)
         window.check()
         return _result(manifest, raw)
     except Exception:
@@ -698,6 +834,7 @@ def restore_snapshot_controls(
     destination: Path,
     now: datetime,
     high_water: StockControlState | None = None,
+    validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
 ) -> ControlRestoreResult:
     """Create killed isolated controls. Missing authoritative high-water is offline-only.
 
@@ -707,7 +844,7 @@ def restore_snapshot_controls(
     """
     try:
         window, now = _Window(), require_utc(now)
-        _, _, _, saved = _load(root, window)
+        _, _, _, saved = _load(root, window, validation_policy)
         basis = saved
         if high_water is not None:
             _require(type(high_water) is StockControlState)

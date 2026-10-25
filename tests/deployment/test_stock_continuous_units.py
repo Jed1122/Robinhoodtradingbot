@@ -21,22 +21,30 @@ SPOOL = "/var/lib/hybrid-stock-maintenance"
 OPERATIONS = "/var/lib/hybrid-stock-operations"
 # Fixed source28b62a9 bytes, before CPU corrections and the backup ordering edge.
 PREVIOUS_UNIT_SHA256 = {
-    "hybrid-stock-research-backup.service":
-        "b2956535de3c28ae186cc49b3a1d9c224640bb040df7bddb90b0e7a59426cd7c",
-    "hybrid-stock-research-backup.timer":
-        "4ca749a093720d197243c5ce647490abb679425de66c99991ed8fdcf31b81f74",
-    "hybrid-stock-research-bootstrap.service":
-        "3db33e975c46951e383734418b2f9ef05be895962645c10c811e4e75e415e9f0",
-    "hybrid-stock-research-monitor.service":
-        "7c271a02c97fa6cb8c0f534e8d808dbe76a6331e6c6bc30a5e7960a00eb7b7ed",
-    "hybrid-stock-research-monitor.timer":
-        "32469a534850b689b51bc934c149e1d398b6232413738377f460f73efcfc407d",
-    "hybrid-stock-research-recovery.service":
-        "96b7ec68c0e03575ea7564f5056dd30555187ccc6266481dff4de9a7460cfe76",
-    "hybrid-stock-research.service":
-        "5c11030437c5478a4c3b5b4662f1638caf655f1291150967f013821252310349",
-    "hybrid-stock-research.timer":
-        "629eb4715751e238354cf54aaf20c9f633c784e346f32b86da2c2208e3955812",
+    "hybrid-stock-research-backup.service": (
+        "b2956535de3c28ae186cc49b3a1d9c224640bb040df7bddb90b0e7a59426cd7c"
+    ),
+    "hybrid-stock-research-backup.timer": (
+        "4ca749a093720d197243c5ce647490abb679425de66c99991ed8fdcf31b81f74"
+    ),
+    "hybrid-stock-research-bootstrap.service": (
+        "3db33e975c46951e383734418b2f9ef05be895962645c10c811e4e75e415e9f0"
+    ),
+    "hybrid-stock-research-monitor.service": (
+        "7c271a02c97fa6cb8c0f534e8d808dbe76a6331e6c6bc30a5e7960a00eb7b7ed"
+    ),
+    "hybrid-stock-research-monitor.timer": (
+        "32469a534850b689b51bc934c149e1d398b6232413738377f460f73efcfc407d"
+    ),
+    "hybrid-stock-research-recovery.service": (
+        "96b7ec68c0e03575ea7564f5056dd30555187ccc6266481dff4de9a7460cfe76"
+    ),
+    "hybrid-stock-research.service": (
+        "5c11030437c5478a4c3b5b4662f1638caf655f1291150967f013821252310349"
+    ),
+    "hybrid-stock-research.timer": (
+        "629eb4715751e238354cf54aaf20c9f633c784e346f32b86da2c2208e3955812"
+    ),
 }
 
 
@@ -133,9 +141,7 @@ def test_only_reduced_uid_helper_services_use_system_manager_root_without_ambien
 
 
 @pytest.mark.parametrize("name,previous_sha256", PREVIOUS_UNIT_SHA256.items())
-def test_only_cpu_corrections_and_backup_order_change_from_verified_units(
-    release, name, previous_sha256
-):
+def test_only_approved_maintenance_changes_from_verified_units(release, name, previous_sha256):
     generated = module().unit_files(release, CHECKOUT)
     assert set(generated) == set(PREVIOUS_UNIT_SHA256)
     body = generated[name]
@@ -147,6 +153,8 @@ def test_only_cpu_corrections_and_backup_order_change_from_verified_units(
         ordering = b"After=docker.service hybrid-stock-research.service\n"
         assert body.count(ordering) == 1
         body = body.replace(ordering, b"After=docker.service\n", 1)
+        assert body.count(b" backup-integrity ") == 1
+        body = body.replace(b" backup-integrity ", b" backup ", 1)
     assert hashlib.sha256(body).hexdigest() == previous_sha256
 
 
@@ -154,8 +162,9 @@ def test_only_cpu_corrections_and_backup_order_change_from_verified_units(
 def test_maintenance_uses_the_same_commit_venv_and_fixed_operation_manifest(release, operation):
     actual = units(release)[PREFIX + operation + ".service"]
     service = actual["Service"]
+    action = "backup-integrity" if operation == "backup" else operation
     assert service["ExecStart"] == (
-        f"{MAINTENANCE} -B -m infra.hybrid.stock_maintenance {operation} {MANIFEST}"
+        f"{MAINTENANCE} -B -m infra.hybrid.stock_maintenance {action} {MANIFEST}"
     )
     assert service["WorkingDirectory"] == str(CHECKOUT)
     assert service["Environment"] == (

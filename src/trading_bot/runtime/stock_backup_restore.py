@@ -30,10 +30,16 @@ from trading_bot.runtime.stock_backup_crypto import StockBackupCryptoReceipt, de
 from trading_bot.runtime.stock_research_controls import StockResearchControls
 from trading_bot.runtime.stock_snapshot import (
     ControlRestoreResult,
+    SnapshotResult,
     restore_snapshot_controls,
     verify_stock_snapshot,
 )
 from trading_bot.runtime.stock_snapshot_bundle import pack_snapshot, unpack_snapshot
+from trading_bot.runtime.stock_snapshot_policy import (
+    FULL_REPLAY_V1,
+    RECOVERY_INTEGRITY_V1,
+    SnapshotValidationPolicy,
+)
 
 _MAXIMUM_BYTES = 2 * 1024**3
 _CHUNK = 1024 * 1024
@@ -63,6 +69,14 @@ class StockBackupRestoreReceipt:
     control_id: str
     control_generation: int
     offline_only: bool
+
+
+@dataclass(frozen=True, slots=True)
+class StockRecoveryBackupRestoreReceipt(StockBackupRestoreReceipt):
+    """Explicit integrity-only result; legacy full-replay receipts stay unchanged."""
+
+    validation_policy: SnapshotValidationPolicy
+    snapshot_created_at: str
 
 
 def _deny() -> NoReturn:
@@ -387,6 +401,7 @@ async def restore_encrypted_stock_backup(
     expected_ciphertext_sha256: str,
     expected_snapshot_manifest_sha256: str,
     now: datetime,
+    validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
 ) -> StockBackupRestoreReceipt:
     """Verify trusted identities, decrypt/replay privately, and restore killed controls.
 
@@ -395,6 +410,10 @@ async def restore_encrypted_stock_backup(
     authoritative control high-water makes every successful drill offline-only.
     """
     try:
+        _require(
+            type(validation_policy) is str
+            and validation_policy in (FULL_REPLAY_V1, RECOVERY_INTEGRITY_V1)
+        )
         _require(_digest(expected_ciphertext_sha256) and _digest(expected_snapshot_manifest_sha256))
         now = require_utc(now)
         window = _Window()
@@ -423,9 +442,28 @@ async def restore_encrypted_stock_backup(
                 with _input(manifest_path, minimum=1, maximum=32 * 1024 * 1024) as manifest:
                     manifest_sha256 = _hash(manifest, window)
                     manifest_size = manifest.info.st_size
+                    snapshot_created_at = ""
+                    if validation_policy == RECOVERY_INTEGRITY_V1:
+                        os.lseek(manifest.descriptor, 0, os.SEEK_SET)
+                        body = bytearray()
+                        while len(body) < manifest_size:
+                            window.check()
+                            part = os.read(
+                                manifest.descriptor, min(_CHUNK, manifest_size - len(body))
+                            )
+                            _require(bool(part))
+                            body.extend(part)
+                        window.check()
+                        _require(hashlib.sha256(body).hexdigest() == manifest_sha256)
+                        snapshot_created_at = require_utc(
+                            datetime.fromisoformat(json.loads(body)["created_at"])
+                        ).isoformat()
+                        manifest.check()
                 _require(manifest_sha256 == expected_snapshot_manifest_sha256)
                 async with asyncio.timeout(window.remaining()):
-                    snapshot = await verify_stock_snapshot(destination / "snapshot", now=now)
+                    snapshot = await _verify_snapshot(
+                        destination / "snapshot", now=now, validation_policy=validation_policy
+                    )
                 window.check()
                 _require(snapshot.manifest_sha256 == expected_snapshot_manifest_sha256)
                 _require(bundle.file_count == snapshot.file_count + 1)
@@ -434,6 +472,7 @@ async def restore_encrypted_stock_backup(
                     destination / "snapshot",
                     destination=destination / "killed-controls",
                     now=now,
+                    validation_policy=validation_policy,
                 )
                 window.check()
                 _require(controls.offline_only is True)
@@ -446,7 +485,10 @@ async def restore_encrypted_stock_backup(
                     _require(_hash(manifest, window) == expected_snapshot_manifest_sha256)
                 async with asyncio.timeout(window.remaining()):
                     _require(
-                        await verify_stock_snapshot(destination / "snapshot", now=now) == snapshot
+                        await _verify_snapshot(
+                            destination / "snapshot", now=now, validation_policy=validation_policy
+                        )
+                        == snapshot
                     )
                 _require(_killed_proof(destination, controls, now, window) == killed_proof)
                 os.unlink(_TEMPORARY, dir_fd=root)
@@ -485,10 +527,35 @@ async def restore_encrypted_stock_backup(
                     controls.generation,
                     True,
                 )
+                if validation_policy == RECOVERY_INTEGRITY_V1:
+                    receipt = StockRecoveryBackupRestoreReceipt(
+                        receipt.ciphertext_sha256,
+                        receipt.snapshot_manifest_sha256,
+                        receipt.bundle_sha256,
+                        receipt.file_count,
+                        receipt.total_bytes,
+                        receipt.claim_count,
+                        receipt.result_count,
+                        receipt.pending_count,
+                        receipt.state_sha256,
+                        receipt.control_id,
+                        receipt.control_generation,
+                        receipt.offline_only,
+                        validation_policy,
+                        snapshot_created_at,
+                    )
         window.check()
         return receipt
     except Exception:
         _deny()
+
+
+async def _verify_snapshot(
+    root: Path, *, now: datetime, validation_policy: SnapshotValidationPolicy
+) -> SnapshotResult:
+    if validation_policy == FULL_REPLAY_V1:
+        return await verify_stock_snapshot(root, now=now)
+    return await verify_stock_snapshot(root, now=now, validation_policy=validation_policy)
 
 
 class _Parser(argparse.ArgumentParser):
@@ -504,6 +571,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--destination", type=Path, required=True)
         parser.add_argument("--expected-ciphertext-sha256", required=True)
         parser.add_argument("--expected-snapshot-manifest-sha256", required=True)
+        parser.add_argument(
+            "--validation-policy",
+            choices=(FULL_REPLAY_V1, RECOVERY_INTEGRITY_V1),
+            default=FULL_REPLAY_V1,
+        )
         args = parser.parse_args(argv)
         receipt = asyncio.run(
             restore_encrypted_stock_backup(
@@ -513,6 +585,7 @@ def main(argv: list[str] | None = None) -> int:
                 expected_ciphertext_sha256=args.expected_ciphertext_sha256,
                 expected_snapshot_manifest_sha256=args.expected_snapshot_manifest_sha256,
                 now=datetime.now(UTC),
+                validation_policy=args.validation_policy,
             )
         )
         print(
