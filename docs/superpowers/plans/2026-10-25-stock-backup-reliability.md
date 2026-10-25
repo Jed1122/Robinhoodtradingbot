@@ -72,3 +72,14 @@ cleanup. This proves that ordering mechanism, not a replacement deployment or a
 genuine scheduled backup. All four Task 3 operational acceptance groups remain
 open. Release integration targets `codex/robinhood-system-implementation`; the
 repository's unrelated `main` branch is outside this change.
+
+Follow-up qualification adds populated code A-to-B snapshot cases, including
+retained original exports, current-head isolation, unchanged historical budget
+charges and rejection of a missing old-code enrichment report. These are offline
+upgrade checks; they do not authorize a new native image or research control.
+
+The PR's dependency audit identified three advisories in development-only
+`filelock` 3.29.7. A targeted lock update to 4.2.1 preserves all other package
+records and the complete production requirements export. The repaired all-group
+audit reports no known vulnerabilities. The final committed revision still needs
+its GitHub checks; the earlier full regression above remains revision-specific.

@@ -84,7 +84,10 @@ async def reserve(sample, *, at=NOW):
     engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
     try:
         jobs = SqlStockResearchJobs(
-            async_session_factory(engine), loaded=sample["loaded"], code_hash=CODE, clock=lambda: at
+            async_session_factory(engine),
+            loaded=sample["loaded"],
+            code_hash=sample["code_hash"],
+            clock=lambda: at,
         )
         state = await jobs.snapshot()
         return await jobs.reserve(
@@ -182,7 +185,10 @@ async def discovery(sample, *, at=NOW, candidate=False, partial=False):
     engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
     try:
         jobs = SqlStockResearchJobs(
-            async_session_factory(engine), loaded=sample["loaded"], code_hash=CODE, clock=lambda: at
+            async_session_factory(engine),
+            loaded=sample["loaded"],
+            code_hash=sample["code_hash"],
+            clock=lambda: at,
         )
         policy = sample["loaded"].config
         plan = _requests("discovery", policy, at, ())
@@ -288,7 +294,10 @@ async def enrichment(sample, source, *, at):
     engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
     try:
         jobs = SqlStockResearchJobs(
-            async_session_factory(engine), loaded=sample["loaded"], code_hash=CODE, clock=lambda: at
+            async_session_factory(engine),
+            loaded=sample["loaded"],
+            code_hash=sample["code_hash"],
+            clock=lambda: at,
         )
         plan = _requests("enrichment", sample["loaded"].config, at, ("ALFA",))
         state = await jobs.snapshot()
@@ -669,6 +678,71 @@ async def test_older_export_reconstructs_at_saved_generation_without_renewing_so
     assert copied.read_bytes() == original and made.pending_count == 1
     assert json.loads(copied.read_bytes())["generated_at"] == "2026-10-22T12:00:00Z"
     assert await module().verify_stock_snapshot(sample["destination"]) == made
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("acquire_under_b", [False, True])
+async def test_code_a_to_b_replays_populated_history_without_promoting_old_heads(
+    sample, acquire_under_b
+):
+    from trading_bot.runtime.stock_dashboard_export import export_stock_dashboard
+
+    first = await discovery(sample, candidate=True)
+    old_enrichment = await enrichment(sample, first, at=NOW + timedelta(hours=1))
+    engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
+    try:
+        await export_stock_dashboard(
+            loaded=sample["loaded"],
+            code_hash=CODE,
+            factory=async_session_factory(engine),
+            archive_dir=sample["archive_dir"],
+            export_dir=sample["export_dir"],
+            clock=lambda: NOW + timedelta(hours=1),
+        )
+        original_export = (sample["export_dir"] / "stock-research.json").read_bytes()
+        old_path = sample["archive_dir"] / (old_enrichment.report_sha256 + ".stock-dossiers.json")
+        original_dossier = old_path.read_bytes()
+        code_b = CodeHash("e" * 64)
+        jobs = SqlStockResearchJobs(
+            async_session_factory(engine),
+            loaded=sample["loaded"],
+            code_hash=code_b,
+            clock=lambda: NOW + timedelta(hours=2),
+        )
+        state = await jobs.snapshot()
+        assert len(state.claims) == len(state.results) == 2
+        assert state.discovery_head is None and state.enrichment_head is None
+        assert {claim.code_hash for claim in state.claims} == {CODE}
+        assert state.reserved_today == sum(claim.planned_calls for claim in state.claims)
+    finally:
+        await engine.dispose()
+
+    sample["code_hash"] = code_b
+    expected_calls = first.attempted_calls + old_enrichment.attempted_calls
+    if acquire_under_b:
+        current = await discovery(sample, candidate=True, at=NOW + timedelta(hours=2))
+        current_enrichment = await enrichment(sample, current, at=NOW + timedelta(hours=3))
+        assert current.code_hash == current_enrichment.code_hash == code_b
+        expected_calls += current.attempted_calls + current_enrichment.attempted_calls
+    sample["now"] = NOW + timedelta(hours=4)
+    made = await module().create_stock_snapshot(**sample)
+    count = 4 if acquire_under_b else 2
+    assert (made.claim_count, made.result_count, made.pending_count) == (count, count, 0)
+    assert made.budget_by_day == (("2026-10-22", expected_calls),)
+    copied = sample["destination"]
+    assert (copied / "exports/stock-research.json").read_bytes() == original_export
+    assert (copied / "archive" / old_path.name).read_bytes() == original_dossier
+    manifest = json.loads((copied / "manifest.json").read_bytes())
+    assert manifest["code_hash"] == code_b
+    assert json.loads(original_export)["code_hash"] == CODE
+    assert await module().verify_stock_snapshot(copied) == made
+    # A new image cannot omit validation of old, no-longer-current enrichment.
+    # Remove the old export so its cache reconstruction cannot mask that check.
+    (sample["export_dir"] / "stock-research.json").unlink()
+    old_path.unlink()
+    sample["destination"] = copied.parent / "missing-old-code-report"
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await module().create_stock_snapshot(**sample)
 
 
 @pytest.mark.asyncio

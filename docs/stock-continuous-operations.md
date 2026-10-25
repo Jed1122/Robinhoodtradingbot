@@ -107,6 +107,16 @@ generation and predecessor hash during upgrades and recovery. No host reboot is
 complete evidence until the actual post-boot identities, services, owned attempt,
 ledger and unrelated service health have been independently reconciled.
 
+Replacement-image authorization must use the new attested OCI identity. The
+deployed CodeHash is derived from the image digest; a CLI control update must pass
+both `--image-digest` and `--image-attestation`. An invocation without that pair
+derives a host-source identity and cannot authorize the deployed worker. Read back
+the updated control against the actual replacement helper identity. Retain the
+existing ledger, control history and quota charges. Previous-code discovery and
+enrichment heads are historical evidence, not current-code cache eligibility.
+Snapshot verification must still replay their reports and reconstruct retained
+exports under their original code identity.
+
 ## Authentication transfer and qualification
 
 Use only the designated standalone stock-research grant, never the interactive
