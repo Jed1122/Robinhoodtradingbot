@@ -133,7 +133,7 @@ def unit_files(release: StockRelease, checkout: Path) -> dict[str, bytes]:
     files[_PREFIX + "monitor.timer"] = _timer("monitor", 300)
     files[_PREFIX + "backup.service"] = _service(
         checkout,
-        f"{command} backup {manifest}",
+        f"{command} backup-integrity {manifest}",
         (
             _RECEIPTS,
             _LEASE,

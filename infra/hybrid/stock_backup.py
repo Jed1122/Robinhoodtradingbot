@@ -36,6 +36,11 @@ from trading_bot.runtime.stock_backup_files import _directory, _stamp, encrypt_s
 from trading_bot.runtime.stock_operation_receipts import StockOperationReceipts
 from trading_bot.runtime.stock_research_controls import StockControlRecord, _encode
 from trading_bot.runtime.stock_snapshot_bundle import _file_limit, _header
+from trading_bot.runtime.stock_snapshot_policy import (
+    FULL_REPLAY_V1,
+    RECOVERY_INTEGRITY_V1,
+    SnapshotValidationPolicy,
+)
 
 _ROOT = Path("/var/lib/hybrid-stock-research")
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
@@ -288,6 +293,7 @@ def _evidence(
     *,
     started: datetime,
     now: datetime,
+    validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
 ) -> None:
     _require(type(value) is dict)
     value = cast(dict[str, Any], value)
@@ -310,21 +316,26 @@ def _evidence(
     )
     _require(set(bundle) == {"bundle_sha256", "file_count", "total_bytes", "stream_bytes"})
     manifest = snapshot.manifest
-    _require(
-        set(manifest)
-        == {
-            "schema_version",
-            "kind",
-            "created_at",
-            "config_hash",
-            "code_hash",
-            "control",
-            "application",
-            "files",
-        }
-    )
-    _require(type(manifest["schema_version"]) is int and manifest["schema_version"] == 1)
-    _require(manifest["kind"] == "stock_application_snapshot")
+    fields = {
+        "schema_version",
+        "kind",
+        "created_at",
+        "config_hash",
+        "code_hash",
+        "control",
+        "application",
+        "files",
+    }
+    if validation_policy == RECOVERY_INTEGRITY_V1:
+        fields.add("validation_policy")
+        _require(manifest["validation_policy"] == RECOVERY_INTEGRITY_V1)
+        version, kind = 2, "stock_recovery_snapshot"
+    else:
+        _require(validation_policy == FULL_REPLAY_V1)
+        version, kind = 1, "stock_application_snapshot"
+    _require(set(manifest) == fields)
+    _require(type(manifest["schema_version"]) is int and manifest["schema_version"] == version)
+    _require(manifest["kind"] == kind)
     created = datetime.fromisoformat(manifest["created_at"])
     _require(created.tzinfo is not None and created.utcoffset() == timedelta(0))
     _require(started <= created <= now)
@@ -398,9 +409,14 @@ def _backup_stock(
     receipt_root: Path,
     recipient_path: Path,
     helper_uid: int,
+    validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
 ) -> dict[str, object]:
     """Private fixture seam; production callers use the fixed root-only wrapper."""
     try:
+        _require(
+            type(validation_policy) is str
+            and validation_policy in {FULL_REPLAY_V1, RECOVERY_INTEGRITY_V1}
+        )
         _integer(helper_uid, 2**31 - 1)
         release = load_release(manifest)
         unit_files(release, checkout)
@@ -418,13 +434,21 @@ def _backup_stock(
                 value = run_local_helper(
                     checkout,
                     release,
-                    "snapshot",
+                    "snapshot-integrity"
+                    if validation_policy == RECOVERY_INTEGRITY_V1
+                    else "snapshot",
                     identifier=identifier,
                     deadline=time.monotonic() + 220,
                 )
                 snapshot = _snapshot(staging_root / identifier, helper_uid, deadline=deadline)
                 _evidence(
-                    value, identifier, snapshot, release, started=started, now=datetime.now(UTC)
+                    value,
+                    identifier,
+                    snapshot,
+                    release,
+                    started=started,
+                    now=datetime.now(UTC),
+                    validation_policy=validation_policy,
                 )
                 after = _staging(parent, helper_uid)
                 bundle_name = identifier + ".bundle"
@@ -470,18 +494,35 @@ def _backup_stock(
                     ).hexdigest(),
                     release_id=release.release_id,
                     image_digest=release.image_digest,
+                    validation_policy=validation_policy,
+                    snapshot_created_at=(
+                        datetime.fromisoformat(snapshot.manifest["created_at"])
+                        if validation_policy == RECOVERY_INTEGRITY_V1
+                        else None
+                    ),
                 )
-        return {
+        result = {
             "status": "backup_committed",
             "live_enabled": False,
             "ciphertext_sha256": encrypted.ciphertext_sha256,
             "snapshot_manifest_sha256": snapshot.manifest_sha256,
         }
+        if validation_policy == RECOVERY_INTEGRITY_V1:
+            result.update(
+                validation_policy=RECOVERY_INTEGRITY_V1,
+                snapshot_created_at=snapshot.manifest["created_at"],
+            )
+        return result
     except Exception:
         raise ValueError("stock_backup_unavailable") from None
 
 
-def backup_stock(manifest: Path, *, checkout: Path) -> dict[str, object]:
+def backup_stock(
+    manifest: Path,
+    *,
+    checkout: Path,
+    validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
+) -> dict[str, object]:
     """Root-only fixed namespace; accepts only the public recipient key."""
     if sys.platform != "linux" or os.geteuid() != 0:
         raise ValueError("stock_backup_unavailable")
@@ -493,4 +534,5 @@ def backup_stock(manifest: Path, *, checkout: Path) -> dict[str, object]:
         receipt_root=Path("/var/lib/hybrid-stock-maintenance/receipts"),
         recipient_path=Path("/etc/hybrid-stock-research/backup-recipient.public"),
         helper_uid=10001,
+        validation_policy=validation_policy,
     )

@@ -119,6 +119,74 @@ async def test_actual_roundtrip_replays_pending_charges_and_kills_the_saved_runn
 
 
 @pytest.mark.asyncio
+async def test_integrity_encrypted_restore_keeps_pending_and_killed_controls_without_replay(
+    sample, monkeypatch
+):
+    import trading_bot.runtime.stock_snapshot as snapshots
+
+    owner = StockResearchControls(sample["control_dir"], clock=lambda: NOW)
+    saved = owner.read()
+    saved = owner.change(
+        "resume",
+        expected_sha256=saved.sha256,
+        config_hash=str(sample["loaded"].config_hash),
+        code_hash=CODE,
+    )
+    pending = await reserve(sample)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("integrity restore must not invoke historical replay or compilers")
+
+    for name in (
+        "_replay",
+        "compile_stock_dossier_report",
+        "_screen_body",
+        "_cached",
+        "_projection",
+    ):
+        monkeypatch.setattr(snapshots, name, forbidden)
+    made = await create_stock_snapshot(**sample, validation_policy="recovery_integrity_v1")
+    root = sample["destination"].parent
+    key = root / "receiver.key"
+    key.write_bytes(PRIVATE)
+    key.chmod(0o600)
+    encrypted = seal(root)
+    args = dict(
+        ciphertext=root / "backup.box",
+        private_key_file=key,
+        expected_ciphertext_sha256=encrypted.ciphertext_sha256,
+        expected_snapshot_manifest_sha256=made.manifest_sha256,
+        now=NOW + timedelta(hours=1),
+    )
+    with pytest.raises(ValueError, match=DENIAL):
+        await module().restore_encrypted_stock_backup(**args, destination=root / "default-restore")
+    result = await module().restore_encrypted_stock_backup(
+        **args, destination=root / "lean-restore", validation_policy="recovery_integrity_v1"
+    )
+    assert type(result) is module().StockRecoveryBackupRestoreReceipt
+    assert result.validation_policy == "recovery_integrity_v1"
+    assert result.snapshot_created_at == NOW.isoformat()
+    assert result.state_sha256 == pending.record_sha256 and result.pending_count == 1
+    restored = StockResearchControls(root / "lean-restore/killed-controls/controls").read()
+    assert result.offline_only is True and restored.record.status == "killed"
+    assert restored.record.control_id == saved.record.control_id
+    assert restored.record.generation == saved.record.generation + 1
+    assert (
+        await verify_stock_snapshot(
+            root / "lean-restore/snapshot", validation_policy="recovery_integrity_v1"
+        )
+        == made
+    )
+    assert result.ciphertext_sha256 == encrypted.ciphertext_sha256
+    assert set(asdict(result)) == set(module().StockBackupRestoreReceipt.__dataclass_fields__) | {
+        "validation_policy",
+        "snapshot_created_at",
+    }
+    encoded = json.dumps(asdict(result))
+    assert PRIVATE.hex() not in encoded and str(key) not in encoded
+
+
+@pytest.mark.asyncio
 async def test_ciphertext_trusted_hash_is_checked_before_any_decryption_or_key_loading(
     ready, monkeypatch
 ):

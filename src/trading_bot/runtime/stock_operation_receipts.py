@@ -23,6 +23,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
+from trading_bot.runtime.stock_snapshot_policy import (
+    FULL_REPLAY_V1,
+    RECOVERY_INTEGRITY_V1,
+    SnapshotValidationPolicy,
+)
+
 _LOCK = ".stock-receipts.lock"
 _PENDING = ".stock-receipts.pending"
 _KINDS = {"backup", "offhost", "restore"}
@@ -39,6 +45,7 @@ _BOUND = {
     "image_digest",
 }
 _FIELDS = _BOUND | {"schema_version", "kind", "at"}
+_RECOVERY_FIELDS = {"validation_policy", "snapshot_created_at"}
 _MAX_RECEIPTS = 128
 _MAX_BYTES = 4096
 _DIRECTORY = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -107,10 +114,17 @@ def _constant(_value: str) -> NoReturn:
 def _receipt(value: object) -> Receipt:
     _require(type(value) is dict)
     record = cast(dict[str, Any], value)
-    _require(set(record) == _FIELDS)
-    _require(type(record["schema_version"]) is int and record["schema_version"] == 1)
+    version = record.get("schema_version")
+    _require(type(version) is int and version in {1, 2})
+    _require(set(record) == (_FIELDS if version == 1 else _FIELDS | _RECOVERY_FIELDS))
     _require(type(record["kind"]) is str and record["kind"] in _KINDS)
-    _timestamp(record["at"])
+    at = _timestamp(record["at"])
+    if version == 2:
+        _require(
+            type(record["validation_policy"]) is str
+            and record["validation_policy"] == RECOVERY_INTEGRITY_V1
+        )
+        _require(_timestamp(record["snapshot_created_at"]) <= at)
     for name in _BOUND - {"ciphertext_bytes", "image_digest"}:
         _require(type(record[name]) is str and _HEX.fullmatch(record[name]) is not None)
     _require(
@@ -231,7 +245,9 @@ def _bound_to_predecessors(value: Receipt, records: dict[str, Receipt]) -> None:
         predecessor = records.get(f"{kind}-{value['ciphertext_sha256']}.json")
         if predecessor is None:
             _deny()
-        _require(all(value[field] == predecessor[field] for field in _BOUND))
+        _require(value["schema_version"] == predecessor["schema_version"])
+        bound = _BOUND | (_RECOVERY_FIELDS if value["schema_version"] == 2 else set())
+        _require(all(value[field] == predecessor[field] for field in bound))
         _require(_timestamp(value["at"]) >= _timestamp(predecessor["at"]))
 
 
@@ -364,12 +380,27 @@ class StockOperationReceipts:
         code_hash: str,
         release_id: str,
         image_digest: str,
+        validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
+        snapshot_created_at: datetime | None = None,
     ) -> Receipt:
         """Record caller-verified success, never a proof that an operation ran."""
         with _guard():
+            _require(
+                type(validation_policy) is str
+                and validation_policy in {FULL_REPLAY_V1, RECOVERY_INTEGRITY_V1}
+            )
+            _require(validation_policy != FULL_REPLAY_V1 or snapshot_created_at is None)
+            recovery: Receipt = (
+                {
+                    "validation_policy": RECOVERY_INTEGRITY_V1,
+                    "snapshot_created_at": _time(snapshot_created_at),
+                }
+                if validation_policy == RECOVERY_INTEGRITY_V1
+                else {}
+            )
             value = _receipt(
                 {
-                    "schema_version": 1,
+                    "schema_version": 2 if recovery else 1,
                     "kind": kind,
                     "at": _time(at),
                     "ciphertext_sha256": ciphertext_sha256,
@@ -379,6 +410,7 @@ class StockOperationReceipts:
                     "code_hash": code_hash,
                     "release_id": release_id,
                     "image_digest": image_digest,
+                    **recovery,
                 }
             )
             body = _canonical(value)

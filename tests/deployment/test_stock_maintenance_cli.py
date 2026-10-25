@@ -53,3 +53,21 @@ def test_native_failure_does_not_print_internal_exception(root_cli, monkeypatch,
     monkeypatch.setattr(module, "monitor_stock", failed)
     assert module.main() == 2
     assert "private" not in capsys.readouterr().out
+
+
+def test_integrity_backup_command_explicitly_selects_recovery_policy(root_cli, monkeypatch, capsys):
+    monkeypatch.setattr(
+        module.sys, "argv", ["stock_maintenance", "backup-integrity", "/fixed/manifest.json"]
+    )
+
+    def backup(manifest, *, checkout, validation_policy):
+        assert str(manifest) == "/fixed/manifest.json"
+        assert validation_policy == "recovery_integrity_v1"
+        return {"status": "backup_committed", "live_enabled": False}
+
+    monkeypatch.setattr(module, "backup_stock", backup)
+    assert module.main() == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "backup_committed",
+        "live_enabled": False,
+    }

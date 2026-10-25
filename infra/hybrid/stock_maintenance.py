@@ -148,7 +148,16 @@ def monitor_stock(
             times = {
                 kind: max(
                     (
-                        datetime.fromisoformat(cast(str, row["at"]))
+                        datetime.fromisoformat(
+                            cast(
+                                str,
+                                row[
+                                    "snapshot_created_at"
+                                    if kind == "backup" and row["schema_version"] == 2
+                                    else "at"
+                                ],
+                            )
+                        )
                         for row in current_receipts
                         if row["kind"] == kind
                     ),
@@ -202,10 +211,19 @@ def main() -> int:
     try:
         if sys.platform != "linux" or os.geteuid() != 0 or len(sys.argv) != 3:
             raise ValueError
-        if sys.argv[1] not in {"monitor", "backup"}:
+        if sys.argv[1] not in {"monitor", "backup", "backup-integrity"}:
             raise ValueError
         operation = monitor_stock if sys.argv[1] == "monitor" else backup_stock
-        result = operation(Path(sys.argv[2]), checkout=Path(__file__).resolve().parents[2])
+        if sys.argv[1] == "backup-integrity":
+            from trading_bot.runtime.stock_snapshot_policy import RECOVERY_INTEGRITY_V1
+
+            result = backup_stock(
+                Path(sys.argv[2]),
+                checkout=Path(__file__).resolve().parents[2],
+                validation_policy=RECOVERY_INTEGRITY_V1,
+            )
+        else:
+            result = operation(Path(sys.argv[2]), checkout=Path(__file__).resolve().parents[2])
         if result.get("live_enabled") is not False:
             raise ValueError
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))

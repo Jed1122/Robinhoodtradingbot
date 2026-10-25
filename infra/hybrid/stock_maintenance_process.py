@@ -28,8 +28,8 @@ def helper_invocation(
         unit_files(release, checkout)  # Shared closed identity/path contract.
         if (
             type(action) is not str
-            or action not in {"observe", "control-check", "snapshot"}
-            or ((action == "snapshot") != (identifier is not None))
+            or action not in {"observe", "control-check", "snapshot", "snapshot-integrity"}
+            or ((action in {"snapshot", "snapshot-integrity"}) != (identifier is not None))
             or (
                 identifier is not None
                 and (

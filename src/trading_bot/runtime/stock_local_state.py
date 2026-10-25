@@ -17,6 +17,11 @@ from trading_bot.config import LoadedConfig
 from trading_bot.domain import CodeHash
 from trading_bot.runtime.stock_dashboard_export import _directory, _inventory, _policy, _read
 from trading_bot.runtime.stock_research_controls import StockResearchControls
+from trading_bot.runtime.stock_snapshot_policy import (
+    FULL_REPLAY_V1,
+    RECOVERY_INTEGRITY_V1,
+    SnapshotValidationPolicy,
+)
 
 _ROOT = Path("/var/lib/hybrid-stock-research")
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
@@ -143,6 +148,7 @@ async def create_local_snapshot_bundle(
     destination_root: Path,
     identifier: str,
     now: datetime,
+    validation_policy: SnapshotValidationPolicy = FULL_REPLAY_V1,
 ) -> dict[str, object]:
     """Snapshot and package only; root encrypts after this process is reaped.
 
@@ -157,7 +163,9 @@ async def create_local_snapshot_bundle(
 
         policy = _policy(loaded)
         if (
-            type(identifier) is not str
+            type(validation_policy) is not str
+            or validation_policy not in {FULL_REPLAY_V1, RECOVERY_INTEGRITY_V1}
+            or type(identifier) is not str
             or _ID.fullmatch(identifier) is None
             or type(code_hash) is not str
             or _HEX.fullmatch(code_hash) is None
@@ -221,6 +229,7 @@ async def create_local_snapshot_bundle(
                 export_dir=data_root / "exports",
                 destination=snapshot,
                 now=now,
+                validation_policy=validation_policy,
             )
             descriptor = os.open(
                 identifier + ".bundle",
@@ -250,9 +259,9 @@ def main(argv: list[str] | None = None) -> int:
             sys.platform != "linux"
             or os.geteuid() != 10001
             or len(args) not in {3, 4}
-            or args[0] not in {"observe", "control-check", "snapshot"}
+            or args[0] not in {"observe", "control-check", "snapshot", "snapshot-integrity"}
             or any(_HEX.fullmatch(value) is None for value in args[1:3])
-            or ((args[0] == "snapshot") != (len(args) == 4))
+            or ((args[0] in {"snapshot", "snapshot-integrity"}) != (len(args) == 4))
         ):
             raise ValueError
         from trading_bot.runtime.stock_research_worker import load_stock_worker_configuration
@@ -260,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
         loaded = load_stock_worker_configuration(Path(__file__).resolve().parents[3] / "configs")
         if str(loaded.config_hash) != args[1]:
             raise ValueError
-        if args[0] == "snapshot":
+        if args[0] in {"snapshot", "snapshot-integrity"}:
             result = asyncio.run(
                 create_local_snapshot_bundle(
                     loaded=loaded,
@@ -269,6 +278,9 @@ def main(argv: list[str] | None = None) -> int:
                     destination_root=_ROOT / "maintenance",
                     identifier=args[3],
                     now=datetime.now(UTC),
+                    validation_policy=(
+                        RECOVERY_INTEGRITY_V1 if args[0] == "snapshot-integrity" else FULL_REPLAY_V1
+                    ),
                 )
             )
         elif args[0] == "control-check":
