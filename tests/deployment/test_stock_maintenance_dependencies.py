@@ -14,7 +14,8 @@ from packaging.utils import canonicalize_name
 ROOT = Path(__file__).resolve().parents[2]
 RECIPE = ROOT / "infra/hybrid/stock-maintenance-requirements.txt"
 RECIPE_SHA256 = "3750df43f52035f03b70669b1b7d1fcaf5e2b16a63e1fa7d8437ba40df292341"
-LOCK_SHA256 = "d5b8a7dc41eba4badc9d1e0f70d340f65de776324ecfc47511bb0213fa2fe95d"
+# Reviewed dev-only filelock advisory refresh; production closure/recipe unchanged.
+LOCK_SHA256 = "42ead7a4dd5dc83255aff534e28c36e17235e6c45d3a3670a295e3a2bee28720"
 
 
 def _lock():

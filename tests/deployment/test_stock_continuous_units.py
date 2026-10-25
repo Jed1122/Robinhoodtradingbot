@@ -19,7 +19,7 @@ PREFIX = "hybrid-stock-research-"
 OAUTH = "/var/lib/hybrid-stock-research/oauth"
 SPOOL = "/var/lib/hybrid-stock-maintenance"
 OPERATIONS = "/var/lib/hybrid-stock-operations"
-# Fixed fixture bytes from verified source28b62a9, before the CPU-only correction.
+# Fixed source28b62a9 bytes, before CPU corrections and the backup ordering edge.
 PREVIOUS_UNIT_SHA256 = {
     "hybrid-stock-research-backup.service":
         "b2956535de3c28ae186cc49b3a1d9c224640bb040df7bddb90b0e7a59426cd7c",
@@ -98,6 +98,20 @@ def test_collector_cadence_and_deadline_remain_release_bound(release, cadence, d
         assert actual[name] == body
 
 
+def test_backup_orders_after_research_without_activating_it_or_reversing_the_order(release):
+    all_units = units(release)
+    research_name = "hybrid-stock-research.service"
+    backup_name = PREFIX + "backup.service"
+    backup = all_units[backup_name]["Unit"]
+    research = all_units[research_name]["Unit"]
+
+    assert backup["After"].split() == ["docker.service", research_name]
+    for dependency in ("Requires", "Wants", "Conflicts", "Before"):
+        assert research_name not in backup.get(dependency, "").split()
+    assert backup_name not in research.get("After", "").split()
+    assert research["After"] == "docker.service"
+
+
 def test_only_reduced_uid_helper_services_use_system_manager_root_without_ambient_caps(release):
     all_units = units(release)
     default_root = {
@@ -119,7 +133,7 @@ def test_only_reduced_uid_helper_services_use_system_manager_root_without_ambien
 
 
 @pytest.mark.parametrize("name,previous_sha256", PREVIOUS_UNIT_SHA256.items())
-def test_only_monitor_and_bootstrap_cpu_lines_change_from_verified_units(
+def test_only_cpu_corrections_and_backup_order_change_from_verified_units(
     release, name, previous_sha256
 ):
     generated = module().unit_files(release, CHECKOUT)
@@ -129,6 +143,10 @@ def test_only_monitor_and_bootstrap_cpu_lines_change_from_verified_units(
         assert parsed(body)["Service"]["CPUQuota"] == "50%"
         assert body.count(b"CPUQuota=50%\n") == 1
         body = body.replace(b"CPUQuota=50%\n", b"CPUQuota=10%\n", 1)
+    if name == PREFIX + "backup.service":
+        ordering = b"After=docker.service hybrid-stock-research.service\n"
+        assert body.count(ordering) == 1
+        body = body.replace(ordering, b"After=docker.service\n", 1)
     assert hashlib.sha256(body).hexdigest() == previous_sha256
 
 

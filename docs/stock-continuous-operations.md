@@ -53,6 +53,17 @@ properties/drop-ins and run native `systemd-analyze verify` before installation.
   limited by its450second worker lifetime and persisted daily quota.
 - Monitor cadence is five minutes. Backup cadence is24hours, with a separately
   observed initial backup. Neither timer authorizes research collection itself.
+- Backup declares `After=hybrid-stock-research.service` to address the observed
+  backup activation during an existing research cycle. This ordering adds no
+  research activation dependency, stop request or automatic retry. A native
+  systemd255 fixture on October 25, 2026 confirmed that the fake backup job waits
+  through the fake research unit's `ExecStopPost`; both fixture runners exited
+  successfully and the deployed units and control remained unchanged. This
+  verifies the ordering mechanism only. A genuine scheduled application backup
+  and verified restore with the replacement release remain required. This is a
+  bounded mitigation, not universal serialization. If research is requested
+  during an already running backup, the unchanged nonblocking operations barrier
+  remains authoritative and contention fails closed.
 - Recovery is a different invocation with no release argument or new dispatch.
   Only after it succeeds may bootstrap inspect a terminal/empty operations store,
   current bound running control and enabled/active collector timer. It releases
@@ -95,6 +106,16 @@ Paused/killed authority is never automatically resumed. Preserve control_id,
 generation and predecessor hash during upgrades and recovery. No host reboot is
 complete evidence until the actual post-boot identities, services, owned attempt,
 ledger and unrelated service health have been independently reconciled.
+
+Replacement-image authorization must use the new attested OCI identity. The
+deployed CodeHash is derived from the image digest; a CLI control update must pass
+both `--image-digest` and `--image-attestation`. An invocation without that pair
+derives a host-source identity and cannot authorize the deployed worker. Read back
+the updated control against the actual replacement helper identity. Retain the
+existing ledger, control history and quota charges. Previous-code discovery and
+enrichment heads are historical evidence, not current-code cache eligibility.
+Snapshot verification must still replay their reports and reconstruct retained
+exports under their original code identity.
 
 ## Authentication transfer and qualification
 
