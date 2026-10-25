@@ -1,11 +1,14 @@
 """Coherent fictional stock snapshots and killed isolated restoration; no provider access."""
 
+import gc
 import hashlib
 import importlib
 import json
 import os
 import sqlite3
+import weakref
 from contextlib import closing
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -100,11 +103,11 @@ async def reserve(sample, *, at=NOW):
         await engine.dispose()
 
 
-def config_b(tmp_path):
+def config_b(tmp_path, *, shortlist_count=1):
     policy = tmp_path / "config-b.yaml"
     policy.write_text(
         "minimum_market_cap_usd: 3000000000\n"
-        "market_cap_boundaries_usd: [3000000000]\nshortlist_count: 1\n"
+        f"market_cap_boundaries_usd: [3000000000]\nshortlist_count: {shortlist_count}\n"
     )
     return load_config(
         ROOT / "configs/base.yaml",
@@ -135,43 +138,53 @@ def change_retained_configuration(database, config_hash, *, replacement=None):
         db.execute(original)
 
 
-async def discovery(sample, *, at=NOW, candidate=False, partial=False):
+async def discovery(
+    sample,
+    *,
+    at=NOW,
+    candidate=False,
+    partial=False,
+    candidate_symbols=None,
+    incomplete_coverage=False,
+):
     from trading_bot.runtime.stock_capture import _json
 
     class EmptyResearch:
         async def call_tool(self, name, arguments):
             if partial and name == "preview_scan":
                 raise RuntimeError("fictional research failure")
-            rows = (
-                []
-                if not candidate
-                else [
-                    {
-                        "ticker": "ALFA",
-                        "instrument_id": "fictional-ALFA",
-                        "instrument_type": "EQUITY",
-                        "columns": {
-                            "Asset type": "STOCK",
-                            "Last": "100",
-                            "Market cap": "5000000000",
-                            TURNOVER_COLUMN.format(sessions=30): "30000000",
-                            "Sector": "Technology",
-                            "Return on equity": "0.2",
-                            "Net profit margin": "0.1",
-                            "Annual EPS growth": "0.1",
-                            "Quarterly revenue growth": "0.1",
-                            "P/E": "20",
-                            "FCF/share": "2",
-                        },
-                    }
-                ]
+            symbols = (
+                candidate_symbols
+                if candidate_symbols is not None
+                else (("ALFA",) if candidate else ())
             )
+            rows = [
+                {
+                    "ticker": symbol,
+                    "instrument_id": "fictional-" + symbol,
+                    "instrument_type": "EQUITY",
+                    "columns": {
+                        "Asset type": "STOCK",
+                        "Last": "100",
+                        "Market cap": "5000000000",
+                        TURNOVER_COLUMN.format(sessions=30): "30000000",
+                        "Sector": "Technology",
+                        "Return on equity": "0.2" if symbol == "ALFA" else "0.4",
+                        "Net profit margin": "0.1",
+                        "Annual EPS growth": "0.1",
+                        "Quarterly revenue growth": "0.1",
+                        "P/E": "20",
+                        "FCF/share": "2",
+                    },
+                }
+                for symbol in symbols
+            ]
             value = (
                 {"filter_specs": []}
                 if name == "get_scanner_filter_specs"
                 else {
                     "result": {
-                        "total_items": len(rows),
+                        "total_items": len(rows) + int(incomplete_coverage),
                         "filters_applied": arguments["filters"],
                         "results": rows,
                     }
@@ -234,7 +247,7 @@ async def discovery(sample, *, at=NOW, candidate=False, partial=False):
                 policy=policy,
                 at=at,
             )
-            assert report["screen"]["coverage_complete"] is True
+            assert report["screen"]["coverage_complete"] == (not incomplete_coverage)
             _, digest = _publish(lease.directory_fd, _json(report), ".stock-screen.json")
         return await jobs.finish(
             claim,
@@ -250,7 +263,7 @@ async def discovery(sample, *, at=NOW, candidate=False, partial=False):
         await engine.dispose()
 
 
-async def enrichment(sample, source, *, at):
+async def enrichment(sample, source, *, at, symbols=("ALFA",)):
     from trading_bot.runtime.stock_capture import _json
     from trading_bot.runtime.stock_dossier_report import compile_stock_dossier_report
 
@@ -258,14 +271,16 @@ async def enrichment(sample, source, *, at):
         async def call_tool(self, name, arguments):
             data = {
                 "get_equity_fundamentals": {
-                    "results": [{"symbol": "ALFA", "market_cap": "5000000000"}]
+                    "results": [
+                        {"symbol": symbol, "market_cap": "5000000000"} for symbol in symbols
+                    ]
                 },
-                "get_financials": {"results": [None]},
+                "get_financials": {"results": [None] * len(symbols)},
                 "get_equity_quotes": {"results": []},
                 "get_equity_historicals": {
                     "results": [
                         {
-                            "symbol": "ALFA",
+                            "symbol": symbol,
                             "interval": "day",
                             "bounds": "regular",
                             "bars": [
@@ -281,10 +296,15 @@ async def enrichment(sample, source, *, at):
                                 }
                             ],
                         }
+                        for symbol in symbols
                     ]
                 },
                 "get_earnings_results": {"results": []},
-                "get_sec_filing_index": {"symbol": "ALFA", "filings": [], "next": ""},
+                "get_sec_filing_index": {
+                    "symbol": arguments.get("symbol"),
+                    "filings": [],
+                    "next": "",
+                },
             }[name]
             return McpToolResult((), False, {"data": data})
 
@@ -299,7 +319,7 @@ async def enrichment(sample, source, *, at):
             code_hash=sample["code_hash"],
             clock=lambda: at,
         )
-        plan = _requests("enrichment", sample["loaded"].config, at, ("ALFA",))
+        plan = _requests("enrichment", sample["loaded"].config, at, symbols)
         state = await jobs.snapshot()
         claim = await jobs.reserve(
             phase="enrichment",
@@ -341,6 +361,49 @@ async def enrichment(sample, source, *, at):
         )
     finally:
         await engine.dispose()
+
+
+async def rewrite_fixture_history(sample, *, sources=None, reports=None):
+    """Rehash fictional events without bypassing the replay reader or its guards."""
+    from trading_bot.persistence import stock_research_jobs as ledger
+    from trading_bot.persistence.audit import _audit_event_row
+
+    engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
+    try:
+        jobs = SqlStockResearchJobs(
+            async_session_factory(engine),
+            loaded=sample["loaded"],
+            code_hash=sample["code_hash"],
+            clock=lambda: sample["now"],
+        )
+        state = await jobs.snapshot()
+    finally:
+        await engine.dispose()
+    hashes, rows, previous = {}, [], "0" * 64
+    for original in sorted((*state.claims, *state.results), key=lambda row: row.sequence):
+        changes = {"previous_sha256": previous}
+        if isinstance(original, ledger.StockResearchClaim) and original.source_result_sha256:
+            source = (sources or {}).get(original.claim_id, original.source_result_sha256)
+            changes["source_result_sha256"] = hashes.get(source, source)
+        if isinstance(original, ledger.StockResearchResult):
+            changes["report_sha256"] = (reports or {}).get(
+                original.claim_id, original.report_sha256
+            )
+        updated = replace(original, **changes)
+        updated = replace(updated, record_sha256=ledger._hash_record(updated))
+        hashes[original.record_sha256] = previous = updated.record_sha256
+        rows.append(_audit_event_row(ledger._event(updated)))
+    with closing(sqlite3.connect(sample["database"])) as db, db:
+        name = "trg_audit_events_append_only_update"
+        guard = db.execute("SELECT sql FROM sqlite_master WHERE name = ?", (name,)).fetchone()[0]
+        db.execute(f'DROP TRIGGER "{name}"')
+        for row in rows:
+            changed = db.execute(
+                "UPDATE audit_events SET data_hash = ?, sanitized_details_json = ? WHERE id = ?",
+                (row.data_hash, row.sanitized_details_json, row.id),
+            )
+            assert changed.rowcount == 1
+        db.execute(guard)
 
 
 @pytest.mark.asyncio
@@ -651,6 +714,217 @@ async def test_nonempty_enrichment_replays_its_exact_original_discovery_shortlis
     copied = sample["destination"] / "archive" / (result.report_sha256 + ".stock-dossiers.json")
     assert json.loads(copied.read_bytes())["dossiers"][0]["symbol"] == "ALFA"
     assert await module().verify_stock_snapshot(sample["destination"]) == made
+
+
+@pytest.mark.asyncio
+async def test_replay_releases_validated_reports_before_finishing_history(sample, monkeypatch):
+    source = await discovery(sample, candidate=True)
+    await enrichment(sample, source, at=NOW + timedelta(hours=1))
+    await enrichment(sample, source, at=NOW + timedelta(hours=2))
+    await discovery(sample, at=NOW + timedelta(hours=3))
+    sample["now"] = NOW + timedelta(hours=3)
+    implementation = module()
+    original_read = implementation._read
+    references = []
+
+    class ObservedReport(dict):
+        """Weak references observe ownership without retaining report contents."""
+
+        __slots__ = ("__weakref__",)
+
+    def observe_read(*args):
+        if len(references) == 3:
+            # The most recent report may still be a loop local. Earlier full
+            # discovery and enrichment reports must no longer be retained.
+            gc.collect()
+            assert references[0]() is None, "replay retained an earlier discovery report"
+            assert references[1]() is None, "replay retained an earlier enrichment report"
+        report = ObservedReport(original_read(*args))
+        references.append(weakref.ref(report))
+        return report
+
+    monkeypatch.setattr(implementation, "_read", observe_read)
+    application = await implementation._replay(
+        sample["database"].parent.parent,
+        sample["loaded"],
+        sample["code_hash"],
+        sample["now"],
+        implementation._Window(),
+    )
+    assert len(references) == application["result_count"] == 4
+    gc.collect()
+    assert all(reference() is None for reference in references)
+
+
+@pytest.mark.asyncio
+async def test_replay_keeps_older_discovery_order_for_multiple_enrichment_references(
+    sample, tmp_path, monkeypatch
+):
+    sample["loaded"] = config_b(tmp_path, shortlist_count=2)
+    first = await discovery(sample, candidate_symbols=("ALFA", "ZETA"))
+    ordered = ("ZETA", "ALFA")  # Scores deliberately differ from alphabetical/input order.
+    enriched = await enrichment(sample, first, at=NOW + timedelta(hours=1), symbols=ordered)
+    current = await discovery(sample, candidate=True, at=NOW + timedelta(hours=2))
+    later = await enrichment(sample, current, at=NOW + timedelta(hours=3), symbols=ordered)
+    sample["now"] = NOW + timedelta(hours=3)
+    # Historical sources need not be the current discovery head. Keep the real
+    # canonical ledger reader and rebind this fictional event to its actual plan.
+    await rewrite_fixture_history(sample, sources={later.claim_id: first.record_sha256})
+    originals = {
+        result.report_sha256 + suffix: (
+            sample["archive_dir"] / (result.report_sha256 + suffix)
+        ).read_bytes()
+        for result, suffix in (
+            (first, ".stock-screen.json"),
+            (enriched, ".stock-dossiers.json"),
+            (later, ".stock-dossiers.json"),
+        )
+    }
+    assert (
+        tuple(
+            row["symbol"]
+            for row in json.loads(originals[first.report_sha256 + ".stock-screen.json"])["screen"][
+                "opportunities"
+            ]
+        )
+        == ordered
+    )
+    implementation = module()
+    original_requests, seen = implementation._requests, []
+
+    def observe_requests(phase, policy, at, symbols):
+        if phase == "enrichment":
+            seen.append(symbols)
+        return original_requests(phase, policy, at, symbols)
+
+    monkeypatch.setattr(implementation, "_requests", observe_requests)
+    made = await implementation.create_stock_snapshot(**sample)
+    assert (made.claim_count, made.result_count, made.pending_count) == (4, 4, 0)
+    assert made.budget_by_day == (("2026-10-22", 22),)
+    assert seen == [ordered, ordered]
+    for name, raw in originals.items():
+        assert (sample["destination"] / "archive" / name).read_bytes() == raw
+    assert await implementation.verify_stock_snapshot(sample["destination"]) == made
+    assert seen == [ordered] * 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_source", [False, True])
+async def test_replay_distinguishes_empty_discovery_context_from_missing_reference(
+    sample, monkeypatch, missing_source
+):
+    from trading_bot.persistence.stock_research_jobs import StockResearchJobError
+
+    source = await discovery(sample)
+    sample["now"] = NOW + timedelta(hours=1)
+    engine = create_engine(f"sqlite+aiosqlite:///{sample['database']}")
+    try:
+        jobs = SqlStockResearchJobs(
+            async_session_factory(engine),
+            loaded=sample["loaded"],
+            code_hash=sample["code_hash"],
+            clock=lambda: sample["now"],
+        )
+        state = await jobs.snapshot()
+        claim = await jobs.reserve(
+            phase="enrichment",
+            plan_sha256="c" * 64,
+            planned_calls=1,
+            expected_state_hash=state.state_hash,
+            source_result_sha256=source.record_sha256,
+        )
+        await jobs.finish(
+            claim,
+            status="blocked",
+            reason="capture_partial",
+            capture_plan_sha256=claim.plan_sha256,
+            attempted_calls=1,
+            successful_calls=0,
+            manifest_sha256="d" * 64,
+            report_sha256=None,
+        )
+    finally:
+        await engine.dispose()
+    if missing_source:
+        await rewrite_fixture_history(sample, sources={claim.claim_id: "f" * 64})
+    implementation = module()
+    original_requests, seen = implementation._requests, []
+
+    def observe_requests(phase, policy, at, symbols):
+        seen.append((phase, symbols))
+        return original_requests(phase, policy, at, symbols)
+
+    monkeypatch.setattr(implementation, "_requests", observe_requests)
+    error = StockResearchJobError if missing_source else ValueError
+    reason = "stock_job_history_invalid" if missing_source else "stock_requests_invalid"
+    with pytest.raises(error, match=reason):
+        await implementation._replay(
+            sample["database"].parent.parent,
+            sample["loaded"],
+            sample["code_hash"],
+            sample["now"],
+            implementation._Window(),
+        )
+    # A known empty tuple reaches the unchanged planner and is denied there.
+    # An unknown source is rejected by the ledger before replay trusts context.
+    assert seen == ([] if missing_source else [("discovery", ()), ("enrichment", ())])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["discovery", "enrichment"])
+async def test_replay_rejects_rehashed_corrupt_past_reports_after_newer_discovery(
+    sample, monkeypatch, phase
+):
+    from trading_bot.runtime.stock_capture import _json
+
+    source = await discovery(sample, candidate=True)
+    enriched = await enrichment(sample, source, at=NOW + timedelta(hours=1))
+    await discovery(sample, at=NOW + timedelta(hours=2))
+    sample["now"] = NOW + timedelta(hours=2)
+    target = source if phase == "discovery" else enriched
+    suffix = ".stock-screen.json" if phase == "discovery" else ".stock-dossiers.json"
+    report = json.loads((sample["archive_dir"] / (target.report_sha256 + suffix)).read_bytes())
+    report["live_enabled"] = True
+    with StockArchiveLease(sample["archive_dir"]) as lease:
+        _, digest = _publish(lease.directory_fd, _json(report), suffix)
+    await rewrite_fixture_history(sample, reports={target.claim_id: digest})
+    implementation = module()
+    original_symbols, admitted = implementation._symbols, []
+
+    def observe_symbols(report):
+        admitted.append(report["claim_id"])
+        return original_symbols(report)
+
+    monkeypatch.setattr(implementation, "_symbols", observe_symbols)
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await implementation.create_stock_snapshot(**sample)
+    assert admitted == ([] if phase == "discovery" else [source.claim_id])
+    assert not (sample["destination"] / "manifest.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_replay_requires_complete_discovery_before_admitting_symbol_context(
+    sample, monkeypatch
+):
+    await discovery(sample, incomplete_coverage=True)
+    await discovery(sample, at=NOW + timedelta(hours=1))
+    sample["now"] = NOW + timedelta(hours=1)
+    implementation = module()
+
+    def unexpected_symbols(report):
+        pytest.fail("incomplete discovery was admitted as trusted symbol context")
+
+    monkeypatch.setattr(implementation, "_symbols", unexpected_symbols)
+    # The saved incomplete report exactly matches its recompiled capture. Its
+    # independent coverage check must still deny before deriving any context.
+    with pytest.raises(ValueError, match="stock_snapshot_unavailable"):
+        await implementation._replay(
+            sample["database"].parent.parent,
+            sample["loaded"],
+            sample["code_hash"],
+            sample["now"],
+            implementation._Window(),
+        )
 
 
 @pytest.mark.asyncio

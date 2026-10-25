@@ -67,9 +67,7 @@ def test_report_retains_quarantine_absence_sources_and_never_promotes():
             facts(),
             history(),
             observation("get_financials", {"symbols": ["BETA"]}, {"data": {"results": [None]}}),
-            observation(
-                "get_earnings_results", {"symbol": "ALFA"}, {"data": {"results": []}}
-            ),
+            observation("get_earnings_results", {"symbol": "ALFA"}, {"data": {"results": []}}),
             observation(
                 "get_sec_filing_index",
                 {"symbol": "ALFA"},
@@ -97,6 +95,46 @@ def test_report_retains_quarantine_absence_sources_and_never_promotes():
     assert all(value is None for value in beta_features["metrics"].values())
     assert "outcome" not in alfa_features
     assert alfa_features["projection_context"]["original_source_sha256"]
+
+
+def test_compiler_renders_each_normalized_dossier_once(monkeypatch):
+    module = importlib.import_module("trading_bot.runtime.stock_dossier_report")
+    dossiers = importlib.import_module("trading_bot.research.stock_dossiers")
+    original = dossiers.stock_dossier_document
+    rendered = []
+
+    def counted(dossier, **kwargs):
+        rendered.append(dossier.symbol)
+        return original(dossier, **kwargs)
+
+    monkeypatch.setattr(dossiers, "stock_dossier_document", counted)
+    monkeypatch.setattr(module, "stock_dossier_document", counted, raising=False)
+    report = module.compile_stock_dossier_report(observations=(facts(), history()), as_of=AS_OF)
+    assert report["company_count"] == 2
+    assert rendered == ["ALFA", "BETA"]
+
+
+def test_source_metadata_is_observed_before_dossier_rendering(monkeypatch):
+    module = importlib.import_module("trading_bot.runtime.stock_dossier_report")
+    dossiers = importlib.import_module("trading_bot.research.stock_dossiers")
+    original = dossiers.stock_dossier_document
+    events = []
+
+    class ObservedRow(dict):
+        def __getitem__(self, name):
+            if name in {"observation_sha256", "transport_authenticated"}:
+                events.append(name)
+            return super().__getitem__(name)
+
+    def observed(dossier, **kwargs):
+        events.append("render")
+        return original(dossier, **kwargs)
+
+    monkeypatch.setattr(dossiers, "stock_dossier_document", observed)
+    monkeypatch.setattr(module, "stock_dossier_document", observed, raising=False)
+    module.compile_stock_dossier_report(observations=(ObservedRow(facts()),), as_of=AS_OF)
+    assert events[:4] == ["observation_sha256", "transport_authenticated"] * 2
+    assert all(event == "render" for event in events[4:])
 
 
 def test_future_receipt_excluded_and_invalid_collection_explicitly_denied():
@@ -170,9 +208,10 @@ def test_report_size_boundary_denies_before_publication(tmp_path, monkeypatch):
     result = module.publish_stock_dossier_report(root=root, manifest_file=manifest, as_of=AS_OF)
     size = (root / result["report_file"]).stat().st_size
     monkeypatch.setattr(module, "_MAX_REPORT_BYTES", size)
-    assert module.publish_stock_dossier_report(
-        root=root, manifest_file=manifest, as_of=AS_OF
-    ) == result
+    assert (
+        module.publish_stock_dossier_report(root=root, manifest_file=manifest, as_of=AS_OF)
+        == result
+    )
 
     def unexpected_publish(*args):
         pytest.fail("oversized report reached publication")
