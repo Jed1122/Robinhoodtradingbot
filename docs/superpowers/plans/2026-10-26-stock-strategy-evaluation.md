@@ -38,7 +38,7 @@ stock/cash values, cost and turnover. Use fixed50-digit arithmetic.
   independence, final signal ignored, fractional self-financing and invalid inputs.
 - [x] Implement trace plus `slice_price_trace(trace, *, first_session,last_session)`
   with a prior-close boundary NAV, no state reset or new liquidation.
-- [ ] Pass focused tests, compare binary endpoints to existing comparator,
+- [x] Pass focused tests, compare binary endpoints to existing comparator,
   independently review and commit.
 
 ## 2. Metrics and paired uncertainty
@@ -52,7 +52,7 @@ and deterministic shared-index block-bootstrap intervals; no qualified/live flag
   fixed seed and16-family adjustment.
 - [x] Implement `summarize_price_path(...)`, `paired_block_intervals(...)` with
   the exact spec's constants and evidence hashes; do not reuse iid trade bootstrap.
-- [ ] Pass tests and independent rational/statistical examples; commit.
+- [x] Pass tests and independent rational/statistical examples; commit.
 
 ## 3. Source-bound first study and actual run
 
@@ -65,7 +65,7 @@ Use existing raw-content parsers/calendar admission and exact frozen handoff.
   derive train/holdout from one continuous path and training-only sensitivity.
 - [x] Test prefix mutation, row gaps, altered payloads, no denominator shrink,
   changed protocol and permanent nonpromotion.
-- [ ] Freeze remaining manifest/source identity; run actual development then
+- [x] Freeze remaining manifest/source identity; run actual development then
   final holdout once with durable native exit, exact input hashes and no retries
   that optimize the holdout. Independently reconstruct all reported findings.
 
@@ -96,3 +96,13 @@ Files/adapters follow verified actual schemas; inspect existing `hybrid/accounti
 - [ ] Integrate/merge routinely authorized repository changes. Complete the goal
   only after the full Task5scope is genuinely achieved; otherwise continue work
   on concrete missing requirements. Deployment/live activation remain separate.
+
+## Verified first increment
+
+At code86f35b21,338focusedtests passedPython3.12/3.14; defaultstock/shared
+regression12758passed,36warnings,91.53%combinedcoverage;criticalgatepassed.
+Actualfirstpriceprobeexit0/sourceunchanged; independentprice-onlyacceptance
+PASS2000489checks/0errors. This completesTask1–3only, notfullTask5.
+Nativeinput/runtime/exit/coverage/auditreceipts remain private. The firsttrend
+rule has no demonstratededge; see docs/stock-strategy-comparison.md.
+Task4monetaryadmission/replay andTask5fullfamily/reporting audit remain pending.
