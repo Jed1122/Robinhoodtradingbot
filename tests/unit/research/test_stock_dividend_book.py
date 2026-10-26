@@ -7,7 +7,15 @@ from decimal import ROUND_DOWN, Decimal, DefaultContext, Inexact, localcontext
 
 import pytest
 
-from trading_bot.hybrid.models import Account, FillFact, Lot, PaperOrder, Settlement
+from trading_bot.hybrid.models import (
+    Account,
+    AllocationEpisode,
+    ExitProgress,
+    FillFact,
+    Lot,
+    PaperOrder,
+    Settlement,
+)
 from trading_bot.market_data.stock_economic_evidence import StockCashDividendEvent
 from trading_bot.research.hybrid_policies import CalendarSession
 
@@ -642,3 +650,440 @@ def test_explicit_context_ignores_ambient_and_global_default_context():
         DefaultContext.flags = old_default.flags.copy()
         DefaultContext.traps = old_default.traps.copy()
         importlib.reload(module)
+
+
+@pytest.mark.parametrize("paid", [False, True])
+def test_adoption_cannot_release_existing_tax_capital_even_above_dividend_floor(paid):
+    from trading_bot.research.stock_dividend_book import (
+        adopt_dividend_account,
+        credit_due_dividends,
+    )
+
+    original = book()
+    if paid:
+        original = credit_due_dividends(accrue(original), at=calendar()[4].opens_at)
+    proposed = Account.model_validate(
+        original.account.model_dump() | {"tax_reserve": original.account.tax_reserve - D(1)}
+    )
+    assert proposed.tax_reserve >= original.dividend_tax_reserved
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[5].closes_at)
+
+
+def test_a_modeled_sell_fill_does_not_authorize_release_of_prior_tax_capital():
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = book()
+    proposed = Account.model_validate(modeled_sale(original).model_dump() | {"tax_reserve": D(9)})
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[3].closes_at)
+
+
+@pytest.mark.parametrize("unrelated_sale", [False, True])
+def test_active_buy_reservation_cannot_disappear_without_its_own_fill_or_cancellation(
+    unrelated_sale,
+):
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = book()
+    state = modeled_sale(original) if unrelated_sale else original.account
+    proposed = Account.model_validate(
+        state.model_dump()
+        | {
+            "orders": (
+                state.orders[0].model_copy(update={"reserved_cash": D(0)}),
+                *state.orders[1:],
+            )
+        }
+    )
+    assert proposed.orders[0].status == "open"
+    assert proposed.orders[0].filled == original.account.orders[0].filled == 0
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[3].closes_at)
+
+
+def test_unrelated_fill_cannot_supply_another_orders_filled_quantity_delta():
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = book()
+    state = modeled_sale(original)
+    forged_order = state.orders[0].model_copy(
+        update={"filled": D(1), "status": "filled", "reserved_cash": D(0)}
+    )
+    proposed = Account.model_validate(
+        state.model_dump() | {"orders": (forged_order, *state.orders[1:])}
+    )
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[3].closes_at)
+
+
+@pytest.mark.parametrize("terminal", ["cancelled", "rejected"])
+def test_terminal_no_fill_release_and_unchanged_tax_reserve_remain_supported(terminal):
+    from trading_bot.hybrid.execution import cancel_order
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = book()
+    changed = cancel_order(original.account, "pending")
+    if terminal == "rejected":
+        changed = Account.model_validate(
+            changed.model_dump()
+            | {
+                "orders": (
+                    changed.orders[0].model_copy(update={"status": terminal}),
+                    *changed.orders[1:],
+                )
+            }
+        )
+    result = adopt_dividend_account(original, changed, at=calendar()[2].opens_at)
+    assert result.account.orders[0].reserved_cash == 0
+    assert result.account.tax_reserve == original.account.tax_reserve
+    assert result.account.buying_power == original.account.buying_power + D(40)
+
+
+def partial_exit_book():
+    from trading_bot.config.hybrid import HybridSettings
+    from trading_bot.hybrid.execution import fill_order
+
+    episode = AllocationEpisode(
+        id="owned-episode",
+        symbol="AXP",
+        sleeve="tactical",
+        original_cash=D(1000),
+        original_quantity=D(10),
+    )
+    threshold = "owned-episode:partial_first"
+    state = Account(
+        cash=D(100),
+        lots=(
+            Lot(
+                id="owned-lot",
+                symbol="AXP",
+                sleeve="tactical",
+                quantity=D(10),
+                basis=D(1000),
+                acquired_at=calendar()[0].opens_at,
+                episode_id=episode.id,
+            ),
+        ),
+        orders=(
+            PaperOrder(
+                id="rung-order",
+                symbol="AXP",
+                side="sell",
+                sleeve="tactical",
+                quantity=D("2.5"),
+                threshold=threshold,
+                episode_id=episode.id,
+            ),
+            PaperOrder(
+                id="other-buy",
+                symbol="BAC",
+                side="buy",
+                sleeve="long_term",
+                quantity=D(1),
+                reserved_cash=D(20),
+            ),
+        ),
+        episodes=(episode,),
+        exit_progress=(
+            ExitProgress(threshold=threshold, symbol="AXP", sleeve="tactical", target=D("2.5")),
+        ),
+    )
+    filled = fill_order(
+        state,
+        FillFact(
+            id="first-rung-fill",
+            order_id="rung-order",
+            quantity=D(1),
+            price=D(125),
+            fee=D(0),
+            at=calendar()[0].closes_at,
+        ),
+        HybridSettings(),
+        settlement_at=calendar()[3].opens_at,
+    )
+    return book(state=filled)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        None,
+        {"threshold": "replacement"},
+        {"symbol": "BAC"},
+        {"sleeve": "long_term"},
+        {"target": D(3)},
+        {"target": D(2)},
+        {"filled": D(".5")},
+        {"filled": D("1.5")},
+    ],
+)
+def test_partial_exit_history_cannot_be_forgotten_rewritten_or_advanced_without_fill(change):
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = partial_exit_book()
+    progress = original.account.exit_progress[0]
+    proposed = Account.model_validate(
+        original.account.model_dump()
+        | {"exit_progress": () if change is None else (progress.model_copy(update=change),)}
+    )
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[2].opens_at)
+
+
+def test_an_unrelated_buy_fill_cannot_erase_prior_exit_history():
+    from trading_bot.config.hybrid import HybridSettings
+    from trading_bot.hybrid.execution import fill_order
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = partial_exit_book()
+    purchased = fill_order(
+        original.account,
+        FillFact(
+            id="unrelated-buy",
+            order_id="other-buy",
+            quantity=D(1),
+            price=D(20),
+            fee=D(0),
+            at=calendar()[3].opens_at,
+        ),
+        HybridSettings(),
+    )
+    proposed = Account.model_validate(purchased.model_dump() | {"exit_progress": ()})
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[3].closes_at)
+
+
+@pytest.mark.parametrize("quantity", [D(".5"), D("1.5")])
+def test_owned_partial_and_full_exit_fills_advance_the_same_target(quantity):
+    from trading_bot.config.hybrid import HybridSettings
+    from trading_bot.hybrid.execution import fill_order
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = partial_exit_book()
+    filled = fill_order(
+        original.account,
+        FillFact(
+            id="next-rung-fill",
+            order_id="rung-order",
+            quantity=quantity,
+            price=D(126),
+            fee=D(".01"),
+            at=calendar()[3].opens_at,
+        ),
+        HybridSettings(),
+        settlement_at=calendar()[4].opens_at,
+    )
+    result = adopt_dividend_account(original, filled, at=calendar()[3].closes_at)
+    assert result.account.exit_progress[0].target == D("2.5")
+    assert result.account.exit_progress[0].filled == D(1) + quantity
+
+
+def test_cancelled_partial_exit_retains_the_original_rung_remainder():
+    from trading_bot.config.hybrid import HybridSettings
+    from trading_bot.hybrid.execution import cancel_order
+    from trading_bot.hybrid.exits import propose_exit
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = partial_exit_book()
+    cancelled = cancel_order(original.account, "rung-order")
+    result = adopt_dividend_account(original, cancelled, at=calendar()[2].opens_at)
+    proposal = propose_exit(
+        result.account, "owned-episode", "partial_first", D(125), D(125), HybridSettings()
+    )
+    assert proposal is not None and proposal.quantity == D("1.5")
+    assert result.account.exit_progress == original.account.exit_progress
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        None,
+        {"id": "replacement"},
+        {"symbol": "BAC"},
+        {"sleeve": "long_term"},
+        {"original_cash": D(999)},
+        {"original_cash": D(2000)},
+        {"original_quantity": D(9)},
+        {"original_quantity": D(20)},
+    ],
+)
+def test_original_allocation_episode_cannot_be_forgotten_or_rewritten_without_buy_fill(change):
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = partial_exit_book()
+    episode = original.account.episodes[0]
+    proposed = Account.model_validate(
+        original.account.model_dump()
+        | {"episodes": () if change is None else (episode.model_copy(update=change),)}
+    )
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[2].opens_at)
+
+
+def test_no_fill_adoption_cannot_invent_an_allocation_episode():
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = book()
+    extra = AllocationEpisode(
+        id="invented", symbol="BAC", sleeve="long_term", original_cash=D(10), original_quantity=D(1)
+    )
+    proposed = Account.model_validate(original.account.model_dump() | {"episodes": (extra,)})
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[2].opens_at)
+
+
+def buy_episode_transition(count=2):
+    from trading_bot.config.hybrid import HybridSettings
+    from trading_bot.hybrid.execution import fill_order
+
+    episode = AllocationEpisode(
+        id="buy-episode",
+        symbol="BAC",
+        sleeve="long_term",
+        original_cash=D(40),
+        original_quantity=D(2),
+    )
+    state = Account(
+        cash=D(100),
+        lots=(
+            Lot(
+                id="prior-buy",
+                symbol="BAC",
+                sleeve="long_term",
+                quantity=D(2),
+                basis=D(40),
+                acquired_at=calendar()[0].opens_at,
+                episode_id=episode.id,
+            ),
+        ),
+        orders=(
+            PaperOrder(
+                id="add-capital",
+                symbol="BAC",
+                side="buy",
+                sleeve="long_term",
+                quantity=D(2),
+                reserved_cash=D(50),
+                episode_id=episode.id,
+            ),
+        ),
+        episodes=(episode,),
+    )
+    original = book(state=state)
+    result = state
+    fills = (("buy-one", D(20), D(".01")), ("buy-two", D(19), D(".02")))
+    for identity, price, fee in fills[:count]:
+        result = fill_order(
+            result,
+            FillFact(
+                id=identity,
+                order_id="add-capital",
+                quantity=D(1),
+                price=price,
+                fee=fee,
+                at=calendar()[3].opens_at,
+            ),
+            HybridSettings(),
+        )
+    return original, result
+
+
+@pytest.mark.parametrize(
+    "count,capital,quantity,reservation",
+    [(1, D("60.01"), D(3), D("29.99")), (2, D("79.03"), D(4), D(0))],
+)
+def test_attributable_buy_fills_extend_original_capital_and_quantity_with_fees(
+    count, capital, quantity, reservation
+):
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original, purchased = buy_episode_transition(count)
+    result = adopt_dividend_account(original, purchased, at=calendar()[3].closes_at)
+    assert result.account.episodes[0].original_cash == capital
+    assert result.account.episodes[0].original_quantity == quantity
+    assert result.account.orders[0].reserved_cash == reservation
+    assert result.account.tax_reserve == original.account.tax_reserve
+
+
+@pytest.mark.parametrize("field,value", [("original_cash", D("79")), ("original_quantity", D(5))])
+def test_buy_episode_additions_must_match_owned_fill_contributions_exactly(field, value):
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original, purchased = buy_episode_transition()
+    proposed = Account.model_validate(
+        purchased.model_dump()
+        | {"episodes": (purchased.episodes[0].model_copy(update={field: value}),)}
+    )
+    with pytest.raises(ValueError):
+        adopt_dividend_account(original, proposed, at=calendar()[3].closes_at)
+
+
+def test_new_owned_buy_episode_preserves_other_original_contributions_and_rungs():
+    from trading_bot.config.hybrid import HybridSettings
+    from trading_bot.hybrid.execution import fill_order
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    original = partial_exit_book()
+    purchased = fill_order(
+        original.account,
+        FillFact(
+            id="separate-buy",
+            order_id="other-buy",
+            quantity=D(1),
+            price=D(20),
+            fee=D(0),
+            at=calendar()[3].opens_at,
+        ),
+        HybridSettings(),
+    )
+    result = adopt_dividend_account(original, purchased, at=calendar()[3].closes_at)
+    assert result.account.exit_progress == original.account.exit_progress
+    assert result.account.episodes[0] == original.account.episodes[0]
+    assert result.account.episodes[1].id == "other-buy"
+    assert result.account.episodes[1].original_cash == D(20)
+    assert result.account.episodes[1].original_quantity == D(1)
+
+
+def test_buy_contribution_rounding_matches_owned_fill_cost_before_original_capital_addition():
+    from trading_bot.config.hybrid import HybridSettings
+    from trading_bot.hybrid.execution import fill_order
+    from trading_bot.research.stock_dividend_book import adopt_dividend_account
+
+    # An arithmetic boundary fixture, not an observed or eligible security price.
+    episode = AllocationEpisode(
+        id="rounding", symbol="BAC", sleeve="long_term", original_cash=D(1), original_quantity=D(1)
+    )
+    state = Account(
+        cash=D(1),
+        episodes=(episode,),
+        orders=(
+            PaperOrder(
+                id="tiny-buy",
+                symbol="BAC",
+                side="buy",
+                sleeve="long_term",
+                quantity=D(".000001"),
+                reserved_cash=D(1),
+                episode_id=episode.id,
+            ),
+        ),
+    )
+    original = book(state=state)
+    with localcontext() as context:
+        context.prec = 50
+        filled = fill_order(
+            state,
+            FillFact(
+                id="tiny-fill",
+                order_id="tiny-buy",
+                quantity=D(".000001"),
+                price=D("3e-44"),
+                fee=D("3e-50"),
+                at=calendar()[3].opens_at,
+            ),
+            HybridSettings(),
+        )
+    result = adopt_dividend_account(original, filled, at=calendar()[3].closes_at)
+    assert result.account.episodes == filled.episodes
+    assert result.account.episodes[0].original_cash > D(1)

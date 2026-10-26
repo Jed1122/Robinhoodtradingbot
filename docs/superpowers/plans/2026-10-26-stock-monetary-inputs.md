@@ -54,8 +54,23 @@ The implementation now uses three explicit typed attributes with identical
 semantics/error ordering. The architecture rule is unchanged. The observed
 failure is retained; the full retry is still required before completion.
 
-- [ ] Run the complete retained stock/shared regression and unchanged coverage
-  gates after both components are frozen, plus applicable static checks.
+- [x] First full retry at `6606a590`: 12,861 passed, no failures/skips,
+  36 warnings, 91.57% combined line/branch coverage; unchanged critical/host
+  coverage gate passed. Native exit 0 and unchanged source inventory are retained
+  in receipt `97b9482d228ca7038e7cc4d7fa576ab15418caaf6d3d19a518660bfcb0cd2c9f`.
+  Repository Ruff, mypy (469 source files) and expanded Bandit also exited 0;
+  existing Bandit annotation warnings remain visible.
+- [x] Close the subsequent independent review's three adoption-history gaps:
+  preexisting tax reserve release, active buy reservation release without a
+  matching fill/cancellation, and lost partial-exit/allocation episode history.
+  Preserve legitimate fill, settlement and cancellation operations.
+  The 26 new rejection cases first failed, then passed after narrow guards.
+  All 105 dividend-book cases passed on Python 3.12/3.14; 362 compatibility and
+  architecture cases passed on both versions. Root independently reviewed the
+  diff and passed 492 related cases, followed by 105 at the final source bytes.
+  Focused Ruff, mypy and Bandit passed. Current full-suite CI remains required.
+- [ ] Verify those corrections at their own source revision with the retained
+  regression and unchanged coverage gates. The earlier pass does not cover them.
 - [ ] Preserve actual terminal receipts and source identity, then integrate.
 
 Before an actual monetary study, freeze the complete source admission and protocol:

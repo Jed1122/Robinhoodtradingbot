@@ -25,7 +25,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from trading_bot.domain.decimal_utils import _require_sha256_hex, require_bounded_decimal
-from trading_bot.hybrid.models import Account
+from trading_bot.hybrid.models import Account, AllocationEpisode, FillFact, PaperOrder
 from trading_bot.market_data.recording import content_hash
 from trading_bot.market_data.stock_economic_evidence import (
     CashDividendAccrual,
@@ -600,6 +600,66 @@ def receivable_value(book: DividendBook, *, at: datetime) -> Decimal:
         )
 
 
+def _allocation_history(
+    old: Account,
+    proposed: Account,
+    appended: tuple[FillFact, ...],
+    orders: dict[str, PaperOrder],
+) -> None:
+    """Retain original contributions and partial rungs across owned transitions."""
+    next_progress = {item.threshold: item for item in proposed.exit_progress}
+    for before in old.exit_progress:
+        after = next_progress.get(before.threshold)
+        if after is None:
+            raise DividendBookError("partial_exit_history_lost")
+        fills = tuple(
+            item for item in appended if orders[item.order_id].threshold == before.threshold
+        )
+        _check(
+            after.symbol == before.symbol
+            and after.sleeve == before.sleeve
+            and after.target == before.target
+            and all(
+                orders[item.order_id].side == "sell"
+                and orders[item.order_id].symbol == before.symbol
+                and orders[item.order_id].sleeve == before.sleeve
+                for item in fills
+            )
+            and after.filled == before.filled + sum((item.quantity for item in fills), _ZERO),
+            "partial_exit_history_not_bound_to_owned_fills",
+        )
+
+    expected = {item.id: item for item in old.episodes}
+    for fill in appended:
+        order = orders[fill.order_id]
+        if order.side != "buy":
+            continue
+        episode_id = order.episode_id or order.id
+        before_episode = expected.get(episode_id)
+        _check(
+            before_episode is None
+            or (before_episode.symbol == order.symbol and before_episode.sleeve == order.sleeve),
+            "original_allocation_identity_rewritten",
+        )
+        expected[episode_id] = AllocationEpisode(
+            id=episode_id,
+            symbol=order.symbol,
+            sleeve=order.sleeve,
+            original_cash=(
+                (fill.quantity * fill.price + fill.fee)
+                + (_ZERO if before_episode is None else before_episode.original_cash)
+            ),
+            original_quantity=(
+                (_ZERO if before_episode is None else before_episode.original_quantity)
+                + fill.quantity
+            ),
+        )
+    _check(
+        {item.id: item for item in proposed.episodes} == expected,
+        "original_allocation_not_bound_to_owned_buy_fills",
+    )
+
+
 def _adoption_history(book: DividendBook, proposed: Account, at: datetime) -> None:
     old = book.account
     _check(proposed.starting_capital == old.starting_capital, "starting_capital_rewind")
@@ -617,6 +677,7 @@ def _adoption_history(book: DividendBook, proposed: Account, at: datetime) -> No
         "monotonic_account_history_lost",
     )
     _check(proposed.tax_reserve >= book.dividend_tax_reserved, "retained_dividend_tax_reserve_lost")
+    _check(proposed.tax_reserve >= old.tax_reserve, "prior_tax_reserve_cannot_release")
     old_fills = {item.id: item for item in old.fills}
     new_fills = {item.id: item for item in proposed.fills}
     _check(
@@ -628,6 +689,14 @@ def _adoption_history(book: DividendBook, proposed: Account, at: datetime) -> No
     old_orders = {item.id: item for item in old.orders}
     new_orders = {item.id: item for item in proposed.orders}
     _check(all(key in new_orders for key in old_orders), "prior_owned_order_lost")
+    _check(
+        all(item.order_id in new_orders for item in appended), "external_fill_without_owned_order"
+    )
+    quantities: dict[str, Decimal] = {}
+    for order_fill in appended:
+        quantities[order_fill.order_id] = (
+            quantities.get(order_fill.order_id, _ZERO) + order_fill.quantity
+        )
     for key, before in old_orders.items():
         after = new_orders[key]
         mutable = {"filled", "reserved_cash", "status"}
@@ -636,15 +705,22 @@ def _adoption_history(book: DividendBook, proposed: Account, at: datetime) -> No
             and after.filled >= before.filled,
             "prior_order_rewritten_or_fill_rewind",
         )
+        _check(
+            after.filled == before.filled + quantities.get(key, _ZERO),
+            "filled_quantity_not_bound_to_owned_appended_fills",
+        )
+        if after.status in {"open", "partial"} and after.filled == before.filled:
+            _check(
+                after.reserved_cash == before.reserved_cash,
+                "active_order_reservation_changed_without_fill",
+            )
         if before.status in {"filled", "cancelled", "rejected"}:
             _check(after == before, "terminal_order_history_reopened")
-    _check(
-        all(item.order_id in new_orders for item in appended), "external_fill_without_owned_order"
-    )
     _check(
         set(old.completed_thresholds) <= set(proposed.completed_thresholds),
         "exit_threshold_history_lost",
     )
+    _allocation_history(old, proposed, appended, new_orders)
     old_settlements = {item.id: item for item in old.settlements}
     new_settlements = {item.id: item for item in proposed.settlements}
     appended_by_id = {item.id: item for item in appended}
