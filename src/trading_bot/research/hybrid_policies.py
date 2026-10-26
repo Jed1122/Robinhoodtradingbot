@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from itertools import pairwise
 from types import MappingProxyType
@@ -14,9 +14,15 @@ from typing import Literal
 
 from trading_bot.research.hybrid_sources import SourceFact, identifier, utc, visible_facts
 from trading_bot.research.hybrid_strategies import FAMILIES, PriceBar
+from trading_bot.research.stock_annual_quality import (
+    DefinedAnnualQuality,
+    UnavailableAnnualQuality,
+    revalidate_annual_quality,
+)
 
 Decision = Literal["enter", "hold", "exit"]
 EventKind = Literal["earnings", "revision"]
+AnnualQuality = DefinedAnnualQuality | UnavailableAnnualQuality
 
 
 @dataclass(frozen=True)
@@ -107,6 +113,7 @@ class PolicyInput:
     facts: tuple[SourceFact, ...] = ()
     events: tuple[PolicyEvent, ...] = ()
     held_positions: tuple[tuple[str, str], ...] = ()
+    annual_quality: tuple[AnnualQuality, ...] = ()
 
     def __post_init__(self) -> None:
         utc(self.information_at)
@@ -121,6 +128,7 @@ class PolicyInput:
                 self.facts,
                 self.events,
                 self.held_positions,
+                self.annual_quality,
             )
         ):
             raise ValueError("immutable observation tuples required")
@@ -187,8 +195,12 @@ BOUNDS = MappingProxyType(
 def _validate(
     data: PolicyInput,
 ) -> tuple[
-    dict[int, CalendarSession], dict[tuple[str, int], SessionObservation], tuple[PolicyEvent, ...]
+    dict[int, CalendarSession],
+    dict[tuple[str, int], SessionObservation],
+    tuple[PolicyEvent, ...],
+    tuple[AnnualQuality, ...],
 ]:
+    annual_quality = _validate_annual_quality(data)
     sessions: dict[int, CalendarSession] = {}
     for session in data.sessions:
         if session.index in sessions:
@@ -239,7 +251,56 @@ def _validate(
         sessions,
         observations,
         tuple(sorted(events.values(), key=lambda e: (e.symbol, e.event_id))),
+        annual_quality,
     )
+
+
+def _validate_annual_quality(data: PolicyInput) -> tuple[AnnualQuality, ...]:
+    if not isinstance(data.annual_quality, tuple):
+        raise ValueError("immutable annual quality tuple required")
+    originals: dict[tuple[str, str, date], str] = {}
+    vintages: dict[tuple[str, date, date, datetime], str] = {}
+    unique: dict[str, AnnualQuality] = {}
+    for supplied in data.annual_quality:
+        bundle = revalidate_annual_quality(supplied)
+        request, periods = bundle.request, bundle.request.periods
+        if (
+            bundle.availability_proxy_at > data.information_at
+            or request.information_at > data.information_at
+            or request.filing.date_filed > data.information_at.date()
+            or any(
+                day > data.information_at.date()
+                for day in (
+                    periods.current_start,
+                    periods.current_end,
+                    periods.prior_start,
+                    periods.prior_end,
+                )
+            )
+        ):
+            raise ValueError("future annual quality information")
+        digest = bundle.evidence_hash
+        key = (request.filing.symbol, request.filing.filing_id, periods.current_end)
+        if key in originals and originals[key] != digest:
+            raise ValueError("conflicting annual quality original/period")
+        originals[key] = digest
+        vintage = (
+            request.filing.symbol,
+            periods.current_end,
+            request.filing.date_filed,
+            bundle.availability_proxy_at,
+        )
+        if vintage in vintages and vintages[vintage] != request.filing.filing_id:
+            raise ValueError("ambiguous same-day annual originals")
+        vintages[vintage] = request.filing.filing_id
+        unique[digest] = bundle
+    symbols = {bundle.request.filing.symbol for bundle in unique.values()}
+    if any(
+        fact.symbol in symbols and fact.metric in {"roe", "revenue_growth", "debt_to_equity"}
+        for fact in data.facts
+    ):
+        raise ValueError("ambiguous annual and legacy quality evidence")
+    return tuple(unique[digest] for digest in sorted(unique))
 
 
 def _members(data: PolicyInput) -> tuple[str, ...]:
@@ -263,7 +324,26 @@ def _window(
     return tuple(observations[key] for key in keys) if all(k in observations for k in keys) else ()
 
 
-def _financial_quality(data: PolicyInput, symbol: str) -> bool | None:
+def _financial_quality(
+    data: PolicyInput, symbol: str, annual_quality: tuple[AnnualQuality, ...]
+) -> bool | None:
+    supplied = [bundle for bundle in annual_quality if bundle.request.filing.symbol == symbol]
+    if supplied:
+        selected = max(
+            supplied,
+            key=lambda bundle: (
+                bundle.request.periods.current_end,
+                bundle.request.filing.date_filed,
+                bundle.availability_proxy_at,
+            ),
+        )
+        if isinstance(selected, UnavailableAnnualQuality):
+            return None
+        return (
+            selected.roe >= Decimal(".10")
+            and selected.revenue_growth >= 0
+            and 0 <= selected.debt_to_equity <= 1
+        )
     latest: dict[str, SourceFact] = {}
     required = {"roe", "revenue_growth", "debt_to_equity"}
     for fact in visible_facts(data.facts, data.information_at):
@@ -291,10 +371,12 @@ def evaluate_policies(data: PolicyInput) -> tuple[PolicyOutcome, ...]:
     """Validate all supplied observations, then evaluate frozen, independent hypotheses.
 
     The calendar verification boolean is a caller declaration, not source attestation.
+    Optional atomic annual measurements retain their retrospective availability
+    proxy and original receipt clocks; neither is promoted to native publication.
     Missing data produces no proposal. A proposal has no quantity, broker identity,
     risk approval, or order authority. Holding ranges are research horizon bounds.
     """
-    sessions, observations, events = _validate(data)
+    sessions, observations, events, annual_quality = _validate(data)
     symbols = sorted(
         {r.symbol for r in data.universe}
         | {r.symbol for r in data.observations}
@@ -366,6 +448,9 @@ def evaluate_policies(data: PolicyInput) -> tuple[PolicyOutcome, ...]:
             for e in events
         ],
     }
+    # Absence preserves the complete legacy evidence body and its existing hashes.
+    if annual_quality:
+        evidence_body["annual_quality"] = [bundle.evidence_hash for bundle in annual_quality]
     digest = hashlib.sha256(json.dumps(evidence_body, sort_keys=True).encode()).hexdigest()
     results: list[PolicyOutcome] = []
     for symbol in symbols:
@@ -383,7 +468,7 @@ def evaluate_policies(data: PolicyInput) -> tuple[PolicyOutcome, ...]:
                 else:
                     qualifies = symbol in leaders and momentum[symbol] > 0
                     if family == "quality_momentum":
-                        quality = _financial_quality(data, symbol)
+                        quality = _financial_quality(data, symbol, annual_quality)
                         if quality is None:
                             missing = "missing_fundamentals"
                         else:

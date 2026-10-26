@@ -7,7 +7,9 @@ It does not yet admit actual provider observations or establish a strategy edge.
 
 Inputs support individual-stock candidates, preselected long-term stock allocations
 and an optional labeled passive comparison. Supplied signals are fixture inputs;
-the seven-family strategy selection and long-term quality selection remain separate.
+the optional seven-family policy seam is described in
+[the policy guide](stock-economic-policies.md). Long-term quality-stock selection
+remains separate.
 The `make_fictional_replay_inputs` factory and validation retain the fictional
 profile. All investment, source and live-authorization flags remain false.
 
@@ -69,9 +71,14 @@ purpose-specific admission path; changing a fixture label cannot qualify them.
 
 ## Remaining integration
 
-Actual source admission, annual-quality/strategy consumers, seven-family
-orchestration, corporate-action conversion, volatility and scheduled-rebalance
-controls, operating expenses, statistical comparisons and the actual economic
-study remain incomplete. The original late period was already used for price
-research and cannot become a fresh confirmatory holdout. Broker deployment and
+The optional [operating-cost phase](stock-operating-costs.md) uses the same paused
+book and a separate gross/net liability report. The original absent-plan path
+keeps its prior evidence and result shapes. Preparation of actual observations
+is a separate [conditional input boundary](stock-monetary-preparation.md); it
+cannot relabel actual data as a fictional replay or admit a constrained strategy.
+
+Actual-source replay, complete stock-quality selection, corporate-action
+conversion, volatility and scheduled-rebalance controls, statistical comparisons
+and the actual economic study remain incomplete. The original late period was
+already used for price research and cannot become a fresh confirmatory holdout. Broker deployment and
 live activation are separate; no mandatory paper-trading waiting period is added.

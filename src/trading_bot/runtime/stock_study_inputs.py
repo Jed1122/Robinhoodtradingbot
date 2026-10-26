@@ -17,9 +17,13 @@ from typing import Any, Literal, cast
 from trading_bot.clock import require_utc
 from trading_bot.domain.decimal_utils import _require_sha256_hex
 from trading_bot.market_data.recording import content_hash
-from trading_bot.market_data.stock_daily_series import parse_stock_daily_calendar
+from trading_bot.market_data.stock_daily_series import (
+    StockDailyCalendar,
+    parse_stock_daily_calendar,
+)
 from trading_bot.market_data.stock_split_comparison import (
     StockSplitRequest,
+    StockSplitSeries,
     parse_stock_split_series,
 )
 from trading_bot.research.hybrid_strategies import PriceBar
@@ -41,6 +45,52 @@ class StockStudyInputs:
     qualified: Literal[False] = field(default=False, init=False)
     investment_eligible: Literal[False] = field(default=False, init=False)
     live_authorized: Literal[False] = field(default=False, init=False)
+
+
+@dataclass(frozen=True, slots=True)
+class StockStudyObservations:
+    """Native observation output; construction is not source authentication.
+
+    Use the original-file loader for source validation, never a caller-prepared
+    instance as a substitute for rereading its complete pinned originals.
+    """
+
+    prices: StockStudyInputs
+    calendar: StockDailyCalendar
+    raw_series: tuple[StockSplitSeries, ...]
+    split_series: tuple[StockSplitSeries, ...]
+    quote_currency: None = field(default=None, init=False)
+    qualified: Literal[False] = field(default=False, init=False)
+    source_qualified: Literal[False] = field(default=False, init=False)
+    strategy_qualified: Literal[False] = field(default=False, init=False)
+    investment_eligible: Literal[False] = field(default=False, init=False)
+    trading_enabled: Literal[False] = field(default=False, init=False)
+    live_authorized: Literal[False] = field(default=False, init=False)
+    authenticated: Literal[False] = field(default=False, init=False)
+
+    @property
+    def evidence_hash(self) -> str:
+        return str(
+            content_hash(
+                (
+                    "stock-study-observations-v1",
+                    self.prices.evidence_hash,
+                    (
+                        self.calendar.content_sha256,
+                        self.calendar.received_at,
+                        self.calendar.market_timezone,
+                    ),
+                    tuple(
+                        (series.request.request_sha256, series.content_sha256, series.received_at)
+                        for series in self.raw_series
+                    ),
+                    tuple(
+                        (series.request.request_sha256, series.content_sha256, series.received_at)
+                        for series in self.split_series
+                    ),
+                )
+            )
+        )
 
 
 def _check(condition: bool) -> None:
@@ -139,6 +189,35 @@ def load_stock_study_inputs(
     cohorts or observed split factors require a separately specified adapter.
     Every native unknown interpolation/currency remains unknown in its original.
     """
+    return _load_stock_study_originals(
+        evidence_directory, manifest_path, expected_manifest_sha256=expected_manifest_sha256
+    ).prices
+
+
+def load_stock_study_observations(
+    evidence_directory: Path,
+    manifest_path: Path,
+    *,
+    expected_manifest_sha256: str,
+) -> StockStudyObservations:
+    """Freshly validate all pinned originals and retain native OHLC/volume fields.
+
+    The fixed no-split study admission is identical to the legacy price loader.
+    Unknown currency/interpolation and current receipt clocks stay unchanged.
+    No caller-provided cache, factor, signal or prepared input is accepted.
+    """
+    return _load_stock_study_originals(
+        evidence_directory, manifest_path, expected_manifest_sha256=expected_manifest_sha256
+    )
+
+
+def _load_stock_study_originals(
+    evidence_directory: Path,
+    manifest_path: Path,
+    *,
+    expected_manifest_sha256: str,
+) -> StockStudyObservations:
+    """One complete whole-original read/decode shared by both public projections."""
     descriptors: list[int] = []
     try:
         _require_sha256_hex(expected_manifest_sha256, "stock study manifest")
@@ -203,6 +282,8 @@ def load_stock_study_inputs(
         symbols = manifest["symbols"]
         _check(type(symbols) is list and tuple(row["symbol"] for row in symbols) == STUDY_SYMBOLS)
         bars: list[tuple[PriceBar, ...]] = []
+        raw_series: list[StockSplitSeries] = []
+        split_series: list[StockSplitSeries] = []
         receipts = [_utc(cal_receipt["received_at"])]
         for symbol, row in zip(STUDY_SYMBOLS, symbols, strict=True):
             refs = row["original_receipts"]
@@ -266,6 +347,8 @@ def load_stock_study_inputs(
                 pair.append(series)
                 receipts.append(received_at)
             _check(pair[0].bars == pair[1].bars)
+            raw_series.append(pair[0])
+            split_series.append(pair[1])
             bars.append(
                 tuple(
                     PriceBar(s.closes_at, b.open_price, b.close_price)
@@ -284,7 +367,7 @@ def load_stock_study_inputs(
                 )
             )
         )
-        return StockStudyInputs(
+        prices = StockStudyInputs(
             tuple(bars),
             tuple(s.opens_at for s in calendar.sessions),
             member_at,
@@ -293,6 +376,7 @@ def load_stock_study_inputs(
             hashes,
             digest,
         )
+        return StockStudyObservations(prices, calendar, tuple(raw_series), tuple(split_series))
     except (
         OSError,
         ValueError,
