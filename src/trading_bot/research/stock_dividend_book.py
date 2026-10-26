@@ -603,10 +603,15 @@ def receivable_value(book: DividendBook, *, at: datetime) -> Decimal:
 def _adoption_history(book: DividendBook, proposed: Account, at: datetime) -> None:
     old = book.account
     _check(proposed.starting_capital == old.starting_capital, "starting_capital_rewind")
-    for flag in ("kill_switch", "tactical_suspended", "weekly_review_required"):
-        _check(
-            not getattr(old, flag) or getattr(proposed, flag), "sticky_safety_state_cannot_clear"
-        )
+    _check(not old.kill_switch or proposed.kill_switch, "sticky_safety_state_cannot_clear")
+    _check(
+        not old.tactical_suspended or proposed.tactical_suspended,
+        "sticky_safety_state_cannot_clear",
+    )
+    _check(
+        not old.weekly_review_required or proposed.weekly_review_required,
+        "sticky_safety_state_cannot_clear",
+    )
     _check(
         proposed.high_watermark >= old.high_watermark and proposed.fees >= old.fees,
         "monotonic_account_history_lost",

@@ -48,6 +48,12 @@ cross-account/substantially-identical treatment or final basis adjustments.
 
 ## Integration and remaining boundary
 
+The first full run at990bce4 ended with12,860passes and one architecture failure:
+the conservative capability scanner rejected a reflective sticky-field lookup.
+The implementation now uses three explicit typed attributes with identical
+semantics/error ordering. The architecture rule is unchanged. The observed
+failure is retained; the full retry is still required before completion.
+
 - [ ] Run the complete retained stock/shared regression and unchanged coverage
   gates after both components are frozen, plus applicable static checks.
 - [ ] Preserve actual terminal receipts and source identity, then integrate.
