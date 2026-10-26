@@ -12,6 +12,7 @@ from itertools import pairwise
 from types import MappingProxyType
 from typing import Literal
 
+from trading_bot.market_data.recording import content_hash
 from trading_bot.research.hybrid_sources import SourceFact, identifier, utc, visible_facts
 from trading_bot.research.hybrid_strategies import FAMILIES, PriceBar
 from trading_bot.research.stock_annual_quality import (
@@ -258,11 +259,20 @@ def _validate(
 def _validate_annual_quality(data: PolicyInput) -> tuple[AnnualQuality, ...]:
     if not isinstance(data.annual_quality, tuple):
         raise ValueError("immutable annual quality tuple required")
+    records = []
+    for supplied in data.annual_quality:
+        bundle = revalidate_annual_quality(supplied)
+        records.append((bundle, bundle.evidence_hash))
+    return _annual_records(data, tuple(records))
+
+
+def _annual_records(
+    data: PolicyInput, records: tuple[tuple[AnnualQuality, str], ...]
+) -> tuple[AnnualQuality, ...]:
     originals: dict[tuple[str, str, date], str] = {}
     vintages: dict[tuple[str, date, date, datetime], str] = {}
     unique: dict[str, AnnualQuality] = {}
-    for supplied in data.annual_quality:
-        bundle = revalidate_annual_quality(supplied)
+    for bundle, digest in records:
         request, periods = bundle.request, bundle.request.periods
         if (
             bundle.availability_proxy_at > data.information_at
@@ -279,7 +289,6 @@ def _validate_annual_quality(data: PolicyInput) -> tuple[AnnualQuality, ...]:
             )
         ):
             raise ValueError("future annual quality information")
-        digest = bundle.evidence_hash
         key = (request.filing.symbol, request.filing.filing_id, periods.current_end)
         if key in originals and originals[key] != digest:
             raise ValueError("conflicting annual quality original/period")
@@ -377,6 +386,17 @@ def evaluate_policies(data: PolicyInput) -> tuple[PolicyOutcome, ...]:
     risk approval, or order authority. Holding ranges are research horizon bounds.
     """
     sessions, observations, events, annual_quality = _validate(data)
+    return _evaluate_validated_policies(data, sessions, observations, events, annual_quality)
+
+
+def _evaluate_validated_policies(
+    data: PolicyInput,
+    sessions: dict[int, CalendarSession],
+    observations: dict[tuple[str, int], SessionObservation],
+    events: tuple[PolicyEvent, ...],
+    annual_quality: tuple[AnnualQuality, ...],
+    annual_hashes: tuple[str, ...] | None = None,
+) -> tuple[PolicyOutcome, ...]:
     symbols = sorted(
         {r.symbol for r in data.universe}
         | {r.symbol for r in data.observations}
@@ -450,7 +470,11 @@ def evaluate_policies(data: PolicyInput) -> tuple[PolicyOutcome, ...]:
     }
     # Absence preserves the complete legacy evidence body and its existing hashes.
     if annual_quality:
-        evidence_body["annual_quality"] = [bundle.evidence_hash for bundle in annual_quality]
+        evidence_body["annual_quality"] = (
+            [bundle.evidence_hash for bundle in annual_quality]
+            if annual_hashes is None
+            else list(annual_hashes)
+        )
     digest = hashlib.sha256(json.dumps(evidence_body, sort_keys=True).encode()).hexdigest()
     results: list[PolicyOutcome] = []
     for symbol in symbols:
@@ -567,3 +591,122 @@ def evaluate_policies(data: PolicyInput) -> tuple[PolicyOutcome, ...]:
                 )
             )
     return tuple(results)
+
+
+@dataclass(frozen=True, slots=True)
+class _CompiledAnnualPolicyInventory:
+    records: tuple[tuple[AnnualQuality, str, str], ...]
+    root: str
+
+
+def _annual_compact(bundle: AnnualQuality) -> str:
+    request = bundle.request
+    filing = request.filing
+    return str(
+        content_hash(
+            (
+                "owned-annual-policy-leaf-v1",
+                type(bundle).__qualname__,
+                bundle.method_id,
+                filing.symbol,
+                filing.filing_id,
+                filing.date_filed,
+                filing.receipt.observation_sha256,
+                filing.receipt.received_at,
+                request.entity,
+                request.periods,
+                request.information_at,
+                bundle.availability_proxy_at,
+                bundle.debt_measurement_at,
+                bundle.status,
+                bundle.reason_codes,
+                tuple(
+                    (
+                        type(n).__qualname__,
+                        None
+                        if n is None
+                        else (n.as_tuple().sign, n.as_tuple().digits, n.as_tuple().exponent),
+                    )
+                    for n in (bundle.roe, bundle.revenue_growth, bundle.debt_to_equity)
+                ),
+                tuple(
+                    (r.role, r.source_collection_index, r.fact.row_index) for r in bundle.references
+                ),
+                tuple(
+                    (
+                        source.receipt.observation_sha256,
+                        source.receipt.received_at,
+                        source.requested_filing_ids,
+                        source.requested_concepts,
+                        len(source.records),
+                        source.facts_missing,
+                        source.null_row_indices,
+                    )
+                    for source in request.facts
+                ),
+                (
+                    bundle.qualified,
+                    bundle.source_qualified,
+                    bundle.strategy_qualified,
+                    bundle.investment_eligible,
+                    bundle.trading_enabled,
+                    bundle.live_authorized,
+                ),
+            )
+        )
+    )
+
+
+def _compile_annual_policy_inventory(
+    supplied: tuple[AnnualQuality, ...],
+) -> _CompiledAnnualPolicyInventory:
+    if type(supplied) is not tuple or len(supplied) > 64:
+        raise ValueError("bounded annual inventory required")
+    unique = {}
+    for item in supplied:
+        bundle = revalidate_annual_quality(item)
+        digest = bundle.evidence_hash
+        unique[digest] = (bundle, digest, _annual_compact(bundle))
+    records = tuple(unique[d] for d in sorted(unique))
+    if records:
+        at = max(max(b.availability_proxy_at, b.request.information_at) for b, _, _ in records)
+        _annual_records(PolicyInput((), (), (), at, True), tuple((b, d) for b, d, _ in records))
+    root = str(
+        content_hash(
+            ("owned-annual-policy-inventory-v1", tuple((d, leaf) for _, d, leaf in records))
+        )
+    )
+    return _CompiledAnnualPolicyInventory(records, root)
+
+
+def _evaluate_owned_policies(
+    data: PolicyInput,
+    inventory: _CompiledAnnualPolicyInventory,
+) -> tuple[PolicyOutcome, ...]:
+    """Private compiled route; owning source boundaries must rebuild the inventory."""
+    if type(inventory) is not _CompiledAnnualPolicyInventory or data.annual_quality:
+        raise ValueError("owned annual context and empty public annual input required")
+    for bundle, _, leaf in inventory.records:
+        if _annual_compact(bundle) != leaf:
+            raise ValueError("owned annual source leaf changed")
+    root = str(
+        content_hash(
+            (
+                "owned-annual-policy-inventory-v1",
+                tuple((d, leaf) for _, d, leaf in inventory.records),
+            )
+        )
+    )
+    if root != inventory.root:
+        raise ValueError("owned annual context changed")
+    sessions, observations, events, _ = _validate(data)
+    visible = tuple(
+        (b, digest)
+        for b, digest, _ in inventory.records
+        if b.availability_proxy_at <= data.information_at
+        and b.request.information_at <= data.information_at
+    )
+    annual = _annual_records(data, visible)
+    return _evaluate_validated_policies(
+        data, sessions, observations, events, annual, tuple(d for _, d in visible)
+    )

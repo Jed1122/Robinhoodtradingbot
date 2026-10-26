@@ -15,6 +15,8 @@ from trading_bot.research.hybrid_policies import (
     PolicyInput,
     StrategyProposal,
     UnavailablePolicy,
+    _CompiledAnnualPolicyInventory,
+    _evaluate_owned_policies,
     evaluate_policies,
 )
 from trading_bot.research.hybrid_strategies import FAMILIES
@@ -72,25 +74,29 @@ class EconomicPolicyFrame(_Unqualified):
     request: PolicyInput
 
     def __post_init__(self) -> None:
-        _flags(self)
-        _check(type(self.family) is str and self.family in FAMILIES, "unknown_policy_family")
-        _check(type(self.request) is PolicyInput, "typed_policy_observations_required")
-        self.request.__post_init__()
-        _check(not self.request.held_positions, "held_state_is_kernel_owned")
-        _check(
-            1 <= len(self.request.sessions) <= 10000
-            and len(self.request.observations) <= 8 * 253
-            and len(self.request.universe) <= 1024
-            and len(self.request.facts) <= 4096
-            and len(self.request.events) <= 4096
-            and len(self.request.annual_quality) <= 64,
-            "bounded_policy_observations_required",
-        )
-        _check(
-            {row.symbol for row in self.request.universe} == set(STOCK_POLICY_SYMBOLS)
-            and all(row.symbol in STOCK_POLICY_SYMBOLS for row in self.request.observations),
-            "full_eight_stock_policy_frame_required",
-        )
+        _validate_frame_fields(self, self.family, self.request)
+
+
+def _validate_frame_fields(value: _Unqualified, family: str, request: PolicyInput) -> None:
+    _flags(value)
+    _check(type(family) is str and family in FAMILIES, "unknown_policy_family")
+    _check(type(request) is PolicyInput, "typed_policy_observations_required")
+    request.__post_init__()
+    _check(not request.held_positions, "held_state_is_kernel_owned")
+    _check(
+        1 <= len(request.sessions) <= 10000
+        and len(request.observations) <= 8 * 253
+        and len(request.universe) <= 1024
+        and len(request.facts) <= 4096
+        and len(request.events) <= 4096
+        and len(request.annual_quality) <= 64,
+        "bounded_policy_observations_required",
+    )
+    _check(
+        {row.symbol for row in request.universe} == set(STOCK_POLICY_SYMBOLS)
+        and all(row.symbol in STOCK_POLICY_SYMBOLS for row in request.observations),
+        "full_eight_stock_policy_frame_required",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,8 +322,8 @@ def validate_policy_assets(inputs: StockEconomicReplayInputs) -> None:
     )
 
 
-def evaluate_economic_policy_close(
-    frame: EconomicPolicyFrame,
+def _evaluate_close(
+    frame: EconomicPolicyFrame | _RetrospectivePolicyFrame,
     *,
     session_index: int,
     information_at: datetime,
@@ -325,7 +331,10 @@ def evaluate_economic_policy_close(
     held_positions: tuple[tuple[str, str], ...],
 ) -> EconomicPolicyClose:
     """Project actual policy proposals using current filled holdings, never intended fills."""
-    _check(type(frame) is EconomicPolicyFrame, "typed_policy_frame_required")
+    _check(
+        type(frame) in (EconomicPolicyFrame, _RetrospectivePolicyFrame),
+        "typed_policy_frame_required",
+    )
     frame.__post_init__()
     request = frame.request
     _check(request.information_at == information_at, "policy_close_clock_mismatch")
@@ -353,7 +362,12 @@ def evaluate_economic_policy_close(
         "owned_family_held_state_required",
     )
     supplied = replace(request, held_positions=held)
-    outcomes = tuple(row for row in evaluate_policies(supplied) if row.family == frame.family)
+    all_outcomes = (
+        _evaluate_owned_policies(supplied, frame.inventory)
+        if type(frame) is _RetrospectivePolicyFrame
+        else evaluate_policies(supplied)
+    )
+    outcomes = tuple(row for row in all_outcomes if row.family == frame.family)
     _check(
         len(outcomes) == 8 and {row.symbol for row in outcomes} == set(STOCK_POLICY_SYMBOLS),
         "all_eight_actual_policy_outcomes_required",
@@ -375,7 +389,30 @@ def evaluate_economic_policy_close(
                 outcome.decision == "hold" and (symbol, frame.family) in held
             )
             conditions.append(KnownPolicyCondition(symbol, frame.family, active, outcome))
-    return EconomicPolicyClose(
+    close_type = (
+        _RetrospectivePolicyClose
+        if type(frame) is _RetrospectivePolicyFrame
+        else EconomicPolicyClose
+    )
+    if type(frame) is _RetrospectivePolicyFrame:
+        return close_type(
+            session_index,
+            information_at,
+            frame.family,
+            held,
+            tuple(conditions),
+            str(
+                content_hash(
+                    (
+                        "retrospective-economic-policy-input-v1",
+                        supplied,
+                        frame.panel_root,
+                        frame.inventory.root,
+                    )
+                )
+            ),
+        )
+    return close_type(
         session_index,
         information_at,
         frame.family,
@@ -393,6 +430,63 @@ def evaluate_economic_policy_close(
                 )
             )
         ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _RetrospectivePolicyFrame(_Unqualified):
+    family: str
+    request: PolicyInput
+    inventory: _CompiledAnnualPolicyInventory
+    panel_root: str
+
+    def __post_init__(self) -> None:
+        _validate_frame_fields(self, self.family, self.request)
+        _require_sha256_hex(self.panel_root, "retrospective_panel_root")
+        _check(not self.request.annual_quality, "owned_retrospective_annual_context_required")
+
+
+@dataclass(frozen=True, slots=True)
+class _RetrospectivePolicyClose(EconomicPolicyClose):
+    @property
+    def evidence_hash(self) -> str:
+        self.__post_init__()
+        return str(content_hash(("retrospective-economic-policy-close-v1", self)))
+
+
+def evaluate_economic_policy_close(
+    frame: EconomicPolicyFrame,
+    *,
+    session_index: int,
+    information_at: datetime,
+    next_open: datetime | None,
+    held_positions: tuple[tuple[str, str], ...],
+) -> EconomicPolicyClose:
+    _check(type(frame) is EconomicPolicyFrame, "typed_policy_frame_required")
+    return _evaluate_close(
+        frame,
+        session_index=session_index,
+        information_at=information_at,
+        next_open=next_open,
+        held_positions=held_positions,
+    )
+
+
+def _evaluate_retrospective_policy_close(
+    frame: _RetrospectivePolicyFrame,
+    *,
+    session_index: int,
+    information_at: datetime,
+    next_open: datetime | None,
+    held_positions: tuple[tuple[str, str], ...],
+) -> EconomicPolicyClose:
+    _check(type(frame) is _RetrospectivePolicyFrame, "typed_retrospective_policy_frame_required")
+    return _evaluate_close(
+        frame,
+        session_index=session_index,
+        information_at=information_at,
+        next_open=next_open,
+        held_positions=held_positions,
     )
 
 

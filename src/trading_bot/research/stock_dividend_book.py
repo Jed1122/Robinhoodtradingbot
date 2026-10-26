@@ -243,7 +243,7 @@ def _calendar(sessions: tuple[CalendarSession, ...], source_hash: str) -> None:
         previous = session
 
 
-def _validate_book(book: DividendBook) -> None:
+def _validate_book(book: DividendBook) -> Decimal:
     _check(type(book) is DividendBook, "factory_dividend_book_required")
     _check(
         book.qualified
@@ -304,9 +304,9 @@ def _validate_book(book: DividendBook) -> None:
     )
     credit_ids = tuple(step.event_id for step in book.trace if step.action == "credit")
     _check(credit_ids == book.credited_events, "forgotten_credited_income_history")
-    _check(
-        book.account.tax_reserve >= book.dividend_tax_reserved, "retained_dividend_tax_reserve_lost"
-    )
+    retained_tax = book.dividend_tax_reserved
+    _check(book.account.tax_reserve >= retained_tax, "retained_dividend_tax_reserve_lost")
+    return retained_tax
 
 
 def _make_book(
@@ -318,8 +318,19 @@ def _make_book(
     through_at: datetime,
     sessions: tuple[CalendarSession, ...],
     calendar_source_hash: str,
-    trace: tuple[DividendBookStep, ...],
+    trace: tuple[DividendBookStep, ...] | _OwnedBookAppend,
+    *,
+    _transaction: _BookTransaction | None = None,
 ) -> DividendBook:
+    if _transaction is not None:
+        _check(type(trace) is _OwnedBookAppend, "owned_trace_append_required")
+        if not isinstance(trace, _OwnedBookAppend):
+            raise DividendBookError("owned_trace_append_required")
+        _transaction._require(_transaction.current)
+        _check(trace.prefix is _transaction.current.trace, "owned_dividend_prefix_changed")
+        # Build the unchanged prefix here, rather than accepting a caller-made
+        # replacement or rescanning the complete prefix on every retained append.
+        trace = (*trace.prefix, trace.step)
     value = object.__new__(DividendBook)
     supplied = {
         "account": account,
@@ -337,7 +348,10 @@ def _make_book(
         if content is MISSING:
             raise TypeError("missing internal dividend book field")
         object.__setattr__(value, item.name, content)
-    _validate_book(value)
+    if _transaction is None:
+        _validate_book(value)
+    else:
+        _transaction._accept(value)
     return value
 
 
@@ -446,13 +460,14 @@ def _boundaries(
         )
 
 
-def record_dividend_entitlement(
+def _owned_record_dividend_entitlement(
     book: DividendBook,
     event: StockCashDividendEvent,
     *,
     snapshot_at: datetime,
     ex_opens_at: datetime,
     modeled_pay_available_at: datetime | None,
+    _transaction: _BookTransaction | None = None,
 ) -> DividendBook:
     """Accrue once at the ex open from a locked prior-close ownership snapshot.
 
@@ -461,7 +476,7 @@ def record_dividend_entitlement(
     remains the event's actual retained timestamp, including retrospective receipt.
     """
     with localcontext(_CONTEXT):
-        _validate_book(book)
+        _require_current(book, _transaction)
         _check(type(event) is StockCashDividendEvent, "native_cash_dividend_event_required")
         event.__post_init__()
         _check(event.distribution_type == "recurring", "unsupported_due_bill_distribution")
@@ -529,14 +544,20 @@ def record_dividend_entitlement(
             ex_opens_at,
             book.sessions,
             book.calendar_source_hash,
-            (*book.trace, step),
+            _append_trace(book, step, _transaction),
+            _transaction=_transaction,
         )
 
 
-def credit_due_dividends(book: DividendBook, *, at: datetime) -> DividendBook:
+def _owned_credit_due_dividends(
+    book: DividendBook,
+    *,
+    at: datetime,
+    _transaction: _BookTransaction | None = None,
+) -> DividendBook:
     """Credit each known modeled payment once; unknown tax reserves100% of paid cash."""
     with localcontext(_CONTEXT):
-        _validate_book(book)
+        _require_current(book, _transaction)
         _utc(at)
         _check(at >= book.through_at, "dividend_clock_rewind")
         due = sorted(
@@ -562,7 +583,8 @@ def credit_due_dividends(book: DividendBook, *, at: datetime) -> DividendBook:
                 at,
                 book.sessions,
                 book.calendar_source_hash,
-                (*book.trace, step),
+                _append_trace(book, step, _transaction),
+                _transaction=_transaction,
             )
         result = book
         for item in due:
@@ -594,20 +616,28 @@ def credit_due_dividends(book: DividendBook, *, at: datetime) -> DividendBook:
                 at,
                 result.sessions,
                 result.calendar_source_hash,
-                (*result.trace, step),
+                _append_trace(result, step, _transaction),
+                _transaction=_transaction,
             )
         return result
 
 
-def receivable_value(book: DividendBook, *, at: datetime) -> Decimal:
+def _owned_receivable_value(
+    book: DividendBook,
+    *,
+    at: datetime,
+    _transaction: _BookTransaction | None = None,
+) -> Decimal:
     """Query the recorded gross receivable at a historical time, never future cash."""
     with localcontext(_CONTEXT):
-        _validate_book(book)
+        _require_current(book, _transaction)
         _utc(at)
         _check(at <= book.through_at, "valuation_ahead_of_book_clock")
-        credited = {
-            step.event_id for step in book.trace if step.action == "credit" and step.at <= at
-        }
+        credited = (
+            _transaction._credited
+            if _transaction is not None and at == book.through_at
+            else {step.event_id for step in book.trace if step.action == "credit" and step.at <= at}
+        )
         return sum(
             (
                 item.accrual.accrued_amount
@@ -679,6 +709,12 @@ def _allocation_history(
 
 
 def _adoption_history(book: DividendBook, proposed: Account, at: datetime) -> None:
+    _adoption_history_values(book, proposed, at, book.dividend_tax_reserved)
+
+
+def _adoption_history_values(
+    book: DividendBook, proposed: Account, at: datetime, retained_dividend_tax: Decimal
+) -> None:
     old = book.account
     _check(proposed.starting_capital == old.starting_capital, "starting_capital_rewind")
     _check(not old.kill_switch or proposed.kill_switch, "sticky_safety_state_cannot_clear")
@@ -694,7 +730,7 @@ def _adoption_history(book: DividendBook, proposed: Account, at: datetime) -> No
         proposed.high_watermark >= old.high_watermark and proposed.fees >= old.fees,
         "monotonic_account_history_lost",
     )
-    _check(proposed.tax_reserve >= book.dividend_tax_reserved, "retained_dividend_tax_reserve_lost")
+    _check(proposed.tax_reserve >= retained_dividend_tax, "retained_dividend_tax_reserve_lost")
     _check(proposed.tax_reserve >= old.tax_reserve, "prior_tax_reserve_cannot_release")
     old_fills = {item.id: item for item in old.fills}
     new_fills = {item.id: item for item in proposed.fills}
@@ -779,7 +815,13 @@ def _adoption_history(book: DividendBook, proposed: Account, at: datetime) -> No
         )
 
 
-def adopt_dividend_account(book: DividendBook, account: Account, *, at: datetime) -> DividendBook:
+def _owned_adopt_dividend_account(
+    book: DividendBook,
+    account: Account,
+    *,
+    at: datetime,
+    _transaction: _BookTransaction | None = None,
+) -> DividendBook:
     """Adopt a caller-modeled account transition without recomputing earned rights.
 
     Rewind guards do not independently verify external execution/basis/cash math.
@@ -787,11 +829,12 @@ def adopt_dividend_account(book: DividendBook, account: Account, *, at: datetime
     from ``book.account``; external text/LLM output is never such an authority.
     """
     with localcontext(_CONTEXT):
-        _validate_book(book)
+        _require_current(book, _transaction)
         _utc(at)
         _check(at >= book.through_at, "dividend_clock_rewind")
         proposed = _account(account, at)
-        _adoption_history(book, proposed, at)
+        if _transaction is None:
+            _adoption_history(book, proposed, at)
         step = _step(book, "adopt_account", at, book.account, proposed)
         return _make_book(
             proposed,
@@ -802,17 +845,19 @@ def adopt_dividend_account(book: DividendBook, account: Account, *, at: datetime
             at,
             book.sessions,
             book.calendar_source_hash,
-            (*book.trace, step),
+            _append_trace(book, step, _transaction),
+            _transaction=_transaction,
         )
 
 
-def pay_modeled_operating_expense(
+def _owned_pay_modeled_operating_expense(
     book: DividendBook,
     *,
     charge_id: str,
     amount_usd: Decimal,
     charge_fingerprint: str,
     at: datetime,
+    _transaction: _BookTransaction | None = None,
 ) -> DividendBook:
     """Debit a labeled model cost through the paused book, never a brokerage payment.
 
@@ -821,7 +866,7 @@ def pay_modeled_operating_expense(
     gain, tax or execution fee. Repeating the same charge is idempotent.
     """
     with localcontext(_CONTEXT):
-        _validate_book(book)
+        _require_current(book, _transaction)
         _utc(at)
         _check(at >= book.through_at, "operating_expense_clock_rewind")
         _check(
@@ -868,16 +913,22 @@ def pay_modeled_operating_expense(
             at,
             book.sessions,
             book.calendar_source_hash,
-            (*book.trace, step),
+            _append_trace(book, step, _transaction),
+            _transaction=_transaction,
         )
 
 
-def _bind_modeled_operating_phase(
-    book: DividendBook, *, phase_id: str, fingerprint: str, at: datetime
+def _owned_bind_modeled_operating_phase(
+    book: DividendBook,
+    *,
+    phase_id: str,
+    fingerprint: str,
+    at: datetime,
+    _transaction: _BookTransaction | None = None,
 ) -> tuple[DividendBook, DividendBookStep]:
     """Cost-owner-only append: retain a validated phase commitment without a cash move."""
     with localcontext(_CONTEXT):
-        _validate_book(book)
+        _require_current(book, _transaction)
         _utc(at)
         _check(at >= book.through_at, "operating_cost_phase_clock_rewind")
         _check(
@@ -907,5 +958,306 @@ def _bind_modeled_operating_phase(
             at,
             book.sessions,
             book.calendar_source_hash,
-            (*book.trace, step),
+            _append_trace(book, step, _transaction),
+            _transaction=_transaction,
         ), step
+
+
+@dataclass(frozen=True, slots=True)
+class _OwnedBookAppend:
+    prefix: tuple[DividendBookStep, ...]
+    step: DividendBookStep
+
+
+def _append_trace(
+    book: DividendBook, step: DividendBookStep, transaction: _BookTransaction | None
+) -> tuple[DividendBookStep, ...] | _OwnedBookAppend:
+    if transaction is None:
+        return (*book.trace, step)
+    transaction._require(book)
+    return _OwnedBookAppend(book.trace, step)
+
+
+def _validate_current_book(book: DividendBook) -> Decimal:
+    """Fresh generic and adoption-history checks without an abandoned trace append."""
+    retained_tax = _validate_book(book)
+    with localcontext(_CONTEXT):
+        _adoption_history_values(book, book.account, book.through_at, retained_tax)
+    return retained_tax
+
+
+def _require_current(book: DividendBook, transaction: _BookTransaction | None) -> None:
+    if transaction is None:
+        _validate_book(book)
+    else:
+        transaction._require(book)
+
+
+class _BookTransaction:
+    """One synchronous owner's checked prefix; never retained on a public result.
+
+    Full entry/exit scans bracket individually checked new Accounts and append
+    deltas. No operation accepts an equal-but-foreign predecessor. This provides
+    deterministic mutation detection, not protection from concurrent memory writes.
+    """
+
+    __slots__ = ("_active", "_credited", "_dividend_tax", "current")
+
+    def __init__(self, book: DividendBook) -> None:
+        retained_tax = _validate_current_book(book)
+        self.current = book
+        self._active = True
+        self._dividend_tax = retained_tax
+        self._credited = frozenset(book.credited_events)
+
+    def _require(self, book: DividendBook) -> None:
+        _check(self._active and book is self.current, "owned_current_dividend_book_required")
+
+    def _accept(self, value: DividendBook) -> None:
+        old = self.current
+        self._require(old)
+        _check(
+            value.sessions is old.sessions
+            and value.calendar_source_hash == old.calendar_source_hash
+            and value.tax_rate == old.tax_rate
+            and value.limitations == old.limitations
+            and value.arithmetic_precision == 50
+            and value.qualified
+            is value.source_qualified
+            is value.investment_eligible
+            is value.trading_enabled
+            is value.live_authorized
+            is False,
+            "owned_dividend_scope_changed",
+        )
+        _utc(value.account_at)
+        _utc(value.through_at)
+        _check(
+            old.account_at <= value.account_at <= value.through_at
+            and value.through_at >= old.through_at
+            and len(value.trace) == len(old.trace) + 1,
+            "owned_dividend_prefix_changed",
+        )
+        step = value.trace[-1]
+        _check(type(step) is DividendBookStep, "invalid_trace_sequence")
+        _utc(step.at)
+        _check(
+            step.sequence == len(old.trace)
+            and step.previous_step_hash == old.trace[-1].evidence_hash
+            and step.at == value.through_at
+            and step.account_before_hash == _account_hash(old.account)
+            and step.account_after_hash == _account_hash(value.account)
+            and step.orders_before_hash == _orders_hash(old.account)
+            and step.orders_after_hash == _orders_hash(value.account),
+            "invalid_owned_dividend_append",
+        )
+        _account(value.account, value.account_at)
+        _check(
+            len(value.entitlements) <= _MAX_EVENTS
+            and all(a is b for a, b in zip(value.entitlements, old.entitlements, strict=False)),
+            "owned_entitlement_prefix_changed",
+        )
+        if step.action == "accrue":
+            _check(
+                len(value.entitlements) == len(old.entitlements) + 1
+                and value.credited_events == old.credited_events
+                and value.account is old.account
+                and value.entitlements[-1].event.id == step.event_id
+                and value.entitlements[-1].event_fingerprint == step.event_fingerprint
+                and value.entitlements[-1].accrual.accrued_amount == step.gross_amount
+                and step.tax_reserve_added == 0,
+                "invalid_owned_accrual_append",
+            )
+        else:
+            _check(value.entitlements is old.entitlements, "owned_entitlements_changed")
+            if step.action == "credit":
+                item = next((e for e in old.entitlements if e.event.id == step.event_id), None)
+                _check(item is not None, "credit_without_owned_entitlement")
+                if item is None:
+                    raise DividendBookError("credit_without_owned_entitlement")
+                tax = item.accrual.accrued_amount * (_ONE if old.tax_rate is None else old.tax_rate)
+                _check(
+                    step.event_id not in old.credited_events
+                    and value.credited_events == (*old.credited_events, step.event_id)
+                    and step.event_fingerprint == item.event_fingerprint
+                    and step.gross_amount == item.accrual.accrued_amount
+                    and step.tax_reserve_added == tax
+                    and value.account.model_dump(exclude={"cash", "tax_reserve"})
+                    == old.account.model_dump(exclude={"cash", "tax_reserve"})
+                    and value.account.cash == old.account.cash + step.gross_amount
+                    and value.account.tax_reserve == old.account.tax_reserve + tax,
+                    "invalid_owned_dividend_credit",
+                )
+            else:
+                _check(value.credited_events is old.credited_events, "owned_credit_history_changed")
+                _check(step.tax_reserve_added == 0, "unexpected_owned_dividend_tax")
+                if step.action == "adopt_account":
+                    _adoption_history_values(
+                        old, value.account, value.account_at, self._dividend_tax
+                    )
+                    _check(step.gross_amount == 0, "unexpected_owned_adoption_cash")
+                elif step.action == "operating_expense":
+                    _check(
+                        step.gross_amount >= 0
+                        and step.gross_amount <= old.account.buying_power
+                        and Fraction(old.account.cash) - Fraction(value.account.cash)
+                        == Fraction(step.gross_amount)
+                        and value.account.model_dump(exclude={"cash"})
+                        == old.account.model_dump(exclude={"cash"}),
+                        "invalid_owned_operating_expense",
+                    )
+                else:
+                    _check(
+                        step.action in ("advance", "operating_cost_phase")
+                        and value.account is old.account
+                        and step.gross_amount == 0,
+                        "invalid_owned_no_cash_append",
+                    )
+        self._dividend_tax += step.tax_reserve_added
+        _check(
+            value.account.tax_reserve >= self._dividend_tax, "retained_dividend_tax_reserve_lost"
+        )
+        self.current = value
+        self._credited = frozenset(value.credited_events)
+
+    def adopt(self, book: DividendBook, account: Account, *, at: datetime) -> DividendBook:
+        return _owned_adopt_dividend_account(book, account, at=at, _transaction=self)
+
+    def credit(self, book: DividendBook, *, at: datetime) -> DividendBook:
+        return _owned_credit_due_dividends(book, at=at, _transaction=self)
+
+    def accrue(
+        self,
+        book: DividendBook,
+        event: StockCashDividendEvent,
+        *,
+        snapshot_at: datetime,
+        ex_opens_at: datetime,
+        modeled_pay_available_at: datetime | None,
+    ) -> DividendBook:
+        return _owned_record_dividend_entitlement(
+            book,
+            event,
+            snapshot_at=snapshot_at,
+            ex_opens_at=ex_opens_at,
+            modeled_pay_available_at=modeled_pay_available_at,
+            _transaction=self,
+        )
+
+    def receivable(self, book: DividendBook, *, at: datetime) -> Decimal:
+        return _owned_receivable_value(book, at=at, _transaction=self)
+
+    def pay(
+        self,
+        book: DividendBook,
+        *,
+        charge_id: str,
+        amount_usd: Decimal,
+        charge_fingerprint: str,
+        at: datetime,
+    ) -> DividendBook:
+        return _owned_pay_modeled_operating_expense(
+            book,
+            charge_id=charge_id,
+            amount_usd=amount_usd,
+            charge_fingerprint=charge_fingerprint,
+            at=at,
+            _transaction=self,
+        )
+
+    def bind(
+        self,
+        book: DividendBook,
+        *,
+        phase_id: str,
+        fingerprint: str,
+        at: datetime,
+    ) -> tuple[DividendBook, DividendBookStep]:
+        return _owned_bind_modeled_operating_phase(
+            book,
+            phase_id=phase_id,
+            fingerprint=fingerprint,
+            at=at,
+            _transaction=self,
+        )
+
+    def finish(self) -> DividendBook:
+        self._require(self.current)
+        try:
+            _validate_current_book(self.current)
+            return self.current
+        finally:
+            self._active = False
+
+    def _abort(self) -> None:
+        self._active = False
+
+
+def _begin_book_transaction(book: DividendBook) -> _BookTransaction:
+    return _BookTransaction(book)
+
+
+def record_dividend_entitlement(
+    book: DividendBook,
+    event: StockCashDividendEvent,
+    *,
+    snapshot_at: datetime,
+    ex_opens_at: datetime,
+    modeled_pay_available_at: datetime | None,
+) -> DividendBook:
+    """Freshly validate the caller book before recording a source-bound earned right."""
+    return _owned_record_dividend_entitlement(
+        book,
+        event,
+        snapshot_at=snapshot_at,
+        ex_opens_at=ex_opens_at,
+        modeled_pay_available_at=modeled_pay_available_at,
+    )
+
+
+def credit_due_dividends(book: DividendBook, *, at: datetime) -> DividendBook:
+    """Freshly validate and credit due modeled dividends once."""
+    return _owned_credit_due_dividends(book, at=at)
+
+
+def receivable_value(book: DividendBook, *, at: datetime) -> Decimal:
+    """Freshly validate a historical receivable query; it never supplies cash."""
+    return _owned_receivable_value(book, at=at)
+
+
+def adopt_dividend_account(book: DividendBook, account: Account, *, at: datetime) -> DividendBook:
+    """Freshly validate a caller-modeled transition; never authenticate an execution."""
+    return _owned_adopt_dividend_account(book, account, at=at)
+
+
+def pay_modeled_operating_expense(
+    book: DividendBook,
+    *,
+    charge_id: str,
+    amount_usd: Decimal,
+    charge_fingerprint: str,
+    at: datetime,
+) -> DividendBook:
+    """Freshly validate a paused-book debit, retaining reservation and exact-cash checks."""
+    return _owned_pay_modeled_operating_expense(
+        book,
+        charge_id=charge_id,
+        amount_usd=amount_usd,
+        charge_fingerprint=charge_fingerprint,
+        at=at,
+    )
+
+
+def _bind_modeled_operating_phase(
+    book: DividendBook,
+    *,
+    phase_id: str,
+    fingerprint: str,
+    at: datetime,
+) -> tuple[DividendBook, DividendBookStep]:
+    return _owned_bind_modeled_operating_phase(
+        book,
+        phase_id=phase_id,
+        fingerprint=fingerprint,
+        at=at,
+    )
