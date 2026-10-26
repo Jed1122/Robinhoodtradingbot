@@ -1,8 +1,9 @@
 """Pure lot accounting and exit quantities. No price prediction or broker calls."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from trading_bot.clock import require_utc
 from trading_bot.hybrid.models import Disposal, Lot, Sleeve
@@ -156,9 +157,17 @@ def exit_quantity(
 def wash_sale_conflicts(
     symbol: str, sold_at: datetime, purchases: tuple[Lot, ...]
 ) -> tuple[str, ...]:
+    """Flag same-symbol acquisitions within inclusive U.S. calendar trade dates.
+
+    This regular-U.S.-session screen does not determine substantially identical
+    securities, cross-account activity or final tax-basis adjustments.
+    """
     require_utc(sold_at)
+    market_timezone = ZoneInfo("America/New_York")
+    sold_date = sold_at.astimezone(market_timezone).date()
     return tuple(
         lot.id
         for lot in purchases
-        if lot.symbol == symbol and abs(lot.acquired_at - sold_at) <= timedelta(days=30)
+        if lot.symbol == symbol
+        and abs((lot.acquired_at.astimezone(market_timezone).date() - sold_date).days) <= 30
     )

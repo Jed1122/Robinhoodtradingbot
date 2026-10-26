@@ -407,38 +407,91 @@ def parse_cash_dividends(
     received_at: datetime,
 ) -> StockCashDividendEvidence:
     """Retain native cash events, without inferring complete provider pagination."""
-    rows = _rows(original_csv, expected_sha256, _DIVIDEND_HEADERS)
-    events = []
-    for row in rows:
-        ex_date = _date_text(row["ex_dividend_date"])
-        _check(row["currency"] == "USD")
-        frequency_text = row["frequency"]
-        _check(frequency_text == "" or re.fullmatch(r"[0-9]{1,6}", frequency_text) is not None)
-        if ex_date is None:
-            raise StockEconomicEvidenceError()
-        events.append(
-            StockCashDividendEvent(
-                id=row["id"],
-                ticker=row["ticker"],
-                cash_amount=_amount(row["cash_amount"]),
-                currency="USD",
-                ex_dividend_date=ex_date,
-                pay_date=_date_text(row["pay_date"]),
-                record_date=_date_text(row["record_date"]),
-                declaration_date=_date_text(row["declaration_date"]),
-                distribution_type=_optional_text(row["distribution_type"]),
-                frequency=int(frequency_text) if frequency_text else None,
-                received_at=received_at,
-                source_csv_sha256=expected_sha256,
-            )
-        )
-    return StockCashDividendEvidence(
-        symbol=symbol,
+    return parse_cash_dividend_panel(
+        original_csv,
+        expected_sha256=expected_sha256,
+        symbols=(symbol,),
         ex_start=ex_start,
         ex_end=ex_end,
         received_at=received_at,
-        original_csv_sha256=expected_sha256,
-        events=tuple(events),
+    )[0]
+
+
+def _cash_event_from_row(
+    row: dict[str, str], *, received_at: datetime, expected_sha256: str
+) -> StockCashDividendEvent:
+    ex_date = _date_text(row["ex_dividend_date"])
+    _check(row["currency"] == "USD")
+    frequency_text = row["frequency"]
+    _check(frequency_text == "" or re.fullmatch(r"[0-9]{1,6}", frequency_text) is not None)
+    if ex_date is None:
+        raise StockEconomicEvidenceError()
+    return StockCashDividendEvent(
+        id=row["id"],
+        ticker=row["ticker"],
+        cash_amount=_amount(row["cash_amount"]),
+        currency="USD",
+        ex_dividend_date=ex_date,
+        pay_date=_date_text(row["pay_date"]),
+        record_date=_date_text(row["record_date"]),
+        declaration_date=_date_text(row["declaration_date"]),
+        distribution_type=_optional_text(row["distribution_type"]),
+        frequency=int(frequency_text) if frequency_text else None,
+        received_at=received_at,
+        source_csv_sha256=expected_sha256,
+    )
+
+
+def parse_cash_dividend_panel(
+    original_csv: bytes,
+    *,
+    expected_sha256: str,
+    symbols: tuple[str, ...],
+    ex_start: date,
+    ex_end: date,
+    received_at: datetime,
+) -> tuple[StockCashDividendEvidence, ...]:
+    """Validate every original panel row before returning requested-symbol views.
+
+    Each derived view and event binds the entire original CSV hash, never a
+    filtered CSV. Missing requested-symbol rows remain empty observations, without
+    asserting absence of distributions or terminal provider pagination.
+    """
+    _check(type(symbols) is tuple and 1 <= len(symbols) <= 32)
+    for symbol in symbols:
+        _symbol(symbol)
+    _check(len(set(symbols)) == len(symbols))
+    _day(ex_start)
+    _day(ex_end)
+    _check(ex_start <= ex_end)
+    _binding(expected_sha256, received_at)
+    rows = _rows(original_csv, expected_sha256, _DIVIDEND_HEADERS)
+    events = []
+    ids: set[str] = set()
+    economics: set[tuple[str, date, Decimal, date | None]] = set()
+    for row in rows:
+        event = _cash_event_from_row(row, received_at=received_at, expected_sha256=expected_sha256)
+        _check(event.symbol in symbols and ex_start <= event.ex_date <= ex_end)
+        economic = (event.symbol, event.ex_date, event.cash_amount, event.pay_date)
+        _check(event.id not in ids and economic not in economics)
+        ids.add(event.id)
+        economics.add(economic)
+        events.append(event)
+
+    # Partition only after every native row, ID and economic key has passed.
+    buckets: dict[str, list[StockCashDividendEvent]] = {symbol: [] for symbol in symbols}
+    for event in events:
+        buckets[event.symbol].append(event)
+    return tuple(
+        StockCashDividendEvidence(
+            symbol=symbol,
+            ex_start=ex_start,
+            ex_end=ex_end,
+            received_at=received_at,
+            original_csv_sha256=expected_sha256,
+            events=tuple(buckets[symbol]),
+        )
+        for symbol in symbols
     )
 
 
