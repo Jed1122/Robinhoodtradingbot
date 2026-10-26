@@ -52,7 +52,7 @@ The first full run at990bce4 ended with12,860passes and one architecture failure
 the conservative capability scanner rejected a reflective sticky-field lookup.
 The implementation now uses three explicit typed attributes with identical
 semantics/error ordering. The architecture rule is unchanged. The observed
-failure is retained; the full retry is still required before completion.
+failure and the subsequent successful retries are retained separately.
 
 - [x] First full retry at `6606a590`: 12,861 passed, no failures/skips,
   36 warnings, 91.57% combined line/branch coverage; unchanged critical/host
@@ -68,10 +68,21 @@ failure is retained; the full retry is still required before completion.
   All 105 dividend-book cases passed on Python 3.12/3.14; 362 compatibility and
   architecture cases passed on both versions. Root independently reviewed the
   diff and passed 492 related cases, followed by 105 at the final source bytes.
-  Focused Ruff, mypy and Bandit passed. Current full-suite CI remains required.
-- [ ] Verify those corrections at their own source revision with the retained
-  regression and unchanged coverage gates. The earlier pass does not cover them.
-- [ ] Preserve actual terminal receipts and source identity, then integrate.
+  Focused Ruff, mypy and Bandit passed.
+- [x] Verify those corrections at source `70a87163327d1582e41d417016776a27c3198103`:
+  CI passed all six jobs, including 12,896 tests on each of Python 3.12, 3.13
+  and 3.14. Combined coverage was 91.88%, 91.88% and 91.63%; all unchanged
+  critical/host gates passed. Warnings were 1, 36 and 36, with no failures/skips.
+- [x] Preserve actual terminal receipts and source identity, then integrate.
+  [PR 57](https://github.com/Jed1122/Robinhoodtradingbot/pull/57) merged as
+  `dd704f8db3d3926dfea9183c9323ee445b085112`. Reviewed head, CI merge and actual
+  integration merge share tree `7fc2d3b72c0e10fe19782b064d233221703c1b7d`.
+  Private terminal CI receipt:
+  `1f933b7ef04fef5f49342f7456521c15018d30c2fd28f876dfbe7aa06856c573`.
+
+This preparatory increment is integrated. The subsequent economic replay and
+annual-quality work are separate changes and are not covered by this CI result.
+The full Task 5 evaluation remains incomplete. No deployment or trading occurred.
 
 Before an actual monetary study, freeze the complete source admission and protocol:
 currency/security context, lifecycle and distribution coverage, issuer-declared

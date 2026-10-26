@@ -106,3 +106,16 @@ PASS2000489checks/0errors. This completesTask1–3only, notfullTask5.
 Nativeinput/runtime/exit/coverage/auditreceipts remain private. The firsttrend
 rule has no demonstratededge; see docs/stock-strategy-comparison.md.
 Task4monetaryadmission/replay andTask5fullfamily/reporting audit remain pending.
+
+## Subsequent accounting and measurement increments
+
+The [monetary-input increment](2026-10-26-stock-monetary-inputs.md) is integrated
+through PR 57 with exact-source CI: 12,896 tests pass on each Python version and
+all unchanged coverage gates pass. It adds panel validation and the dividend book,
+including reviewed reservation, settlement and exit-history protections.
+
+The [economic-kernel increment](2026-10-26-stock-economic-kernel.md) adds the pure
+session/accounting loop and AXP annual measurement types. Focused and independent
+verification is complete; its own frozen full regression and CI remain pending.
+These are prerequisites for section 4, not completion of its actual-source
+admission, seven-family monetary comparisons or section 5's statistical audit.
