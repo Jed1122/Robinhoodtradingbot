@@ -32,6 +32,11 @@ the cash-start model. Later events are holding-dependent candidates; no entitlem
 is asserted. Unpaid terminal candidates remain separate from cash. The module
 generates no future market/settlement padding and grants no reinvestment funds.
 
+The separate [replay schedule module](stock-replay-schedules.md) can compile
+conditional market, settlement and dividend-funding tables, with calendar-only
+padding. It retains its own source and assumption bindings; it does not change
+this preparation result or make its unavailable constrained cases eligible.
+
 Fictional tests and independent graph probes verify the boundaries. The separate
 actual-input bridge, source-admitted monetary replay, complete strategy and cost
 comparisons, and statistical report remain work to finish Task 5. All investment

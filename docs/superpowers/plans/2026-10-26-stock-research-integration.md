@@ -23,12 +23,19 @@ evaluation remains required after these dependencies.
 - [x] Add source-bound conditional monetary preparation using intact normalized
   observations and explicit identity/currency/inventory assumptions. Retain all
   unavailable family/risk dependencies; never substitute a successful cash result.
-- [ ] Independently review each final source increment, run focused checks, then
+- [x] Independently review each final source increment, run focused checks, then
   freeze and verify the complete integrated stock/shared regression and CI.
-- [ ] Assemble and verify actual source inputs separately, with durable source/
+- [x] Assemble and verify actual source inputs separately, with durable source/
   code/assumption identities and no backdated receipt or invented financial data.
 
-Next: finish integrated verification, admit the relevant actual source/calendars
+Integration completed at `d1e1e2c0751d6cf0534a0f1549be52da2a5bc8a3` and merged
+in PR59. The complete local run passed 13,247 tests with 36 warnings and 91.86%
+coverage; all critical coverage gates passed. All six CI jobs passed, including
+13,247 tests on each Python 3.12, 3.13 and 3.14. The actual retained-input
+preparation exited 0 and passed independent source/date reconstruction. It
+computed no portfolio outcome and left all 56 fully constrained cases unavailable.
+
+Next: admit the relevant actual source/calendars
 and complete family/long-term/hybrid/exit/reinvestment comparisons,
 statistical analysis and requirement audit. The old late period is reused research
 data. Missing required comparisons remain incomplete. No mandatory prospective
