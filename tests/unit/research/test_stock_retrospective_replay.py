@@ -251,15 +251,47 @@ def test_operating_cost_loss_keeps_unchanged_sticky_entry_suspension():
 
 
 def test_final_native_close_has_no_padded_execution_and_requires_fresh_sources():
+    from trading_bot.research.stock_monetary_metrics import (
+        MetricUnavailableSlot,
+        MonetaryMetricRegistration,
+        monetary_native_calendar_hash,
+        summarize_retrospective_monetary_result,
+    )
+
     m = api()
     data = prepared(prices={s: ("100",) * 706 for s in admission._SYMBOLS})
     state = begin(data=data)
+    # Fictional controller identity bindings are frozen before this existing run.
+    metric_registration = MonetaryMetricRegistration(
+        state.source_root,
+        tuple(case.spec_hash for case in state.cases),
+        "c" * 40,
+        "d" * 40,
+        "e" * 64,
+        monetary_native_calendar_hash(data.calendar),
+        (MetricUnavailableSlot("benchmarks_and_inference", "not_registered"),),
+    )
     while state.next_session < 706:
         state = advance(state)
     result = m.finish_retrospective_economic_replay(state, fresh_inputs=data)
     assert result.full_task5_complete is result.live_authorized is False
     assert result.state.next_session == 706
     assert all(r.session_index <= 705 for r in state.cases[0].core.records)
+    metrics = summarize_retrospective_monetary_result(
+        result, fresh_inputs=data, registration=metric_registration
+    )
+    assert (
+        metrics.full_task5_complete is metrics.live_authorized is False
+        and len(metrics.full_constrained_cases) == 56
+        and len(metrics.long_term_quality_slots) == 8
+        and tuple(
+            (row.name, row.expected_mark_count, row.expected_return_count)
+            for row in metrics.cases[0].segments
+        )
+        == (("full", 507, 506), ("train", 239, 238), ("late", 269, 268))
+        and metrics.cases[0].policy_coverage.expected_audit_slots == 4056
+        and metrics.cases[0].policy_coverage.expected_executable_slots == 4048
+    )
     with pytest.raises(ValueError):
         advance(state)
     original = data.request.monetary.request.slots[0].raw
