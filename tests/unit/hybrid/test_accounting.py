@@ -53,6 +53,24 @@ def test_wash_sale_past_and_future_window():
     assert wash_sale_conflicts("SPY", NOW, (lot,)) == ("a",)
 
 
+@pytest.mark.parametrize(
+    ("sold_at", "acquired_at", "expected"),
+    [
+        ("2026-09-01T14:30:00+00:00", "2026-10-01T20:00:00+00:00", True),
+        ("2026-10-01T20:00:00+00:00", "2026-09-01T14:30:00+00:00", True),
+        ("2026-09-01T20:00:00+00:00", "2026-10-02T14:30:00+00:00", False),
+        ("2026-10-02T14:30:00+00:00", "2026-09-01T20:00:00+00:00", False),
+    ],
+)
+def test_wash_sale_uses_inclusive_calendar_dates_not_720_hours(sold_at, acquired_at, expected):
+    lot = buy_lot(
+        "stock-lot", "AAPL", "tactical", D(1), D(100), datetime.fromisoformat(acquired_at)
+    )
+    assert wash_sale_conflicts("AAPL", datetime.fromisoformat(sold_at), (lot,)) == (
+        ("stock-lot",) if expected else ()
+    )
+
+
 def test_completed_threshold_not_repeated_and_whole_share_rounding():
     assert exit_quantity("partial_first", D(10), D(120), D(1000), D(120), completed=True) == 0
     assert exit_quantity("principal", D(10), D(120), D(1000), D(120), fractional=False) == 1

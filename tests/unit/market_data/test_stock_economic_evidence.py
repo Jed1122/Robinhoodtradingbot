@@ -12,6 +12,7 @@ import pytest
 from trading_bot.market_data.stock_economic_evidence import (
     StockEconomicEvidenceError,
     dividend_entitlement,
+    parse_cash_dividend_panel,
     parse_cash_dividends,
     parse_dated_stock_identity,
 )
@@ -533,3 +534,196 @@ def test_accrual_rejects_invalid_dates_and_tampered_event() -> None:
         dividend_entitlement(
             event, shares_before_ex=Decimal("1"), held_at=date(2026, 6, 1), as_of=date(2026, 6, 15)
         )
+
+
+def _panel(blob: bytes | None = None, **kwargs: object):
+    data = _csv(DIVIDEND_FIELDS, [_dividend_row()]) if blob is None else blob
+    options = {
+        "expected_sha256": hashlib.sha256(data).hexdigest(),
+        "symbols": ("FICT", "ALTN"),
+        "ex_start": date(2026, 1, 1),
+        "ex_end": date(2026, 6, 15),
+        "received_at": RECEIVED,
+        **kwargs,
+    }
+    return parse_cash_dividend_panel(data, **options)
+
+
+def test_panel_preserves_caller_order_and_full_original_hash_for_every_view() -> None:
+    rows = [
+        _dividend_row(),
+        _dividend_row(id="fictional-alternative-1", ticker="ALTN", cash_amount="1.25"),
+        _dividend_row(id="fictional-event-2", ex_dividend_date="2026-06-09"),
+    ]
+    data = _csv(DIVIDEND_FIELDS, rows)
+    original_hash = hashlib.sha256(data).hexdigest()
+    views = _panel(data, symbols=("ALTN", "FICT", "EMPTY"))
+    assert type(views) is tuple
+    assert tuple(view.symbol for view in views) == ("ALTN", "FICT", "EMPTY")
+    assert tuple(event.id for event in views[0].events) == ("fictional-alternative-1",)
+    assert tuple(event.id for event in views[1].events) == (
+        "fictional-event-1",
+        "fictional-event-2",
+    )
+    assert views[0].events[0].cash_amount == Decimal("1.25")
+    assert views[2].events == ()
+    assert sum(len(view.events) for view in views) == 3
+    for view in views:
+        assert view.original_csv_sha256 == original_hash
+        assert view.received_at == RECEIVED
+        assert (view.ex_start, view.ex_end) == (date(2026, 1, 1), date(2026, 6, 15))
+        assert all(event.source_csv_sha256 == original_hash for event in view.events)
+    filtered_bytes = _csv(DIVIDEND_FIELDS, [rows[1]])
+    assert views[0].original_csv_sha256 != hashlib.sha256(filtered_bytes).hexdigest()
+    with pytest.raises(StockEconomicEvidenceError):
+        _panel(filtered_bytes, expected_sha256=original_hash)
+
+
+@pytest.mark.parametrize(
+    "symbols",
+    [
+        (),
+        ["FICT"],
+        "FICT",
+        {"FICT"},
+        ("FICT", "FICT"),
+        ("fict",),
+        (True,),
+        ("FICT", ""),
+        tuple(f"S{number:02}" for number in range(33)),
+    ],
+)
+def test_panel_requires_one_to_32_exact_unique_valid_symbols(symbols: object) -> None:
+    with pytest.raises(StockEconomicEvidenceError):
+        _panel(_csv(DIVIDEND_FIELDS, []), symbols=symbols)
+
+
+def test_panel_includes_32_empty_views_without_claiming_no_distributions() -> None:
+    symbols = tuple(f"S{number:02}" for number in range(32))
+    views = _panel(_csv(DIVIDEND_FIELDS, []), symbols=symbols)
+    assert tuple(view.symbol for view in views) == symbols
+    assert all(view.events == () for view in views)
+    for view in views:
+        assert view.qualified is view.investment_eligible is view.live_authorized is False
+        assert "no_http_status_or_pagination_proof" in view.limitations
+        assert "no_api_wide_or_corporate_action_completeness_assertion" in view.limitations
+
+
+@pytest.mark.parametrize(
+    "second",
+    [
+        _dividend_row(ticker="ALTN"),
+        _dividend_row(ticker="ALTN", cash_amount="0.5"),
+        _dividend_row(cash_amount="0.5"),
+        _dividend_row(id="another-native-id"),
+        _dividend_row(id="another-native-id", cash_amount="0.3750"),
+        _dividend_row(id="another-native-id", record_date="2026-06-02"),
+    ],
+)
+def test_panel_checks_ids_conflicts_and_economic_duplicates_globally(second) -> None:
+    with pytest.raises(StockEconomicEvidenceError):
+        _panel(_csv(DIVIDEND_FIELDS, [_dividend_row(), second]))
+
+
+def test_distinct_regular_and_special_payments_on_same_ex_date_remain_distinct() -> None:
+    data = _csv(
+        DIVIDEND_FIELDS,
+        [
+            _dividend_row(),
+            _dividend_row(id="fictional-special", cash_amount="1", distribution_type="special"),
+        ],
+    )
+    views = _panel(data)
+    assert len(views[0].events) == 2 and views[1].events == ()
+    assert tuple(event.distribution_type for event in views[0].events) == ("recurring", "special")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"ticker": "UNKNOWN"},
+        {"currency": "CAD"},
+        {"cash_amount": "NaN"},
+        {"cash_amount": "0"},
+        {"ex_dividend_date": "2027-01-01"},
+        {"ex_dividend_date": ""},
+        {"declaration_date": "2026-06-16"},
+        {"pay_date": "2026-06-01"},
+    ],
+)
+def test_panel_rejects_entire_input_when_a_later_other_symbol_row_is_invalid(changes) -> None:
+    late = _dividend_row(**{"id": "fictional-last", "ticker": "ALTN", **changes})
+    with pytest.raises(StockEconomicEvidenceError):
+        _panel(_csv(DIVIDEND_FIELDS, [_dividend_row(), late]))
+
+
+def test_panel_rejects_malformed_late_row_and_wrong_receipt_or_hash() -> None:
+    data = _csv(DIVIDEND_FIELDS, [_dividend_row()]) + b'"unfinished-other-symbol\n'
+    with pytest.raises(StockEconomicEvidenceError):
+        _panel(data)
+    for options in (
+        {"expected_sha256": "0" * 64},
+        {"received_at": RECEIVED.replace(tzinfo=None)},
+        {"ex_start": date(2026, 7, 1)},
+    ):
+        with pytest.raises(StockEconomicEvidenceError):
+            _panel(**options)
+
+
+def test_panel_retains_original_amount_unknowns_and_precision_without_granting_authority() -> None:
+    native_amount = "0.12345678901234567890123456789012345678901234567890123456789"
+    data = _csv(
+        DIVIDEND_FIELDS,
+        [
+            _dividend_row(),
+            _dividend_row(
+                id="fictional-alternative-1",
+                ticker="ALTN",
+                cash_amount=native_amount,
+                pay_date="",
+                record_date="",
+                declaration_date="",
+                frequency="",
+                distribution_type="",
+                split_adjusted_cash_amount="99",
+            ),
+        ],
+    )
+    with localcontext() as context:
+        context.prec = 2
+        context.rounding = ROUND_DOWN
+        views = _panel(data)
+    event = views[1].events[0]
+    assert event.cash_amount == Decimal(native_amount)
+    assert (
+        event.pay_date,
+        event.record_date,
+        event.declaration_date,
+        event.frequency,
+        event.distribution_type,
+    ) == (None, None, None, None, None)
+    for view in views:
+        assert view.qualified is view.investment_eligible is view.live_authorized is False
+        with pytest.raises(FrozenInstanceError):
+            view.live_authorized = True
+        assert all(
+            item.qualified is item.investment_eligible is item.live_authorized is False
+            for item in view.events
+        )
+
+
+def test_single_symbol_entry_point_preserves_semantics_and_rejects_mixed_panel() -> None:
+    data = _csv(DIVIDEND_FIELDS, [_dividend_row()])
+    standalone = _dividends(data)
+    singleton_panel = _panel(data, symbols=("FICT",))
+    assert singleton_panel == (standalone,)
+    assert standalone.events[0].cash_amount == Decimal("0.375")
+    mixed_data = _csv(
+        DIVIDEND_FIELDS,
+        [
+            _dividend_row(),
+            _dividend_row(id="fictional-alternative-1", ticker="ALTN"),
+        ],
+    )
+    with pytest.raises(StockEconomicEvidenceError):
+        _dividends(mixed_data)

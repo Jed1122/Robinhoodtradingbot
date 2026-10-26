@@ -108,3 +108,50 @@ strategy families, publication-aware factors/events/revision vintages, total-ret
 controls, cost/stress/walk-forward analysis and the full requirement audit. A
 negative or insufficient-edge conclusion is valid; missing required comparisons
 remain incomplete. Live execution is disabled and was not exercised.
+
+## Subsequent economic input work
+
+The monetary-input increment adds full-panel cash-dividend validation and an
+isolated experimental dividend book. It separates earned receivables, paid cash,
+tax reserves, capital gains and remaining cost basis. It also corrects the
+same-symbol wash-sale awareness helper to compare inclusive U.S. calendar trade
+dates. These are accounting capabilities, not a completed monetary backtest.
+Independent review identified additional account-adoption history gaps; their
+corrections preserve existing tax and order reserves, partial-exit progress and
+original allocation episodes. Integration remains tracked in the
+[monetary-input plan](superpowers/plans/2026-10-26-stock-monetary-inputs.md).
+
+Actual source inspection now retains dated security observations for all nine
+slots and 100 native cash distributions. The two providers agree exactly on the
+amounts for 98 shared events; three record/payment date differences are retained
+and separately checked against issuer publications. Declared payment dates do
+not establish broker cash availability. Receipt pagination and continuous
+security/action coverage limits remain explicit.
+
+For AXP, the three original annual filings supply annual income/total revenue
+and year-end equity/financing observations. Native instant periods remain
+distinct from annual durations. Debt disclosures clarify that current maturities
+are already within reported long-term debt; adding them again would double
+count. Embedded lease scope is not uniformly excluded. A typed, publication-aware
+annual bundle and separately frozen as-reported methodology are still required
+before any quality factor is calculated. One issuer is not a complete cohort.
+The subsequent seven-issuer intake also passed all 14 existing index/fact
+normalizers against its original responses. It retains per-filing gaps: OXY
+returned only one eligible original annual filing, KHC lacked the requested
+revenue concepts, and several debt totals need issuer-specific mapping. Missing
+originals or totals remain unavailable; later comparative values and segment
+sums do not replace them.
+
+The historical Massive/Benzinga earnings pilot returned `NOT_ENTITLED` under the
+existing plan; no upgrade or workaround was attempted. Alpha Vantage is a
+separate source. Its AXP response contains 123 quarterly earnings records,
+including 12 report dates within 2024–2026, and 41 estimate-target records,
+including historical targets. Target dates do not identify estimate-observation
+times. Lagged averages and trailing revision counts do not establish the distinct
+dated revision events required by the frozen policy. Original consensus,
+publication/correction and EPS basis/currency semantics remain unresolved.
+Neither PEAD nor revision momentum is qualified by these receipts.
+
+No new factor, strategy, monetary return or investment-eligibility result was
+computed from those source checks. The earlier holdout has already been consumed;
+subsequent development cannot describe it as a fresh confirmatory test.
