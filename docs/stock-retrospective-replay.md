@@ -94,6 +94,11 @@ promise about full-grid timing or investment performance.
 
 ## Completing the study
 
+The [descriptive metrics consumer](stock-monetary-metrics.md) can summarize a
+completed result after fresh source verification. It retains unavailable cases,
+cost/tax assumptions and policy-coverage denominators; it supplies no investment
+qualification or statistical inference.
+
 Source-envelope verification, frozen actual-input assembly, metric/benchmark
 conventions and experiment registration precede actual monetary comparisons.
 Remaining work includes seven-issuer annual mappings, earnings/estimate vintages,
