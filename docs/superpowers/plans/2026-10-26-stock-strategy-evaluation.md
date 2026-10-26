@@ -115,7 +115,16 @@ all unchanged coverage gates pass. It adds panel validation and the dividend boo
 including reviewed reservation, settlement and exit-history protections.
 
 The [economic-kernel increment](2026-10-26-stock-economic-kernel.md) adds the pure
-session/accounting loop and AXP annual measurement types. Focused and independent
-verification is complete; its own frozen full regression and CI remain pending.
+session/accounting loop and AXP annual measurement types. PR 58 is integrated
+with 13,004 passing tests on each Python version and all unchanged gates passing.
+A separate actual-source feature run passed independent verification of three
+AXP annual rows, all 21 native references and nine ratio comparisons.
 These are prerequisites for section 4, not completion of its actual-source
 admission, seven-family monetary comparisons or section 5's statistical audit.
+
+The subsequent [research integration](2026-10-26-stock-research-integration.md)
+connects atomic annual policies, native source observations, fictional seven-
+family replay, explicit operating costs and conditional monetary preparation.
+Its focused tests and independent reviews are separate from the pending final
+integrated regression/CI and the actual economic evaluation. Preserved original
+source unknowns and unavailable comparisons continue to block qualification.

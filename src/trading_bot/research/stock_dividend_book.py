@@ -9,7 +9,8 @@ transition, not an independently verified execution or reconciliation.
 
 from __future__ import annotations
 
-from dataclasses import MISSING, dataclass, field, fields
+import re
+from dataclasses import MISSING, dataclass, field, fields, replace
 from datetime import datetime, timedelta
 from decimal import (
     ROUND_HALF_EVEN,
@@ -21,6 +22,7 @@ from decimal import (
     Underflow,
     localcontext,
 )
+from fractions import Fraction
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -112,7 +114,15 @@ class DividendEntitlement:
 @dataclass(frozen=True, slots=True)
 class DividendBookStep:
     sequence: int
-    action: Literal["initialize", "accrue", "credit", "advance", "adopt_account"]
+    action: Literal[
+        "initialize",
+        "accrue",
+        "credit",
+        "advance",
+        "adopt_account",
+        "operating_expense",
+        "operating_cost_phase",
+    ]
     at: datetime
     event_id: str | None
     event_fingerprint: str | None
@@ -333,7 +343,15 @@ def _make_book(
 
 def _step(
     book: DividendBook | None,
-    action: Literal["initialize", "accrue", "credit", "advance", "adopt_account"],
+    action: Literal[
+        "initialize",
+        "accrue",
+        "credit",
+        "advance",
+        "adopt_account",
+        "operating_expense",
+        "operating_cost_phase",
+    ],
     at: datetime,
     before: Account,
     after: Account,
@@ -786,3 +804,108 @@ def adopt_dividend_account(book: DividendBook, account: Account, *, at: datetime
             book.calendar_source_hash,
             (*book.trace, step),
         )
+
+
+def pay_modeled_operating_expense(
+    book: DividendBook,
+    *,
+    charge_id: str,
+    amount_usd: Decimal,
+    charge_fingerprint: str,
+    at: datetime,
+) -> DividendBook:
+    """Debit a labeled model cost through the paused book, never a brokerage payment.
+
+    The cost-plan owner binds due dates and liabilities separately. This narrow
+    transition cannot spend order/tax reserves or reclassify a cost as a fill,
+    gain, tax or execution fee. Repeating the same charge is idempotent.
+    """
+    with localcontext(_CONTEXT):
+        _validate_book(book)
+        _utc(at)
+        _check(at >= book.through_at, "operating_expense_clock_rewind")
+        _check(
+            type(charge_id) is str
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9:._-]{0,127}", charge_id) is not None,
+            "invalid_operating_expense_identity",
+        )
+        require_bounded_decimal(amount_usd, "operating_expense", nonnegative=True)
+        _require_sha256_hex(charge_fingerprint, "operating_expense_fingerprint")
+        existing = tuple(
+            step
+            for step in book.trace
+            if step.action == "operating_expense" and step.event_id == charge_id
+        )
+        if existing:
+            _check(
+                len(existing) == 1
+                and existing[0].gross_amount == amount_usd
+                and existing[0].event_fingerprint == charge_fingerprint,
+                "conflicting_operating_expense_history",
+            )
+            return book
+        _check(amount_usd <= book.account.buying_power, "unfunded_operating_expense")
+        cash_after = book.account.cash - amount_usd
+        _check(
+            Fraction(book.account.cash) - Fraction(cash_after) == Fraction(amount_usd),
+            "operating_expense_debit_not_exactly_representable",
+        )
+        updated = _account(
+            Account.model_validate(book.account.model_dump() | {"cash": cash_after}),
+            at,
+        )
+        step = replace(
+            _step(book, "operating_expense", at, book.account, updated, gross_amount=amount_usd),
+            event_id=charge_id,
+            event_fingerprint=charge_fingerprint,
+        )
+        return _make_book(
+            updated,
+            book.entitlements,
+            book.credited_events,
+            book.tax_rate,
+            at,
+            at,
+            book.sessions,
+            book.calendar_source_hash,
+            (*book.trace, step),
+        )
+
+
+def _bind_modeled_operating_phase(
+    book: DividendBook, *, phase_id: str, fingerprint: str, at: datetime
+) -> tuple[DividendBook, DividendBookStep]:
+    """Cost-owner-only append: retain a validated phase commitment without a cash move."""
+    with localcontext(_CONTEXT):
+        _validate_book(book)
+        _utc(at)
+        _check(at >= book.through_at, "operating_cost_phase_clock_rewind")
+        _check(
+            type(phase_id) is str
+            and re.fullmatch(r"[0-9]{1,5}:(open|close)", phase_id) is not None,
+            "operating_cost_phase_identity_invalid",
+        )
+        _require_sha256_hex(fingerprint, "operating_cost_phase_fingerprint")
+        _check(
+            not any(
+                step.action == "operating_cost_phase" and step.event_id == phase_id
+                for step in book.trace
+            ),
+            "operating_cost_phase_repeated",
+        )
+        step = replace(
+            _step(book, "operating_cost_phase", at, book.account, book.account),
+            event_id=phase_id,
+            event_fingerprint=fingerprint,
+        )
+        return _make_book(
+            book.account,
+            book.entitlements,
+            book.credited_events,
+            book.tax_rate,
+            book.account_at,
+            at,
+            book.sessions,
+            book.calendar_source_hash,
+            (*book.trace, step),
+        ), step

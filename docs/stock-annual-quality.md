@@ -4,7 +4,7 @@
 original `StockFiling` and normalized `StockFilingFacts` collections. The initial
 method is explicitly AXP-only; it is not a universal issuer debt mapping or a
 stock recommendation. Actual-data factor validation and policy-consumer wiring
-remain separate from this implementation.
+are separate from the measurement implementation.
 
 ## Measurement scope
 
@@ -49,15 +49,34 @@ permanently false qualification/authorization boundaries.
 PYTHONPATH=src uv run pytest tests/unit/research/test_stock_annual_quality.py -q
 ```
 
-This verification uses fictional source fixtures. It supplies no actual factor,
-strategy-return or live-broker result.
+This test command uses fictional source fixtures. A separate frozen actual-source
+run at `3fc413b14576bacfbb1fc664af4629abeba3b46f` produced three annual AXP rows
+from four complete retained native fact collections. An independent audit passed
+1,338 checks, retaining all 21 native fact references and verifying all nine
+ratios using Fraction and Decimal90 arithmetic against a preregistered tolerance.
+The actual receipts remain separate from the retrospective availability proxies.
+This is financial-feature validation; it supplies no strategy-return or
+live-broker result. Private originals and receipts are excluded from Git.
+
+## Optional policy consumer
+
+`PolicyInput.annual_quality` accepts immutable defined or unavailable bundles.
+The consumer revalidates each original, rejects future information and conflicting
+vintages, and evaluates the latest known annual period atomically. A latest
+unavailable original blocks fallback to older defined ratios. Different originals
+with the same period and filing date are ambiguous: their IDs do not supply a
+publication order. Same-symbol legacy quality facts cannot be mixed with a bundle.
+
+The existing quality-momentum thresholds remain unchanged. When no annual bundle
+is supplied, the complete legacy decision evidence and hashes remain unchanged.
+Other strategy families retain their rules. A proposal still has no quantity,
+risk authorization or order authority. Fictional tests and an independent old/new
+comparison verify these boundaries; they do not establish stock-selection skill.
 
 ## Remaining work
 
-Integrate the typed bundle with the quality-policy consumer without changing
-legacy evidence when no bundle is supplied. Freeze a source-admitted actual input
-run, independently verify its arithmetic, and retain issuer-specific mapping and
-history gaps. The other issuers' raw source intake has passed its normalizers;
+Retain issuer-specific mapping and history gaps. The other issuers' raw source
+intake has passed its normalizers;
 OXY's historical-original coverage, missing KHC revenue concepts and other debt
 mappings remain explicit. All seven intake pagination states are unknown.
 

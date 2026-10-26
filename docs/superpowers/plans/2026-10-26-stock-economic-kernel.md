@@ -53,10 +53,25 @@ or strategy outcome was calculated by this increment.
   corrections and acceptance reports. Root's combined related selection passed
   432 tests; repository Ruff, mypy (471 source files) and expanded Bandit passed.
   Existing Bandit annotation warnings remain recorded.
-- [ ] Commit frozen reviewed sources and run the complete retained stock/shared
+- [x] Commit frozen reviewed sources and run the complete retained stock/shared
   suite with the unchanged 80% aggregate, critical-branch and stock-host gates.
-- [ ] Verify exact-source CI on Python 3.12/3.13/3.14, preserve terminal results and
+- [x] Verify exact-source CI on Python 3.12/3.13/3.14, preserve terminal results and
   integrate the reviewed change. Do not substitute the earlier PR 57 result.
+
+Source `3fc413b14576bacfbb1fc664af4629abeba3b46f` passed 13,004 tests locally
+and on each CI Python version. All six CI jobs and unchanged coverage gates
+passed; combined CI coverage was 91.96%, 91.96% and 91.71%. Warnings were 1, 36
+and 36, with no failures or skips. PR 58 merged as
+`e1d080a44260f91474c87d9afcc4265fc3f7f163`; an independent Git API read verified
+the merge parents and the exact reviewed/CI tree
+`12d67ee71411ab5a5443a430dde3fcd7e17cf29a`.
+
+A separate frozen actual-source feature run produced three AXP annual rows.
+Independent arithmetic from original JSON passed 1,338 checks, including all 21
+raw references and nine Fraction/Decimal90 ratio comparisons. The maximum
+normalized error was below the preregistered 1e-47 tolerance. Actual collection
+clocks and the retrospective filing-date proxy remain distinct. This acceptance
+covers financial measurements only; no portfolio return or strategy was qualified.
 
 Next: wire the typed annual consumer without changing empty-input legacy evidence,
 freeze purpose-specific actual source admission and protocols, then perform the

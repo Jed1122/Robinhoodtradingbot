@@ -43,6 +43,24 @@ from trading_bot.research.stock_dividend_book import (
     receivable_value,
     record_dividend_entitlement,
 )
+from trading_bot.research.stock_economic_policies import (
+    EconomicPolicyClose,
+    EconomicPolicyFrame,
+    KnownPolicyCondition,
+    OwnedPolicyEpisode,
+    evaluate_economic_policy_close,
+    validate_policy_assets,
+)
+from trading_bot.research.stock_operating_costs import (
+    ModeledOperatingCostPlan,
+    OperatingCostPhaseBinding,
+    OperatingCostUpdate,
+    apply_stock_operating_costs,
+    bind_stock_operating_phase,
+    net_equity_after_operating_costs,
+    stock_operating_phase_hash,
+    validate_stock_operating_phase_bindings,
+)
 
 _ZERO, _ONE = Decimal(0), Decimal(1)
 _INCREMENT = Decimal(".000001")
@@ -73,6 +91,7 @@ _PROTOCOL_CONVENTIONS = (
     "static_fixture_annotations_are_scenarios_not_fresh_market_attestations",
 )
 ExitMethod = Literal["principal", "partial", "trailing", "full_target", "fixed_holding"]
+_COST_RISK_PHASE = "explicit-cost-preopen-gross-risk-v1"
 
 
 def _check(condition: bool, reason: str) -> None:
@@ -240,6 +259,170 @@ class EconomicReplaySnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class EconomicReplayCostMark:
+    session_index: int
+    at: datetime
+    phase: Literal["open", "close"]
+    gross_before_payment: Decimal
+    gross_equity: Decimal
+    net_equity: Decimal | None
+    paid_total: Decimal
+    unpaid_known: Decimal
+    unpaid_unknown_ids: tuple[str, ...]
+    investable_cash: Decimal
+    daily_reference: Decimal
+    weekly_reference: Decimal
+    closed_high_watermark: Decimal
+    tactical_suspended: bool
+    weekly_review_required: bool
+    plan_hash: str
+    cost_update_hash: str
+    ledger_sequence: int | None = None
+    ledger_step_sha256: str | None = None
+    risk_phase: str = field(default=_COST_RISK_PHASE, init=False)
+    qualified: Literal[False] = field(default=False, init=False)
+    source_qualified: Literal[False] = field(default=False, init=False)
+    strategy_qualified: Literal[False] = field(default=False, init=False)
+    investment_eligible: Literal[False] = field(default=False, init=False)
+    trading_enabled: Literal[False] = field(default=False, init=False)
+    live_authorized: Literal[False] = field(default=False, init=False)
+    full_task5_complete: Literal[False] = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        _utc(self.at)
+        _check(
+            type(self.session_index) is int
+            and self.session_index >= 200
+            and self.phase in ("open", "close")
+            and self.risk_phase == _COST_RISK_PHASE
+            and self.qualified
+            is self.source_qualified
+            is self.strategy_qualified
+            is self.investment_eligible
+            is self.trading_enabled
+            is self.live_authorized
+            is self.full_task5_complete
+            is False,
+            "operating_cost_mark_scope_invalid",
+        )
+        for number in (
+            self.gross_before_payment,
+            self.gross_equity,
+            self.paid_total,
+            self.unpaid_known,
+            self.investable_cash,
+            self.daily_reference,
+            self.weekly_reference,
+            self.closed_high_watermark,
+        ):
+            require_bounded_decimal(number, "operating_cost_mark", nonnegative=True)
+        if self.net_equity is not None:
+            require_bounded_decimal(self.net_equity, "operating_cost_net_equity")
+        _check(
+            type(self.unpaid_unknown_ids) is tuple
+            and all(type(identity) is str for identity in self.unpaid_unknown_ids)
+            and len(set(self.unpaid_unknown_ids)) == len(self.unpaid_unknown_ids)
+            and type(self.tactical_suspended) is type(self.weekly_review_required) is bool,
+            "operating_cost_mark_liabilities_invalid",
+        )
+        _require_sha256_hex(self.plan_hash, "operating_cost_plan")
+        _require_sha256_hex(self.cost_update_hash, "operating_cost_update")
+        _check(
+            (self.ledger_sequence is None and self.ledger_step_sha256 is None)
+            or (
+                type(self.ledger_sequence) is int
+                and self.ledger_sequence > 0
+                and type(self.ledger_step_sha256) is str
+            ),
+            "operating_cost_phase_anchor_invalid",
+        )
+        if self.ledger_step_sha256 is not None:
+            _require_sha256_hex(self.ledger_step_sha256, "operating_cost_phase_anchor")
+        with localcontext(_CONTEXT):
+            _check(
+                self.net_equity
+                == (None if self.unpaid_unknown_ids else self.gross_equity - self.unpaid_known),
+                "operating_cost_mark_net_equity_invalid",
+            )
+
+    @property
+    def payload_hash(self) -> str:
+        """Anchor fields are excluded to avoid a self-referential phase commitment."""
+        self.__post_init__()
+        return _hash(
+            (
+                "stock-economic-cost-mark-payload-v2",
+                replace(self, ledger_sequence=None, ledger_step_sha256=None),
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EconomicReplayCostReport:
+    plan_hash: str
+    plan_label: str
+    marks: tuple[EconomicReplayCostMark, ...]
+    book: DividendBook = field(repr=False)
+    plan: ModeledOperatingCostPlan = field(repr=False)
+    risk_phase: str = field(default=_COST_RISK_PHASE, init=False)
+    observed_spending: Literal[False] = field(default=False, init=False)
+    qualified: Literal[False] = field(default=False, init=False)
+    source_qualified: Literal[False] = field(default=False, init=False)
+    strategy_qualified: Literal[False] = field(default=False, init=False)
+    investment_eligible: Literal[False] = field(default=False, init=False)
+    trading_enabled: Literal[False] = field(default=False, init=False)
+    live_authorized: Literal[False] = field(default=False, init=False)
+    full_task5_complete: Literal[False] = field(default=False, init=False)
+
+    @property
+    def evidence_hash(self) -> str:
+        _require_sha256_hex(self.plan_hash, "operating_cost_plan")
+        _check(
+            type(self.marks) is tuple
+            and self.risk_phase == _COST_RISK_PHASE
+            and self.observed_spending
+            is self.qualified
+            is self.source_qualified
+            is self.strategy_qualified
+            is self.investment_eligible
+            is self.trading_enabled
+            is self.live_authorized
+            is self.full_task5_complete
+            is False,
+            "operating_cost_report_scope_invalid",
+        )
+        for mark in self.marks:
+            _check(type(mark) is EconomicReplayCostMark, "operating_cost_mark_required")
+            mark.__post_init__()
+            _check(mark.plan_hash == self.plan_hash, "operating_cost_report_plan_mismatch")
+        _check(
+            type(self.plan) is ModeledOperatingCostPlan
+            and self.plan.evidence_hash == self.plan_hash
+            and self.plan.label == self.plan_label,
+            "operating_cost_report_plan_mismatch",
+        )
+        _validate_owned_cost_marks(self.book, self.plan, self.marks)
+        return _hash(
+            (
+                "stock-economic-cost-report-v2",
+                self.plan_hash,
+                self.plan_label,
+                self.marks,
+                self.book.evidence_hash,
+                self.risk_phase,
+                self.observed_spending,
+                self.qualified,
+                self.source_qualified,
+                self.strategy_qualified,
+                self.investment_eligible,
+                self.trading_enabled,
+                self.live_authorized,
+                self.full_task5_complete,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class StockEconomicReplayState:
     inputs: StockEconomicReplayInputs
     protocol: StockEconomicReplayProtocol
@@ -251,6 +434,12 @@ class StockEconomicReplayState:
     last_exits: tuple[tuple[str, int], ...]
     snapshots: tuple[EconomicReplaySnapshot, ...]
     records: tuple[EconomicReplayRecord, ...]
+    policy_family: str | None = None
+    policy_closes: tuple[EconomicPolicyClose, ...] = ()
+    policy_episodes: tuple[OwnedPolicyEpisode, ...] = ()
+    operating_cost_plan: ModeledOperatingCostPlan | None = None
+    operating_cost_plan_hash: str | None = None
+    cost_marks: tuple[EconomicReplayCostMark, ...] = ()
     qualified: Literal[False] = field(default=False, init=False)
     source_qualified: Literal[False] = field(default=False, init=False)
     investment_eligible: Literal[False] = field(default=False, init=False)
@@ -272,19 +461,42 @@ class StockEconomicReplayState:
             )
             for p in self.pending
         )
+        legacy = (
+            "stock-economic-state-v3",
+            self.inputs.evidence_hash,
+            self.protocol.evidence_hash,
+            self.book.evidence_hash,
+            self.next_session,
+            intents,
+            self.episodes,
+            self.previous_signals,
+            self.last_exits,
+            self.snapshots,
+            self.records,
+        )
+        base = (
+            _hash(legacy)
+            if self.policy_family is None
+            else _hash(
+                (
+                    "stock-economic-policy-state-v1",
+                    legacy,
+                    self.policy_family,
+                    self.policy_closes,
+                    self.policy_episodes,
+                )
+            )
+        )
+        _validate_cost_history(self)
+        if self.operating_cost_plan is None:
+            return base
         return _hash(
             (
-                "stock-economic-state-v3",
-                self.inputs.evidence_hash,
-                self.protocol.evidence_hash,
-                self.book.evidence_hash,
-                self.next_session,
-                intents,
-                self.episodes,
-                self.previous_signals,
-                self.last_exits,
-                self.snapshots,
-                self.records,
+                "stock-economic-cost-state-v2",
+                base,
+                _COST_RISK_PHASE,
+                self.operating_cost_plan_hash,
+                self.cost_marks,
             )
         )
 
@@ -303,6 +515,22 @@ class StockEconomicReplayResult:
     investment_eligible: Literal[False] = field(default=False, init=False)
     trading_enabled: Literal[False] = field(default=False, init=False)
     live_authorized: Literal[False] = field(default=False, init=False)
+
+
+@dataclass(frozen=True, slots=True)
+class StockCostedEconomicReplayResult(StockEconomicReplayResult):
+    operating_costs: EconomicReplayCostReport = field(kw_only=True)
+    incomplete_features: tuple[str, ...] = field(
+        default=(
+            *(
+                item
+                for item in _INCOMPLETE
+                if item != "operating_expense_and_statistical_edge_qualification_not_implemented"
+            ),
+            "modeled_budget_not_observed_spending_or_statistical_edge_qualification",
+        ),
+        init=False,
+    )
 
 
 def make_fictional_replay_inputs(
@@ -534,6 +762,205 @@ def _snapshot(state: StockEconomicReplayState, index: int) -> EconomicReplaySnap
     )
 
 
+def _validate_cost_configuration(state: StockEconomicReplayState) -> None:
+    plan = state.operating_cost_plan
+    if plan is None:
+        _check(
+            state.operating_cost_plan_hash is None
+            and state.cost_marks == ()
+            and not any(
+                step.action in {"operating_expense", "operating_cost_phase"}
+                for step in state.book.trace
+            ),
+            "operating_cost_mode_history_mismatch",
+        )
+        return
+    _check(type(plan) is ModeledOperatingCostPlan, "operating_cost_plan_required")
+    plan.__post_init__()
+    _check(plan.evidence_hash == state.operating_cost_plan_hash, "operating_cost_plan_changed")
+    _check(
+        all(charge.due_at >= state.inputs.calendar[200].opens_at for charge in plan.charges),
+        "operating_cost_before_activation",
+    )
+
+
+def _validate_cost_history(state: StockEconomicReplayState) -> None:
+    _validate_cost_configuration(state)
+    if state.operating_cost_plan is None:
+        return
+    expected = tuple(
+        (index, phase) for index in range(200, state.next_session) for phase in ("open", "close")
+    )
+    _check(
+        type(state.cost_marks) is tuple and len(state.cost_marks) == len(expected),
+        "operating_cost_history_incomplete",
+    )
+    for mark, (index, phase) in zip(state.cost_marks, expected, strict=True):
+        _check(type(mark) is EconomicReplayCostMark, "operating_cost_mark_required")
+        mark.__post_init__()
+        at = (
+            state.inputs.calendar[index].opens_at
+            if phase == "open"
+            else state.inputs.calendar[index].closes_at
+        )
+        _check(
+            mark.session_index == index
+            and mark.phase == phase
+            and mark.at == at
+            and mark.plan_hash == state.operating_cost_plan_hash,
+            "operating_cost_mark_history_mismatch",
+        )
+    _validate_owned_cost_marks(state.book, state.operating_cost_plan, state.cost_marks)
+
+
+def _validate_owned_cost_marks(
+    book: DividendBook,
+    plan: ModeledOperatingCostPlan,
+    marks: tuple[EconomicReplayCostMark, ...],
+) -> None:
+    bindings = []
+    for mark in marks:
+        mark.__post_init__()
+        _check(
+            mark.ledger_sequence is not None and mark.ledger_step_sha256 is not None,
+            "operating_cost_owned_phase_anchor_required",
+        )
+        if mark.ledger_sequence is None or mark.ledger_step_sha256 is None:
+            raise ValueError("operating_cost_owned_phase_anchor_required")
+        bindings.append(
+            OperatingCostPhaseBinding(
+                mark.ledger_sequence,
+                mark.ledger_step_sha256,
+                f"{mark.session_index}:{mark.phase}",
+                mark.at,
+                mark.paid_total,
+                mark.unpaid_known,
+                mark.unpaid_unknown_ids,
+                mark.investable_cash,
+                mark.cost_update_hash,
+                mark.payload_hash,
+            )
+        )
+    validate_stock_operating_phase_bindings(book, plan, tuple(bindings))
+
+
+def _bind_cost_mark(
+    state: StockEconomicReplayState, mark: EconomicReplayCostMark, costs: OperatingCostUpdate
+) -> tuple[StockEconomicReplayState, EconomicReplayCostMark]:
+    _check(costs.book is state.book, "operating_cost_current_book_required")
+    book, sequence, digest = bind_stock_operating_phase(
+        costs,
+        phase_id=f"{mark.session_index}:{mark.phase}",
+        update_hash=mark.cost_update_hash,
+        mark_payload_hash=mark.payload_hash,
+    )
+    return replace(state, book=book), replace(
+        mark, ledger_sequence=sequence, ledger_step_sha256=digest
+    )
+
+
+def _cost_phase(
+    state: StockEconomicReplayState, index: int, phase: Literal["open", "close"]
+) -> StockEconomicReplayState:
+    plan = state.operating_cost_plan
+    if plan is None:
+        return state
+    _validate_cost_configuration(state)
+    at = (
+        state.inputs.calendar[index].opens_at
+        if phase == "open"
+        else state.inputs.calendar[index].closes_at
+    )
+    prices = _prices(state, index, opening=phase == "open")
+    before, _, _, _, _ = _values(state, prices, at)
+    costs = apply_stock_operating_costs(state.book, plan, at=at)
+    state = replace(state, book=costs.book)
+    gross, _, _, _, _ = _values(state, prices, at)
+    _check(gross > 0, "operating_cost_gross_equity_depleted")
+    daily = state.snapshots[-1].gross_equity
+    prior_day = state.snapshots[-1].at.astimezone(_NY).date()
+    day = at.astimezone(_NY).date()
+    account = state.book.account
+    weekly = (
+        account.weekly_reference if day.isocalendar()[:2] == prior_day.isocalendar()[:2] else daily
+    )
+    if phase == "open":
+        # Every explicit budget, including zero, uses this same versioned phase.
+        # Only sticky flags change here: the high watermark remains close-based.
+        updated = Account.model_validate(
+            account.model_dump()
+            | {
+                "tactical_suspended": account.tactical_suspended
+                or gross <= daily * Decimal(".99")
+                or gross <= account.high_watermark * Decimal(".90"),
+                "weekly_review_required": account.weekly_review_required
+                or gross <= weekly * Decimal(".97"),
+            }
+        )
+        if updated != account:
+            state = replace(state, book=adopt_dividend_account(state.book, updated, at=at))
+            costs = apply_stock_operating_costs(state.book, plan, at=at)
+        account = state.book.account
+    mark = EconomicReplayCostMark(
+        index,
+        at,
+        phase,
+        before,
+        gross,
+        net_equity_after_operating_costs(gross, costs),
+        costs.paid_total,
+        costs.unpaid_known,
+        costs.unpaid_unknown_ids,
+        costs.investable_cash,
+        daily,
+        weekly,
+        account.high_watermark,
+        account.tactical_suspended,
+        account.weekly_review_required,
+        plan.evidence_hash,
+        stock_operating_phase_hash(costs),
+    )
+    if phase == "open":
+        state, mark = _bind_cost_mark(state, mark, costs)
+    return replace(state, cost_marks=(*state.cost_marks, mark))
+
+
+def _cost_buy_block(state: StockEconomicReplayState, at: datetime) -> str | None:
+    if state.operating_cost_plan is None or at < state.inputs.calendar[200].opens_at:
+        return None
+    _check(bool(state.cost_marks), "operating_cost_current_phase_required")
+    mark = state.cost_marks[-1]
+    _check(mark.at == at, "operating_cost_current_phase_required")
+    if mark.unpaid_unknown_ids:
+        return "operating_cost_unknown_liability"
+    if mark.net_equity is None or mark.net_equity <= 0:
+        return "operating_cost_nonpositive_net_equity"
+    if mark.unpaid_known >= state.book.account.buying_power and mark.unpaid_known > 0:
+        return "operating_cost_unpaid_liability"
+    return None
+
+
+def _spendable(state: StockEconomicReplayState, at: datetime) -> Decimal:
+    power = state.book.account.buying_power
+    if state.operating_cost_plan is None or at < state.inputs.calendar[200].opens_at:
+        return power
+    if _cost_buy_block(state, at) is not None:
+        return _ZERO
+    return max(_ZERO, power - state.cost_marks[-1].unpaid_known)
+
+
+def stock_economic_cost_report(state: StockEconomicReplayState) -> EconomicReplayCostReport:
+    """Return the cost-only sidecar; the no-plan result/snapshot schema stays intact."""
+    _validate_cost_history(state)
+    plan = state.operating_cost_plan
+    _check(plan is not None, "operating_cost_mode_required")
+    if plan is None:
+        raise ValueError("operating_cost_mode_required")
+    return EconomicReplayCostReport(
+        plan.evidence_hash, plan.label, state.cost_marks, state.book, plan
+    )
+
+
 def _deny(
     state: StockEconomicReplayState, index: int, intent: PendingEconomicIntent, reason: str
 ) -> StockEconomicReplayState:
@@ -601,15 +1028,76 @@ def _resume_profit_rung(
     )
 
 
-def _plan(state: StockEconomicReplayState, index: int) -> StockEconomicReplayState:
+def _plan(
+    state: StockEconomicReplayState, index: int, policy_frame: EconomicPolicyFrame | None = None
+) -> StockEconomicReplayState:
     account, prices = state.book.account, _prices(state, index, opening=False)
     at = state.inputs.calendar[index].closes_at
+    conditions: dict[str, bool | None] = {}
+    if state.policy_family is None:
+        _check(policy_frame is None, "policy_mode_cannot_change")
+    else:
+        _check(type(policy_frame) is EconomicPolicyFrame, "policy_frame_required")
+        if policy_frame is None:
+            raise ValueError("policy_frame_required")
+        _check(policy_frame.family == state.policy_family, "owned_policy_family_cannot_change")
+        policy_frame.__post_init__()
+        for session in policy_frame.request.sessions:
+            _check(
+                type(session) is CalendarSession
+                and 0 <= session.index < len(state.inputs.calendar)
+                and session == state.inputs.calendar[session.index],
+                "policy_calendar_scope_mismatch",
+            )
+        policy_assets = {asset.symbol: asset for asset in state.inputs.assets}
+        for observation in policy_frame.request.observations:
+            asset = policy_assets.get(observation.symbol)
+            _check(
+                asset is not None
+                and 0 <= observation.session_index < len(asset.bars)
+                and observation.bar == asset.bars[observation.session_index],
+                "policy_observation_scope_mismatch",
+            )
+        held_positions = tuple(
+            sorted(
+                {
+                    (lot.symbol, state.policy_family)
+                    for lot in account.lots
+                    if lot.sleeve == "tactical" and lot.quantity > 0
+                }
+            )
+        )
+        following = (
+            state.inputs.calendar[index + 1].opens_at
+            if index + 1 < len(state.inputs.assets[0].bars)
+            else None
+        )
+        policy_close = evaluate_economic_policy_close(
+            policy_frame,
+            session_index=index,
+            information_at=at,
+            next_open=following,
+            held_positions=held_positions,
+        )
+        state = replace(state, policy_closes=(*state.policy_closes, policy_close))
+        conditions = {
+            row.symbol: row.active if isinstance(row, KnownPolicyCondition) else None
+            for row in policy_close.conditions
+        }
+    previous_defined = dict(state.previous_signals)
+    if state.policy_family is None:
+        next_signals = tuple((a.symbol, a.signals[index]) for a in state.inputs.assets)
+    else:
+        previous_defined.update(
+            {symbol: active for symbol, active in conditions.items() if active is not None}
+        )
+        next_signals = tuple(sorted(previous_defined.items()))
     equity, long, tactical, _, _ = _values(state, prices, at)
     if account.kill_switch:
         return replace(
             state,
             pending=(),
-            previous_signals=tuple((a.symbol, a.signals[index]) for a in state.inputs.assets),
+            previous_signals=next_signals,
         )
     pending: list[PendingEconomicIntent] = []
     settings = HybridSettings(
@@ -629,13 +1117,30 @@ def _plan(state: StockEconomicReplayState, index: int) -> StockEconomicReplaySta
         close = prices[episode.symbol]
         entry = record.entry_price
         age = index - record.entered_session + 1
-        active = _asset(state, episode.symbol).signals[index]
+        active = (
+            _asset(state, episode.symbol).signals[index]
+            if state.policy_family is None
+            else conditions[episode.symbol]
+        )
+        maximum_age = 40
+        if state.policy_family is not None:
+            owned = next(
+                (rule for rule in state.policy_episodes if rule.episode_id == episode.id), None
+            )
+            _check(
+                owned is not None and owned.family == state.policy_family,
+                "owned_entry_policy_rule_required",
+            )
+            if owned is None:
+                raise ValueError("owned_entry_policy_rule_required")
+            owned.__post_init__()
+            maximum_age = owned.maximum_holding_sessions
         full_reason = ""
         if close <= entry * Decimal(".95"):
             full_reason = "initial_stop"
-        elif not active:
+        elif active is False:
             full_reason = "family_signal_exit"
-        elif age >= 40 or (state.protocol.exit_method == "fixed_holding" and age >= 20):
+        elif age >= maximum_age or (state.protocol.exit_method == "fixed_holding" and age >= 20):
             full_reason = "holding_time_exit"
         elif (
             state.protocol.exit_method == "full_target"
@@ -697,7 +1202,7 @@ def _plan(state: StockEconomicReplayState, index: int) -> StockEconomicReplaySta
                 )
             )
     claimed: set[str] = {intent.symbol for intent in pending}
-    available = max(_ZERO, account.buying_power - equity * Decimal(".10"))
+    available = max(_ZERO, _spendable(state, at) - equity * Decimal(".10"))
     long_budget = max(_ZERO, equity * Decimal(".75") - long)
     for symbol, weight in state.inputs.long_term_allocations:
         if not _eligible(_asset(state, symbol), at, prices[symbol]):
@@ -726,7 +1231,11 @@ def _plan(state: StockEconomicReplayState, index: int) -> StockEconomicReplaySta
         asset
         for asset in state.inputs.assets
         if asset.role == "stock_candidate"
-        and asset.signals[index]
+        and (
+            asset.signals[index]
+            if state.policy_family is None
+            else conditions.get(asset.symbol) is True
+        )
         and not previous.get(asset.symbol, False)
     )
     candidates = []
@@ -762,12 +1271,16 @@ def _plan(state: StockEconomicReplayState, index: int) -> StockEconomicReplaySta
     return replace(
         state,
         pending=tuple(pending),
-        previous_signals=tuple((a.symbol, a.signals[index]) for a in state.inputs.assets),
+        previous_signals=next_signals,
     )
 
 
 def begin_stock_economic_replay(
-    inputs: StockEconomicReplayInputs, protocol: StockEconomicReplayProtocol
+    inputs: StockEconomicReplayInputs,
+    protocol: StockEconomicReplayProtocol,
+    *,
+    policy_frame: EconomicPolicyFrame | None = None,
+    operating_cost_plan: ModeledOperatingCostPlan | None = None,
 ) -> StockEconomicReplayState:
     with localcontext(_CONTEXT):
         _validate_inputs(inputs)
@@ -782,8 +1295,23 @@ def begin_stock_economic_replay(
             tax_rate=protocol.tax_rate,
         )
         state = StockEconomicReplayState(inputs, protocol, book, 200, (), (), (), (), (), ())
+        if operating_cost_plan is not None:
+            _check(
+                type(operating_cost_plan) is ModeledOperatingCostPlan,
+                "operating_cost_plan_required",
+            )
+            state = replace(
+                state,
+                operating_cost_plan=operating_cost_plan,
+                operating_cost_plan_hash=operating_cost_plan.evidence_hash,
+            )
+        _validate_cost_configuration(state)
+        if policy_frame is not None:
+            _check(type(policy_frame) is EconomicPolicyFrame, "typed_policy_frame_required")
+            validate_policy_assets(inputs)
+            state = replace(state, policy_family=policy_frame.family)
         state = replace(state, snapshots=(_snapshot(state, 199),))
-        return _plan(state, 199)
+        return _plan(state, 199, policy_frame)
 
 
 def _settlement_at(state: StockEconomicReplayState, index: int) -> datetime | None:
@@ -846,6 +1374,9 @@ def _execute(
     price = prices[intent.symbol] * (1 + rate if intent.side == "buy" else 1 - rate)
     settlement_at = None
     if intent.side == "buy":
+        cost_block = _cost_buy_block(state, at)
+        if cost_block is not None:
+            return _deny(state, index, intent, cost_block)
         if not _eligible(
             asset, state.inputs.calendar[intent.signal_session].closes_at, prices[intent.symbol]
         ):
@@ -885,7 +1416,7 @@ def _execute(
         )
         budget = min(
             intent.cash_budget,
-            account.buying_power - equity * Decimal(".10"),
+            _spendable(state, at) - equity * Decimal(".10"),
             equity * cap - held,
             sleeve_room,
             sector_room,
@@ -1017,15 +1548,41 @@ def _execute(
         ),
     )
     episodes = state.episodes
+    policy_episodes = state.policy_episodes
     if order.side == "buy":
         episodes = (*episodes, EpisodeRuntime(order.episode_id or order.id, index, price, price))
+        if state.policy_family is not None and order.sleeve == "tactical":
+            close = next(
+                close
+                for close in reversed(state.policy_closes)
+                if close.session_index == intent.signal_session
+            )
+            condition = next(row for row in close.conditions if row.symbol == order.symbol)
+            _check(
+                isinstance(condition, KnownPolicyCondition) and condition.active,
+                "known_owned_entry_policy_required",
+            )
+            if not isinstance(condition, KnownPolicyCondition):
+                raise ValueError("known_owned_entry_policy_required")
+            policy_episodes = (
+                *policy_episodes,
+                OwnedPolicyEpisode(
+                    order.episode_id or order.id,
+                    state.policy_family,
+                    min(40, condition.proposal.maximum_holding_sessions),
+                ),
+            )
     exits = dict(state.last_exits)
     if order.side == "sell" and not any(
         lot.symbol == order.symbol for lot in state.book.account.lots
     ):
         exits[order.symbol] = index
     return replace(
-        state, records=records, episodes=episodes, last_exits=tuple(sorted(exits.items()))
+        state,
+        records=records,
+        episodes=episodes,
+        policy_episodes=policy_episodes,
+        last_exits=tuple(sorted(exits.items())),
     )
 
 
@@ -1055,7 +1612,10 @@ def _dividend_available_at(
 
 
 def advance_stock_economic_session(
-    state: StockEconomicReplayState, *, session_index: int
+    state: StockEconomicReplayState,
+    *,
+    session_index: int,
+    policy_frame: EconomicPolicyFrame | None = None,
 ) -> StockEconomicReplayState:
     with localcontext(_CONTEXT):
         _check(
@@ -1065,6 +1625,21 @@ def advance_stock_economic_session(
             and session_index < len(state.inputs.assets[0].bars),
             "next_retained_session_required",
         )
+        _validate_cost_history(state)
+        if state.policy_family is None:
+            _check(
+                not state.policy_closes and not state.policy_episodes,
+                "policy_state_family_history_mismatch",
+            )
+        else:
+            _check(
+                bool(state.policy_closes)
+                and state.policy_closes[0].session_index == 199
+                and state.policy_closes[-1].session_index == state.next_session - 1
+                and all(close.family == state.policy_family for close in state.policy_closes),
+                "policy_state_family_history_mismatch",
+            )
+            state.policy_closes[-1].__post_init__()
         index = session_index
         opened, closed = (
             state.inputs.calendar[index].opens_at,
@@ -1084,11 +1659,13 @@ def advance_stock_economic_session(
         book = credit_due_dividends(state.book, at=opened)
         settled = settle(book.account, opened)
         state = replace(state, book=adopt_dividend_account(book, settled, at=opened))
+        state = _cost_phase(state, index, "open")
         pending = state.pending
         state = replace(state, pending=())
         for intent in pending:
             state = _execute(state, intent, index)
         state = replace(state, book=credit_due_dividends(state.book, at=closed))
+        state = _cost_phase(state, index, "close")
         equity, _, _, _, _ = _values(state, _prices(state, index, opening=False), closed)
         account = state.book.account
         daily = state.snapshots[-1].gross_equity
@@ -1116,6 +1693,19 @@ def advance_stock_economic_session(
             }
         )
         state = replace(state, book=adopt_dividend_account(state.book, updated, at=closed))
+        if state.operating_cost_plan is not None:
+            costs = apply_stock_operating_costs(state.book, state.operating_cost_plan, at=closed)
+            # The close sidecar reports the completed closed-risk state, unlike
+            # the pretrade opening observation which preserves the prior HWM.
+            finalized_mark = replace(
+                state.cost_marks[-1],
+                closed_high_watermark=updated.high_watermark,
+                tactical_suspended=updated.tactical_suspended,
+                weekly_review_required=updated.weekly_review_required,
+                cost_update_hash=stock_operating_phase_hash(costs),
+            )
+            state, finalized_mark = _bind_cost_mark(state, finalized_mark, costs)
+            state = replace(state, cost_marks=(*state.cost_marks[:-1], finalized_mark))
         prices = _prices(state, index, opening=False)
         state = replace(
             state,
@@ -1132,11 +1722,12 @@ def advance_stock_economic_session(
             next_session=index + 1,
         )
         state = replace(state, snapshots=(*state.snapshots, _snapshot(state, index)))
-        return _plan(state, index)
+        return _plan(state, index, policy_frame)
 
 
 def halt_stock_economic_replay(state: StockEconomicReplayState) -> StockEconomicReplayState:
     with localcontext(_CONTEXT):
+        _validate_cost_history(state)
         account = Account.model_validate(state.book.account.model_dump() | {"kill_switch": True})
         for order in account.orders:
             account = cancel_order(account, order.id)
@@ -1149,6 +1740,16 @@ def halt_stock_economic_replay(state: StockEconomicReplayState) -> StockEconomic
 
 def finish_stock_economic_replay(state: StockEconomicReplayState) -> StockEconomicReplayResult:
     _check(state.next_session == len(state.inputs.assets[0].bars), "retained_study_not_finished")
+    _validate_cost_history(state)
+    if state.operating_cost_plan is not None:
+        return StockCostedEconomicReplayResult(
+            state.book,
+            state.snapshots,
+            state.records,
+            state.pending,
+            state.evidence_hash,
+            operating_costs=stock_economic_cost_report(state),
+        )
     return StockEconomicReplayResult(
         state.book, state.snapshots, state.records, state.pending, state.evidence_hash
     )
