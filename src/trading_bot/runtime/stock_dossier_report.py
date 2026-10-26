@@ -100,7 +100,10 @@ def _filing_chains(
 
 
 def compile_stock_dossier_report(
-    *, observations: tuple[dict[str, Any], ...], as_of: datetime
+    *,
+    observations: tuple[dict[str, Any], ...],
+    as_of: datetime,
+    include_data_quality: bool = False,
 ) -> dict[str, Any]:
     """Compose normalized evidence from archive-verified observations.
 
@@ -110,6 +113,8 @@ def compile_stock_dossier_report(
     Duplicate receipt identities and contradictory dossier joins fail the report.
     """
     try:
+        if type(include_data_quality) is not bool:
+            raise ValueError
         cutoff = require_utc(as_of)
         if type(observations) is not tuple or not 1 <= len(observations) <= 32:
             raise ValueError
@@ -286,6 +291,19 @@ def compile_stock_dossier_report(
         )
         if filing_aware:
             result["filing_evidence_denials"] = json.loads(canonical_json(filing_denials))
+        if include_data_quality:
+            from trading_bot.research.stock_data_quality import assess_stock_data_quality
+
+            assessments = tuple(assess_stock_data_quality(row, as_of=cutoff) for row in dossiers)
+            result["schema_version"] = 4
+            result["data_quality"] = json.loads(
+                canonical_json(
+                    tuple(
+                        {**asdict(row), "assessment_sha256": row.assessment_hash}
+                        for row in assessments
+                    )
+                )
+            )
         return result
     except (ValueError, KeyError, TypeError, OverflowError):
         raise ValueError("stock_dossier_report_invalid") from None
@@ -297,12 +315,15 @@ def publish_stock_dossier_report(
     manifest_file: str,
     as_of: datetime,
     additional_captures: tuple[tuple[Path, str], ...] = (),
+    include_data_quality: bool = False,
     _directory_fd: int | None = None,
 ) -> dict[str, object]:
     """Rehash committed archive, then privately publish idempotent evidence output."""
     cleanup = ExitStack()
     try:
         require_utc(as_of)
+        if type(include_data_quality) is not bool:
+            raise ValueError
         if type(additional_captures) is not tuple or len(additional_captures) > 2:
             raise ValueError
         captures = ((root, manifest_file), *additional_captures)
@@ -354,7 +375,9 @@ def publish_stock_dossier_report(
                 source_root, source_manifest, _directory_fd=descriptor
             )
         )
-        report = compile_stock_dossier_report(observations=observations, as_of=as_of)
+        report = compile_stock_dossier_report(
+            observations=observations, as_of=as_of, include_data_quality=include_data_quality
+        )
         report["source_manifest_sha256"] = manifest_file[:64]
         if additional_captures:
             report["source_manifest_sha256s"] = [manifest[:64] for _, manifest in captures]
@@ -393,6 +416,9 @@ def main() -> int:
         "--additional-capture", nargs=2, action="append", default=[], metavar=("ROOT", "MANIFEST")
     )
     parser.add_argument("--as-of", type=datetime.fromisoformat, default=datetime.now(UTC))
+    parser.add_argument(
+        "--data-quality", action="store_true", help="Include source-quality diagnostics (schema 4)"
+    )
     args = parser.parse_args()
     try:
         result = publish_stock_dossier_report(
@@ -402,6 +428,7 @@ def main() -> int:
             additional_captures=tuple(
                 (Path(root), manifest) for root, manifest in args.additional_capture
             ),
+            include_data_quality=args.data_quality,
         )
         print(json.dumps(result, sort_keys=True))
         return 0
