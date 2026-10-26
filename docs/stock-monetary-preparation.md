@@ -37,7 +37,12 @@ conditional market, settlement and dividend-funding tables, with calendar-only
 padding. It retains its own source and assumption bindings; it does not change
 this preparation result or make its unavailable constrained cases eligible.
 
-Fictional tests and independent graph probes verify the boundaries. The separate
-actual-input bridge, source-admitted monetary replay, complete strategy and cost
-comparisons, and statistical report remain work to finish Task 5. All investment
-and live-execution flags remain false.
+The [conditional portfolio replay](stock-retrospective-replay.md) connects this
+preparation and the separate schedule to the shared paused account. It preserves
+the unavailable constrained cases and requires fresh originals at its owning
+boundaries. Fictional tests verify software behavior; they supply no actual
+portfolio result.
+
+Actual-input assembly and experiment registration, complete strategy and cost
+comparisons, and the statistical report remain work to finish Task 5. All
+investment and live-execution flags remain false.

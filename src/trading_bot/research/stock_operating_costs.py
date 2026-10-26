@@ -27,7 +27,10 @@ from trading_bot.domain.decimal_utils import require_bounded_decimal
 from trading_bot.market_data.recording import content_hash
 from trading_bot.research.stock_dividend_book import (
     DividendBook,
+    DividendBookStep,
     _bind_modeled_operating_phase,
+    _BookTransaction,
+    _validate_current_book,
     adopt_dividend_account,
     pay_modeled_operating_expense,
 )
@@ -153,9 +156,13 @@ def _fingerprint(plan_hash: str, charge: ModeledOperatingCharge) -> str:
 def _paid_history(
     book: DividendBook, plan: ModeledOperatingCostPlan, at: datetime
 ) -> dict[str, Decimal]:
-    # Public owned-account adoption revalidates the entire existing book without
-    # changing any state. Discard the returned no-op trace, rather than a cache.
-    adopt_dividend_account(book, book.account, at=book.through_at)
+    _validate_current_book(book)
+    return _paid_history_validated(book, plan, at)
+
+
+def _paid_history_validated(
+    book: DividendBook, plan: ModeledOperatingCostPlan, at: datetime
+) -> dict[str, Decimal]:
     _check(book.through_at <= at)
     plan_hash = plan.evidence_hash
     charges = {charge.id: charge for charge in plan.charges}
@@ -182,8 +189,12 @@ def _paid_history(
     return paid
 
 
-def apply_stock_operating_costs(
-    book: DividendBook, plan: ModeledOperatingCostPlan, *, at: datetime
+def _apply_stock_operating_costs(
+    book: DividendBook,
+    plan: ModeledOperatingCostPlan,
+    *,
+    at: datetime,
+    _transaction: _CostTransaction | None = None,
 ) -> OperatingCostUpdate:
     """Apply a frozen fictional budget oldest-first; never spend reserved money.
 
@@ -194,10 +205,18 @@ def apply_stock_operating_costs(
         _check(type(plan) is ModeledOperatingCostPlan)
         plan.__post_init__()
         require_utc(at)
-        paid = _paid_history(book, plan, at)
-        current = (
-            book if at == book.through_at else adopt_dividend_account(book, book.account, at=at)
+        paid = (
+            _paid_history(book, plan, at)
+            if _transaction is None
+            else _transaction._sync(book, plan, at)
         )
+        current = book
+        if at != book.through_at:
+            current = (
+                adopt_dividend_account(book, book.account, at=at)
+                if _transaction is None
+                else _transaction.book.adopt(book, book.account, at=at)
+            )
         unpaid_known = _ZERO
         unknown: list[str] = []
         blocked = False
@@ -209,7 +228,10 @@ def apply_stock_operating_costs(
                 unknown.append(charge.id)
                 blocked = True
             elif not blocked and charge.amount_usd <= current.account.buying_power:
-                current = pay_modeled_operating_expense(
+                pay = (
+                    pay_modeled_operating_expense if _transaction is None else _transaction.book.pay
+                )
+                current = pay(
                     current,
                     charge_id=charge.id,
                     amount_usd=charge.amount_usd,
@@ -220,7 +242,7 @@ def apply_stock_operating_costs(
             else:
                 unpaid_known += charge.amount_usd
                 blocked = True
-        return OperatingCostUpdate(
+        result = OperatingCostUpdate(
             current,
             plan,
             at,
@@ -229,6 +251,17 @@ def apply_stock_operating_costs(
             tuple(unknown),
             _ZERO if unknown else max(_ZERO, current.account.buying_power - unpaid_known),
         )
+
+        if _transaction is not None:
+            _transaction._accept(result)
+        return result
+
+
+def apply_stock_operating_costs(
+    book: DividendBook, plan: ModeledOperatingCostPlan, *, at: datetime
+) -> OperatingCostUpdate:
+    """Freshly validate the book and apply the explicit oldest-first modeled budget."""
+    return _apply_stock_operating_costs(book, plan, at=at)
 
 
 def _validate_update(value: OperatingCostUpdate) -> None:
@@ -349,22 +382,17 @@ def bind_stock_operating_phase(
         return book, step.sequence, step.evidence_hash
 
 
-def validate_stock_operating_phase_bindings(
+def _validate_phase_bindings_validated(
     book: DividendBook,
     plan: ModeledOperatingCostPlan,
     bindings: tuple[OperatingCostPhaseBinding, ...],
-) -> None:
-    """Scan one owned ledger; rederive due/paid history without historical Book snapshots."""
+) -> dict[str, Decimal]:
+    """Check all cost rows against a caller-owned already checked generic book."""
     with localcontext(_CONTEXT):
-        _paid_history(book, plan, book.through_at)
+        _check(book.through_at >= book.account_at)
         _check(
             type(bindings) is tuple
             and all(type(item) is OperatingCostPhaseBinding for item in bindings)
-        )
-        phase_steps = tuple(step for step in book.trace if step.action == "operating_cost_phase")
-        _check(
-            tuple(item.sequence for item in bindings)
-            == tuple(step.sequence for step in phase_steps)
         )
         plan_hash = plan.evidence_hash
         paid: dict[str, Decimal] = {}
@@ -373,9 +401,11 @@ def validate_stock_operating_phase_bindings(
             if step.action == "operating_expense":
                 if step.event_id is None:
                     raise ValueError("stock_operating_cost_invalid")
-                paid[step.event_id] = step.gross_amount
+                _checked_paid_step(step, plan, plan_hash, paid, book.through_at)
             elif step.action == "operating_cost_phase":
+                _check(cursor < len(bindings))
                 binding = bindings[cursor]
+                _check(binding.sequence == step.sequence)
                 cursor += 1
                 unknown = tuple(
                     item.id
@@ -424,3 +454,178 @@ def validate_stock_operating_phase_bindings(
                         plan_hash, binding.phase_id, compact, binding.mark_payload_hash
                     )
                 )
+
+        _check(cursor == len(bindings))
+        return paid
+
+
+def _checked_paid_step(
+    step: DividendBookStep,
+    plan: ModeledOperatingCostPlan,
+    plan_hash: str,
+    paid: dict[str, Decimal],
+    at: datetime,
+) -> None:
+    _check(step.event_id is not None and step.event_id not in paid)
+    _check(len(paid) < len(plan.charges))
+    charge = plan.charges[len(paid)]
+    _check(
+        charge.id == step.event_id
+        and charge.amount_usd is not None
+        and charge.due_at <= step.at <= at
+        and step.gross_amount == charge.amount_usd
+        and step.event_fingerprint == _fingerprint(plan_hash, charge)
+        and step.tax_reserve_added == 0
+    )
+    paid[charge.id] = step.gross_amount
+
+
+def validate_stock_operating_phase_bindings(
+    book: DividendBook,
+    plan: ModeledOperatingCostPlan,
+    bindings: tuple[OperatingCostPhaseBinding, ...],
+) -> None:
+    """Fresh standalone validation of the complete book and every owned cost phase."""
+    _validate_current_book(book)
+    plan.__post_init__()
+    _validate_phase_bindings_validated(book, plan, bindings)
+
+
+class _CostTransaction:
+    """Invocation-local payment history subordinate to one checked book owner."""
+
+    __slots__ = ("_cursor", "_paid", "_summary", "_summary_values", "book", "plan", "plan_hash")
+
+    def __init__(
+        self,
+        book: _BookTransaction,
+        plan: ModeledOperatingCostPlan,
+        paid: dict[str, Decimal],
+    ) -> None:
+        book._require(book.current)
+        plan.__post_init__()
+        self.book = book
+        self.plan = plan
+        self.plan_hash = plan.evidence_hash
+        self._paid = dict(paid)
+        self._cursor = len(book.current.trace)
+        self._summary: OperatingCostUpdate | None = None
+        self._summary_values: tuple[object, ...] | None = None
+
+    def _sync(
+        self, book: DividendBook, plan: ModeledOperatingCostPlan, at: datetime
+    ) -> dict[str, Decimal]:
+        self.book._require(book)
+        _check(plan is self.plan and plan.evidence_hash == self.plan_hash and book.through_at <= at)
+        for step in book.trace[self._cursor :]:
+            if step.action == "operating_expense":
+                _checked_paid_step(step, plan, self.plan_hash, self._paid, at)
+        self._cursor = len(book.trace)
+        self._summary = None
+        self._summary_values = None
+        return dict(self._paid)
+
+    @staticmethod
+    def _values(value: OperatingCostUpdate) -> tuple[object, ...]:
+        return (
+            value.at,
+            value.paid_total,
+            value.unpaid_known,
+            value.unpaid_unknown_ids,
+            value.investable_cash,
+            value.qualified,
+            value.source_qualified,
+            value.strategy_qualified,
+            value.investment_eligible,
+            value.trading_enabled,
+            value.live_authorized,
+            value.limitations,
+        )
+
+    def _accept(self, value: OperatingCostUpdate) -> None:
+        _check(type(value) is OperatingCostUpdate)
+        require_utc(value.at)
+        _check(value.at == value.book.through_at)
+        self._sync(value.book, value.plan, value.at)
+        due = tuple(
+            item
+            for item in self.plan.charges
+            if item.due_at <= value.at and item.id not in self._paid
+        )
+        if due:
+            oldest_amount = due[0].amount_usd
+            _check(oldest_amount is None or oldest_amount > value.book.account.buying_power)
+        unknown = tuple(item.id for item in due if item.amount_usd is None)
+        unpaid = sum((item.amount_usd for item in due if item.amount_usd is not None), _ZERO)
+        _check(
+            value.paid_total == sum(self._paid.values(), _ZERO)
+            and value.unpaid_known == unpaid
+            and value.unpaid_unknown_ids == unknown
+            and value.investable_cash
+            == (_ZERO if unknown else max(_ZERO, value.book.account.buying_power - unpaid))
+            and value.qualified
+            is value.source_qualified
+            is value.strategy_qualified
+            is value.investment_eligible
+            is value.trading_enabled
+            is value.live_authorized
+            is False
+            and value.limitations == _LIMITATIONS
+        )
+        self._summary = value
+        self._summary_values = self._values(value)
+
+    def _require(self, value: OperatingCostUpdate) -> None:
+        self.book._require(value.book)
+        require_utc(value.at)
+        _check(
+            value is self._summary
+            and value.plan is self.plan
+            and value.at == value.book.through_at
+            and self.plan.evidence_hash == self.plan_hash
+            and self._values(value) == self._summary_values
+        )
+
+    def apply(self, book: DividendBook, *, at: datetime) -> OperatingCostUpdate:
+        return _apply_stock_operating_costs(book, self.plan, at=at, _transaction=self)
+
+    def net(self, gross: Decimal, value: OperatingCostUpdate) -> Decimal | None:
+        self._require(value)
+        require_bounded_decimal(gross, "gross_marked_equity", nonnegative=True)
+        return None if value.unpaid_unknown_ids else gross - value.unpaid_known
+
+    def phase_hash(self, value: OperatingCostUpdate) -> str:
+        self._require(value)
+        last = value.book.trace[-1]
+        return _phase_hash(
+            self.plan_hash,
+            value.at,
+            last.account_after_hash,
+            last.evidence_hash,
+            value.paid_total,
+            value.unpaid_known,
+            value.unpaid_unknown_ids,
+            value.investable_cash,
+        )
+
+    def bind(
+        self,
+        value: OperatingCostUpdate,
+        *,
+        phase_id: str,
+        update_hash: str,
+        mark_payload_hash: str,
+    ) -> tuple[DividendBook, int, str]:
+        _check(update_hash == self.phase_hash(value))
+        from trading_bot.domain.decimal_utils import _require_sha256_hex
+
+        _require_sha256_hex(mark_payload_hash, "operating_cost_mark_payload")
+        book, step = self.book.bind(
+            value.book,
+            phase_id=phase_id,
+            at=value.at,
+            fingerprint=_phase_commitment(self.plan_hash, phase_id, update_hash, mark_payload_hash),
+        )
+        self._summary = None
+        self._summary_values = None
+        return book, step.sequence, step.evidence_hash

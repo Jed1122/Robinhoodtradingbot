@@ -22,7 +22,7 @@ from decimal import (
     Underflow,
     localcontext,
 )
-from typing import Literal
+from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
 from trading_bot.config.hybrid import HybridSettings
@@ -37,6 +37,8 @@ from trading_bot.research.hybrid_policies import CalendarSession
 from trading_bot.research.hybrid_strategies import PriceBar
 from trading_bot.research.stock_dividend_book import (
     DividendBook,
+    _begin_book_transaction,
+    _BookTransaction,
     adopt_dividend_account,
     create_dividend_book,
     credit_due_dividends,
@@ -48,18 +50,25 @@ from trading_bot.research.stock_economic_policies import (
     EconomicPolicyFrame,
     KnownPolicyCondition,
     OwnedPolicyEpisode,
-    evaluate_economic_policy_close,
+    _evaluate_close,
+    _RetrospectivePolicyFrame,
     validate_policy_assets,
 )
 from trading_bot.research.stock_operating_costs import (
     ModeledOperatingCostPlan,
     OperatingCostPhaseBinding,
     OperatingCostUpdate,
+    _CostTransaction,
+    _validate_phase_bindings_validated,
     apply_stock_operating_costs,
     bind_stock_operating_phase,
     net_equity_after_operating_costs,
     stock_operating_phase_hash,
     validate_stock_operating_phase_bindings,
+)
+from trading_bot.research.stock_retrospective_replay_inputs import (
+    RetrospectiveAssetView,
+    _RetrospectivePanel,
 )
 
 _ZERO, _ONE = Decimal(0), Decimal(1)
@@ -424,7 +433,7 @@ class EconomicReplayCostReport:
 
 @dataclass(frozen=True, slots=True)
 class StockEconomicReplayState:
-    inputs: StockEconomicReplayInputs
+    inputs: StockEconomicReplayInputs | _RetrospectivePanel
     protocol: StockEconomicReplayProtocol
     book: DividendBook
     next_session: int
@@ -449,56 +458,81 @@ class StockEconomicReplayState:
 
     @property
     def evidence_hash(self) -> str:
-        intents = tuple(
-            (
-                p.symbol,
-                p.side,
-                p.sleeve,
-                p.signal_session,
-                p.cash_budget,
-                None if p.exit_order is None else p.exit_order.model_dump(),
-                p.reason,
-            )
-            for p in self.pending
-        )
-        legacy = (
-            "stock-economic-state-v3",
-            self.inputs.evidence_hash,
-            self.protocol.evidence_hash,
-            self.book.evidence_hash,
-            self.next_session,
-            intents,
-            self.episodes,
-            self.previous_signals,
-            self.last_exits,
-            self.snapshots,
-            self.records,
-        )
-        base = (
-            _hash(legacy)
-            if self.policy_family is None
-            else _hash(
-                (
-                    "stock-economic-policy-state-v1",
-                    legacy,
-                    self.policy_family,
-                    self.policy_closes,
-                    self.policy_episodes,
-                )
-            )
-        )
         _validate_cost_history(self)
-        if self.operating_cost_plan is None:
-            return base
+        return _state_evidence_hash_validated(self)
+
+
+def _state_evidence_hash_validated(state: StockEconomicReplayState) -> str:
+    intents = tuple(
+        (
+            p.symbol,
+            p.side,
+            p.sleeve,
+            p.signal_session,
+            p.cash_budget,
+            None if p.exit_order is None else p.exit_order.model_dump(),
+            p.reason,
+        )
+        for p in state.pending
+    )
+    if type(state.inputs) is _RetrospectivePanel:
         return _hash(
             (
-                "stock-economic-cost-state-v2",
-                base,
-                _COST_RISK_PHASE,
-                self.operating_cost_plan_hash,
-                self.cost_marks,
+                "retrospective-economic-core-v1",
+                state.inputs.source_root,
+                state.protocol.evidence_hash,
+                state.book.evidence_hash,
+                state.next_session,
+                intents,
+                state.episodes,
+                state.previous_signals,
+                state.last_exits,
+                state.snapshots,
+                state.records,
+                state.policy_family,
+                state.policy_closes,
+                state.policy_episodes,
+                state.operating_cost_plan_hash,
+                state.cost_marks,
             )
         )
+    legacy = (
+        "stock-economic-state-v3",
+        state.inputs.evidence_hash,
+        state.protocol.evidence_hash,
+        state.book.evidence_hash,
+        state.next_session,
+        intents,
+        state.episodes,
+        state.previous_signals,
+        state.last_exits,
+        state.snapshots,
+        state.records,
+    )
+    base = (
+        _hash(legacy)
+        if state.policy_family is None
+        else _hash(
+            (
+                "stock-economic-policy-state-v1",
+                legacy,
+                state.policy_family,
+                state.policy_closes,
+                state.policy_episodes,
+            )
+        )
+    )
+    if state.operating_cost_plan is None:
+        return base
+    return _hash(
+        (
+            "stock-economic-cost-state-v2",
+            base,
+            _COST_RISK_PHASE,
+            state.operating_cost_plan_hash,
+            state.cost_marks,
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -715,19 +749,137 @@ def _validate_inputs(inputs: StockEconomicReplayInputs) -> None:
         seen_directives.add(key)
 
 
-def _asset(state: StockEconomicReplayState, symbol: str) -> ModeledAsset:
+def _asset(state: StockEconomicReplayState, symbol: str) -> ModeledAsset | RetrospectiveAssetView:
     return next(item for item in state.inputs.assets if item.symbol == symbol)
+
+
+def _accounting_bars(asset: ModeledAsset | RetrospectiveAssetView) -> tuple[PriceBar, ...]:
+    return (
+        asset.accounting_bars
+        if type(asset) is RetrospectiveAssetView
+        else cast(ModeledAsset, asset).bars
+    )
+
+
+def _signal_bars(asset: ModeledAsset | RetrospectiveAssetView) -> tuple[PriceBar, ...]:
+    return (
+        asset.signal_bars
+        if type(asset) is RetrospectiveAssetView
+        else cast(ModeledAsset, asset).bars
+    )
+
+
+def _price_count(inputs: StockEconomicReplayInputs | _RetrospectivePanel) -> int:
+    return (
+        inputs.price_session_count
+        if type(inputs) is _RetrospectivePanel
+        else len(cast(StockEconomicReplayInputs, inputs).assets[0].bars)
+    )
+
+
+def _legacy_signal(asset: ModeledAsset | RetrospectiveAssetView, index: int) -> bool:
+    _check(type(asset) is ModeledAsset, "scripted_signal_requires_fictional_asset")
+    return cast(ModeledAsset, asset).signals[index]
 
 
 def _prices(state: StockEconomicReplayState, index: int, *, opening: bool) -> dict[str, Decimal]:
     return {
-        asset.symbol: asset.bars[index].open if opening else asset.bars[index].close
-        for asset in state.inputs.assets
+        a.symbol: _accounting_bars(a)[index].open if opening else _accounting_bars(a)[index].close
+        for a in state.inputs.assets
     }
 
 
+def _entry_eligible(
+    state: StockEconomicReplayState,
+    asset: ModeledAsset | RetrospectiveAssetView,
+    at: datetime,
+    price: Decimal,
+    completed_index: int,
+) -> bool:
+    if type(asset) is ModeledAsset:
+        return _eligible(asset, at, price)
+    _check(type(state.inputs) is _RetrospectivePanel, "retrospective_asset_panel_required")
+    if (
+        completed_index < 19
+        or at < cast(_RetrospectivePanel, state.inputs).convention.membership_available_at
+        or price < 10
+    ):
+        return False
+    with localcontext(_CONTEXT):
+        dollar_volume = (
+            sum(
+                (
+                    cast(RetrospectiveAssetView, asset).accounting_bars[i].close
+                    * cast(RetrospectiveAssetView, asset).native_volume[i]
+                    for i in range(completed_index - 19, completed_index + 1)
+                ),
+                _ZERO,
+            )
+            / 20
+        )
+    return dollar_volume >= 20000000
+
+
+def _entry_denial(state: StockEconomicReplayState) -> str:
+    return (
+        "conditional_price_or_liquidity_screen"
+        if type(state.inputs) is _RetrospectivePanel
+        else "modeled_risk_inputs_unavailable"
+    )
+
+
+def _long_targets(state: StockEconomicReplayState) -> tuple[tuple[str, Decimal], ...]:
+    return (
+        (("SPY", Decimal(".75")),)
+        if type(state.inputs) is _RetrospectivePanel
+        else cast(StockEconomicReplayInputs, state.inputs).long_term_allocations
+    )
+
+
+def _sector_room(
+    state: StockEconomicReplayState,
+    asset: ModeledAsset | RetrospectiveAssetView,
+    prices: dict[str, Decimal],
+    equity: Decimal,
+) -> Decimal:
+    if type(state.inputs) is _RetrospectivePanel:
+        return equity  # Explicit conditional omission, never a fabricated sector.
+    _check(type(asset) is ModeledAsset, "fictional_sector_asset_required")
+    sector = sum(
+        (
+            lot.quantity * prices[lot.symbol]
+            for lot in state.book.account.lots
+            if _asset(state, lot.symbol).role != "passive_comparison"
+            and cast(ModeledAsset, _asset(state, lot.symbol)).sector
+            == cast(ModeledAsset, asset).sector
+        ),
+        _ZERO,
+    )
+    return equity if asset.role == "passive_comparison" else equity * Decimal(".25") - sector
+
+
+def _execution_scenario(
+    state: StockEconomicReplayState, index: int, symbol: str
+) -> tuple[Decimal, bool]:
+    if type(state.inputs) is _RetrospectivePanel:
+        return _ONE, False
+    directive = next(
+        (
+            v
+            for v in cast(StockEconomicReplayInputs, state.inputs).execution_directives
+            if v.session_index == index and v.symbol == symbol
+        ),
+        ModeledExecutionDirective(index, symbol),
+    )
+    return directive.fill_fraction, directive.reject
+
+
 def _values(
-    state: StockEconomicReplayState, prices: dict[str, Decimal], at: datetime
+    state: StockEconomicReplayState,
+    prices: dict[str, Decimal],
+    at: datetime,
+    *,
+    _transaction: _EconomicTransaction | None = None,
 ) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal]:
     account = state.book.account
     long = sum(
@@ -739,14 +891,19 @@ def _values(
         _ZERO,
     )
     unsettled = sum((claim.amount for claim in account.settlements), _ZERO)
-    rights = receivable_value(state.book, at=at)
+    rights = _receivable_book(state.book, at=at, _transaction=_transaction)
     return account.cash + unsettled + rights + long + tactical, long, tactical, unsettled, rights
 
 
-def _snapshot(state: StockEconomicReplayState, index: int) -> EconomicReplaySnapshot:
+def _snapshot(
+    state: StockEconomicReplayState,
+    index: int,
+    *,
+    _transaction: _EconomicTransaction | None = None,
+) -> EconomicReplaySnapshot:
     at = state.inputs.calendar[index].closes_at
     equity, long, tactical, unsettled, rights = _values(
-        state, _prices(state, index, opening=False), at
+        state, _prices(state, index, opening=False), at, _transaction=_transaction
     )
     return EconomicReplaySnapshot(
         index,
@@ -784,10 +941,12 @@ def _validate_cost_configuration(state: StockEconomicReplayState) -> None:
     )
 
 
-def _validate_cost_history(state: StockEconomicReplayState) -> None:
+def _validate_cost_history(
+    state: StockEconomicReplayState, *, _book: _BookTransaction | None = None
+) -> dict[str, Decimal]:
     _validate_cost_configuration(state)
     if state.operating_cost_plan is None:
-        return
+        return {}
     expected = tuple(
         (index, phase) for index in range(200, state.next_session) for phase in ("open", "close")
     )
@@ -810,14 +969,18 @@ def _validate_cost_history(state: StockEconomicReplayState) -> None:
             and mark.plan_hash == state.operating_cost_plan_hash,
             "operating_cost_mark_history_mismatch",
         )
-    _validate_owned_cost_marks(state.book, state.operating_cost_plan, state.cost_marks)
+    return _validate_owned_cost_marks(
+        state.book, state.operating_cost_plan, state.cost_marks, _book=_book
+    )
 
 
 def _validate_owned_cost_marks(
     book: DividendBook,
     plan: ModeledOperatingCostPlan,
     marks: tuple[EconomicReplayCostMark, ...],
-) -> None:
+    *,
+    _book: _BookTransaction | None = None,
+) -> dict[str, Decimal]:
     bindings = []
     for mark in marks:
         mark.__post_init__()
@@ -841,14 +1004,23 @@ def _validate_owned_cost_marks(
                 mark.payload_hash,
             )
         )
-    validate_stock_operating_phase_bindings(book, plan, tuple(bindings))
+    if _book is None:
+        validate_stock_operating_phase_bindings(book, plan, tuple(bindings))
+        return {}
+    _book._require(book)
+    return _validate_phase_bindings_validated(book, plan, tuple(bindings))
 
 
 def _bind_cost_mark(
-    state: StockEconomicReplayState, mark: EconomicReplayCostMark, costs: OperatingCostUpdate
+    state: StockEconomicReplayState,
+    mark: EconomicReplayCostMark,
+    costs: OperatingCostUpdate,
+    *,
+    _transaction: _EconomicTransaction | None = None,
 ) -> tuple[StockEconomicReplayState, EconomicReplayCostMark]:
     _check(costs.book is state.book, "operating_cost_current_book_required")
-    book, sequence, digest = bind_stock_operating_phase(
+    bind = bind_stock_operating_phase if _transaction is None else _transaction.costs.bind
+    book, sequence, digest = bind(
         costs,
         phase_id=f"{mark.session_index}:{mark.phase}",
         update_hash=mark.cost_update_hash,
@@ -860,7 +1032,11 @@ def _bind_cost_mark(
 
 
 def _cost_phase(
-    state: StockEconomicReplayState, index: int, phase: Literal["open", "close"]
+    state: StockEconomicReplayState,
+    index: int,
+    phase: Literal["open", "close"],
+    *,
+    _transaction: _EconomicTransaction | None = None,
 ) -> StockEconomicReplayState:
     plan = state.operating_cost_plan
     if plan is None:
@@ -872,10 +1048,10 @@ def _cost_phase(
         else state.inputs.calendar[index].closes_at
     )
     prices = _prices(state, index, opening=phase == "open")
-    before, _, _, _, _ = _values(state, prices, at)
-    costs = apply_stock_operating_costs(state.book, plan, at=at)
+    before, _, _, _, _ = _values(state, prices, at, _transaction=_transaction)
+    costs = _apply_costs(state.book, plan, at=at, _transaction=_transaction)
     state = replace(state, book=costs.book)
-    gross, _, _, _, _ = _values(state, prices, at)
+    gross, _, _, _, _ = _values(state, prices, at, _transaction=_transaction)
     _check(gross > 0, "operating_cost_gross_equity_depleted")
     daily = state.snapshots[-1].gross_equity
     prior_day = state.snapshots[-1].at.astimezone(_NY).date()
@@ -898,8 +1074,10 @@ def _cost_phase(
             }
         )
         if updated != account:
-            state = replace(state, book=adopt_dividend_account(state.book, updated, at=at))
-            costs = apply_stock_operating_costs(state.book, plan, at=at)
+            state = replace(
+                state, book=_adopt_book(state.book, updated, at=at, _transaction=_transaction)
+            )
+            costs = _apply_costs(state.book, plan, at=at, _transaction=_transaction)
         account = state.book.account
     mark = EconomicReplayCostMark(
         index,
@@ -907,7 +1085,7 @@ def _cost_phase(
         phase,
         before,
         gross,
-        net_equity_after_operating_costs(gross, costs),
+        _net_costs(gross, costs, _transaction=_transaction),
         costs.paid_total,
         costs.unpaid_known,
         costs.unpaid_unknown_ids,
@@ -918,10 +1096,10 @@ def _cost_phase(
         account.tactical_suspended,
         account.weekly_review_required,
         plan.evidence_hash,
-        stock_operating_phase_hash(costs),
+        _phase_cost_hash(costs, _transaction=_transaction),
     )
     if phase == "open":
-        state, mark = _bind_cost_mark(state, mark, costs)
+        state, mark = _bind_cost_mark(state, mark, costs, _transaction=_transaction)
     return replace(state, cost_marks=(*state.cost_marks, mark))
 
 
@@ -1029,7 +1207,11 @@ def _resume_profit_rung(
 
 
 def _plan(
-    state: StockEconomicReplayState, index: int, policy_frame: EconomicPolicyFrame | None = None
+    state: StockEconomicReplayState,
+    index: int,
+    policy_frame: EconomicPolicyFrame | _RetrospectivePolicyFrame | None = None,
+    *,
+    _transaction: _EconomicTransaction | None = None,
 ) -> StockEconomicReplayState:
     account, prices = state.book.account, _prices(state, index, opening=False)
     at = state.inputs.calendar[index].closes_at
@@ -1037,7 +1219,12 @@ def _plan(
     if state.policy_family is None:
         _check(policy_frame is None, "policy_mode_cannot_change")
     else:
-        _check(type(policy_frame) is EconomicPolicyFrame, "policy_frame_required")
+        expected_frame = (
+            _RetrospectivePolicyFrame
+            if type(state.inputs) is _RetrospectivePanel
+            else EconomicPolicyFrame
+        )
+        _check(type(policy_frame) is expected_frame, "policy_frame_required")
         if policy_frame is None:
             raise ValueError("policy_frame_required")
         _check(policy_frame.family == state.policy_family, "owned_policy_family_cannot_change")
@@ -1054,8 +1241,15 @@ def _plan(
             asset = policy_assets.get(observation.symbol)
             _check(
                 asset is not None
-                and 0 <= observation.session_index < len(asset.bars)
-                and observation.bar == asset.bars[observation.session_index],
+                and 0 <= observation.session_index < len(_signal_bars(asset))
+                and observation.bar == _signal_bars(asset)[observation.session_index]
+                and (
+                    type(asset) is ModeledAsset
+                    or observation.volume
+                    == Decimal(
+                        cast(RetrospectiveAssetView, asset).native_volume[observation.session_index]
+                    )
+                ),
                 "policy_observation_scope_mismatch",
             )
         held_positions = tuple(
@@ -1069,10 +1263,10 @@ def _plan(
         )
         following = (
             state.inputs.calendar[index + 1].opens_at
-            if index + 1 < len(state.inputs.assets[0].bars)
+            if index + 1 < _price_count(state.inputs)
             else None
         )
-        policy_close = evaluate_economic_policy_close(
+        policy_close = _evaluate_close(
             policy_frame,
             session_index=index,
             information_at=at,
@@ -1086,13 +1280,13 @@ def _plan(
         }
     previous_defined = dict(state.previous_signals)
     if state.policy_family is None:
-        next_signals = tuple((a.symbol, a.signals[index]) for a in state.inputs.assets)
+        next_signals = tuple((a.symbol, _legacy_signal(a, index)) for a in state.inputs.assets)
     else:
         previous_defined.update(
             {symbol: active for symbol, active in conditions.items() if active is not None}
         )
         next_signals = tuple(sorted(previous_defined.items()))
-    equity, long, tactical, _, _ = _values(state, prices, at)
+    equity, long, tactical, _, _ = _values(state, prices, at, _transaction=_transaction)
     if account.kill_switch:
         return replace(
             state,
@@ -1118,7 +1312,7 @@ def _plan(
         entry = record.entry_price
         age = index - record.entered_session + 1
         active = (
-            _asset(state, episode.symbol).signals[index]
+            _legacy_signal(_asset(state, episode.symbol), index)
             if state.policy_family is None
             else conditions[episode.symbol]
         )
@@ -1204,15 +1398,13 @@ def _plan(
     claimed: set[str] = {intent.symbol for intent in pending}
     available = max(_ZERO, _spendable(state, at) - equity * Decimal(".10"))
     long_budget = max(_ZERO, equity * Decimal(".75") - long)
-    for symbol, weight in state.inputs.long_term_allocations:
-        if not _eligible(_asset(state, symbol), at, prices[symbol]):
+    for symbol, weight in _long_targets(state):
+        if not _entry_eligible(state, _asset(state, symbol), at, prices[symbol], index):
             state = replace(
                 state,
                 records=(
                     *state.records,
-                    EconomicReplayRecord(
-                        index, at, symbol, "buy", "denied", "modeled_risk_inputs_unavailable"
-                    ),
+                    EconomicReplayRecord(index, at, symbol, "buy", "denied", _entry_denial(state)),
                 ),
             )
             continue
@@ -1232,7 +1424,7 @@ def _plan(
         for asset in state.inputs.assets
         if asset.role == "stock_candidate"
         and (
-            asset.signals[index]
+            _legacy_signal(asset, index)
             if state.policy_family is None
             else conditions.get(asset.symbol) is True
         )
@@ -1241,8 +1433,8 @@ def _plan(
     candidates = []
     for asset in signaled:
         reason = ""
-        if not _eligible(asset, at, prices[asset.symbol]):
-            reason = "modeled_risk_inputs_unavailable"
+        if not _entry_eligible(state, asset, at, prices[asset.symbol], index):
+            reason = _entry_denial(state)
         elif any(lot.symbol == asset.symbol for lot in account.lots) or asset.symbol in claimed:
             reason = "overlapping_symbol"
         elif any(
@@ -1275,15 +1467,18 @@ def _plan(
     )
 
 
-def begin_stock_economic_replay(
-    inputs: StockEconomicReplayInputs,
+def _begin_economic_core(
+    inputs: StockEconomicReplayInputs | _RetrospectivePanel,
     protocol: StockEconomicReplayProtocol,
     *,
-    policy_frame: EconomicPolicyFrame | None = None,
+    policy_frame: EconomicPolicyFrame | _RetrospectivePolicyFrame | None = None,
     operating_cost_plan: ModeledOperatingCostPlan | None = None,
 ) -> StockEconomicReplayState:
     with localcontext(_CONTEXT):
-        _validate_inputs(inputs)
+        _check(
+            type(inputs) in (StockEconomicReplayInputs, _RetrospectivePanel),
+            "shared_core_panel_required",
+        )
         _check(type(protocol) is StockEconomicReplayProtocol, "typed_replay_protocol_required")
         protocol.__post_init__()
         initial = Account(starting_capital=Decimal(1000), cash=Decimal(1000), paused=True)
@@ -1291,7 +1486,9 @@ def begin_stock_economic_replay(
             initial,
             account_at=inputs.calendar[199].closes_at,
             sessions=inputs.calendar,
-            calendar_source_hash=inputs.calendar_source_hash,
+            calendar_source_hash=inputs.source_root
+            if type(inputs) is _RetrospectivePanel
+            else cast(StockEconomicReplayInputs, inputs).calendar_source_hash,
             tax_rate=protocol.tax_rate,
         )
         state = StockEconomicReplayState(inputs, protocol, book, 200, (), (), (), (), (), ())
@@ -1307,16 +1504,24 @@ def begin_stock_economic_replay(
             )
         _validate_cost_configuration(state)
         if policy_frame is not None:
-            _check(type(policy_frame) is EconomicPolicyFrame, "typed_policy_frame_required")
-            validate_policy_assets(inputs)
+            if type(inputs) is _RetrospectivePanel:
+                _check(
+                    type(policy_frame) is _RetrospectivePolicyFrame,
+                    "retrospective_policy_frame_required",
+                )
+            else:
+                _check(type(policy_frame) is EconomicPolicyFrame, "typed_policy_frame_required")
+                validate_policy_assets(cast(StockEconomicReplayInputs, inputs))
             state = replace(state, policy_family=policy_frame.family)
         state = replace(state, snapshots=(_snapshot(state, 199),))
         return _plan(state, 199, policy_frame)
 
 
 def _settlement_at(state: StockEconomicReplayState, index: int) -> datetime | None:
+    if type(state.inputs) is _RetrospectivePanel:
+        return state.inputs.settlement_at[index]
     trade_day = state.inputs.calendar[index].opens_at.astimezone(_NY).date()
-    by_day = {row.day: row for row in state.inputs.settlement_days}
+    by_day = {row.day: row for row in cast(StockEconomicReplayInputs, state.inputs).settlement_days}
     day = trade_day + timedelta(days=1)
     last = state.inputs.calendar[-1].opens_at.astimezone(_NY).date()
     while day <= last:
@@ -1337,7 +1542,11 @@ def _settlement_at(state: StockEconomicReplayState, index: int) -> datetime | No
 
 
 def _reserve(
-    state: StockEconomicReplayState, order: PaperOrder, at: datetime
+    state: StockEconomicReplayState,
+    order: PaperOrder,
+    at: datetime,
+    *,
+    _transaction: _EconomicTransaction | None = None,
 ) -> StockEconomicReplayState:
     account = state.book.account
     progress = account.exit_progress
@@ -1354,11 +1563,15 @@ def _reserve(
     updated = Account.model_validate(
         account.model_dump() | {"orders": (*account.orders, order), "exit_progress": progress}
     )
-    return replace(state, book=adopt_dividend_account(state.book, updated, at=at))
+    return replace(state, book=_adopt_book(state.book, updated, at=at, _transaction=_transaction))
 
 
 def _execute(
-    state: StockEconomicReplayState, intent: PendingEconomicIntent, index: int
+    state: StockEconomicReplayState,
+    intent: PendingEconomicIntent,
+    index: int,
+    *,
+    _transaction: _EconomicTransaction | None = None,
 ) -> StockEconomicReplayState:
     at = state.inputs.calendar[index].opens_at
     account = state.book.account
@@ -1377,17 +1590,21 @@ def _execute(
         cost_block = _cost_buy_block(state, at)
         if cost_block is not None:
             return _deny(state, index, intent, cost_block)
-        if not _eligible(
-            asset, state.inputs.calendar[intent.signal_session].closes_at, prices[intent.symbol]
+        if not _entry_eligible(
+            state,
+            asset,
+            state.inputs.calendar[intent.signal_session].closes_at,
+            prices[intent.symbol],
+            intent.signal_session,
         ):
-            return _deny(state, index, intent, "modeled_risk_inputs_unavailable")
+            return _deny(state, index, intent, _entry_denial(state))
         if intent.sleeve == "tactical" and any(lot.symbol == intent.symbol for lot in account.lots):
             return _deny(state, index, intent, "overlapping_symbol")
         if intent.sleeve == "tactical" and (
             account.tactical_suspended or account.weekly_review_required
         ):
             return _deny(state, index, intent, "sticky_tactical_suspension")
-        equity, long, tactical, _, _ = _values(state, prices, at)
+        equity, long, tactical, _, _ = _values(state, prices, at, _transaction=_transaction)
         held = sum(
             (
                 lot.quantity * prices[lot.symbol]
@@ -1402,18 +1619,7 @@ def _execute(
         sleeve_room = equity * (
             Decimal(".75") if intent.sleeve == "long_term" else Decimal(".15")
         ) - (long if intent.sleeve == "long_term" else tactical)
-        sector = sum(
-            (
-                lot.quantity * prices[lot.symbol]
-                for lot in account.lots
-                if _asset(state, lot.symbol).role != "passive_comparison"
-                and _asset(state, lot.symbol).sector == asset.sector
-            ),
-            _ZERO,
-        )
-        sector_room = (
-            equity if asset.role == "passive_comparison" else equity * Decimal(".25") - sector
-        )
+        sector_room = _sector_room(state, asset, prices, equity)
         budget = min(
             intent.cash_budget,
             _spendable(state, at) - equity * Decimal(".10"),
@@ -1460,27 +1666,22 @@ def _execute(
         )
         if sum((lot.quantity for lot in selected), _ZERO) < order.quantity:
             return _deny(state, index, intent, "insufficient_owned_shares")
-    state = _reserve(state, order, at)
-    directive = next(
-        (
-            v
-            for v in state.inputs.execution_directives
-            if v.session_index == index and v.symbol == intent.symbol
-        ),
-        ModeledExecutionDirective(index, intent.symbol),
-    )
-    quantity = _down(order.quantity * directive.fill_fraction)
-    if directive.reject or quantity <= 0:
+    state = _reserve(state, order, at, _transaction=_transaction)
+    fill_fraction, reject = _execution_scenario(state, index, intent.symbol)
+    quantity = _down(order.quantity * fill_fraction)
+    if reject or quantity <= 0:
         updated = cancel_order(state.book.account, order.id)
-        state = replace(state, book=adopt_dividend_account(state.book, updated, at=at))
-        outcome: Literal["rejected", "cancelled"] = "rejected" if directive.reject else "cancelled"
+        state = replace(
+            state, book=_adopt_book(state.book, updated, at=at, _transaction=_transaction)
+        )
+        outcome: Literal["rejected", "cancelled"] = "rejected" if reject else "cancelled"
         record = EconomicReplayRecord(
             index,
             at,
             order.symbol,
             order.side,
             outcome,
-            "modeled_rejection" if directive.reject else "modeled_no_fill",
+            "modeled_rejection" if reject else "modeled_no_fill",
             order.id,
         )
         return replace(state, records=(*state.records, record))
@@ -1488,7 +1689,9 @@ def _execute(
         order.side == "sell" and quantity * price <= state.protocol.fee_usd
     ):
         updated = cancel_order(state.book.account, order.id)
-        state = replace(state, book=adopt_dividend_account(state.book, updated, at=at))
+        state = replace(
+            state, book=_adopt_book(state.book, updated, at=at, _transaction=_transaction)
+        )
         record = EconomicReplayRecord(
             index, at, order.symbol, order.side, "cancelled", "below_modeled_fill_minimum", order.id
         )
@@ -1524,10 +1727,12 @@ def _execute(
         simulation_fee_usd=state.protocol.fee_usd,
     )
     updated = fill_order(state.book.account, fill, settings, settlement_at=settlement_at)
-    state = replace(state, book=adopt_dividend_account(state.book, updated, at=at))
+    state = replace(state, book=_adopt_book(state.book, updated, at=at, _transaction=_transaction))
     if quantity < order.quantity:
         updated = cancel_order(state.book.account, order.id)
-        state = replace(state, book=adopt_dividend_account(state.book, updated, at=at))
+        state = replace(
+            state, book=_adopt_book(state.book, updated, at=at, _transaction=_transaction)
+        )
     records = (
         *state.records,
         EconomicReplayRecord(
@@ -1587,9 +1792,11 @@ def _execute(
 
 
 def _dividend_available_at(
-    inputs: StockEconomicReplayInputs,
+    inputs: StockEconomicReplayInputs | _RetrospectivePanel,
     event: StockCashDividendEvent,
 ) -> datetime | None:
+    if type(inputs) is _RetrospectivePanel:
+        return dict(inputs.dividend_available_at).get(event.id)
     if event.pay_date is None:
         return None
     candidate = next(
@@ -1602,7 +1809,9 @@ def _dividend_available_at(
     )
     if candidate is None:
         return None
-    funding = {row.day: row.status for row in inputs.dividend_funding_days}
+    funding = {
+        row.day: row.status for row in cast(StockEconomicReplayInputs, inputs).dividend_funding_days
+    }
     if (
         funding.get(event.pay_date) != "supported"
         or funding.get(candidate.astimezone(_NY).date()) != "supported"
@@ -1611,21 +1820,25 @@ def _dividend_available_at(
     return candidate
 
 
-def advance_stock_economic_session(
+def _advance_economic_core(
     state: StockEconomicReplayState,
     *,
     session_index: int,
-    policy_frame: EconomicPolicyFrame | None = None,
+    policy_frame: EconomicPolicyFrame | _RetrospectivePolicyFrame | None = None,
+    _transaction: _EconomicTransaction | None = None,
 ) -> StockEconomicReplayState:
     with localcontext(_CONTEXT):
         _check(
             type(state) is StockEconomicReplayState
             and type(session_index) is int
             and session_index == state.next_session
-            and session_index < len(state.inputs.assets[0].bars),
+            and session_index < _price_count(state.inputs),
             "next_retained_session_required",
         )
-        _validate_cost_history(state)
+        if _transaction is None:
+            _validate_cost_history(state)
+        else:
+            _transaction.book._require(state.book)
         if state.policy_family is None:
             _check(
                 not state.policy_closes and not state.policy_episodes,
@@ -1648,25 +1861,30 @@ def advance_stock_economic_session(
         for event in state.inputs.dividends:
             if event.ex_date != opened.astimezone(_NY).date():
                 continue
-            book = record_dividend_entitlement(
+            book = _record_book(
                 state.book,
                 event,
                 snapshot_at=state.inputs.calendar[index - 1].closes_at,
                 ex_opens_at=opened,
                 modeled_pay_available_at=_dividend_available_at(state.inputs, event),
+                _transaction=_transaction,
             )
             state = replace(state, book=book)
-        book = credit_due_dividends(state.book, at=opened)
+        book = _credit_book(state.book, at=opened, _transaction=_transaction)
         settled = settle(book.account, opened)
-        state = replace(state, book=adopt_dividend_account(book, settled, at=opened))
-        state = _cost_phase(state, index, "open")
+        state = replace(
+            state, book=_adopt_book(book, settled, at=opened, _transaction=_transaction)
+        )
+        state = _cost_phase(state, index, "open", _transaction=_transaction)
         pending = state.pending
         state = replace(state, pending=())
         for intent in pending:
-            state = _execute(state, intent, index)
-        state = replace(state, book=credit_due_dividends(state.book, at=closed))
-        state = _cost_phase(state, index, "close")
-        equity, _, _, _, _ = _values(state, _prices(state, index, opening=False), closed)
+            state = _execute(state, intent, index, _transaction=_transaction)
+        state = replace(state, book=_credit_book(state.book, at=closed, _transaction=_transaction))
+        state = _cost_phase(state, index, "close", _transaction=_transaction)
+        equity, _, _, _, _ = _values(
+            state, _prices(state, index, opening=False), closed, _transaction=_transaction
+        )
         account = state.book.account
         daily = state.snapshots[-1].gross_equity
         prior_day = state.snapshots[-1].at.astimezone(_NY).date()
@@ -1692,9 +1910,13 @@ def advance_stock_economic_session(
                 or equity <= weekly * Decimal(".97"),
             }
         )
-        state = replace(state, book=adopt_dividend_account(state.book, updated, at=closed))
+        state = replace(
+            state, book=_adopt_book(state.book, updated, at=closed, _transaction=_transaction)
+        )
         if state.operating_cost_plan is not None:
-            costs = apply_stock_operating_costs(state.book, state.operating_cost_plan, at=closed)
+            costs = _apply_costs(
+                state.book, state.operating_cost_plan, at=closed, _transaction=_transaction
+            )
             # The close sidecar reports the completed closed-risk state, unlike
             # the pretrade opening observation which preserves the prior HWM.
             finalized_mark = replace(
@@ -1702,9 +1924,11 @@ def advance_stock_economic_session(
                 closed_high_watermark=updated.high_watermark,
                 tactical_suspended=updated.tactical_suspended,
                 weekly_review_required=updated.weekly_review_required,
-                cost_update_hash=stock_operating_phase_hash(costs),
+                cost_update_hash=_phase_cost_hash(costs, _transaction=_transaction),
             )
-            state, finalized_mark = _bind_cost_mark(state, finalized_mark, costs)
+            state, finalized_mark = _bind_cost_mark(
+                state, finalized_mark, costs, _transaction=_transaction
+            )
             state = replace(state, cost_marks=(*state.cost_marks[:-1], finalized_mark))
         prices = _prices(state, index, opening=False)
         state = replace(
@@ -1721,8 +1945,10 @@ def advance_stock_economic_session(
             ),
             next_session=index + 1,
         )
-        state = replace(state, snapshots=(*state.snapshots, _snapshot(state, index)))
-        return _plan(state, index, policy_frame)
+        state = replace(
+            state, snapshots=(*state.snapshots, _snapshot(state, index, _transaction=_transaction))
+        )
+        return _plan(state, index, policy_frame, _transaction=_transaction)
 
 
 def halt_stock_economic_replay(state: StockEconomicReplayState) -> StockEconomicReplayState:
@@ -1739,7 +1965,8 @@ def halt_stock_economic_replay(state: StockEconomicReplayState) -> StockEconomic
 
 
 def finish_stock_economic_replay(state: StockEconomicReplayState) -> StockEconomicReplayResult:
-    _check(state.next_session == len(state.inputs.assets[0].bars), "retained_study_not_finished")
+    _check(type(state.inputs) is StockEconomicReplayInputs, "fictional_finish_input_required")
+    _check(state.next_session == _price_count(state.inputs), "retained_study_not_finished")
     _validate_cost_history(state)
     if state.operating_cost_plan is not None:
         return StockCostedEconomicReplayResult(
@@ -1753,3 +1980,176 @@ def finish_stock_economic_replay(state: StockEconomicReplayState) -> StockEconom
     return StockEconomicReplayResult(
         state.book, state.snapshots, state.records, state.pending, state.evidence_hash
     )
+
+
+def begin_stock_economic_replay(
+    inputs: StockEconomicReplayInputs,
+    protocol: StockEconomicReplayProtocol,
+    *,
+    policy_frame: EconomicPolicyFrame | None = None,
+    operating_cost_plan: ModeledOperatingCostPlan | None = None,
+) -> StockEconomicReplayState:
+    with localcontext(_CONTEXT):
+        _validate_inputs(inputs)
+    return _begin_economic_core(
+        inputs, protocol, policy_frame=policy_frame, operating_cost_plan=operating_cost_plan
+    )
+
+
+def advance_stock_economic_session(
+    state: StockEconomicReplayState,
+    *,
+    session_index: int,
+    policy_frame: EconomicPolicyFrame | None = None,
+) -> StockEconomicReplayState:
+    _check(
+        type(state) is StockEconomicReplayState and type(state.inputs) is StockEconomicReplayInputs,
+        "fictional_advance_input_required",
+    )
+    return _advance_economic_core(state, session_index=session_index, policy_frame=policy_frame)
+
+
+@dataclass(slots=True)
+class _EconomicTransaction:
+    book: _BookTransaction
+    cost_owner: _CostTransaction | None
+
+    @property
+    def costs(self) -> _CostTransaction:
+        if self.cost_owner is None:
+            raise ValueError("owned_operating_cost_plan_required")
+        return self.cost_owner
+
+
+def _adopt_book(
+    book: DividendBook,
+    account: Account,
+    *,
+    at: datetime,
+    _transaction: _EconomicTransaction | None = None,
+) -> DividendBook:
+    return (
+        adopt_dividend_account(book, account, at=at)
+        if _transaction is None
+        else _transaction.book.adopt(book, account, at=at)
+    )
+
+
+def _credit_book(
+    book: DividendBook,
+    *,
+    at: datetime,
+    _transaction: _EconomicTransaction | None = None,
+) -> DividendBook:
+    return (
+        credit_due_dividends(book, at=at)
+        if _transaction is None
+        else _transaction.book.credit(book, at=at)
+    )
+
+
+def _record_book(
+    book: DividendBook,
+    event: StockCashDividendEvent,
+    *,
+    snapshot_at: datetime,
+    ex_opens_at: datetime,
+    modeled_pay_available_at: datetime | None,
+    _transaction: _EconomicTransaction | None = None,
+) -> DividendBook:
+    record = record_dividend_entitlement if _transaction is None else _transaction.book.accrue
+    return record(
+        book,
+        event,
+        snapshot_at=snapshot_at,
+        ex_opens_at=ex_opens_at,
+        modeled_pay_available_at=modeled_pay_available_at,
+    )
+
+
+def _receivable_book(
+    book: DividendBook,
+    *,
+    at: datetime,
+    _transaction: _EconomicTransaction | None = None,
+) -> Decimal:
+    return (
+        receivable_value(book, at=at)
+        if _transaction is None
+        else _transaction.book.receivable(book, at=at)
+    )
+
+
+def _apply_costs(
+    book: DividendBook,
+    plan: ModeledOperatingCostPlan,
+    *,
+    at: datetime,
+    _transaction: _EconomicTransaction | None = None,
+) -> OperatingCostUpdate:
+    if _transaction is None:
+        return apply_stock_operating_costs(book, plan, at=at)
+    _check(plan is _transaction.costs.plan, "owned_operating_cost_plan_changed")
+    return _transaction.costs.apply(book, at=at)
+
+
+def _net_costs(
+    gross: Decimal,
+    costs: OperatingCostUpdate,
+    *,
+    _transaction: _EconomicTransaction | None = None,
+) -> Decimal | None:
+    return (
+        net_equity_after_operating_costs(gross, costs)
+        if _transaction is None
+        else _transaction.costs.net(gross, costs)
+    )
+
+
+def _phase_cost_hash(
+    costs: OperatingCostUpdate,
+    *,
+    _transaction: _EconomicTransaction | None = None,
+) -> str:
+    return (
+        stock_operating_phase_hash(costs)
+        if _transaction is None
+        else _transaction.costs.phase_hash(costs)
+    )
+
+
+def _advance_owned_economic_core(
+    state: StockEconomicReplayState,
+    *,
+    session_index: int,
+    policy_frame: _RetrospectivePolicyFrame,
+    expected_seal: str,
+) -> tuple[StockEconomicReplayState, str]:
+    """Retrospective-owner-only transaction; no token survives this synchronous call."""
+    _check(type(state.inputs) is _RetrospectivePanel, "owned_retrospective_panel_required")
+    with localcontext(_CONTEXT):
+        book = _begin_book_transaction(state.book)
+        try:
+            paid = _validate_cost_history(state, _book=book)
+            _check(
+                _state_evidence_hash_validated(state) == expected_seal,
+                "owned_retrospective_core_changed",
+            )
+            costs = (
+                None
+                if state.operating_cost_plan is None
+                else _CostTransaction(book, state.operating_cost_plan, paid)
+            )
+            transaction = _EconomicTransaction(book, costs)
+            result = _advance_economic_core(
+                state,
+                session_index=session_index,
+                policy_frame=policy_frame,
+                _transaction=transaction,
+            )
+            book._require(result.book)
+            _validate_cost_history(result, _book=book)
+            book.finish()
+            return result, _state_evidence_hash_validated(result)
+        finally:
+            book._abort()
