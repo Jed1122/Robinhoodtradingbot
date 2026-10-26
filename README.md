@@ -26,6 +26,11 @@ risk-gated order proposals. Research can conclude
 that no purchase is justified. There is no fixed 60-day paper waiting requirement;
 validation, reconciliation, risk controls and explicit live authorization still apply.
 
+Source-bound stock diagnostics, calendar admission and retained-data restrictions
+are documented in [stock data qualification](docs/stock-data-qualification.md).
+The [first historical stock-study input contract](docs/stock-first-study-inputs.md)
+defines the separate fixed cohort and permitted retrospective research uses.
+
 ## Stock bot verification
 
 The default `pytest`, `pytest tests`, and `make test` suite covers the current stock
