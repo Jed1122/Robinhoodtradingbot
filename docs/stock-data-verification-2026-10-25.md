@@ -71,11 +71,17 @@ gate passed against that exact coverage file. No selected test skipped or failed
 Existing configuration excludes authenticated tests and retired legacy ETF/options
 strategy/native-data suites; exclusions are not reported as new passing tests.
 
-All **228 new critical tests** passed. A later Ruff-only formatting correction to
-one new test file was followed by the same 228 passing tests; application source
-did not change after the full run. Ruff lint/format, strict mypy across 462 source
-modules and Bandit on changed modules passed. Remote CI for the final commit is
-recorded separately; this record does not invent that result.
+All **228 new critical tests** passed. A later Ruff-only formatting correction was
+followed by the same 228 passing tests. Initial CI then caught a test expectation
+that differs by Python version: `dataclasses.replace` rejects `init=False` fields with `ValueError`
+on Python 3.12 and `TypeError` on newer versions. Both prevent promotion. The test
+now accepts those two rejection types and explicitly verifies the original safety
+flag remains false. All 228 tests subsequently passed on Python 3.12 and 3.14.
+Application source did not change after the full run.
+
+Ruff lint, changed-file formatting, strict mypy across 462 source modules and
+Bandit on changed modules passed. Remote CI for the final commit is recorded
+separately; this record does not invent that result.
 
 The 36 warnings comprise SQLite resource warnings and a Starlette test-client
 deprecation warning. They remain disclosed. Local checks establish software

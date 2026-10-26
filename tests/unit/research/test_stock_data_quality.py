@@ -291,8 +291,11 @@ def test_complete_dossier_policy_and_assessment_clock_are_hash_bound_without_pro
         "live_authorized",
     ):
         assert getattr(first, name) is False
-        with pytest.raises(TypeError):
+        # dataclasses.replace rejects init=False fields with ValueError on 3.12
+        # and TypeError on newer Python; both must preserve the safety flag.
+        with pytest.raises((TypeError, ValueError)):
             replace(first, **{name: True})
+        assert getattr(first, name) is False
     with pytest.raises(FrozenInstanceError):
         first.reason_codes = ()
 
