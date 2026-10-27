@@ -214,3 +214,55 @@ it("accepts explicit unknown valuations but rejects unknown cash-state fields", 
     }),
   ).toThrow();
 });
+
+import { decisionFixture } from "./decisionTestFixture";
+it("accepts optional current decisions while rejecting authority, clocks and incomplete denominators", () => {
+  const snapshot = fixture();
+  snapshot.research.current_decisions = decisionFixture();
+  expect(validateSnapshot(snapshot)).toBe(snapshot);
+  const bad = structuredClone(snapshot);
+  (bad.research.current_decisions as unknown as Record<string, unknown>).live_authorized = true;
+  expect(() => validateSnapshot(bad)).toThrow();
+  const counts = structuredClone(snapshot);
+  if (counts.research.current_decisions?.status === "available") counts.research.current_decisions.long_term.assessed_count = 2;
+  expect(() => validateSnapshot(counts)).toThrow();
+});
+
+it("rejects an eligible count unsupported by a complete displayed inventory", () => {
+  const data = fixture();
+  const view = decisionFixture();
+  if (view.status !== "available") throw new Error("fixture must be available");
+  Object.assign(view.long_term.decisions[0], {
+    analytically_eligible: false, action: "review", ordinal_rank: null,
+    priority_score: null, expires_at: null,
+  });
+  data.research.current_decisions = view;
+  expect(() => validateSnapshot(data)).toThrow();
+});
+
+it("allows a truthful eligible lower bound when additional decisions are omitted", () => {
+  const data = fixture();
+  const view = decisionFixture();
+  if (view.status !== "available") throw new Error("fixture must be available");
+  view.long_term.assessed_count = 2;
+  view.long_term.eligible_count = 2;
+  view.long_term.omitted_count = 1;
+  data.research.current_decisions = view;
+  expect(validateSnapshot(data)).toBe(data);
+});
+
+it.each(["legacy_version", "missing_aggregate", "null_aggregate", "late_aggregate", "bad_aggregate", "missing_deadline", "late_deadline"])("rejects invalid current-decision expiry coverage: %s", (kind) => {
+  const data = fixture();
+  const view = decisionFixture();
+  if (view.status !== "available") throw new Error("fixture must be available");
+  const raw = view as unknown as Record<string, unknown>;
+  if (kind === "legacy_version") raw.schema_version = 1;
+  if (kind === "missing_aggregate") delete (view.long_term as unknown as Record<string, unknown>).earliest_eligible_expiry;
+  if (kind === "null_aggregate") view.long_term.earliest_eligible_expiry = null;
+  if (kind === "late_aggregate") view.long_term.earliest_eligible_expiry = "2026-10-26T22:00:00Z";
+  if (kind === "bad_aggregate") (view.long_term as unknown as Record<string, unknown>).earliest_eligible_expiry = true;
+  if (kind === "missing_deadline") delete raw.valid_until;
+  if (kind === "late_deadline") view.valid_until = "2026-10-26T22:00:00Z";
+  data.research.current_decisions = view;
+  expect(() => validateSnapshot(data)).toThrow();
+});

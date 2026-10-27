@@ -26,6 +26,11 @@ from trading_bot.research.stock_dashboard import (
     present_stock_dashboard,
     unavailable_stock_dashboard,
 )
+from trading_bot.research.stock_decision_dashboard import (
+    StockDecisionFeed,
+    present_stock_decisions,
+    unavailable_stock_decisions,
+)
 
 
 class Control(BaseModel):
@@ -181,6 +186,7 @@ def build_hybrid_app(
     static_dir: Path | None = None,
     run_worker: bool = False,
     stock_research_reader: StockDashboardFeed | None = None,
+    stock_decision_reader: StockDecisionFeed | None = None,
 ) -> FastAPI:
     if len(token) < 32 or any(char.isspace() for char in token):
         raise ValueError("a private high-entropy dashboard token is required")
@@ -201,6 +207,18 @@ def build_hybrid_app(
             if isinstance(original, dict):
                 view["comparisons"] = original.get("comparisons", [])
             result["research"] = view
+        if stock_decision_reader is not None:
+            try:
+                decisions = present_stock_decisions(
+                    stock_decision_reader(),
+                    now=datetime.now(UTC),
+                    maximum_age_seconds=stock_decision_reader.maximum_age_seconds,
+                )
+            except Exception:
+                decisions = unavailable_stock_decisions("export_unavailable")
+            research = result["research"]
+            if isinstance(research, dict):
+                research["current_decisions"] = decisions
         return result
 
     @asynccontextmanager

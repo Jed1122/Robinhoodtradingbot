@@ -211,3 +211,16 @@ main()
     else:
         assert not export.exists()
     assert (state / "dashboard.token").read_text().strip() not in result.stdout + result.stderr
+
+
+def test_current_decision_feed_is_an_explicit_optional_read_only_projection_flag():
+    result = subprocess.run(
+        [sys.executable, "-m", "trading_bot.hybrid.cli", "serve", "--help"],
+        cwd=ROOT,
+        env=os.environ | {"PYTHONPATH": str(ROOT / "src")},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "--stock-decision-export-dir" in result.stdout
+    assert "read-only current decision projection" in result.stdout

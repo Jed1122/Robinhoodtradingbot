@@ -160,6 +160,7 @@ async def capture_stock_observations(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     transport_authenticated: bool,
+    retain_request_plan: bool = False,
     before_call: Callable[[int, StockCaptureRequest], Awaitable[object]] | None = None,
     _directory_fd: int | None = None,
 ) -> dict[str, object]:
@@ -176,6 +177,7 @@ async def capture_stock_observations(
     try:
         if (
             type(transport_authenticated) is not bool
+            or type(retain_request_plan) is not bool
             or not 1 <= len(requests) <= 32
             or (before_call is not None and not callable(before_call))
         ):
@@ -274,8 +276,8 @@ async def capture_stock_observations(
         completed = require_utc(clock())
         if completed < last_received:
             raise StockCaptureError("stock research receipt clock invalid")
-        manifest = {
-            "schema_version": 1,
+        manifest: dict[str, object] = {
+            "schema_version": 2 if retain_request_plan else 1,
             "started_at": started.isoformat(),
             "completed_at": completed.isoformat(),
             "request_plan_sha256": hashlib.sha256(
@@ -293,6 +295,10 @@ async def capture_stock_observations(
             "qualified": False,
             "live_enabled": False,
         }
+        if retain_request_plan:
+            manifest["request_plan"] = [
+                {"tool": item.tool, "arguments": item.arguments} for item in plan
+            ]
         name, digest = _publish(directory, _json(manifest), ".stock-capture.json")
         if cancelled is not None:
             raise cancelled

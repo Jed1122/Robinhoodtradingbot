@@ -1,0 +1,4 @@
+# Explicit current-evidence research profile. Not selected by default worker/CLI.
+# No trading authority. A separate runtime owner must supply/persist held/watch input.
+policy_id: stock-worker-current-provider-v1
+enrichment_refresh_minutes: 60

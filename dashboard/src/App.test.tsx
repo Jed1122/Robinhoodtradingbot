@@ -541,3 +541,63 @@ it("shows unavailable marks as unknown valuations without fabricating zero retur
   expect(drawdown.querySelector("strong")?.textContent).toBe("—");
   expect(screen.queryByText("null%")).toBeNull();
 });
+
+import { decisionFixture } from "./decisionTestFixture";
+it("separates current long-term and tactical decisions from disabled execution", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-26T20:00:00Z"));
+  const data = fixture(); data.research.current_decisions = decisionFixture();
+  data.generated_at = "2026-10-26T20:00:00Z";
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(snapshotResponse(data)));
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Dashboard access token"), { target: { value: "fictional-session" } });
+  fireEvent.click(screen.getByRole("button", { name: "Connect workspace" }));
+  await act(async () => {});
+  expect(screen.getByText("Connected")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Research" }));
+  expect(screen.getByRole("heading", {name:"Current stock decisions"})).toBeTruthy();
+  expect(screen.getByText("Long-term · years")).toBeTruthy();
+  expect(screen.getByText("Tactical · one–two calendar months")).toBeTruthy();
+  expect(screen.getByText("ALFA")).toBeTruthy(); expect(screen.getByText("BETA")).toBeTruthy();
+  expect(screen.getByText(/Execution disabled.*performance remains unproven/)).toBeTruthy();
+  expect(screen.getAllByText("Meets research criteria")).toHaveLength(2);
+});
+
+it.each(["expired", "omitted", "view_expired", "error", "stale"])("suppresses cached current eligibility and proposed actions after %s while polling cannot refresh", async (mode) => {
+  pollingClock();
+  vi.setSystemTime(new Date("2026-10-26T20:00:00Z"));
+  const data = fixture();
+  data.generated_at = "2026-10-26T20:00:00Z";
+  const view = decisionFixture();
+  if (view.status !== "available") throw new Error("fixture must be available");
+  if (["expired", "omitted", "view_expired"].includes(mode)) {
+    view.valid_until = "2026-10-26T20:00:20Z";
+  }
+  if (mode === "omitted") {
+    Object.assign(view.long_term, {
+      assessed_count: 2, eligible_count: 2, omitted_count: 1,
+      earliest_eligible_expiry: "2026-10-26T20:00:20Z",
+    });
+  }
+  if (mode === "expired") {
+    for (const track of [view.long_term, view.tactical]) {
+      track.earliest_eligible_expiry = "2026-10-26T20:00:20Z";
+      for (const row of track.decisions) row.expires_at = "2026-10-26T20:00:20Z";
+    }
+  }
+  data.research.current_decisions = view;
+  const unresolved = deferred<ReturnType<typeof snapshotResponse>>();
+  const fetcher = vi.fn().mockResolvedValueOnce(snapshotResponse(data));
+  if (mode === "error") fetcher.mockResolvedValue({ ok: false, status: 503 });
+  else fetcher.mockReturnValue(unresolved.promise);
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  await connectPollingSession();
+  fireEvent.click(screen.getByRole("button", { name: "Research" }));
+  expect(screen.getAllByText("Meets research criteria")).toHaveLength(2);
+  await tick(["expired", "omitted", "view_expired"].includes(mode) ? 20000 : mode === "stale" ? 70000 : 30000);
+  expect(screen.queryAllByText("Proposed entry")).toHaveLength(0);
+  expect(screen.queryAllByText("Meets research criteria")).toHaveLength(0);
+  expect(screen.getByText("Current decisions unavailable")).toBeTruthy();
+  expect(fetcher).toHaveBeenCalledTimes(["expired", "omitted", "view_expired"].includes(mode) ? 1 : 2);
+});

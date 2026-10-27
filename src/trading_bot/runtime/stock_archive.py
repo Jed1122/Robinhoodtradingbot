@@ -18,7 +18,13 @@ from trading_bot.brokers.stock_research_mcp import (
     _profile,
 )
 from trading_bot.clock import require_utc
-from trading_bot.runtime.stock_capture import _duplicate_directory, _private_directory
+from trading_bot.runtime.stock_capture import (
+    StockCaptureRequest,
+    _duplicate_directory,
+    _json,
+    _private_directory,
+    parse_stock_capture_plan,
+)
 
 
 def _read(directory: int, name: str, suffix: str) -> dict[str, Any]:
@@ -69,6 +75,17 @@ def read_stock_observations(
         ):
             raise ValueError("stock_archive_invalid")
         manifest = _read(directory, manifest_file, ".stock-capture.json")
+        retained_plan: tuple[StockCaptureRequest, ...] | None = None
+        if manifest["schema_version"] != 1:
+            if type(manifest["schema_version"]) is not int or manifest["schema_version"] != 2:
+                raise ValueError("stock_archive_invalid")
+            retained_plan = parse_stock_capture_plan(manifest["request_plan"])
+            if (
+                len(retained_plan) != manifest["planned_calls"]
+                or hashlib.sha256(_json(manifest["request_plan"])).hexdigest()
+                != manifest["request_plan_sha256"]
+            ):
+                raise ValueError("stock_archive_invalid")
         rows = manifest["observations"]
         counts = tuple(
             manifest[name] for name in ("planned_calls", "attempted_calls", "successful_calls")
@@ -103,8 +120,7 @@ def read_stock_observations(
         if type(authenticated) is not bool or manifest["native_http_wire_receipt"] is not False:
             raise ValueError("stock_archive_invalid")
         if (
-            manifest["schema_version"] != 1
-            or manifest["schema_profile_sha256"] != PROFILE_SHA256
+            manifest["schema_profile_sha256"] != PROFILE_SHA256
             or manifest["qualified"] is not False
             or manifest["live_enabled"] is not False
             or manifest["status"] not in {"complete", "partial"}
@@ -113,7 +129,7 @@ def read_stock_observations(
             or manifest["successful_calls"] != len(rows)
         ):
             raise ValueError("stock_archive_invalid")
-        result = []
+        result: list[dict[str, Any]] = []
         previous_received = manifest_start
         seen: set[str] = set()
         for row in rows:
@@ -138,6 +154,13 @@ def read_stock_observations(
             ):
                 raise ValueError("stock_archive_invalid")
             _arguments(item["tool"], item["arguments"], _profile()[item["tool"]])
+            if retained_plan is not None:
+                request = retained_plan[len(result)]
+                if (
+                    item["tool"] != request.tool
+                    or _json(item["arguments"]) != request.encoded_arguments
+                ):
+                    raise ValueError("stock_archive_invalid")
             start = require_utc(datetime.fromisoformat(item["request_started_at"]))
             end = require_utc(datetime.fromisoformat(item["received_at"]))
             if not previous_received <= start <= end <= manifest_end:

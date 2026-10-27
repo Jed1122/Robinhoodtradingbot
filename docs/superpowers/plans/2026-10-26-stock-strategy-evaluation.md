@@ -1,5 +1,10 @@
 # Stock Strategy Evaluation Implementation Plan
 
+> This historical evaluation plan is now deferred under the later human scope
+> change. Use the [current stock investing plan](2026-10-26-current-stock-investing.md)
+> for active work. Preserve completed results and unfinished comparisons honestly;
+> no proven-profitability or mandatory paper-wait gate is imposed on that release.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Complete Task 5's actual stock-strategy/portfolio evaluation and auditable

@@ -1,0 +1,5 @@
+# Pair explicitly with stock-worker-current-provider.example.yaml.
+# Unchanged broad discovery: 17 calls. Nine-name current enrichment: 25 calls.
+# At 60-minute alternating slots, 12 pairs/day use 504 of the existing 512 calls.
+# At most nine unique held+watch names; greater coverage needs an explicit budget design.
+shortlist_count: 9

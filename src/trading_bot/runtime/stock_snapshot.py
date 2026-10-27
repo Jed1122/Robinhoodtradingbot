@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 from trading_bot.clock import require_utc
@@ -36,8 +36,10 @@ from trading_bot.persistence.stock_research_jobs import (
     StockResearchJobState,
     StockResearchResult,
 )
-from trading_bot.runtime.stock_archive import _read
+from trading_bot.research.stock_screen import CURRENT_PROVIDER_WORKER_PROFILE
+from trading_bot.runtime.stock_archive import _read, read_stock_observations
 from trading_bot.runtime.stock_archive_lease import StockArchiveLease
+from trading_bot.runtime.stock_capture import parse_stock_capture_plan
 from trading_bot.runtime.stock_dashboard_export import _projection
 from trading_bot.runtime.stock_dashboard_export import _read as _read_export
 from trading_bot.runtime.stock_dossier_report import compile_stock_dossier_report
@@ -49,10 +51,12 @@ from trading_bot.runtime.stock_research_controls import (
 )
 from trading_bot.runtime.stock_research_worker import (
     _cached,
+    _plan_hash,
     _requests,
     _screen_body,
     _symbols,
     _verified_capture,
+    _verify_targeted_preview,
 )
 from trading_bot.runtime.stock_snapshot_policy import (
     FULL_REPLAY_V1,
@@ -373,6 +377,52 @@ def _summary(state: StockResearchJobState) -> dict[str, Any]:
     }
 
 
+def _captured_enrichment_symbols(
+    root: Path, archive: StockArchiveLease, claim: StockResearchClaim, manifest_sha256: str
+) -> tuple[str, ...]:
+    """Use retained intent/requests, including v2 calls that never executed.
+
+    The caller still requires the actual discovery source head and reconstructs the
+    complete versioned expected plan. A v1 copy without selected names stays unknown.
+    """
+    rows = read_stock_observations(
+        root, manifest_sha256 + ".stock-capture.json", _directory_fd=archive.directory_fd
+    )
+    manifest = _read(
+        archive.directory_fd, manifest_sha256 + ".stock-capture.json", ".stock-capture.json"
+    )
+    if manifest["schema_version"] == 2:
+        retained = parse_stock_capture_plan(manifest["request_plan"])
+        _require(
+            _plan_hash(retained) == manifest["request_plan_sha256"] == claim.plan_sha256
+            and len(retained) == manifest["planned_calls"] == claim.planned_calls
+        )
+        return tuple(
+            symbol
+            for request in retained
+            if request.tool == "get_equity_fundamentals"
+            for symbol in cast(list[str], request.arguments["symbols"])
+        )
+    named = [
+        item["values"]
+        for row in rows
+        if row["tool"] == "preview_scan"
+        for item in row["arguments"]["filters"]
+        if item.get("expression") == "symbol" and item.get("predicate") == "ANY_OF"
+    ]
+    _require(len(named) <= 1)
+    if named:
+        return tuple(named[0])
+    symbols = tuple(
+        symbol
+        for row in rows
+        if row["tool"] == "get_equity_fundamentals"
+        for symbol in row["arguments"]["symbols"]
+    )
+    _require(bool(symbols))
+    return symbols
+
+
 async def _replay(
     root: Path, loaded: LoadedConfig, code_hash: CodeHash, now: datetime, window: _Window
 ) -> dict[str, Any]:
@@ -406,6 +456,13 @@ async def _replay(
                 source_symbols = discovery_symbols.get(str(claim.source_result_sha256))
                 _require(claim.phase == "discovery" or source_symbols is not None)
                 symbols = () if source_symbols is None else source_symbols
+                if (
+                    claim.phase == "enrichment"
+                    and policy.stock_worker.policy_id == CURRENT_PROVIDER_WORKER_PROFILE
+                ):
+                    symbols = _captured_enrichment_symbols(
+                        root / "archive", archive, claim, result.manifest_sha256
+                    )
                 plan = _requests(claim.phase, policy, claim.claimed_at, symbols)
                 manifest, rows = _verified_capture(
                     archive=archive,
@@ -442,6 +499,10 @@ async def _replay(
                     _require(report["screen"]["coverage_complete"] is True)
                     discovery_symbols[result.record_sha256] = _symbols(report)
                 else:
+                    if policy.stock_worker.policy_id == CURRENT_PROVIDER_WORKER_PROFILE:
+                        _verify_targeted_preview(
+                            rows, symbols=symbols, policy=policy.stock_research, as_of=at
+                        )
                     expected = compile_stock_dossier_report(observations=rows, as_of=at)
                     expected["source_manifest_sha256"] = result.manifest_sha256
                     _require(canonical_json(report) == canonical_json(expected))
@@ -527,7 +588,14 @@ async def _recovery_integrity(
                 source_symbols = discovery_symbols.get(str(claim.source_result_sha256))
                 _require(claim.phase == "discovery" or source_symbols is not None)
                 symbols = () if source_symbols is None else source_symbols
-                manifest, _ = _verified_capture(
+                if (
+                    claim.phase == "enrichment"
+                    and policy.stock_worker.policy_id == CURRENT_PROVIDER_WORKER_PROFILE
+                ):
+                    symbols = _captured_enrichment_symbols(
+                        root / "archive", archive, claim, result.manifest_sha256
+                    )
+                manifest, rows = _verified_capture(
                     archive=archive,
                     root=root / "archive",
                     claim=claim,
@@ -557,6 +625,10 @@ async def _recovery_integrity(
                         _require(report["screen"]["coverage_complete"] is True)
                         discovery_symbols[result.record_sha256] = _symbols(report)
                     else:
+                        if policy.stock_worker.policy_id == CURRENT_PROVIDER_WORKER_PROFILE:
+                            _verify_targeted_preview(
+                                rows, symbols=symbols, policy=policy.stock_research, as_of=at
+                            )
                         _require(report["normalization_denials"] == [])
                         _require({row["symbol"] for row in report["dossiers"]} == set(symbols))
             if (root / "exports" / "stock-research.json").exists():

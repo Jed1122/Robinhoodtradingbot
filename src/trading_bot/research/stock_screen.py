@@ -14,6 +14,8 @@ from trading_bot.config.stock_research import StockResearchSettings
 from trading_bot.domain.decimal_utils import require_bounded_decimal
 
 TURNOVER_COLUMN = 'turnoverAvg(candleCount={sessions}, candlePeriod="1d", session="regular")'
+LEGACY_WORKER_PROFILE = "stock-worker-v1"
+CURRENT_PROVIDER_WORKER_PROFILE = "stock-worker-current-provider-v1"
 _COLUMNS = {
     "roe": ("Return on equity", "fundamental.returnOnEquity"),
     "net_margin": ("Net profit margin", "fundamental.netProfitMargin"),
@@ -22,15 +24,47 @@ _COLUMNS = {
     "pe": ("P/E", "fundamental.peRatio"),
     "fcf_per_share": ("FCF/share", "fundamental.cashFlowFreePerShare"),
 }
+_CURRENT_COLUMNS = {
+    "price_to_fcf": ("P/FCF", "fundamental.pfcfRatio"),
+    "total_stockholders_equity": ("Total stockholders equity", "fundamental.totalStockEquity"),
+    "assets_to_equity": ("Assets/equity", "fundamental.totalAssetsEquityRatio"),
+    "report_currency": ("Reporting currency", "fundamental.reportCurrency"),
+    "provider_close_20": (
+        "Provider close 20",
+        'close(candleCount=20, candlePeriod="1d", session="regular")',
+    ),
+    "provider_sma_50": (
+        "Provider SMA 50",
+        'closeAvg(candleCount=50, candlePeriod="1d", session="regular")',
+    ),
+    "quotation_currency": ("Quotation currency", "currency"),
+}
 
 
-def discovery_requests(policy: StockResearchSettings) -> list[dict[str, Any]]:
+def _current_profile(worker_profile_id: str) -> bool:
+    if type(worker_profile_id) is not str or worker_profile_id not in (
+        LEGACY_WORKER_PROFILE,
+        CURRENT_PROVIDER_WORKER_PROFILE,
+    ):
+        raise ValueError("stock_screen_invalid")
+    return worker_profile_id == CURRENT_PROVIDER_WORKER_PROFILE
+
+
+def discovery_requests(
+    policy: StockResearchSettings, *, worker_profile_id: str = LEGACY_WORKER_PROFILE
+) -> list[dict[str, Any]]:
     """Non-overlapping market-cap partitions; completeness must be verified afterward."""
+    current = _current_profile(worker_profile_id)
     requests: list[dict[str, Any]] = [{"tool": "get_scanner_filter_specs", "arguments": {}}]
     columns = [
         {"display_name": title, "expression": expression} for title, expression in _COLUMNS.values()
     ]
     columns.append({"display_name": "Sector", "expression": "fundamental.morningstarSectorLabel"})
+    if current:
+        columns.extend(
+            {"display_name": title, "expression": expression}
+            for title, expression in _CURRENT_COLUMNS.values()
+        )
     for index, lower in enumerate(policy.market_cap_boundaries_usd):
         filters: list[dict[str, Any]] = [
             {"filter_type": "FILTER_TYPE_INSTRUMENT_TYPE", "predicate": "=", "values": ["STOCK"]},
@@ -110,6 +144,7 @@ def screen_stocks(
     *,
     policy: StockResearchSettings,
     as_of: datetime,
+    worker_profile_id: str = LEGACY_WORKER_PROFILE,
 ) -> dict[str, object]:
     """Rank only complete, current partition coverage; missing facts are never zero-filled.
 
@@ -118,12 +153,13 @@ def screen_stocks(
     completed raw OHLCV observations independently establish dollar-volume eligibility.
     """
     try:
+        current = _current_profile(worker_profile_id)
         now = require_utc(as_of)
         if not 0 <= len(observations) <= 24:
             raise ValueError("observation count invalid")
         expected = {
             tuple(_key(f, echoed=False) for f in request["arguments"]["filters"]): request
-            for request in discovery_requests(policy)[1:]
+            for request in discovery_requests(policy, worker_profile_id=worker_profile_id)[1:]
         }
         seen: set[tuple[tuple[object, ...], ...]] = set()
         symbols: set[str] = set()
@@ -216,19 +252,39 @@ def screen_stocks(
                     name: _decimal(cells.get(column)) for name, (column, _) in _COLUMNS.items()
                 }
                 metrics["earnings_yield"] = _ratio(Decimal(1), metrics["pe"])
-                metrics["fcf_yield"] = _ratio(metrics["fcf_per_share"], price)
+                if current:
+                    metrics.update(
+                        {
+                            name: _decimal(cells.get(column))
+                            for name, (column, _) in _CURRENT_COLUMNS.items()
+                            if name not in ("report_currency", "quotation_currency")
+                        }
+                    )
+                    metrics["fcf_yield"] = _ratio(Decimal(1), metrics["price_to_fcf"])
+                else:
+                    metrics["fcf_yield"] = _ratio(metrics["fcf_per_share"], price)
                 sector = cells.get("Sector", "")
                 if type(sector) is not str or len(sector) > 128:
                     raise ValueError("stock sector invalid")
-                candidates.append(
-                    {
-                        "symbol": symbol,
-                        "sector": sector,
-                        "metrics": metrics,
-                        "source_observation_sha256": digest,
-                        "available_at": stamp.isoformat(),
-                    }
-                )
+                candidate: dict[str, Any] = {
+                    "symbol": symbol,
+                    "sector": sector,
+                    "metrics": metrics,
+                    "source_observation_sha256": digest,
+                    "available_at": stamp.isoformat(),
+                }
+                if current:
+                    for name, column in (
+                        ("report_currency", "Reporting currency"),
+                        ("quotation_currency", "Quotation currency"),
+                    ):
+                        currency = cells.get(column)
+                        candidate["metrics"][name] = (
+                            currency
+                            if type(currency) is str and re.fullmatch(r"[A-Z]{3}", currency)
+                            else None
+                        )
+                candidates.append(candidate)
         if len(seen) != len(expected):
             issues.add("missing_partition")
         complete = not issues
@@ -296,7 +352,7 @@ def screen_stocks(
                     }
                 )
             ranked.sort(key=lambda row: (-Decimal(row["research_priority_score"]), row["symbol"]))
-        return {
+        report = {
             "as_of": now.isoformat(),
             "policy_id": policy.policy_id,
             "qualified": False,
@@ -314,5 +370,14 @@ def screen_stocks(
                 "Relative research priority; no calibrated relationship to future returns."
             ),
         }
+        if current:
+            report.update(
+                {
+                    "worker_profile_id": worker_profile_id,
+                    "provider_price_basis": "current_provider_snapshot_not_completed_close",
+                    "balance_sheet_date": None,
+                }
+            )
+        return report
     except (KeyError, TypeError, ValueError, DecimalException, OverflowError):
         raise ValueError("stock_screen_invalid") from None
