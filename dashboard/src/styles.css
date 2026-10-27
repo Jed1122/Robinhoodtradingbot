@@ -876,3 +876,20 @@ footer span:first-child {
     animation: none;
   }
 }
+
+.decision-overview {
+  padding: 0 24px 12px;
+  overflow-wrap: anywhere;
+}
+.decision-overview p {
+  margin: 0 0 4px;
+}
+.decision-track h3 {
+  margin: 16px 24px 8px;
+  font-size: 15px;
+}
+.decision-track > p {
+  margin: 0 24px 16px;
+  color: var(--muted);
+  font-size: 12px;
+}

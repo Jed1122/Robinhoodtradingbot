@@ -1,5 +1,13 @@
 # Task 5: stock strategy and portfolio evaluation
 
+> Scope update: the later human instruction prioritizes current company research,
+> long-term stock selection and one-to-two-calendar-month tactical decisions.
+> The exhaustive historical evaluation below is preserved as deferred research;
+> demonstrated profitability is no longer a first-release requirement. The
+> [current stock investing design](2026-10-26-current-stock-investing-design.md)
+> governs new implementation. Existing results and qualification limits are
+> unchanged; live authorization and essential risk controls remain separate.
+
 ## First-release scope decision
 
 The user selected the lean first-release scope: prioritize scheduled individual

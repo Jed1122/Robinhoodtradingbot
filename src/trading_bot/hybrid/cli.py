@@ -258,6 +258,11 @@ def main() -> None:
     serve.add_argument(
         "--stock-export-dir", type=Path, help="Separate read-only stock dashboard projection mount"
     )
+    serve.add_argument(
+        "--stock-decision-export-dir",
+        type=Path,
+        help="Separate read-only current decision projection mount",
+    )
     args = parser.parse_args()
     try:
         _private_directory(args.state_dir)
@@ -321,12 +326,21 @@ def main() -> None:
         engine = create_engine(url)
         owner = HybridJournal(async_session_factory(engine), str(loaded.config_hash))
         stock_reader = None
+        decision_reader = None
         if args.stock_export_dir is not None:
             from trading_bot.runtime.stock_dashboard_export import StockDashboardReader
             from trading_bot.runtime.stock_research_worker import load_stock_worker_configuration
 
             stock_loaded = load_stock_worker_configuration(args.config_root)
             stock_reader = StockDashboardReader(root=args.stock_export_dir, loaded=stock_loaded)
+        if args.stock_decision_export_dir is not None:
+            from trading_bot.runtime.stock_decision_export import StockDecisionReader
+            from trading_bot.runtime.stock_research_worker import load_stock_worker_configuration
+
+            decision_reader = StockDecisionReader(
+                root=args.stock_decision_export_dir,
+                loaded=load_stock_worker_configuration(args.config_root),
+            )
         app = build_hybrid_app(
             owner,
             cast(HybridAppConfig, loaded.config).hybrid,
@@ -334,6 +348,7 @@ def main() -> None:
             static_dir=args.dashboard_dir,
             run_worker=True,
             stock_research_reader=stock_reader,
+            stock_decision_reader=decision_reader,
         )
         uvicorn.run(
             app,

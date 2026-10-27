@@ -74,7 +74,7 @@ class StockResearchSafetyEnvelope(HybridSafetyEnvelope):
 class StockWorkerSettings(StrictModel):
     """Opt-in operational bounds; existing stock-v1 evidence keeps its exact graph."""
 
-    policy_id: Literal["stock-worker-v1"] = "stock-worker-v1"
+    policy_id: Literal["stock-worker-v1", "stock-worker-current-provider-v1"] = "stock-worker-v1"
     live_enabled: StrictFalse = False
     max_run_seconds: StrictInt = Field(default=450, ge=60, le=450)
     enrichment_refresh_minutes: StrictInt = Field(default=360, ge=60, le=1440)
@@ -82,12 +82,17 @@ class StockWorkerSettings(StrictModel):
     max_archive_files: StrictInt = Field(default=10000, ge=128, le=100000)
 
 
-def _require_worker_enrichment_capacity(policy: StockResearchSettings) -> None:
+def _require_worker_enrichment_capacity(
+    policy: StockResearchSettings, worker: StockWorkerSettings
+) -> None:
     count = policy.shortlist_count
     # Complete stock_requests.enrichment_requests plan: fundamentals/history in
     # batches of 10; annual/quarterly financials and quotes in batches of 20;
     # one earnings request and one filing-index request per company.
     planned_calls = 2 * ((count + 9) // 10) + 3 * ((count + 19) // 20) + 2 * count
+    if worker.policy_id == "stock-worker-current-provider-v1":
+        # Each connection must establish STOCK vocabulary before its named preview.
+        planned_calls += 2
     if planned_calls > policy.max_calls_per_cycle:
         raise ValueError("stock worker shortlist exceeds enrichment call budget")
     # Enrichment is a later cycle. Equality leaves no time for dispatch after
@@ -101,7 +106,7 @@ class StockWorkerAppConfig(StockResearchAppConfig):
 
     @model_validator(mode="after")
     def feasible_enrichment(self) -> Self:
-        _require_worker_enrichment_capacity(self.stock_research)
+        _require_worker_enrichment_capacity(self.stock_research, self.stock_worker)
         return self
 
 
@@ -110,5 +115,5 @@ class StockWorkerSafetyEnvelope(StockResearchSafetyEnvelope):
 
     @model_validator(mode="after")
     def feasible_enrichment(self) -> Self:
-        _require_worker_enrichment_capacity(self.stock_research)
+        _require_worker_enrichment_capacity(self.stock_research, self.stock_worker)
         return self

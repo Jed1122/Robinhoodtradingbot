@@ -28,6 +28,8 @@ import {
   type Row,
   type Snapshot,
   type StockWorker,
+  type StockDecisionView,
+  type DecisionRow,
 } from "./api";
 const pages = [
   "Overview",
@@ -156,6 +158,108 @@ function hasStockResearch(research: Snapshot["research"] | undefined): boolean {
   return (
     research?.stock_worker !== undefined ||
     research?.opportunities.some(isStockOpportunity) === true
+  );
+}
+function DecisionEvidence({ row }: { row: DecisionRow }) {
+  const gaps = [...row.bearish_evidence.map((r) => r.code), ...row.missing_requirements];
+  return (
+    <details>
+      <summary>View decision evidence</summary>
+      <strong>Bullish evidence</strong>
+      <ul>
+        {row.bullish_evidence.map((reason, index) => (
+          <li key={index}>
+            {reason.code.replaceAll("_", " ")}
+            {reason.value === null ? "" : `: ${reason.value}`}
+            {reason.basis ? ` (${reason.basis.replaceAll("_", " ")})` : ""}
+          </li>
+        ))}
+      </ul>
+      <strong>Bearish evidence and gaps</strong>
+      <ul>{gaps.map((gap, index) => <li key={index}>{gap.replaceAll("_", " ")}</li>)}</ul>
+      {gaps.length === 0 && <p>No recorded criterion gaps; execution checks remain separate.</p>}
+      <strong>Method limits</strong>
+      <ul>{row.limitations.map((limit) => <li key={limit}>{limit.replaceAll("_", " ")}</li>)}</ul>
+      <p>Decision identity: <code>{row.decision_hash}</code></p>
+      <ul>
+        {row.sources.map((source, index) => (
+          <li key={index}>
+            {source.tool} · {source.record_ref} · <SourceTime value={source.received_at} />
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+function CurrentStockDecisions({ view, now, feedHealthy }: {
+  view: StockDecisionView | undefined; now: number; feedHealthy: boolean;
+}) {
+  if (!view) return null;
+  const validityReason = view.status === "unavailable" ? view.reason
+    : !feedHealthy ? "snapshot_refresh_unavailable"
+    : !Number.isFinite(now) || now < Date.parse(view.generated_at) ? "future_export"
+    : !Number.isFinite(Date.parse(view.valid_until)) || now >= Date.parse(view.valid_until)
+      || [view.long_term,view.tactical].some(track =>
+        (track.earliest_eligible_expiry !== null && now >= Date.parse(track.earliest_eligible_expiry))
+        || track.decisions.some(row => row.expires_at !== null && now >= Date.parse(row.expires_at)))
+      ? "expired_decision" : null;
+  return (
+    <Panel title="Current stock decisions" note="Current research · proposed actions">
+      <p className="plain-note">
+        Execution disabled; performance remains unproven. Meeting research criteria
+        is separate from risk review and trading authorization.
+      </p>
+      {validityReason !== null || view.status === "unavailable" ? (
+        <Empty title="Current decisions unavailable">
+          {validityReason?.replaceAll("_", " ")}. No current investment eligibility is shown.
+        </Empty>
+      ) : (
+        <>
+          <div className="decision-overview">
+            <p>Decision report: <SourceTime value={view.generated_at} /></p>
+            {view.needs.length > 0 && (
+              <p>Outstanding requirements: {view.needs.map((x) => x.replaceAll("_", " ")).join("; ")}</p>
+            )}
+          </div>
+          {[view.long_term, view.tactical].map((track) => (
+            <section className="decision-track" key={track.horizon} aria-label={track.horizon === "long_term" ? "Long-term decisions" : "Tactical decisions"}>
+              <h3>{track.horizon === "long_term" ? "Long-term · years" : "Tactical · one–two calendar months"}</h3>
+              <p>
+                {track.eligible_count} meet research criteria / {track.assessed_count} assessed
+                {track.omitted_count > 0 ? ` · ${track.omitted_count} additional records omitted from this bounded view` : ""}
+              </p>
+              {track.decisions.length ? (
+                <div className="table-scroll" role="region" tabIndex={0} aria-label={`${track.horizon} current decisions, scroll horizontally`}>
+                  <table style={{ minWidth: 640 }}>
+                    <thead>
+                      <tr><th>Rank / company</th><th>Research decision</th><th>Original source receipt (UTC)</th><th>Rationale and gaps</th></tr>
+                    </thead>
+                    <tbody>
+                      {track.decisions.map((row) => (
+                        <tr key={row.symbol}>
+                          <td><strong>{row.symbol}</strong><p>Rank {row.ordinal_rank ?? "—"}</p></td>
+                          <td>
+                            {row.action === "enter" ? "Proposed entry" : row.action.replaceAll("_", " ")}
+                            <p>{row.analytically_eligible ? "Meets research criteria" : "Does not meet research criteria"}</p>
+                          </td>
+                          <td>
+                            <SourceTime value={row.source_received_at} />
+                            <p>Expires: <SourceTime value={row.expires_at} /></p>
+                          </td>
+                          <td><DecisionEvidence row={row} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty title="No current candidates">Hold cash or continue research when evidence is insufficient.</Empty>
+              )}
+            </section>
+          ))}
+        </>
+      )}
+    </Panel>
   );
 }
 function ResearchOpportunities({
@@ -781,6 +885,7 @@ export default function App() {
           )}
           {page === "Research" && (
             <>
+              <CurrentStockDecisions view={research?.current_decisions} now={now} feedHealthy={!pending && !error && !stale}/>
               {research?.stock_worker && (
                 <StockCollector worker={research.stock_worker} stale={stale} />
               )}

@@ -5,6 +5,11 @@ from datetime import UTC, datetime, time, timedelta
 
 from trading_bot.clock import require_utc
 from trading_bot.config.stock_research import StockResearchSettings
+from trading_bot.research.stock_screen import (
+    CURRENT_PROVIDER_WORKER_PROFILE,
+    LEGACY_WORKER_PROFILE,
+    discovery_requests,
+)
 
 
 def _check(valid: bool) -> None:
@@ -23,7 +28,11 @@ def _request(tool: str, arguments: dict[str, object]) -> dict[str, object]:
 
 
 def enrichment_requests(
-    *, symbols: tuple[str, ...], as_of: datetime, policy: StockResearchSettings
+    *,
+    symbols: tuple[str, ...],
+    as_of: datetime,
+    policy: StockResearchSettings,
+    worker_profile_id: str = LEGACY_WORKER_PROFILE,
 ) -> tuple[dict[str, object], ...]:
     """Build a complete plan or deny; the caller must freeze/validate it before any call."""
     _check(isinstance(policy, StockResearchSettings))
@@ -43,8 +52,39 @@ def enrichment_requests(
         )
     )
     _check(len(set(symbols)) == len(symbols))
+    _check(
+        type(worker_profile_id) is str
+        and worker_profile_id in (LEGACY_WORKER_PROFILE, CURRENT_PROVIDER_WORKER_PROFILE)
+    )
 
     requests: list[dict[str, object]] = []
+    if worker_profile_id == CURRENT_PROVIDER_WORKER_PROFILE:
+        columns = discovery_requests(checked_policy, worker_profile_id=worker_profile_id)[1][
+            "arguments"
+        ]["columns"]
+        requests.extend(
+            (
+                _request("get_scanner_filter_specs", {}),
+                _request(
+                    "preview_scan",
+                    {
+                        "filters": [
+                            {
+                                "filter_type": "FILTER_TYPE_INSTRUMENT_TYPE",
+                                "predicate": "=",
+                                "values": ["STOCK"],
+                            },
+                            {
+                                "expression": "symbol",
+                                "predicate": "ANY_OF",
+                                "values": list(symbols),
+                            },
+                        ],
+                        "columns": columns,
+                    },
+                ),
+            )
+        )
     requests.extend(
         _request("get_equity_fundamentals", {"symbols": group, "bounds": "regular"})
         for group in _batches(symbols, 10)

@@ -1,4 +1,31 @@
 export type Row = Record<string, unknown>;
+export interface DecisionRow {
+  symbol: string; horizon: "long_term" | "tactical";
+  action: "enter" | "hold" | "reduce" | "review" | "avoid";
+  analytically_eligible: boolean; ordinal_rank: number | null; priority_score: string | null;
+  as_of: string; source_received_at: string | null; expires_at: string | null; decision_hash: string;
+  bullish_evidence: {code:string;fact_name:string|null;value:string|null;basis:string|null}[];
+  bearish_evidence: DecisionRow["bullish_evidence"];
+  missing_requirements: string[];
+  limitations: string[];
+  sources: {tool:string;observation_sha256:string;record_ref:string;received_at:string}[];
+}
+export interface DecisionTrack {
+  horizon: "long_term" | "tactical"; assessed_count:number; eligible_count:number;
+  omitted_count:number; earliest_eligible_expiry:string|null; decisions: DecisionRow[];
+}
+interface DecisionScope {
+  execution_authorized:false; live_authorized:false; orders_created:false; reservations_created:false;
+  performance_evidence:"unproven_not_a_gate";
+}
+export type StockDecisionView = DecisionScope & ({
+  status:"available"; schema_version:2; worker_profile_id:"stock-worker-current-provider-v1";
+  generated_at:string; valid_until:string; source_config_hash:string; analysis_code_hash:string; policy_hash:string;
+  report_body_sha256:string; report_evidence_hash:string;
+  plan_status:"research_only"|"portfolio_cash_ceilings"; needs:string[];
+  long_term:DecisionTrack; tactical:DecisionTrack;
+} | {status:"unavailable"; reason:string; as_of:string|null;
+  long_term:{decisions:[]}; tactical:{decisions:[]};});
 export type Action = "pause" | "resume_research" | "kill";
 export interface StockWorker {
   exported_at: string | null;
@@ -77,6 +104,7 @@ export interface Snapshot {
     comparisons: Row[];
     limitations: string[];
     stock_worker?: StockWorker;
+    current_decisions?: StockDecisionView;
   };
   safety: {
     paused: boolean;
@@ -192,6 +220,51 @@ function validStockWorker(value: unknown): value is StockWorker {
     );
   });
 }
+const hashText = (x:unknown): x is string => typeof x === "string" && /^[0-9a-f]{64}$/.test(x);
+const shortText = (x:unknown): x is string => typeof x === "string" && x.length > 0 && x.length <= 512;
+const strings = (x:unknown,max:number) => Array.isArray(x) && x.length<=max && x.every(shortText);
+const numericText = (x:unknown) => typeof x === "string" && x.length<=128 && /^[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$/.test(x) && Number.isFinite(Number(x));
+function validDecisionRow(x:unknown,horizon:string): x is DecisionRow {
+  if (!isObject(x) || x.horizon!==horizon || typeof x.symbol!=="string" || !/^[A-Z][A-Z0-9.\/-]{0,14}$/.test(x.symbol)
+    || !["enter","hold","reduce","review","avoid"].includes(x.action as string)
+    || typeof x.analytically_eligible!=="boolean" || !hashText(x.decision_hash)
+    || !utcTimestamp(x.as_of) || !(x.source_received_at===null || (utcTimestamp(x.source_received_at) && Date.parse(x.source_received_at)<=Date.parse(x.as_of)))
+    || !(x.expires_at===null || utcTimestamp(x.expires_at))
+    || !(x.ordinal_rank===null || (Number.isSafeInteger(x.ordinal_rank) && Number(x.ordinal_rank)>=1 && Number(x.ordinal_rank)<=5000))
+    || !(x.priority_score===null || (numericText(x.priority_score) && Number(x.priority_score)>=0 && Number(x.priority_score)<=100))
+    || !strings(x.missing_requirements,128) || !strings(x.limitations,32)) return false;
+  if (x.analytically_eligible && (x.ordinal_rank===null || x.expires_at===null || Date.parse(x.expires_at as string)<=Date.parse(x.as_of))) return false;
+  for (const key of ["bullish_evidence","bearish_evidence"]) {
+    const values=x[key]; if (!Array.isArray(values) || values.length>32 || !values.every(r=>isObject(r) && shortText(r.code) && (r.fact_name===null || shortText(r.fact_name)) && (r.value===null || numericText(r.value)) && (r.basis===null || shortText(r.basis)))) return false;
+  }
+  return Array.isArray(x.sources) && x.sources.length<=64 && x.sources.every(r=>isObject(r) && shortText(r.tool) && hashText(r.observation_sha256) && shortText(r.record_ref) && utcTimestamp(r.received_at) && Date.parse(r.received_at)<=Date.parse(x.as_of as string));
+}
+function validDecisionTrack(x:unknown,horizon:string): x is DecisionTrack {
+  if (!isObject(x) || x.horizon!==horizon || !["assessed_count","eligible_count","omitted_count"].every(k=>Number.isSafeInteger(x[k]) && Number(x[k])>=0 && Number(x[k])<=5000)
+    || !(x.earliest_eligible_expiry===null || utcTimestamp(x.earliest_eligible_expiry))
+    || !Array.isArray(x.decisions) || x.decisions.length>40 || !x.decisions.every(r=>validDecisionRow(r,horizon))) return false;
+  const rows=x.decisions as DecisionRow[];
+  const eligible = rows.filter(r=>r.analytically_eligible);
+  const expiry = x.earliest_eligible_expiry===null ? null : Date.parse(x.earliest_eligible_expiry as string);
+  const displayedExpiry = eligible.length ? Math.min(...eligible.map(r=>Date.parse(r.expires_at!))) : null;
+  return Number(x.assessed_count)===rows.length+Number(x.omitted_count)
+    && Number(x.eligible_count)<=Number(x.assessed_count) && Number(x.eligible_count)>=eligible.length
+    && (Number(x.omitted_count)!==0 || Number(x.eligible_count)===eligible.length)
+    && (Number(x.eligible_count)===0)===(expiry===null)
+    && (expiry===null || displayedExpiry===null || (expiry<=displayedExpiry && (Number(x.omitted_count)!==0 || expiry===displayedExpiry)))
+    && new Set(rows.map(r=>r.symbol)).size===rows.length;
+}
+function validCurrentDecisions(x:unknown): x is StockDecisionView {
+  if (!isObject(x) || !["execution_authorized","live_authorized","orders_created","reservations_created"].every(k=>x[k]===false) || x.performance_evidence!=="unproven_not_a_gate") return false;
+  if (x.status==="unavailable") return ["export_unavailable","stale_export","future_export","expired_decision"].includes(x.reason as string) && (x.as_of===null || utcTimestamp(x.as_of)) && [x.long_term,x.tactical].every(t=>isObject(t) && Array.isArray(t.decisions) && t.decisions.length===0);
+  return x.status==="available" && x.schema_version===2 && x.worker_profile_id==="stock-worker-current-provider-v1" && utcTimestamp(x.generated_at)
+    && utcTimestamp(x.valid_until) && Date.parse(x.valid_until)>Date.parse(x.generated_at)
+    && ["source_config_hash","analysis_code_hash","policy_hash","report_body_sha256","report_evidence_hash"].every(k=>hashText(x[k]))
+    && ["research_only","portfolio_cash_ceilings"].includes(x.plan_status as string) && strings(x.needs,1024)
+    && validDecisionTrack(x.long_term,"long_term") && validDecisionTrack(x.tactical,"tactical")
+    && [x.long_term,x.tactical].every(t=>t.earliest_eligible_expiry===null || (Date.parse(t.earliest_eligible_expiry)>Date.parse(x.generated_at as string) && Date.parse(x.valid_until as string)<=Date.parse(t.earliest_eligible_expiry)))
+    && [...x.long_term.decisions,...x.tactical.decisions].every(r=>r.as_of===x.generated_at && (r.expires_at===null || Date.parse(x.valid_until as string)<=Date.parse(r.expires_at)));
+}
 export function validateSnapshot(value: unknown): Snapshot {
   if (
     !isObject(value) ||
@@ -280,6 +353,8 @@ export function validateSnapshot(value: unknown): Snapshot {
   )
     throw new Error("Invalid research or cost data. Controls are unavailable.");
   const hasStockWorker = Object.hasOwn(research, "stock_worker");
+  if (Object.hasOwn(research,"current_decisions") && !validCurrentDecisions(research.current_decisions))
+    throw new Error("Invalid current stock decisions. Controls are unavailable.");
   if (hasStockWorker && !validStockWorker(research.stock_worker))
     throw new Error("Invalid stock collector data. Controls are unavailable.");
   if (
