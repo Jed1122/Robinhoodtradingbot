@@ -27,8 +27,12 @@ or provider/account/order/deployment action is performed by a worker unless root
 assigns that concrete step. Root may integrate/merge routine verified code under
 the existing human authorization.
 
-Implementation status: steps 1–5 and the local independent review/integration
-checks in step 6 are complete. Release CI and merge verification remain pending.
+Implementation status: steps 1–5 and local independent integration checks are
+complete. The final requirement audit's missing offline current-policy approval
+seam was implemented under `2026-10-27-current-stock-offline-execution.md`, with
+914 combined checks passing on both Python versions and new critical modules
+above their 90% branch threshold. Foundation PR #63 is merged after all CI passed;
+the execution successor's release CI/merge verification remains pending.
 The current scope ends at source-bound proposals and software verification;
 actual official-account execution/reconciliation and deployment follow Task 5.
 See `docs/current-stock-selection.md` and its validation companion for runnable
