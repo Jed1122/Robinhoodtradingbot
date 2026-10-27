@@ -12,6 +12,8 @@ from trading_bot.hybrid.models import Account
 from trading_bot.persistence.base import _require_validated_session_factory
 from trading_bot.persistence.models.hybrid import HybridEventRow
 
+type HybridJournalFactory = async_sessionmaker[AsyncSession]
+
 
 def _hash(value: object) -> str:
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -21,11 +23,15 @@ def _hash(value: object) -> str:
 class HybridJournal:
     """One isolated experimental account per ledger; no production identity adoption."""
 
-    def __init__(self, factory: async_sessionmaker[AsyncSession], config_hash: str) -> None:
+    def __init__(self, factory: HybridJournalFactory, config_hash: str) -> None:
         _require_validated_session_factory(factory)
         if re.fullmatch(r"[0-9a-f]{64}", config_hash) is None:
             raise ValueError("invalid configuration identity")
         self.factory, self.config_hash = factory, config_hash
+
+    def _decode_account(self, raw: str) -> Account:
+        """Validate one snapshot; explicit journal owners may require a stricter model."""
+        return Account.model_validate_json(raw)
 
     async def _read(self, session: AsyncSession) -> tuple[Account | None, list[HybridEventRow]]:
         rows = list(
@@ -52,7 +58,7 @@ class HybridJournal:
                 or row.event_hash != digest
             ):
                 raise ValueError("hybrid history identity or chain invalid")
-            state = Account.model_validate_json(row.state_json)
+            state = self._decode_account(row.state_json)
             previous = digest
         return state, rows
 
@@ -98,7 +104,7 @@ class HybridJournal:
                 if state is not None and kind == "initialize":
                     raise ValueError("account already initialized")
                 updated = transition(state or Account())
-                updated = Account.model_validate_json(updated.model_dump_json())
+                updated = self._decode_account(updated.model_dump_json())
                 state_json = updated.model_dump_json()
                 if len(state_json.encode()) > 1048576 or len(rows) >= 100000:
                     raise ValueError("experimental journal bounds reached")

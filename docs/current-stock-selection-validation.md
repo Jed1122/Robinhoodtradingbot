@@ -18,6 +18,10 @@ are not release gates; returns remain unproven.
   read-only dashboard export and optional caller-owned durable watch publication.
 - Default-false execution authority, current source/control/issuer/account/child
   expiry fences and independently reviewed failure behavior.
+- A separately approved SIMULATION-only intent path with actual atomic risk and
+  cash/share reservation, durable once-only handoff, strict outcome/fill
+  reconciliation, explicit due settlement and current loss-reference updates.
+  It preserves the default journal and historical research approval paths.
 
 ## Verified locally
 
@@ -34,6 +38,31 @@ expired/unhealthy actions. Architecture checks passed (185 cases); whole-source
 Ruff and strict mypy passed (494 files). Bandit reported no identified issues;
 existing suppression/comment warnings were retained. These are software checks
 with fictional account fixtures, not investment-performance evidence.
+
+The final offline current-policy seam passed a combined 914 execution, hybrid,
+source-integration and architecture tests on each Python 3.12.13 and 3.14.6,
+native exit 0 (77.47 and 75.18 seconds). All 11 candidate files remained unchanged
+through those gates. The new intent mapper covered 78/78 branches (100%); the new
+simulation owner covered 88/96 (91.67%), with zero exclusions. Combined targeted
+coverage, including the touched default journal, was 97.29%. Whole-source Ruff
+and strict mypy passed (496 files).
+
+The 16 integrated flow cases per Python include actual migrated fictional source
+collection/archive readback and immutable report publication, current manual
+approval, real risk/reservation, exactly one simulated broker handoff, concurrent
+replay/restart, missing/stale/kill/live-mode denial, ambiguous outcomes, partial
+fills, cancellation ACK/terminal separation, actual FIFO gain/tax accounting,
+explicit due settlement and persistent loss-suspension references. Independent
+counterexamples for issuer grouping, cumulative-fill regression, Decimal context
+identity and changed-state submission guards were preserved, fixed and rechecked.
+
+The research/proposal foundation is merged as PR #63 at
+`f98b29be3912b7f4edebe31d31adfd21dfe67d87`, tree
+`1b089c6fc8edbb991e3c04ad7743363e614fed29`. All seven CI jobs passed;
+Python 3.12/3.13/3.14 each passed 14,098 stock/shared tests and critical branch
+coverage. Aggregate coverage was 92.40% / 92.40% / 92.19%; warnings were 1 / 36 / 36
+in existing Starlette/SQLite categories. The offline execution successor still
+requires its own release CI/merge verification.
 
 Bounded official read-only metadata, scanner preview and financial-response
 checks verified the requested provider columns/filter shapes and normalizer.
@@ -52,4 +81,5 @@ intended runtime. No local development session supplies that operational proof.
 Live trading remains disabled. It requires a separate, explicit user-controlled
 activation after the actual broker and deployment checks. No credential material
 was read. No actual order review/submission/cancellation, transfer or deployment
-was performed. See [configuration, commands and limitations](current-stock-selection.md).
+was performed. See [configuration, commands and limitations](current-stock-selection.md)
+and the [offline execution contract](current-stock-offline-execution.md).

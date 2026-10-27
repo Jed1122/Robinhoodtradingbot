@@ -224,6 +224,18 @@ must archive verified reports outside the active report directory before those
 limits, preserving original bytes/hashes, and monitor storage. No automatic
 retention service or indefinite report capacity is claimed.
 
+## Offline execution verification
+
+The separate current-policy simulation seam connects source-bound plans to an
+explicit fictional approval, sized intents, atomic risk/reservation and durable
+partial/rejected/ambiguous outcomes. It also applies actual simulated FIFO fills,
+estimated taxes, explicit due settlements and loss-reference marks. Source HOLD
+decisions remain HOLD; no historical profitability or forecast attestation is
+fabricated. See the [offline contract and test command](current-stock-offline-execution.md).
+
+The default real-money setting remains disabled. This simulation seam is not a
+broker-account adapter or a live activation permission.
+
 ## Next steps and scope boundary
 
 Complete the integrated current-workflow release audit and connect the external

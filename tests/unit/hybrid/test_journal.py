@@ -1,7 +1,9 @@
 import asyncio
 from pathlib import Path
+from typing import Literal
 
 import pytest
+from pydantic import Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -9,6 +11,7 @@ from trading_bot.hybrid.models import Account
 from trading_bot.persistence import async_session_factory, create_engine
 from trading_bot.persistence.hybrid_journal import HybridJournal
 from trading_bot.persistence.migrations import migrate_sqlite_ledger
+from trading_bot.persistence.models.hybrid import HybridEventRow
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -105,3 +108,66 @@ async def test_batched_quotes_survive_journal_restart_and_duplicate_replay(journ
     second = await replay(scenario, HybridSettings(), await restarted.read(), owner=restarted)
     assert first == second
     assert len(second.marks) == 2
+
+
+class RequiredSimulationAccount(Account):
+    profile: Literal["fixture-simulation-v1"]
+    simulation_account_id: str = Field(min_length=1)
+
+
+class RequiredSimulationJournal(HybridJournal):
+    def _decode_account(self, raw: str) -> Account:
+        return RequiredSimulationAccount.model_validate_json(raw)
+
+
+async def test_default_decoder_keeps_original_account_wire_bytes(journal):
+    owner, factory = journal
+    expected = Account().model_dump_json()
+    await owner.change("genesis", "initialize", {}, lambda _: Account())
+    async with factory() as session:
+        stored = await session.get(HybridEventRow, 0)
+        assert stored is not None and stored.state_json == expected
+    observed = await HybridJournal(factory, "a" * 64).read()
+    assert type(observed) is Account and observed.model_dump_json() == expected
+
+
+async def test_optin_decoder_preserves_required_metadata_and_revalidates_every_transition(journal):
+    _, factory = journal
+    owner = RequiredSimulationJournal(factory, "a" * 64)
+    state = await owner.change(
+        "genesis",
+        "initialize",
+        {},
+        lambda _: RequiredSimulationAccount(
+            profile="fixture-simulation-v1", simulation_account_id="fixture-account"
+        ),
+    )
+    assert type(state) is RequiredSimulationAccount
+    restarted = RequiredSimulationJournal(factory, "a" * 64)
+    assert await restarted.read() == state
+    changed = await restarted.change(
+        "pause", "control", {"action": "pause"}, lambda a: a.model_copy(update={"paused": True})
+    )
+    assert type(changed) is RequiredSimulationAccount
+    assert (
+        changed.profile == "fixture-simulation-v1"
+        and changed.simulation_account_id == "fixture-account"
+    )
+    with pytest.raises(ValueError):
+        await restarted.change(
+            "invalid", "control", {}, lambda a: a.model_copy(update={"profile": "foreign-profile"})
+        )
+    assert await restarted.read() == changed
+    with pytest.raises(ValueError):
+        await HybridJournal(factory, "a" * 64).read()
+
+
+async def test_optin_decoder_cannot_adopt_old_account_with_missing_required_metadata(journal):
+    legacy, factory = journal
+    original = await legacy.change("genesis", "initialize", {}, lambda _: Account())
+    selected = RequiredSimulationJournal(factory, "a" * 64)
+    with pytest.raises(ValueError):
+        await selected.read()
+    with pytest.raises(ValueError):
+        await selected.change("foreign", "control", {}, lambda a: a)
+    assert await legacy.read() == original
